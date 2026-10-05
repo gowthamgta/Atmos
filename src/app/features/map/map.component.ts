@@ -11,13 +11,11 @@ import {
 import * as maplibregl from 'maplibre-gl';
 import { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { MapLayerService, LayerConfig } from '../../core/services/map-layer.service';
-import { RadarService } from '../../core/services/radar.service';
+import { RadarDisplayFrame, RadarService } from '../../core/services/radar.service';
+import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite.service';
 import { satelliteCoordinates } from '../../core/satellite/satellite-image';
-import {
-  RadarProductKey,
-  ProcessedRadarResult
-} from '../../core/domain/models/radar.model';
+import { RadarProductKey } from '../../core/domain/models/radar.model';
 
 /** [[west, south], [east, north]]: the whole forecast area (South India, Sri Lanka and the seas around them). */
 const SOUTH_INDIA_VIEW: [[number, number], [number, number]] = [[67.5, 3.5], [90.5, 22.5]];
@@ -28,6 +26,9 @@ const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [[52, -10], [108, 3
 // The lines are drawn above every raster overlay (radar, forecast) so boundaries stay readable on top of them.
 const BOUNDARY_SOURCE_ID = 'boundaries';
 const BOUNDARY_FIRST_LAYER_ID = 'district-casing';
+const STORM_SOURCE_ID = 'storm-tracks';
+const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
+const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
 import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
 
 @Component({
@@ -267,6 +268,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private radarService = inject(RadarService);
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
+  private storms = inject(StormTracksService);
 
   readonly hoverInfo = this.radarService.hoverInfo;
   private map: MapLibreMap | null = null;
@@ -283,7 +285,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
   // Reactive Effect: Unified Merged Radar Mosaic across all active stations
   private radarMosaicEffect = effect(() => {
-    const mosaic = this.radarService.compositeMosaic();
+    const mosaic = this.radarService.displayed(); // the live composite, or a frame of the one-hour loop
     if (!this.map || !this.isMapLoaded()) return;
     this.updateRadarMosaicOverlay(mosaic);
   });
@@ -459,7 +461,10 @@ export class MapComponent implements OnInit, OnDestroy {
       this.initRangeRings();
 
       // 4. Initial Radar Mosaic Mount
-      this.updateRadarMosaicOverlay(this.radarService.compositeMosaic());
+      this.updateRadarMosaicOverlay(this.radarService.displayed());
+
+      // 4b. Storm cells and their one-hour cones, above the radar
+      this.initStormLayers();
 
       // 6. Initial overlay sync & trigger concurrent fetch of all radar sweeps
       this.syncOverlays(this.layerService.layers());
@@ -502,13 +507,13 @@ export class MapComponent implements OnInit, OnDestroy {
 
   // --- 1. IMD Doppler Weather Radar Unified Merged Composite Mosaic ---
 
-  private updateRadarMosaicOverlay(mosaic: ProcessedRadarResult | null): void {
+  private updateRadarMosaicOverlay(mosaic: RadarDisplayFrame | null): void {
     if (!this.map || !this.isMapLoaded()) return;
 
     const sourceId = 'radar-source-mosaic';
     const layerId = 'radar-layer-mosaic';
 
-    if (!mosaic || !mosaic.dataUrl || mosaic.isDisplayed === false) {
+    if (!mosaic) {
       if (this.map.getLayer(layerId)) {
         this.map.removeLayer(layerId);
       }
@@ -521,17 +526,18 @@ export class MapComponent implements OnInit, OnDestroy {
     const existingSource = this.map.getSource(sourceId) as maplibregl.ImageSource;
     if (existingSource && typeof existingSource.updateImage === 'function') {
       existingSource.updateImage({
-        url: mosaic.dataUrl,
+        url: mosaic.url,
         coordinates: mosaic.coordinates
       });
     } else if (!existingSource) {
       this.map.addSource(sourceId, {
         type: 'image',
-        url: mosaic.dataUrl,
+        url: mosaic.url,
         coordinates: mosaic.coordinates
       });
 
-      const targetBefore = this.overlayAnchorId();
+      // above the boundary lines (the echoes stay readable) but under the storm cones and place names
+      const targetBefore = this.map.getLayer(STORM_FIRST_LAYER_ID) ? STORM_FIRST_LAYER_ID : this.observationAnchorId();
 
       this.map.addLayer(
         {
@@ -595,7 +601,7 @@ export class MapComponent implements OnInit, OnDestroy {
       // rebuild in time order so the stacking order stays oldest at the bottom
       this.removeSatelliteLayers();
       const coordinates = satelliteCoordinates();
-      const before = this.overlayAnchorId();
+      const before = this.observationAnchorId(); // above the boundary lines, under the place names
       for (const f of frames) {
         this.map.addSource(`satellite-source-${f.timeMs}`, { type: 'image', url: f.url, coordinates });
         this.map.addLayer(
@@ -622,9 +628,54 @@ export class MapComponent implements OnInit, OnDestroy {
     });
   }
 
+  // --- Storm cells and cones ---
+
+  private initStormLayers(): void {
+    if (!this.map || this.map.getSource(STORM_SOURCE_ID)) return;
+    this.map.addSource(STORM_SOURCE_ID, { type: 'geojson', data: this.storms.geojson() as unknown as maplibregl.GeoJSONSourceSpecification["data"] });
+    const before = this.observationAnchorId();
+    const color: maplibregl.ExpressionSpecification = ['case', ['get', 'severe'], '#f87171', '#fbbf24'];
+    const kind = (k: string): maplibregl.ExpressionSpecification => ['==', ['get', 'kind'], k];
+    const visibility = this.storms.visible() ? 'visible' : 'none';
+    this.map.addLayer({ id: STORM_FIRST_LAYER_ID, type: 'fill', source: STORM_SOURCE_ID, filter: kind('cone'), layout: { visibility },
+      paint: { 'fill-color': color, 'fill-opacity': 0.16 } }, before);
+    this.map.addLayer({ id: 'storm-cone-line', type: 'line', source: STORM_SOURCE_ID, filter: kind('cone'), layout: { visibility, 'line-join': 'round' },
+      paint: { 'line-color': color, 'line-opacity': 0.85, 'line-width': 1.3 } }, before);
+    this.map.addLayer({ id: 'storm-track-line', type: 'line', source: STORM_SOURCE_ID, filter: kind('track'), layout: { visibility, 'line-cap': 'round' },
+      paint: { 'line-color': '#ffffff', 'line-opacity': 0.8, 'line-width': 1.2, 'line-dasharray': [2, 2] } }, before);
+    this.map.addLayer({ id: 'storm-ticks', type: 'circle', source: STORM_SOURCE_ID, filter: kind('tick'), layout: { visibility },
+      paint: { 'circle-radius': 2.6, 'circle-color': '#ffffff', 'circle-stroke-color': color, 'circle-stroke-width': 1.2 } }, before);
+    this.map.addLayer({ id: 'storm-tick-labels', type: 'symbol', source: STORM_SOURCE_ID, filter: kind('tick'), minzoom: 7,
+      layout: { visibility, 'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 10, 'text-offset': [0, 0.9] },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8,12,22,0.9)', 'text-halo-width': 1.2 } }, before);
+    this.map.addLayer({ id: 'storm-cells', type: 'circle', source: STORM_SOURCE_ID, filter: kind('cell'), layout: { visibility },
+      paint: { 'circle-radius': 4, 'circle-color': color, 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.5 } }, before);
+    this.map.addLayer({ id: 'storm-cell-labels', type: 'symbol', source: STORM_SOURCE_ID, filter: kind('cell'), minzoom: 6,
+      layout: { visibility, 'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 11,
+        'text-offset': [0, -1.2], 'text-allow-overlap': true },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8,12,22,0.92)', 'text-halo-width': 1.4 } }, before);
+  }
+
+  private stormEffect = effect(() => {
+    const data = this.storms.geojson();
+    const visible = this.storms.visible();
+    if (!this.map || !this.isMapLoaded()) return;
+    (this.map.getSource(STORM_SOURCE_ID) as maplibregl.GeoJSONSource | undefined)?.setData(data as unknown as maplibregl.GeoJSONSourceSpecification["data"]);
+    for (const id of STORM_LAYER_IDS) {
+      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+    }
+  });
+
+  /** Observed imagery (radar, satellite) and storm cones go above the boundary lines but under the place names. */
+  private observationAnchorId(): string | undefined {
+    if (!this.map) return undefined;
+    if (this.map.getLayer('district-labels-1')) return 'district-labels-1';
+    return this.overlayAnchorId();
+  }
+
   // --- Tamil Nadu boundary lines (state + 38 districts) ---
 
-  /** Layer id that raster overlays are inserted before, so boundaries and labels stay on top. */
+  /** Layer id that the forecast layers are inserted before, so boundaries and labels stay on top. */
   private overlayAnchorId(): string | undefined {
     if (!this.map) return undefined;
     if (this.map.getLayer(BOUNDARY_FIRST_LAYER_ID)) return BOUNDARY_FIRST_LAYER_ID;

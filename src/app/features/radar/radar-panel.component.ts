@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
+import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
 interface ProductOption {
@@ -16,6 +17,12 @@ const PRODUCTS: readonly ProductOption[] = [
   { key: 'sri', name: 'SRI', hint: 'Rain rate', title: 'Surface rainfall intensity (mm/h)' },
   { key: 'pac', name: 'PAC', hint: 'Total', title: 'Precipitation accumulation (rain total)' },
 ];
+
+/** "14:45" (IST) for a time in epoch ms. */
+function istClock(ms: number): string {
+  const d = new Date(ms + 5.5 * 3_600_000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
 
 const FRESHNESS_LABEL: Record<string, string> = {
   fresh: 'Fresh',
@@ -65,6 +72,27 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
+        @if (historyAvailable()) {
+          <div class="loop" role="group" aria-label="Last hour of radar">
+            <button type="button" class="icon-btn play" (click)="radar.togglePlay()" [disabled]="loopLoading() && frames().length === 0"
+              [attr.aria-label]="playing() ? 'Pause' : 'Play the last hour'" [title]="playing() ? 'Pause' : 'Play the last hour'">
+              {{ playing() ? '❚❚' : '▶' }}
+            </button>
+            @if (frames().length > 0) {
+              <input type="range" class="scrub" min="0" [max]="frames().length" step="1" [value]="sliderValue()" (input)="onScrub($event)" aria-label="Radar time" />
+            } @else {
+              <span class="loop-hint">{{ loopLoading() ? 'Building last hour… ' + progressPercent() + '%' : 'Last hour' }}</span>
+            }
+            <span class="loop-time" [class.live-time]="radar.playIndex() === null">{{ loopLabel() }}</span>
+          </div>
+        }
+
+        <button type="button" class="storm-toggle full-only" [class.active]="storms.enabled()" [attr.aria-pressed]="storms.enabled()" (click)="storms.toggle()"
+          title="Storm cells with the area they are expected to cross in the next hour">
+          <span class="cone" aria-hidden="true"></span>
+          <span class="storm-text">Storm tracks <span class="storm-sub">{{ stormSummary() }}</span></span>
+        </button>
+
         <div class="stations full-only">
           <div class="label">Radars online: {{ online() }} of {{ stations.length }}</div>
           <div class="chips">
@@ -106,6 +134,19 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
+    .loop { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+    .loop .play { width: 32px; height: 32px; font-size: 13px; }
+    .scrub { flex: 1; min-width: 0; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
+    .loop-hint { flex: 1; color: var(--text-secondary); font-size: 11px; }
+    .loop-time { flex: none; min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .loop-time.live-time { color: #4ade80; }
+    .storm-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 6px 10px; min-height: 36px; border-radius: 10px;
+      border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; text-align: left; }
+    .storm-toggle:hover { background: rgba(255,255,255,0.1); }
+    .storm-toggle.active { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.5); color: #fde68a; }
+    .cone { width: 18px; height: 12px; flex: none; background: linear-gradient(90deg, rgba(251,191,36,0.9), rgba(251,191,36,0.15)); clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 60%); }
+    .storm-sub { display: block; font-weight: 400; font-size: 10px; color: var(--text-muted); }
+    .panel.compact .loop { margin-top: 8px; }
     .sub[data-state='fresh'] { color: #4ade80; }
     .sub[data-state='recent'] { color: #facc15; }
     .sub[data-state='stale'] { color: #fb923c; }
@@ -160,9 +201,29 @@ const FRESHNESS_LABEL: Record<string, string> = {
 })
 export class RadarPanelComponent {
   private readonly layers = inject(MapLayerService);
-  private readonly radar = inject(RadarService);
 
   protected readonly products = PRODUCTS;
+  protected readonly radar = inject(RadarService);
+  protected readonly storms = inject(StormTracksService);
+  protected readonly frames = this.radar.history;
+  protected readonly playing = this.radar.playing;
+  protected readonly loopLoading = this.radar.historyLoading;
+  protected readonly historyAvailable = this.radar.historyAvailable;
+  protected readonly progressPercent = computed(() => Math.round(this.radar.historyProgress() * 100));
+  /** Slider: one notch per loop frame, and the last notch is the live picture. */
+  protected readonly sliderValue = computed(() => this.radar.playIndex() ?? this.frames().length);
+  protected readonly loopLabel = computed(() => {
+    const i = this.radar.playIndex();
+    const t = i === null ? this.radar.compositeMosaic()?.timing?.epochMs : this.frames()[i]?.timeMs;
+    return t ? `${i === null ? 'Live ' : ''}${istClock(t)}` : i === null ? 'Live' : '';
+  });
+  protected readonly stormSummary = computed(() => {
+    const { count, source } = this.storms.summary();
+    if (!this.storms.enabled()) return 'Off';
+    if (count === 0) return 'No storm cells now';
+    const how = source === 'radar' ? 'motion from radar' : source === 'wind' ? 'motion from steering wind' : 'motion unknown';
+    return `${count} cell${count > 1 ? 's' : ''} · ${how}`;
+  });
   /** Phones start with the compact panel (it would cover half the map); larger screens start expanded. */
   protected readonly expanded = signal(typeof window === 'undefined' || window.innerWidth > 700);
   /** One-line status for the compact panel: scan age and freshness. */
@@ -198,6 +259,32 @@ export class RadarPanelComponent {
     const p = this.product();
     return p === 'sri' ? ['0.4', '2', '10', '50', '100+'] : p === 'pac' ? ['0.4', '2', '10', '50', '100+'] : ['17', '28', '39', '50', '60+'];
   });
+
+  constructor() {
+    // On larger screens the last hour is built as soon as the radar is shown (phones wait for the play button, since
+    // the animations are several megabytes), and refreshed every 10 minutes while the radar stays on.
+    effect(() => {
+      const on = this.active();
+      const product = this.product();
+      // the live stills are part of the loop, so wait until every radar's has been fetched
+      const liveReady = this.radar.compositeMosaic() !== null && !this.radar.isRefreshing();
+      untracked(() => {
+        if (on && liveReady && typeof window !== 'undefined' && window.innerWidth > 700 && this.frames().length === 0) void this.radar.loadHistory();
+        if (!on) this.radar.pause();
+      });
+      void product;
+    });
+    const timer = setInterval(() => {
+      if (this.active() && this.frames().length > 0 && !this.playing()) void this.radar.loadHistory();
+    }, 10 * 60_000);
+    inject(DestroyRef).onDestroy(() => clearInterval(timer));
+  }
+
+  protected onScrub(event: Event): void {
+    this.radar.pause();
+    const v = Number((event.target as HTMLInputElement).value);
+    this.radar.setPlayIndex(v >= this.frames().length ? null : v);
+  }
 
   protected shortName(name: string): string {
     return name.replace(' X-DWR', '').replace(' DWR', '');

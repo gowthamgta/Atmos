@@ -12,6 +12,30 @@ import {
 } from '../domain/models/radar.model';
 
 import { blurSeparable, echoAlphaFeather, gaussianKernel, resampleBilinear } from './radar-field';
+import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
+import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
+
+/** What the map shows for the radar: one picture (object URL) placed by its corners, and its time. */
+export interface RadarDisplayFrame {
+  url: string;
+  coordinates: [[number, number], [number, number], [number, number], [number, number]];
+  timeMs: number | null;
+}
+
+/** One step of the one-hour loop: its picture and the intensity on the ~4 km storm-tracking grid. */
+export interface RadarHistoryFrame extends RadarDisplayFrame {
+  timeMs: number;
+  track: Float32Array;
+}
+
+/** Encodes a canvas as PNG off the main thread (toBlob) and returns an object URL. */
+function canvasToUrl(canvas: HTMLCanvasElement): Promise<string> {
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => (b ? resolve(URL.createObjectURL(b)) : reject(new Error('radar image encode failed'))), 'image/png')
+  );
+}
+
+const yieldToBrowser = () => new Promise<void>(r => setTimeout(r, 0));
 
 export const RADAR_COLOR_STOPS = [
   { val: 0.0, r: 58, g: 217, b: 228, a: 0.00 }, // Transparent
@@ -160,6 +184,39 @@ export class RadarService implements OnDestroy {
   readonly allRadarResults = signal<Map<string, ProcessedRadarResult>>(new Map());
   readonly compositeMosaic = signal<ProcessedRadarResult | null>(null);
   readonly hoverInfo = signal<RadarHoverInfo | null>(null);
+
+  // ── One-hour loop (from IMD's animated GIFs) ──
+  readonly history = signal<RadarHistoryFrame[]>([]);
+  readonly historyLoading = signal(false);
+  /** 0..1 while the loop is being built. */
+  readonly historyProgress = signal(0);
+  /** Loop position: an index into `history`, or null for the live picture. */
+  readonly playIndex = signal<number | null>(null);
+  readonly playing = signal(false);
+  /** IMD publishes animations for the max-reflectivity (CAZ) and rain-rate (SRI) products only. */
+  readonly historyAvailable = computed(() => animationFile('x', this.activeProduct()) !== null);
+  /** The picture on the map: the loop frame while playing or scrubbing, otherwise the live composite. */
+  readonly displayed = computed<RadarDisplayFrame | null>(() => {
+    const i = this.playIndex();
+    const frame = i === null ? null : this.history()[i];
+    if (frame) return frame;
+    const live = this.compositeMosaic();
+    return live && live.dataUrl && live.isDisplayed !== false
+      ? { url: live.dataUrl, coordinates: live.coordinates, timeMs: live.timing?.epochMs ?? null }
+      : null;
+  });
+  /** Fixed ~4 km grid over every radar's coverage, for storm tracking (the same for every loop frame). */
+  readonly trackGrid = computed<TrackingGrid>(() => {
+    const product = this.activeProduct();
+    let s = 90, w = 180, n = -90, e = -180;
+    for (const st of this.stations) {
+      const [[bs, bw], [bn, be]] = st.products[product].bounds;
+      s = Math.min(s, bs); w = Math.min(w, bw); n = Math.max(n, bn); e = Math.max(e, be);
+    }
+    return trackingGrid(s, w, n, e);
+  });
+  private historyToken = 0;
+  private playTimer: ReturnType<typeof setInterval> | null = null;
   readonly centerStationRequest = signal<number>(0);
 
   // Active Station Timing & Freshness (Independent per-station tracking)
@@ -189,7 +246,7 @@ export class RadarService implements OnDestroy {
   readonly displayedStationsCount = computed<number>(() => {
     let count = 0;
     for (const [, res] of this.allRadarResults()) {
-      if (res.isDisplayed !== false && res.dataUrl) count++;
+      if (res.isDisplayed !== false && res.fieldData) count++;
     }
     return count;
   });
@@ -337,14 +394,16 @@ export class RadarService implements OnDestroy {
   setProduct(product: RadarProductKey): void {
     this.activeProduct.set(product);
     this.allRadarResults.set(new Map());
-    this.compositeMosaic.set(null);
+    this.setComposite(null);
+    this.clearHistory();
     this.fetchAllRadarSweeps();
   }
 
   setTransparent(transparent: boolean): void {
     this.transparentMode.set(transparent);
     this.allRadarResults.set(new Map());
-    this.compositeMosaic.set(null);
+    this.setComposite(null);
+    this.clearHistory();
     this.fetchAllRadarSweeps();
   }
 
@@ -425,7 +484,7 @@ export class RadarService implements OnDestroy {
     if (this.mosaicTimer) return;
     this.mosaicTimer = setTimeout(() => {
       this.mosaicTimer = null;
-      this.generateMergedMosaic();
+      void this.generateMergedMosaic();
     }, 150);
   }
 
@@ -622,18 +681,38 @@ export class RadarService implements OnDestroy {
     if (!rgba || w < 50 || h < 50) {
       return null;
     }
+    return this.processRgba(station, productKey, productConfig, isTransparent, rgba, w, h, timing, isDisplayed, true);
+  }
 
+  /**
+   * Turns one decoded radar picture into the station's intensity field on a 1024 x 1024 grid (~0.5 km), for the live
+   * still or for a frame of the one-hour loop (`live` false: it does not change the station's online state).
+   */
+  private processRgba(
+    station: RadarStationConfig,
+    productKey: RadarProductKey,
+    productConfig: RadarStationConfig['products'][RadarProductKey],
+    isTransparent: boolean,
+    rgba: Uint8ClampedArray | Uint8Array,
+    w: number,
+    h: number,
+    timing: RadarObservationTiming | null,
+    isDisplayed: boolean,
+    live: boolean
+  ): ProcessedRadarResult | null {
     // Layout check: if the image no longer matches the configured crop it is not a radar sweep
     // (IMD swaps in an "under maintenance" photo) or the product layout has changed. Decoding it
     // anyway would paint photo pixels as fake echoes.
     const crop = productConfig.crop;
     const layoutMatches = !crop || (crop.x + crop.w <= w + 2 && crop.y + crop.h <= h + 2);
-    this.setStationUnavailable(station.id, !layoutMatches);
+    if (live) this.setStationUnavailable(station.id, !layoutMatches);
     if (!layoutMatches) {
-      console.warn(
-        `[RadarService] Station "${station.name}" ${productKey.toUpperCase()} image is ${w}x${h}, ` +
-        `which does not match its configured layout. Treating station as offline.`
-      );
+      if (live) {
+        console.warn(
+          `[RadarService] Station "${station.name}" ${productKey.toUpperCase()} image is ${w}x${h}, ` +
+          `which does not match its configured layout. Treating station as offline.`
+        );
+      }
       return null;
     }
 
@@ -664,12 +743,6 @@ export class RadarService implements OnDestroy {
     const outSize = 1024;
     const halfSize = outSize / 2;
     const maxRadius = halfSize - 2; // Strict circular radar sweep boundary limit
-    const outCanvas = document.createElement('canvas');
-    outCanvas.width = outSize;
-    outCanvas.height = outSize;
-    const outCtx = outCanvas.getContext('2d')!;
-    const outImgData = outCtx.createImageData(outSize, outSize);
-    const outData = outImgData.data;
 
     let hasAnyEcho = false;
     const isXBand = station.band === 'X-Band';
@@ -805,24 +878,6 @@ export class RadarService implements OnDestroy {
           }
 
           finalField[rowOffset + x] = val;
-
-          if (val >= 0.05) {
-            // Faint values fade in gradually, so there is no hard coloured outline around an echo
-            const borderBlend = echoAlphaFeather(val);
-
-            let edgeAlpha = 1.0;
-            const edgeDist = Math.min(x, y, outSize - 1 - x, outSize - 1 - y, dishEdgeDist);
-            if (edgeDist < 4) {
-              edgeAlpha = Math.max(0, edgeDist / 4.0);
-            }
-
-            const [r, g, b, a] = sampleRadarColorRamp(val);
-            const pIdx = (rowOffset + x) * 4;
-            outData[pIdx] = r;
-            outData[pIdx + 1] = g;
-            outData[pIdx + 2] = b;
-            outData[pIdx + 3] = Math.round(a * borderBlend * edgeAlpha);
-          }
         }
       }
     } else if (!isTransparent) {
@@ -842,19 +897,12 @@ export class RadarService implements OnDestroy {
           const srcX = Math.round(cropX + normX * (cropW - 1));
           if (srcX < 0 || srcX >= w || srcY < 0 || srcY >= h) continue;
 
-          const srcIdx = (srcY * w + srcX) * 4;
-          const pIdx = (rowOffset + x) * 4;
-          outData[pIdx] = rgba[srcIdx];
-          outData[pIdx + 1] = rgba[srcIdx + 1];
-          outData[pIdx + 2] = rgba[srcIdx + 2];
-          outData[pIdx + 3] = 255;
           finalField[rowOffset + x] = 1.0;
         }
       }
     }
 
-    outCtx.putImageData(outImgData, 0, 0);
-    const dataUrl = outCanvas.toDataURL('image/png');
+    const dataUrl = ''; // stations are only shown through the mosaic
 
     const fieldDataRecord: RadarFieldData = {
       field: finalField,
@@ -884,10 +932,9 @@ export class RadarService implements OnDestroy {
    * fields are merged seamlessly before color mapping, preserving peak storm cores
    * and smoothly blending contours, completely eliminating overlapping layer seams.
    */
-  generateMergedMosaic(): ProcessedRadarResult | null {
+  private composeMosaic(allResults: Iterable<[string, ProcessedRadarResult]>): { canvas: HTMLCanvasElement; result: ProcessedRadarResult } | null {
     if (typeof document === 'undefined') return null;
 
-    const allResults = this.allRadarResults();
     const activeStations: {
       station: RadarStationConfig;
       res: ProcessedRadarResult;
@@ -904,7 +951,7 @@ export class RadarService implements OnDestroy {
     let latestTiming: RadarObservationTiming | null = null;
 
     for (const [stId, res] of allResults) {
-      if (!res.dataUrl || res.isDisplayed === false || !res.fieldData) continue;
+      if (res.isDisplayed === false || !res.fieldData) continue;
       const st = this.stations.find(s => s.id === stId);
       if (!st) continue;
 
@@ -927,10 +974,7 @@ export class RadarService implements OnDestroy {
       }
     }
 
-    if (activeStations.length === 0) {
-      this.compositeMosaic.set(null);
-      return null;
-    }
+    if (activeStations.length === 0) return null;
 
     // 1. Calculate combined bounding box of all active stations
     let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
@@ -941,14 +985,15 @@ export class RadarService implements OnDestroy {
       if (s.north > maxLat) maxLat = s.north;
     }
 
-    // 2. Determine composite canvas resolution (~600m - 750m per pixel)
+    // 2. Composite resolution: 0.5 km per pixel, the same as the stations' own fields
     const midLat = (minLat + maxLat) / 2;
     const cosMidLat = Math.cos((midLat * Math.PI) / 180);
     const dLngKm = (maxLng - minLng) * 111.32 * cosMidLat;
     const dLatKm = (maxLat - minLat) * 111.32;
 
-    const outW = Math.min(1600, Math.max(1024, Math.round(1024 * (dLngKm / 510))));
-    const outH = Math.min(1600, Math.max(1024, Math.round(1024 * (dLatKm / 510))));
+    const px = (km: number) => Math.min(RadarService.MOSAIC_MAX_PX, Math.max(512, Math.round(km / RadarService.MOSAIC_KM_PER_PX)));
+    const outW = px(dLngKm);
+    const outH = px(dLatKm);
 
     const canvas = document.createElement('canvas');
     canvas.width = outW;
@@ -1056,7 +1101,7 @@ export class RadarService implements OnDestroy {
     }
 
     ctx.putImageData(imgData, 0, 0);
-    const dataUrl = canvas.toDataURL('image/png');
+    const dataUrl = ''; // set once the canvas is encoded
 
     const result: ProcessedRadarResult = {
       stationId: 'composite-mosaic',
@@ -1080,8 +1125,215 @@ export class RadarService implements OnDestroy {
       isDisplayed: true
     };
 
-    this.compositeMosaic.set(result);
-    return result;
+    return { canvas, result };
+  }
+
+  /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
+  private static readonly MOSAIC_KM_PER_PX = 0.5;
+  private static readonly MOSAIC_MAX_PX = 2800;
+  private mosaicVersion = 0;
+
+  /** Rebuilds the live composite from the latest still of every radar. */
+  private async generateMergedMosaic(): Promise<void> {
+    const version = ++this.mosaicVersion;
+    const composed = this.composeMosaic(this.allRadarResults());
+    if (!composed) {
+      if (version === this.mosaicVersion) this.setComposite(null);
+      return;
+    }
+    const url = await canvasToUrl(composed.canvas);
+    if (version !== this.mosaicVersion) {
+      URL.revokeObjectURL(url);
+      return;
+    }
+    this.setComposite({ ...composed.result, dataUrl: url });
+  }
+
+  /** Swap the live composite, releasing the previous picture once the map has moved on to the new one. */
+  private setComposite(next: ProcessedRadarResult | null): void {
+    const prev = this.compositeMosaic();
+    this.compositeMosaic.set(next);
+    if (prev?.dataUrl.startsWith('blob:')) {
+      const old = prev.dataUrl;
+      setTimeout(() => URL.revokeObjectURL(old), 5000);
+    }
+  }
+
+  /** The live composite on the storm-tracking grid. */
+  liveTrack(): { timeMs: number; track: Float32Array } | null {
+    const live = this.compositeMosaic();
+    if (!live?.fieldData || !live.timing?.epochMs) return null;
+    return { timeMs: live.timing.epochMs, track: this.toTrack(live.fieldData) };
+  }
+
+  private toTrack(fd: RadarFieldData): Float32Array {
+    const [[south, west], [north, east]] = fd.bounds;
+    return sampleToGrid({ field: fd.field, width: fd.cropW, height: fd.cropH, south, west, north, east }, this.trackGrid());
+  }
+
+  /**
+   * Builds the one-hour loop: downloads each radar's animated GIF, decodes the frames of the last hour with the same
+   * clean-up as the live still, and merges them into one composite per 10-minute step.
+   */
+  async loadHistory(): Promise<void> {
+    const product = this.activeProduct();
+    const isTransparent = this.transparentMode();
+    if (!this.historyAvailable() || this.historyLoading()) return;
+    const token = ++this.historyToken;
+    this.historyLoading.set(true);
+    this.historyProgress.set(0);
+    try {
+      // 1. each radar's scans in the last hour: the frames of its animation, plus its live still (IMD updates the
+      // animations less often than the stills, so the still is often the newest scan)
+      type Scan = { timeMs: number; index: number; res?: ProcessedRadarResult };
+      const live = this.allRadarResults();
+      const sources = (
+        await Promise.all(
+          this.stations.map(async station => {
+            if (this.unavailableStations().has(station.id)) return null;
+            const file = animationFile(station.code, product);
+            // The Pallikaranai X-band animation is over 20 MB, and the Chennai S-band radar covers the same area,
+            // so the loop leaves out its animation (its live still is still used).
+            const bytes = file && station.band !== 'X-Band' ? await this.fetchRadarFile(file) : null;
+            if (token !== this.historyToken) return null;
+            let reader: GifReader | null = null;
+            let frames: Scan[] = [];
+            if (bytes) {
+              try {
+                reader = new GifReader(bytes);
+                frames = recentFrames(gifFrameTimestamps(bytes));
+              } catch {
+                reader = null;
+              }
+            }
+            const still = live.get(station.id);
+            const stillMs = still?.timing?.epochMs;
+            if (still?.fieldData && stillMs && !frames.some(f => Math.abs(f.timeMs - stillMs) < 60_000)) {
+              frames.push({ timeMs: stillMs, index: -1, res: still });
+            }
+            frames.sort((a, b) => a.timeMs - b.timeMs);
+            return frames.length > 0 ? { station, reader, frames } : null;
+          })
+        )
+      ).filter((x): x is NonNullable<typeof x> => x !== null);
+      if (token !== this.historyToken || sources.length === 0) return;
+
+      // 2. one composite per 10-minute step, each radar contributing its newest scan not after the step. The loop
+      // ends just before the newest scans: the live picture itself is its last step.
+      const newest = Math.max(...sources.map(src => src.frames.at(-1)!.timeMs));
+      const slots = historySlots(newest).slice(0, -1);
+      const decoded = new Map<string, ProcessedRadarResult | null>(); // station|time -> field
+      const field = (src: (typeof sources)[number], scan: Scan): ProcessedRadarResult | null => {
+        if (scan.res) return scan.res;
+        if (!src.reader) return null;
+        const key = `${src.station.id}|${scan.timeMs}`;
+        if (!decoded.has(key)) {
+          const { width, height } = src.reader;
+          const rgba = new Uint8Array(width * height * 4);
+          src.reader.decodeAndBlitFrameRGBA(scan.index, rgba);
+          const config = src.station.products[product];
+          decoded.set(key, this.processRgba(src.station, product, config, isTransparent, rgba, width, height, null, true, false));
+        }
+        return decoded.get(key)!;
+      };
+      const frames: RadarHistoryFrame[] = [];
+      for (let k = 0; k < slots.length; k++) {
+        const entries: [string, ProcessedRadarResult][] = [];
+        for (const src of sources) {
+          const scan = scanForSlot(src.frames, slots[k]);
+          if (!scan) continue;
+          const res = field(src, scan);
+          if (res) entries.push([src.station.id, res]);
+          await yieldToBrowser(); // keep the page responsive while frames decode
+          if (token !== this.historyToken) return;
+        }
+        // drop decoded scans older than every station's scan for this step (later steps only use newer ones)
+        for (const key of [...decoded.keys()]) {
+          const [id, t] = key.split('|');
+          const src = sources.find(x => x.station.id === id);
+          const cur = src && scanForSlot(src.frames, slots[k]);
+          if (cur && Number(t) < cur.timeMs) decoded.delete(key);
+        }
+        const composed = entries.length > 0 ? this.composeMosaic(entries) : null;
+        if (composed) {
+          const url = await canvasToUrl(composed.canvas);
+          if (token !== this.historyToken) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          frames.push({ url, coordinates: composed.result.coordinates, timeMs: slots[k], track: this.toTrack(composed.result.fieldData) });
+        }
+        this.historyProgress.set((k + 1) / slots.length);
+      }
+      this.replaceHistory(frames);
+    } finally {
+      if (token === this.historyToken) this.historyLoading.set(false);
+    }
+  }
+
+  private async fetchRadarFile(file: string): Promise<Uint8Array | null> {
+    for (const url of [`/imd-radar/${file}`, `https://mausam.imd.gov.in/Radar/${file}`]) {
+      try {
+        const res = await fetch(`${url}?_t=${Math.floor(Date.now() / 60000)}`);
+        if (!res.ok) continue;
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return bytes;
+      } catch {
+        // try the next route
+      }
+    }
+    return null;
+  }
+
+  private replaceHistory(frames: RadarHistoryFrame[]): void {
+    const old = this.history();
+    const wasLive = this.playIndex() === null;
+    this.history.set(frames);
+    if (!wasLive) this.playIndex.set(frames.length > 0 ? Math.min(this.playIndex()!, frames.length - 1) : null);
+    setTimeout(() => old.forEach(f => URL.revokeObjectURL(f.url)), 5000);
+  }
+
+  clearHistory(): void {
+    this.historyToken++;
+    this.historyLoading.set(false);
+    this.pause();
+    this.playIndex.set(null);
+    this.replaceHistory([]);
+  }
+
+  /** Show a loop frame (or null for live). */
+  setPlayIndex(i: number | null): void {
+    const n = this.history().length;
+    this.playIndex.set(i === null || n === 0 ? null : Math.min(Math.max(Math.round(i), 0), n - 1));
+  }
+
+  /** Play the hour; the loop ends on the live picture and holds there a moment before starting again. */
+  async togglePlay(): Promise<void> {
+    if (this.playing()) {
+      this.pause();
+      return;
+    }
+    if (this.history().length === 0) await this.loadHistory();
+    const n = this.history().length;
+    if (n < 2) return;
+    this.playing.set(true);
+    let hold = 0;
+    if (this.playIndex() === null) this.playIndex.set(0);
+    this.playTimer = setInterval(() => {
+      const i = this.playIndex();
+      if (i === null) {
+        if (++hold >= 2) this.playIndex.set(0); // hold on live, then restart
+        return;
+      }
+      hold = 0;
+      this.playIndex.set(i + 1 < this.history().length ? i + 1 : null);
+    }, 700);
+  }
+
+  pause(): void {
+    this.playing.set(false);
+    if (this.playTimer) clearInterval(this.playTimer);
+    this.playTimer = null;
   }
 
   private setStationUnavailable(stationId: string, unavailable: boolean): void {
