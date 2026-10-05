@@ -1,9 +1,12 @@
 import { EffectRef, Injectable, Injector, effect, inject } from '@angular/core';
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import { Marker } from 'maplibre-gl';
+import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
+import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
+import { TerrainService } from './terrain.service';
 import { bracketSteps } from './forecast.model';
 
 /**
@@ -16,10 +19,14 @@ export class ForecastMapController {
   private readonly catalog = inject(ForecastCatalogService);
   private readonly loader = inject(FieldLoaderService);
   private readonly state = inject(ForecastStateService);
+  private readonly terrain = inject(TerrainService);
+  private readonly inspector = inject(ForecastInspectorService);
 
   private map: MapLibreMap | null = null;
   private layer: ScalarFieldLayer | null = null;
   private effectRef: EffectRef | null = null;
+  private markerEffect: EffectRef | null = null;
+  private marker: Marker | null = null;
   /** Bumped on every update so slow downloads for an old selection are dropped. */
   private token = 0;
 
@@ -30,15 +37,45 @@ export class ForecastMapController {
     this.layer = new ScalarFieldLayer();
     map.addLayer(this.layer, beforeId);
     this.effectRef = effect(() => this.update(), { injector: this.injector });
+    map.on('click', this.onMapClick);
+    this.markerEffect = effect(() => this.syncMarker(), { injector: this.injector });
   }
 
   detach(): void {
     this.effectRef?.destroy();
     this.effectRef = null;
+    this.markerEffect?.destroy();
+    this.markerEffect = null;
+    this.map?.off('click', this.onMapClick);
+    this.marker?.remove();
+    this.marker = null;
     this.token++;
     if (this.map && this.layer && this.map.getLayer(this.layer.id)) this.map.removeLayer(this.layer.id);
     this.layer = null;
     this.map = null;
+  }
+
+  /** Clicking the map while a forecast layer is shown inspects that point. */
+  private readonly onMapClick = (e: MapMouseEvent): void => {
+    if (this.state.activeLayer()) this.inspector.select(e.lngLat.lat, e.lngLat.lng);
+  };
+
+  private syncMarker(): void {
+    const sel = this.inspector.selected();
+    if (!this.map || !sel) {
+      this.marker?.remove();
+      this.marker = null;
+      return;
+    }
+    if (!this.marker) {
+      const el = document.createElement('div');
+      el.className = 'forecast-pin';
+      el.style.cssText =
+        'width:14px;height:14px;border-radius:50%;background:#00e5ff;border:2px solid #fff;box-shadow:0 0 0 3px rgba(0,229,255,.35),0 2px 6px rgba(0,0,0,.6);';
+      this.marker = new Marker({ element: el }).setLngLat([sel.lon, sel.lat]).addTo(this.map);
+    } else {
+      this.marker.setLngLat([sel.lon, sel.lat]);
+    }
   }
 
   private update(): void {
@@ -52,6 +89,13 @@ export class ForecastMapController {
       layer.setLayer(null);
       return;
     }
+    // 1 km terrain for the per-pixel height correction (loaded once, only when a layer uses it)
+    const terrainData = this.terrain.data();
+    layer.setTerrain(terrainData);
+    if (def.terrain && !terrainData) {
+      this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));
+    }
+
     const info = manifest.vars[def.varId];
     if (!info) {
       console.warn(`[forecast] variable ${def.varId} missing from run ${manifest.run}`);

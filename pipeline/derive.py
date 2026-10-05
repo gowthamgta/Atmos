@@ -2,6 +2,8 @@
 from __future__ import annotations
 import numpy as np
 
+from config import PRECIP_3H_AFTER_H
+
 
 def relative_humidity(t_c: np.ndarray, td_c: np.ndarray) -> np.ndarray:
     """RH % from air and dew-point temperature (Magnus formula)."""
@@ -16,7 +18,7 @@ def apparent_temperature(t_c: np.ndarray, rh: np.ndarray, wind_ms: np.ndarray) -
     return t_c + 0.33 * e - 0.70 * wind_ms - 4.00
 
 
-def derive(raw: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+def derive(raw: dict[str, np.ndarray], step_h: int = 0) -> dict[str, np.ndarray]:
     t, td = raw["temperature_2m"], raw["dew_point_2m"]
     u, v = raw["wind_u_component_10m"], raw["wind_v_component_10m"]
     rh = relative_humidity(t, td)
@@ -28,7 +30,7 @@ def derive(raw: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         "v10": v,
         "gust": raw["wind_gusts_10m"],
         "msl": raw["pressure_msl"] / 100.0,
-        "precip": raw["precipitation"],
+        "precip": raw["precipitation"] / (3.0 if step_h > PRECIP_3H_AFTER_H else 1.0),  # mm/h
         "cloud": raw["cloud_cover"],
         "cape": raw["cape"],
         "tcwv": raw["total_column_integrated_water_vapour"],

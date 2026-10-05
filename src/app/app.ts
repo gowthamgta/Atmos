@@ -3,6 +3,7 @@ import { MapComponent } from './features/map/map.component';
 import { LayersComponent } from './features/layers/layers.component';
 import { ForecastRailComponent } from './features/forecast/forecast-rail.component';
 import { ForecastTimelineComponent } from './features/forecast/forecast-timeline.component';
+import { ForecastInspectorComponent } from './features/forecast/forecast-inspector.component';
 import { RadarService } from './core/services/radar.service';
 import { MapLayerService } from './core/services/map-layer.service';
 import { RadarProductKey } from './core/domain/models/radar.model';
@@ -14,7 +15,8 @@ import { RadarProductKey } from './core/domain/models/radar.model';
     MapComponent,
     LayersComponent,
     ForecastRailComponent,
-    ForecastTimelineComponent
+    ForecastTimelineComponent,
+    ForecastInspectorComponent
   ],
   templateUrl: './app.html',
   styleUrl: './app.css'

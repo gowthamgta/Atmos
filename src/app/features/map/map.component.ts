@@ -1456,7 +1456,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
     this.map.addSource(BOUNDARY_SOURCE_ID, {
       type: 'geojson',
-      data: '/data/tn-boundaries.geojson'
+      data: '/data/south-india-districts.geojson'
     });
 
     const before = this.map.getLayer('dark-ref-layer') ? 'dark-ref-layer' : undefined;
@@ -1484,6 +1484,34 @@ export class MapComponent implements OnInit, OnDestroy {
     line('tn-district-lines', isDistrict, 'rgba(255, 255, 255, 0.66)', widths(0.6, 1.2));
     line('tn-state-casing', isState, 'rgba(8, 12, 22, 0.72)', widths(3.4, 6.0));
     line('tn-state-line', isState, 'rgba(255, 255, 255, 0.96)', widths(1.5, 2.6));
+
+    // District names outside Tamil Nadu (Tamil Nadu's districts already have HQ markers). Bigger districts
+    // appear first as you zoom in, so low zoom stays readable.
+    const labelMinZoom: Record<number, number> = { 1: 6.2, 2: 7.2, 3: 8.2 };
+    for (const rank of [1, 2, 3]) {
+      this.map.addLayer({
+        id: `district-labels-${rank}`,
+        type: 'symbol',
+        source: BOUNDARY_SOURCE_ID,
+        minzoom: labelMinZoom[rank],
+        filter: ['all',
+          ['==', ['get', 'kind'], 'label'],
+          ['==', ['get', 'rank'], rank],
+          ['!=', ['get', 'state'], 'Tamil Nadu']
+        ],
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 10, 13],
+          'text-max-width': 8
+        },
+        paint: {
+          'text-color': 'rgba(255, 255, 255, 0.9)',
+          'text-halo-color': 'rgba(8, 12, 22, 0.92)',
+          'text-halo-width': 1.4
+        }
+      }, before);
+    }
   }
 
   // --- 2. Concentric Radar Range Rings & Station Pins ---

@@ -27,12 +27,12 @@ def build_manifest(run, steps):
         "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps],
         "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in C.VARS.values()},
         "path": "{var}/{h:03d}.png",
-        "notes": {"precip": "IFS precipitation at the valid hour (mm); semantics beyond +90 h to be verified"},
+        "notes": {"precip": "mm/h: rain in the hour before the valid time (<= +90 h) or the mean rate over the 3 h before it (> +90 h)"},
     }
 
 
 def process_step(run, h):
-    fields = derive(fetch_ifs.read_step(run, h))
+    fields = derive(fetch_ifs.read_step(run, h), h)
     return h, {vid: encode_field(fields[vid], C.VARS[vid].lo, C.VARS[vid].hi) for vid in C.VARS}
 
 

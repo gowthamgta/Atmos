@@ -17,6 +17,10 @@ NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 221 columns, west to east
 STEP_HOURS = list(range(0, 145, 3))
 RUN_HOURS = (0, 12)                                 # 00Z and 12Z runs only
 
+# IFS precipitation is mm in the preceding hour up to +90 h, then mm in the preceding 3 h (verified against
+# Open-Meteo's hourly API, which divides the 3 h totals by 3). We publish mm/h throughout.
+PRECIP_3H_AFTER_H = 90
+
 
 @dataclass(frozen=True)
 class Var:

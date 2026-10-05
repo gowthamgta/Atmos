@@ -38,6 +38,6 @@ Each deploy replaces the previous one, so only the newest run exists. A client t
 The repo must stay public for free Pages. GitHub disables scheduled workflows after 60 days without
 repository activity; re-enable under the Actions tab if that happens.
 
-## Known caveat
-`precip` is the IFS precipitation at the valid hour. How it is defined for the 3-hourly steps after +90 h
-(rate vs 3 h total) still has to be verified against Open-Meteo's API before it is shown as mm/3 h.
+## Rain units
+`precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
+3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.

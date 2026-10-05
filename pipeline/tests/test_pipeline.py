@@ -51,3 +51,14 @@ def test_relative_humidity_and_apparent_temperature():
     calm = apparent_temperature(np.array([32.0]), np.array([80.0]), np.array([0.0]))
     windy = apparent_temperature(np.array([32.0]), np.array([80.0]), np.array([8.0]))
     assert calm[0] > 32 and windy[0] < calm[0]
+
+
+def test_precip_is_normalised_to_mm_per_hour():
+    from derive import derive
+    z = np.zeros((2, 2), np.float32)
+    raw = {k: z + 1 for k in ["temperature_2m", "dew_point_2m", "wind_u_component_10m", "wind_v_component_10m",
+                              "wind_gusts_10m", "pressure_msl", "cloud_cover", "cape",
+                              "total_column_integrated_water_vapour"]}
+    raw["precipitation"] = z + 6.0
+    assert np.allclose(derive(raw, 90)["precip"], 6.0)    # still hourly totals
+    assert np.allclose(derive(raw, 93)["precip"], 2.0)    # 3-hour totals become mm/h
