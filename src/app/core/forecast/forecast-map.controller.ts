@@ -60,7 +60,7 @@ export class ForecastMapController {
     this.map = map;
     this.layer = new ScalarFieldLayer();
     map.addLayer(this.layer, beforeId);
-    this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 4500 : 9000);
+    this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 1500 : 9000);
     map.addLayer(this.windLayer, beforeId); // added second, so the streaks draw over the colour field
     this.addIsobarLayers(map, beforeId);
     map.on('click', this.onMapClick);
@@ -131,6 +131,7 @@ export class ForecastMapController {
     const modelGround = terrainData ? this.terrain.modelGround(terrainData, this.catalog.model().gridKm).bitmap : null;
     layer.setTerrain(terrainData, modelGround);
     layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
+    layer.setLite(!this.state.detail());
     layer.setTime(time);
     if (!terrainData) {
       this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));

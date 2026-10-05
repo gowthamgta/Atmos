@@ -49,6 +49,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private system: ParticleSystem;
   private instances: Float32Array;
+  private readonly minCount: number;
   private wind: WindFrame | null = null;
   private visible = false;
   private needsReset = true;
@@ -59,6 +60,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
   constructor(maxCount = 9000) {
     this.system = new ParticleSystem(maxCount);
     this.instances = new Float32Array(maxCount * INSTANCE_FLOATS);
+    this.minCount = Math.min(MIN_COUNT, Math.max(500, Math.floor(maxCount * 0.4)));
   }
 
   /** Current particle budget (reduced automatically on slow devices). */
@@ -161,8 +163,8 @@ export class WindParticlesLayer implements CustomLayerInterface {
     this.emaDt = this.emaDt * 0.9 + dtMs * 0.1;
     if (this.emaDt > 28) {
       this.slowSince ||= now;
-      if (now - this.slowSince > 1000 && this.system.count > MIN_COUNT) {
-        this.system.setCount(Math.max(MIN_COUNT, this.system.count * 0.85));
+      if (now - this.slowSince > 1000 && this.system.count > this.minCount) {
+        this.system.setCount(Math.max(this.minCount, this.system.count * 0.85));
         this.slowSince = now;
       }
     } else {

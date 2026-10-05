@@ -14,6 +14,7 @@ import {
 import { blurSeparable, echoAlphaFeather, gaussianKernel, resampleBilinear } from './radar-field';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
+import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 
 /** What the map shows for the radar: one picture (object URL) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
@@ -1130,7 +1131,7 @@ export class RadarService implements OnDestroy {
 
   /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
   private static readonly MOSAIC_KM_PER_PX = 0.5;
-  private static readonly MOSAIC_MAX_PX = 2800;
+  private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
   private mosaicVersion = 0;
 
   /** Rebuilds the live composite from the latest still of every radar. */

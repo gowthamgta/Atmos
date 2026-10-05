@@ -362,9 +362,13 @@ export class MapComponent implements OnInit, OnDestroy {
       maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
     }
 
+    const isMobile = typeof window !== 'undefined' && (window.innerWidth < 700 || ('ontouchstart' in window && window.innerWidth < 900));
+    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    const pixelRatio = isMobile ? Math.min(dpr, 1.5) : dpr;
+
     const map = new maplibregl.Map({
       container: 'map-container',
-      pixelRatio: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+      pixelRatio,
       style: {
         version: 8,
         glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',

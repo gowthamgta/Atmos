@@ -1,5 +1,6 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { MapLayerService } from '../services/map-layer.service';
+import { isPhone } from '../ui/device-profile';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import {
   ALL_LEVELS,
@@ -48,6 +49,11 @@ export class ForecastStateService {
   readonly isobars = signal(false);
   /** 1 km hill shading blended into the forecast colours (on by default; it makes the terrain readable in every layer). */
   readonly relief = signal(true);
+  /**
+   * Full 1 km detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default on phones,
+   * where it would make the map lag; the colours, height corrections and relief stay either way.
+   */
+  readonly detail = signal(!isPhone());
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
   readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 
@@ -136,6 +142,10 @@ export class ForecastStateService {
     this.mapLayers.deactivateAll();
     this.isobars.set(true);
     this.start();
+  }
+
+  toggleDetail(): void {
+    this.detail.update(on => !on);
   }
 
   /** Turn the 1 km relief shading of the colour layers on or off. */

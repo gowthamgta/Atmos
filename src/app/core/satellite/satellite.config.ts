@@ -13,12 +13,17 @@
  *    (see satellite-image.ts), not stretched as a rectangle.
  */
 
+import { isPhone, satelliteImageSize } from '../ui/device-profile';
+
 export const EUMETVIEW_WMS = 'https://view.eumetsat.int/geoserver/msg_iodc/wms';
 
 /** The area requested: South India, Sri Lanka and the seas around them (same as the forecast domain). */
 export const SATELLITE_BOUNDS = { west: 68, east: 90, south: 4, north: 22 } as const;
-/** Pixels requested: about 1 km per pixel, finer than the satellite's own pixels (about 2-3 km here), so nothing is lost. */
-export const SATELLITE_SIZE = { width: 2200, height: 1800 } as const;
+/**
+ * Pixels requested: about 1 km per pixel, finer than the satellite's own pixels (about 2-3 km here), so nothing is lost.
+ * Phones get a quarter of the pixels (about 2 km per pixel): five full-size pictures would take over 80 MB of GPU memory.
+ */
+export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
 export const SATELLITE_STEP_MIN = 15;
 /** Fallback only: how old a frame must be to be safe when the service's own newest time is not known. */

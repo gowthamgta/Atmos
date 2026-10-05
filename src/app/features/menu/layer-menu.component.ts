@@ -99,6 +99,9 @@ function ladderKm(level: Level): string {
               <button type="button" class="layer" [class.active]="state.relief()" [attr.aria-pressed]="state.relief()" (click)="state.toggleRelief()" title="Shade the 1 km terrain into the colour layer">
                 <span class="l-icon" aria-hidden="true">⛰</span><span class="l-name">Terrain relief</span>
               </button>
+              <button type="button" class="layer" [class.active]="state.detail()" [attr.aria-pressed]="state.detail()" (click)="state.toggleDetail()" title="Full 1 km detail: smoother fields, rain over hills and sunshine on slopes. Turn off if the map lags.">
+                <span class="l-icon" aria-hidden="true">✦</span><span class="l-name">1 km detail</span>
+              </button>
             </div>
           </div>
         </div>
