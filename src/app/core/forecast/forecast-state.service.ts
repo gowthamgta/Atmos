@@ -47,8 +47,8 @@ export class ForecastStateService {
   readonly windParticles = signal(false);
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
   readonly isobars = signal(false);
-  /** 1 km hill shading blended into the forecast colours (on by default; it makes the terrain readable in every layer). */
-  readonly relief = signal(true);
+  /** 1 km hill shading blended into the forecast colours (on by default on desktop, off on phones to keep the map smooth). */
+  readonly relief = signal(!isPhone());
   /**
    * Full 1 km detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default on phones,
    * where it would make the map lag; the colours, height corrections and relief stay either way.
