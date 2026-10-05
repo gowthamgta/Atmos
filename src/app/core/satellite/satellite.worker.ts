@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { mercatorHeight, toOverlayPixels } from './satellite-image';
+import { deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
 import { SatelliteChannel, SatelliteView } from './satellite.config';
 
 export interface SatelliteWorkerRequest {
@@ -22,6 +22,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     sctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     const src = sctx.getImageData(0, 0, width, height).data;
+    deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
     const outHeight = mercatorHeight(width);
     const pixels = toOverlayPixels(src, width, height, kind, view, outHeight);
     const out = new OffscreenCanvas(width, outHeight);

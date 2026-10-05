@@ -14,6 +14,7 @@ import { MapLayerService, LayerConfig } from '../../core/services/map-layer.serv
 import { RadarDisplayFrame, RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite.service';
+import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
@@ -364,7 +365,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
     const isMobile = typeof window !== 'undefined' && (window.innerWidth < 700 || ('ontouchstart' in window && window.innerWidth < 900));
     const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-    const pixelRatio = isMobile ? Math.min(dpr, 1.5) : dpr;
+    const pixelRatio = maxPixelRatio(isMobile, dpr);
 
     const map = new maplibregl.Map({
       container: 'map-container',
@@ -600,6 +601,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteLayer = new SatelliteImageLayer();
       // above the boundary lines, under the place names
       this.map.addLayer(this.satelliteLayer, this.observationAnchorId());
+      this.satelliteLayer.setLite(isPhone());
     }
     const keys = frames.map(f => f.url).join('|');
     if (keys !== this.satelliteKeys) {

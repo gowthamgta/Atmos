@@ -8,12 +8,20 @@ export function isPhone(): boolean {
   return window.innerWidth < 700 || ('ontouchstart' in window && window.innerWidth < 900);
 }
 
-/** Satellite picture size to request (pixels): about 2 km per pixel on a phone, 1 km elsewhere. */
+/**
+ * Satellite picture size to request (pixels): about 1 km per pixel on desktop, about 1.4 km on a phone (1650 px wide,
+ * a little over half the pixels of the desktop picture, so five frames stay near 40 MB of GPU memory).
+ */
 export function satelliteImageSize(phone: boolean): { width: number; height: number } {
-  return phone ? { width: 1100, height: 900 } : { width: 2200, height: 1800 };
+  return phone ? { width: 1650, height: 1350 } : { width: 2200, height: 1800 };
 }
 
-/** Largest side of the radar mosaic (pixels): 0.5 km per pixel on desktop; about 0.8 km on a phone. */
+/** Largest side of the radar mosaic (pixels): 0.5 km per pixel on desktop; about 0.6 km on a phone. */
 export function radarMosaicMaxPx(phone: boolean): number {
-  return phone ? 1700 : 2800;
+  return phone ? 2300 : 2800;
+}
+
+/** Screen pixel ratio cap: phones draw at up to 2x (the forecast shading is light enough there), desktops at native. */
+export function maxPixelRatio(phone: boolean, deviceRatio: number): number {
+  return phone ? Math.min(deviceRatio, 2) : deviceRatio;
 }

@@ -44,6 +44,39 @@ function smoothstep(lo: number, hi: number, v: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** Side of a JPEG block, and the biggest step (0-255 per channel) across a block edge that is treated as compression, not cloud. */
+export const JPEG_BLOCK = 8;
+export const DEBLOCK_MAX_STEP = 20;
+
+/**
+ * Smooths the faint steps JPEG compression leaves at the 8 x 8 block edges of an RGBA picture (in place; alpha is not
+ * touched). Across each block edge the two pixels either side move towards each other, and their outer neighbours a
+ * little, but only where the step is small. Real cloud edges (bigger steps) are left alone. Without this, sharpening
+ * the picture at deep zoom would bring out the block grid.
+ */
+export function deblockJpeg(px: Uint8ClampedArray, width: number, height: number, maxStep = DEBLOCK_MAX_STEP): void {
+  const stride = width * 4;
+  const smooth = (i: number, step: number): void => {
+    // i: index of the first pixel after the edge; step: distance in the array between neighbouring pixels across it
+    for (let c = 0; c < 3; c++) {
+      const a = px[i - step + c];
+      const b = px[i + c];
+      const d = b - a;
+      if (d === 0 || Math.abs(d) > maxStep) continue;
+      px[i - 2 * step + c] += 0.15 * d;
+      px[i - step + c] = a + 0.35 * d;
+      px[i + c] = b - 0.35 * d;
+      px[i + step + c] -= 0.15 * d;
+    }
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = JPEG_BLOCK; x < width - 1; x += JPEG_BLOCK) smooth(y * stride + x * 4, 4);
+  }
+  for (let y = JPEG_BLOCK; y < height - 1; y += JPEG_BLOCK) {
+    for (let x = 0; x < width; x++) smooth(y * stride + x * 4, stride);
+  }
+}
+
 /**
  * The typical brightness of land and sea in the blue channel of an HRV picture: its median. Cloud covers well under
  * half of the area, so the median is the background, whatever the sun's height (it is low at dawn and dusk).

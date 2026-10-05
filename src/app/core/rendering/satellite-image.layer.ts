@@ -31,6 +31,7 @@ uniform float u_mixB;     // 0..1: how much of picture B is faded in over A
 uniform float u_opacity;
 uniform float u_sharpen;
 uniform int u_hasB;
+uniform int u_lite;
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -56,15 +57,35 @@ vec4 bicubic(sampler2D tex, vec2 px) {
   return clamp(sum, 0.0, 1.0);
 }
 
+// Bicubic read of one mip level (the picture blurred and halved \`lod\` times), smooth like the main read.
+vec4 bicubicLod(sampler2D tex, vec2 px, int lod) {
+  ivec2 size = max(u_size >> lod, ivec2(1));
+  vec2 p = px / float(1 << lod) - 0.5;
+  ivec2 i1 = ivec2(floor(p));
+  vec2 f = p - vec2(i1);
+  vec4 wx = weights(f.x);
+  vec4 wy = weights(f.y);
+  vec4 sum = vec4(0.0);
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      ivec2 q = clamp(i1 + ivec2(i - 1, j - 1), ivec2(0), size - 1);
+      sum += texelFetch(tex, q, lod) * (wx[i] * wy[j]);
+    }
+  }
+  return clamp(sum, 0.0, 1.0);
+}
+
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
   if (!magnifying) return textureGrad(tex, uv, gx, gy); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
   if (u_sharpen > 0.0) {
-    // unsharp mask against a small blur of the picture itself, applied to the colour only
-    vec2 d = 1.0 / vec2(u_size);
-    vec4 blur = (textureLod(tex, uv + vec2(d.x, 0.0), 0.0) + textureLod(tex, uv - vec2(d.x, 0.0), 0.0) +
-                 textureLod(tex, uv + vec2(0.0, d.y), 0.0) + textureLod(tex, uv - vec2(0.0, d.y), 0.0)) * 0.25;
-    c.rgb = clamp(c.rgb + u_sharpen * (c.rgb - blur.rgb) * c.a, 0.0, c.a);
+    // Unsharp mask: add back the difference between the picture and a smooth blur of itself (two and four picture
+    // pixels wide), so cloud edges and the fine texture of the visible picture stand out. Applied to the colour only;
+    // the blur is read bicubically too, so it adds no blockiness of its own.
+    vec4 fine = bicubicLod(tex, px, 1);
+    vec3 detail = (c.rgb - fine.rgb);
+    if (u_lite == 0) detail += 0.5 * (fine.rgb - bicubicLod(tex, px, 2).rgb);
+    c.rgb = clamp(c.rgb + u_sharpen * detail * c.a, 0.0, c.a);
   }
   return c;
 }
@@ -116,7 +137,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private frames: SatelliteLayerFrame[] = [];
   private position = 0;
   private opacity = 0.9;
-  private sharpen = 0.35;
+  private sharpen = 1.6;
+  private lite = false;
 
   /** The pictures of the loop, oldest first. Pictures no longer listed are released. */
   setFrames(frames: readonly SatelliteLayerFrame[]): void {
@@ -129,6 +151,12 @@ export class SatelliteImageLayer implements CustomLayerInterface {
       this.slots.delete(key);
     }
     for (const f of frames) if (!this.slots.has(f.key)) void this.load(f);
+    this.map?.triggerRepaint();
+  }
+
+  /** Phone mode: one blur scale instead of two in the sharpening (about half the texture reads when zoomed in). */
+  setLite(lite: boolean): void {
+    this.lite = lite;
     this.map?.triggerRepaint();
   }
 
@@ -173,7 +201,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_hasB']) {
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_hasB', 'u_lite']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.vao = gl.createVertexArray();
@@ -263,6 +291,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_opacity'], this.opacity);
     gl.uniform1f(u['u_sharpen'], this.sharpen);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
+    gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
