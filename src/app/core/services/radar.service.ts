@@ -427,7 +427,7 @@ export class RadarService implements OnDestroy {
           // IMD updates about every 10 minutes, so extras are refreshed every few minutes,
           // and the X-band radar's are skipped: its images are big and the Chennai S-band radar covers the same ground.
           const now = Date.now();
-          const wantExtras = productKey === 'caz' && station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
+          const wantExtras = productKey === 'caz' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
           if (wantExtras) this.extrasFetchedAt.set(station.id, now);
           const extras = wantExtras
             ? await Promise.all(
@@ -943,12 +943,12 @@ export class RadarService implements OnDestroy {
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
 
   private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>): ProcessedRadarResult | null {
-    return composeRadarMosaic(this.stations, sources, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX);
+    return composeRadarMosaic(this.stations, sources, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, this.activeProduct());
   }
 
   /** Rebuilds the live composite from the latest still of every radar. */
   private generateMergedMosaic(): void {
-    // In merged mode ('caz'), combine CAZ with PPZ extras; in 'ppi' mode, compose pure PPI scans
+    // In merged mode ('caz'), combine CAZ with PPZ extras; in standalone modes ('ppz', 'ppi'), compose that product's scans
     const sources = this.activeProduct() === 'caz'
       ? [...this.allRadarResults(), ...this.extraResults()]
       : [...this.allRadarResults()];

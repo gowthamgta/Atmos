@@ -24,6 +24,7 @@ export function composeRadarMosaic(
   allResults: Iterable<[string, ProcessedRadarResult]>,
   kmPerPixel = MOSAIC_KM_PER_PX,
   maxPixels = 2800,
+  defaultProduct: RadarProductKey = 'caz',
 ): ProcessedRadarResult | null {
 
   const activeStations: {
@@ -46,7 +47,8 @@ export function composeRadarMosaic(
 
   for (const [key, res] of allResults) {
     if (res.isDisplayed === false || !res.fieldData) continue;
-    const [stId, productKey = 'caz'] = key.split(':') as [string, RadarProductKey | undefined];
+    const [stId, prodSuffix] = key.split(':') as [string, RadarProductKey | undefined];
+    const productKey = prodSuffix || defaultProduct;
     const stationIndex = stations.findIndex(s => s.id === stId);
     if (stationIndex < 0) continue;
     const st = stations[stationIndex];

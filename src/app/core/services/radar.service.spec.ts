@@ -77,14 +77,12 @@ describe('Radar Domain & Config', () => {
     expect(koc.code).toBe('koc');
     expect(koc.lat).toBeCloseTo(9.93, 1);
     expect(koc.lng).toBeCloseTo(76.27, 1);
-    expect(koc.products.caz.crop?.x).toBe(100);
-    expect(koc.products.caz.crop?.y).toBe(300);
-    expect(koc.products.caz.crop?.w).toBe(600);
-    expect(koc.products.caz.crop?.h).toBe(600);
-    expect(koc.products.ppi.crop?.w).toBe(600);
-    expect(koc.products.sri.crop?.w).toBe(708);
-    expect(koc.products.pac.crop?.w).toBe(708);
-    expect(koc.products.ppz.crop?.w).toBe(600);
+    expect(koc.products.caz.crop?.w).toBe(572);
+    expect(koc.products.caz.crop?.h).toBe(572);
+    expect(koc.products.ppi.crop?.w).toBe(572);
+    expect(koc.products.sri.crop?.w).toBe(572);
+    expect(koc.products.pac.crop?.w).toBe(572);
+    expect(koc.products.ppz.crop?.w).toBe(572);
 
     const plk = IMD_RADAR_STATIONS.find(s => s.id === 'pallikaranai')!;
     expect(plk.band).toBe('X-Band');

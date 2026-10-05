@@ -75,9 +75,17 @@ describe('composeRadarMosaic', () => {
   it('supports PPI scan composed alone', () => {
     const ppiMosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'ppi', 3.8)],
-    ])!;
+    ], undefined, undefined, 'ppi')!;
     const [lat, lng] = eastOf(karaikal, 40);
     expect(valueAt(ppiMosaic, lat, lng)).toBeCloseTo(3.8, 1);
+  });
+
+  it('supports PPZ scan composed alone', () => {
+    const ppzMosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'ppz', 3.6)],
+    ], undefined, undefined, 'ppz')!;
+    const [lat, lng] = eastOf(karaikal, 40);
+    expect(valueAt(ppzMosaic, lat, lng)).toBeCloseTo(3.6, 1);
   });
 
   it('still blends different stations where they overlap, keeping the storm core', () => {

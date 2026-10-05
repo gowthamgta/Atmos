@@ -204,7 +204,7 @@ function createImdStation(params: {
 
   const getRings = (rKm: number) => {
     if (rKm <= 85) return [20, 40, 60, 85];
-    if (rKm <= 150) return [50, 100, 150];
+    if (rKm <= 160) return [50, 100, 150];
     return [50, 100, 150, 200, 250];
   };
 
@@ -358,11 +358,11 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       ppz: 158
     },
     crops: {
-      caz: { x: 100, y: 300, w: 600, h: 600 },
-      ppi: { x: 100, y: 300, w: 600, h: 600 },
-      sri: { x: 40, y: 40, w: 708, h: 708 },
-      pac: { x: 40, y: 40, w: 708, h: 708 },
-      ppz: { x: 100, y: 300, w: 600, h: 600 }
+      caz: { x: 0, y: 0, w: 572, h: 572 },
+      ppi: { x: 0, y: 0, w: 572, h: 572 },
+      sri: { x: 0, y: 0, w: 572, h: 572 },
+      pac: { x: 0, y: 0, w: 572, h: 572 },
+      ppz: { x: 0, y: 0, w: 572, h: 572 }
     }
   }),
   createImdStation({

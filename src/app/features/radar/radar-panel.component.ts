@@ -13,6 +13,7 @@ interface ProductOption {
 
 const PRODUCTS: readonly ProductOption[] = [
   { key: 'caz', name: 'Merged', hint: 'CAZ + PPZ', title: 'Merged Column Max (CAZ) & Reflectivity Z (PPZ)' },
+  { key: 'ppz', name: 'PPZ', hint: 'Reflectivity Z', title: 'Plan Position Indicator (Reflectivity Z sweep)' },
   { key: 'ppi', name: 'PPI', hint: 'Base scan', title: 'Plan Position Indicator (Base reflectivity sweep)' },
 ];
 
@@ -132,7 +133,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
-    .products { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
+    .products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
     .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
     .prod:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
     .prod.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
@@ -247,7 +248,7 @@ export class RadarPanelComponent {
     const p = this.product();
     const st = this.shortName(this.radar.activeStation().name);
     const t = this.radar.observationTiming();
-    const mode = p === 'ppi' ? 'PPI sweep' : 'merged scan';
+    const mode = p === 'ppi' ? 'PPI sweep' : p === 'ppz' ? 'PPZ sweep' : 'merged scan';
     return t?.ist ? `${st} ${mode} ${t.ist}` : `${st} ${mode}`;
   });
 
