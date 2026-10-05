@@ -1,0 +1,10 @@
+{
+  "/imd-radar": {
+    "target": "https://mausam.imd.gov.in/Radar",
+    "secure": false,
+    "changeOrigin": true,
+    "pathRewrite": {
+      "^/imd-radar": ""
+    }
+  }
+}

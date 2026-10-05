@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -)",
+      "Bash(rm -f *.gif *.png *.jpg public/maplibre-gl-*.mjs)",
+      "Bash(rm -rf src/app/features/search src/app/features/forecast src/app/features/weather-detail src/app/features/alerts src/app/features/map/webgl src/app/workers src/app/core/domain/math)",
+      "Bash(rm -f src/app/core/services/weather.service.ts src/app/core/services/worker-pool.service.ts src/app/core/domain/models/worker-protocol.model.ts)",
+      "Bash([ -f \"$f\" ])",
+      "Read(//c/Users/gotam/.claude/projects/C--Projects-weather-platform/memory/**)",
+      "Bash(echo \"- [Windy expansion plan]\\(windy-expansion-plan.md\\) — approved South India Windy-style roadmap, personal use, free-tier pipeline\")"
+    ]
+  }
+}

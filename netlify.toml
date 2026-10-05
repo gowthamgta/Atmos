@@ -1,0 +1,48 @@
+[build]
+  command = "npm run build"
+  publish = "dist/weather-platform/browser"
+  functions = "netlify/functions"
+
+# Netlify edge reverse proxy for IMD Doppler Radar (eliminates CORS & serves directly from same origin)
+[[redirects]]
+  from = "/imd-radar/*"
+  to = "https://mausam.imd.gov.in/Radar/:splat"
+  status = 200
+  force = true
+
+# Single Page Application (SPA) routing fallback
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Client cache and security headers
+[[headers]]
+  for = "/imd-radar/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, OPTIONS"
+    Cache-Control = "public, max-age=60, s-maxage=60"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer-when-downgrade"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Baked Tamil Nadu terrain + boundary data (rebuilt only by scripts/build-tn-data.py)
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
