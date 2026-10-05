@@ -3,7 +3,7 @@ import { MapLayerService } from '../../core/services/map-layer.service';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { FORECAST_MODELS } from '../../core/forecast/forecast-models';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
-import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast-layers';
+import { ForecastLayerDef, layerAvailable, legendPosition, paletteGradientCss } from '../../core/forecast/forecast-layers';
 
 /** Right-hand layer buttons plus the colour legend of the active forecast layer. */
 @Component({
@@ -35,7 +35,9 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
           [class.active]="state.activeLayerId() === layer.id"
           [attr.aria-pressed]="state.activeLayerId() === layer.id"
           [attr.aria-label]="layer.label"
-          [title]="layer.label"
+          [class.unavailable]="!available(layer)"
+          [disabled]="!available(layer)"
+          [title]="available(layer) ? layer.label : layer.label + ' is not provided by ' + catalog.model().label"
           (click)="state.toggleLayer(layer.id)"
         >
           <span class="rail-icon" aria-hidden="true">{{ layer.icon }}</span>
@@ -87,6 +89,8 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
     }
     .rail-btn:hover { background: rgba(255,255,255,0.07); color: var(--text-primary); }
     .rail-btn:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 1px; }
+    .rail-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .rail-btn:disabled:hover { background: transparent; color: var(--text-secondary); }
     .rail-btn.active { background: rgba(0,229,255,0.15); border-color: rgba(0,229,255,0.45); color: var(--neon-cyan); }
     .rail-icon { font-size: 18px; width: 24px; text-align: center; }
     .sep { width: 100%; height: 1px; margin: 3px 0; border: 0; background: rgba(255,255,255,0.1); }
@@ -112,6 +116,10 @@ export class ForecastRailComponent {
   protected readonly models = FORECAST_MODELS;
 
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
+
+  protected available(layer: ForecastLayerDef): boolean {
+    return layerAvailable(layer, this.catalog.manifest()?.vars);
+  }
 
   protected toggleRadar(): void {
     if (this.radarActive()) this.mapLayers.deactivateAll();

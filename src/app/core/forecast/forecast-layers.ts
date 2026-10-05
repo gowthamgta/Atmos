@@ -55,6 +55,12 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: null },
 ];
 
+/** True when the model's manifest publishes every variable the layer needs (null manifest: assume yes). */
+export function layerAvailable(def: ForecastLayerDef, vars: Record<string, unknown> | null | undefined): boolean {
+  if (!vars) return true;
+  return def.varId in vars && (def.varId2 === undefined || def.varId2 in vars);
+}
+
 export function forecastLayerById(id: string | null): ForecastLayerDef | null {
   return FORECAST_LAYERS.find(l => l.id === id) ?? null;
 }

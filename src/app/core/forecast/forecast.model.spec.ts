@@ -8,7 +8,7 @@ import {
   mercatorUnitY,
   sampleGrid,
 } from './forecast.model';
-import { FORECAST_LAYERS, buildPaletteLut, forecastLayerById, legendPosition } from './forecast-layers';
+import { FORECAST_LAYERS, buildPaletteLut, forecastLayerById, layerAvailable, legendPosition } from './forecast-layers';
 
 const GRID: ForecastGrid = { latMax: 22, latMin: 4, lonMin: 68, lonMax: 90, step: 0.1, nx: 221, ny: 181 };
 
@@ -121,5 +121,14 @@ describe('forecast layer registry', () => {
     expect(wind.varId2).toBe('v10');
     expect(legendPosition(wind, 72)).toBeCloseTo(1, 9); // 20 m/s = 72 km/h is the top of the palette
     expect(legendPosition(wind, 36)).toBeCloseTo(0.5, 9);
+  });
+
+  it('marks layers unavailable when a model does not publish their variables', () => {
+    const aifs = { t2m: {}, rh: {}, feels: {}, u10: {}, v10: {}, msl: {}, precip: {}, cloud: {} }; // no gust, cape, tcwv
+    const available = FORECAST_LAYERS.filter(l => layerAvailable(l, aifs)).map(l => l.id);
+    expect(available).toEqual(['temp', 'feels', 'humidity', 'wind', 'rain', 'clouds', 'pressure']);
+    expect(layerAvailable(forecastLayerById('gust')!, aifs)).toBe(false);
+    expect(layerAvailable(forecastLayerById('wind')!, { u10: {} })).toBe(false); // needs v10 as well
+    expect(layerAvailable(forecastLayerById('cape')!, null)).toBe(true); // manifest not loaded yet
   });
 });

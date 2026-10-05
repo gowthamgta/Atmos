@@ -22,8 +22,15 @@ RUN_HOURS = (0, 6, 12, 18)
 STEP_HOURS = list(range(0, 145, 3))
 # Checked against Open-Meteo's hourly API: rain is mm in the preceding hour up to +120 h, then mm in the preceding 3 h
 # (+126 h: file 7.65 mm vs 2.7 mm/h in the API), so it is divided by 3 after +120 h, like IFS after +90 h.
-PRECIP_3H_AFTER_H: int | None = 120
 PRECIP_NOTE = "mm/h: rain in the hour before the valid time (<= +120 h) or the mean rate over the 3 h before it (> +120 h)"
+
+UNAVAILABLE_VARS: frozenset[str] = frozenset()
+
+
+def precip_window_hours(step_h: int) -> int:
+    """Hours covered by the source precipitation value at this forecast hour."""
+    return 3 if step_h > 120 else 1
+
 
 FINE = "ncep_gfs013"   # ~0.117 degree: temperature, humidity, wind, rain, cloud, moisture
 COARSE = "ncep_gfs025"  # 0.25 degree: pressure, gusts, CAPE
@@ -58,7 +65,7 @@ def file_url(dataset: str, run: datetime, step_h: int) -> str:
     return f"{BUCKET_URL}/data_spatial/{dataset}/{run:%Y/%m/%d/%H}00Z/{valid:%Y-%m-%dT%H}00.om"
 
 
-def _read_vars(path: str, names: list[str], g: dict) -> dict[str, np.ndarray]:
+def read_regular_vars(path: str, names: list[str], g: dict) -> dict[str, np.ndarray]:
     r0, r1 = window_indices(g["lat_first"], g["dlat"], g["rows"], LAT_MIN, LAT_MAX)
     c0, c1 = window_indices(g["lon_first"], g["dlon"], g["cols"], LON_MIN, LON_MAX)
     reader = omfiles.OmFileReader(path)
@@ -81,8 +88,8 @@ def read_step(run: datetime, step_h: int, workdir: str | None = None) -> dict[st
         paths = {FINE: os.path.join(tmp, "fine.om"), COARSE: os.path.join(tmp, "coarse.om")}
         with ThreadPoolExecutor(2) as pool:
             list(pool.map(lambda d: download(file_url(d, run, step_h), paths[d]), paths))
-        out = _read_vars(paths[FINE], FINE_VARS, FINE_GRID)
-        coarse = _read_vars(paths[COARSE], COARSE_VARS, COARSE_GRID)
+        out = read_regular_vars(paths[FINE], FINE_VARS, FINE_GRID)
+        coarse = read_regular_vars(paths[COARSE], COARSE_VARS, COARSE_GRID)
         out.update(coarse)
         out["pressure_msl"] = out["pressure_msl"] * 100.0  # hPa -> Pa, the unit derive.py expects
         return out

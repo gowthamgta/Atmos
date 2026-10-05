@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { MapLayerService } from '../services/map-layer.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
-import { FORECAST_LAYERS, ForecastLayerDef, forecastLayerById } from './forecast-layers';
+import { FORECAST_LAYERS, ForecastLayerDef, forecastLayerById, layerAvailable } from './forecast-layers';
 
 /** Which forecast layer is shown, at what time, and playback state. */
 @Injectable({ providedIn: 'root' })
@@ -30,6 +30,12 @@ export class ForecastStateService {
   private lastFrame = 0;
 
   constructor() {
+    // Switching to a model that does not provide the active layer's variables (e.g. gusts on AIFS) turns it off.
+    effect(() => {
+      const manifest = this.catalog.manifest();
+      const def = this.activeLayer();
+      if (manifest && def && !layerAvailable(def, manifest.vars)) untracked(() => this.activeLayerId.set(null));
+    });
     // Radar and the legacy overlays share the single-overlay slot: turning one on replaces the forecast layer.
     effect(() => {
       if (this.mapLayers.activeLayers().length > 0) {

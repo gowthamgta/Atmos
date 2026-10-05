@@ -46,20 +46,21 @@ repository activity; re-enable under the Actions tab if that happens.
 | id | source | native grid | runs used | steps | rain after |
 |---|---|---|---|---|---|
 | `ecmwf_ifs` | Open-Meteo `ecmwf_ifs` | O1280, ~9 km | 00Z, 12Z | 3-hourly to +144 h | +90 h is a 3 h total |
+| `ecmwf_aifs` | Open-Meteo `ecmwf_aifs025_single` (ECMWF's AI model; no gusts, CAPE or column moisture, so those layers are greyed out) | regular 0.25° | 00Z, 06Z, 12Z, 18Z | 6-hourly to +144 h (the model goes to +360 h) | every value is a 6 h total |
 | `gfs` | Open-Meteo `ncep_gfs013` (0.117°: temperature, humidity, wind, rain, cloud, moisture) + `ncep_gfs025` (0.25°: pressure, gusts, CAPE) | regular lat/lon | 00Z, 06Z, 12Z, 18Z | 3-hourly to +144 h | +120 h is a 3 h total |
 
-Both are resampled onto the same 0.1° grid and published in the same format, so the app treats them alike. GFS has no
+All are resampled onto the same 0.1° grid and published in the same format, so the app treats them alike. GFS has no
 dew point, so its own relative humidity is used. Observed differences from IFS on a shared valid time: temperature
 within about 0.8 °C (correlation 0.95), CAPE about half of IFS's (a known model difference).
 
-`python run.py --model gfs ...` / `--model ecmwf_ifs ...`. The workflow runs both every hour; each exits early when its
+`python run.py --model gfs|ecmwf_ifs|ecmwf_aifs ...`. The workflow runs both every hour; each exits early when its
 newest run is not ready, is not one it uses, or is already live. A Pages deploy replaces the whole site, so `mirror.py`
 copies any model that was not rebuilt from the live site into the artifact (otherwise a GFS update would delete IFS).
 
 ## Adding another model (AIFS, ICON, UKMO...)
 1. Write `fetch_<name>.py` with the same interface as `fetch_ifs.py` / `fetch_gfs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`,
-   `STEP_HOURS`, `PRECIP_3H_AFTER_H` (None if rain is always hourly), `PRECIP_NOTE`, `latest_run()` and
-   `read_step(run, h)` returning the source variables on the 0.1° grid (`temperature_2m`, `dew_point_2m` or
+   `STEP_HOURS`, `PRECIP_NOTE`, `UNAVAILABLE_VARS` (published variables the model lacks), `precip_window_hours(step)`
+   (hours the source rain value covers), `latest_run()` and `read_step(run, h)` returning the source variables on the 0.1° grid (`temperature_2m`, `dew_point_2m` or
    `relative_humidity_2m`, `wind_u/v_component_10m`, `wind_gusts_10m`, `pressure_msl` in Pa, `precipitation`,
    `cloud_cover`, `cape`, `total_column_integrated_water_vapour`). Check the rain semantics against Open-Meteo's hourly
    API as was done for IFS and GFS.

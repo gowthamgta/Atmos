@@ -73,6 +73,10 @@ export class ForecastInspectorService {
       await Promise.all(
         INSPECT_VARS.map(async id => {
           const info = manifest.vars[id];
+          if (!info) {
+            values[id] = NaN; // this model does not publish the variable (e.g. gusts on AIFS)
+            return;
+          }
           const [bmpA, bmpB] = await Promise.all([this.loader.get(id, hA), this.loader.get(id, hB)]);
           values[id] = blendTime(
             sampleRg16Bitmap(bmpA, g, lat, lon, info.min, info.max),

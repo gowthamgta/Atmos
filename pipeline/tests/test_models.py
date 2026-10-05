@@ -6,9 +6,11 @@ from datetime import datetime, timezone
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import fetch_aifs
 import fetch_gfs
 import fetch_ifs
 import mirror
+import run as pipeline_run
 from derive import derive
 from regular import regrid_regular, window_indices
 
@@ -64,11 +66,11 @@ def test_derive_uses_the_models_own_relative_humidity_when_there_is_no_dew_point
            "wind_u_component_10m": z + 3, "wind_v_component_10m": z + 4, "wind_gusts_10m": z + 9,
            "pressure_msl": z + 101000, "precipitation": z + 1, "cloud_cover": z + 40, "cape": z + 500,
            "total_column_integrated_water_vapour": z + 50}
-    out = derive(raw, 6, None)
+    out = derive(raw)
     assert np.allclose(out["rh"], 70) and np.allclose(out["msl"], 1010) and np.allclose(out["t2m"], 30)
     assert set(out) == {"t2m", "rh", "feels", "u10", "v10", "gust", "msl", "precip", "cloud", "cape", "tcwv"}
     raw["relative_humidity_2m"] = z + 140            # nonsense is clipped to the physical range
-    assert np.allclose(derive(raw, 6, None)["rh"], 100)
+    assert np.allclose(derive(raw)["rh"], 100)
 
 
 class _Resp:
@@ -111,12 +113,29 @@ def test_mirror_cleans_up_when_a_file_is_missing(tmp_path):
     assert not (tmp_path / "gfs").exists()
 
 
-def test_each_model_declares_when_rain_switches_to_three_hour_totals():
-    assert fetch_ifs.PRECIP_3H_AFTER_H == 90
-    assert fetch_gfs.PRECIP_3H_AFTER_H == 120
-    z = np.zeros((2, 2), np.float32)
-    raw = {"temperature_2m": z + 30, "relative_humidity_2m": z + 70, "wind_u_component_10m": z, "wind_v_component_10m": z,
-           "wind_gusts_10m": z, "pressure_msl": z + 101000, "precipitation": z + 6, "cloud_cover": z, "cape": z,
-           "total_column_integrated_water_vapour": z}
-    assert np.allclose(derive(raw, 120, fetch_gfs.PRECIP_3H_AFTER_H)["precip"], 6)
-    assert np.allclose(derive(raw, 126, fetch_gfs.PRECIP_3H_AFTER_H)["precip"], 2)
+def test_each_model_declares_its_rain_accumulation_window():
+    # verified against Open-Meteo's hourly API for each model
+    assert [fetch_ifs.precip_window_hours(h) for h in (6, 90, 93, 144)] == [1, 1, 3, 3]
+    assert [fetch_gfs.precip_window_hours(h) for h in (6, 120, 123, 144)] == [1, 1, 3, 3]
+    assert {fetch_aifs.precip_window_hours(h) for h in (6, 72, 144)} == {6}
+
+
+def test_aifs_urls_steps_and_unavailable_variables():
+    assert fetch_aifs.file_url(RUN, 6).endswith("/ecmwf_aifs025_single/2026/10/05/0600Z/2026-10-05T1200.om")
+    assert fetch_aifs.STEP_HOURS == list(range(0, 145, 6))
+    assert fetch_aifs.UNAVAILABLE_VARS == {"gust", "cape", "tcwv"}
+    assert fetch_ifs.UNAVAILABLE_VARS == fetch_gfs.UNAVAILABLE_VARS == frozenset()
+
+
+def test_manifest_lists_only_variables_the_model_provides():
+    full = pipeline_run.build_manifest(fetch_ifs, RUN, [0, 3])["vars"]
+    aifs = pipeline_run.build_manifest(fetch_aifs, RUN, [0, 6])["vars"]
+    assert {"gust", "cape", "tcwv"} <= set(full)
+    assert not ({"gust", "cape", "tcwv"} & set(aifs))
+    assert {"t2m", "rh", "feels", "u10", "v10", "msl", "precip", "cloud"} <= set(aifs)
+
+
+def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
+    assert sorted(pipeline_run.MODELS) == ["ecmwf_aifs", "ecmwf_ifs", "gfs"]
+    for m in pipeline_run.MODELS.values():
+        assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)

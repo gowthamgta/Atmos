@@ -13,12 +13,18 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 import requests
 import config as C
+import fetch_aifs
 import fetch_gfs
 import fetch_ifs
 from derive import derive
 from encode import encode_field
 
-MODELS = {m.MODEL_ID: m for m in (fetch_ifs, fetch_gfs)}
+MODELS = {m.MODEL_ID: m for m in (fetch_ifs, fetch_gfs, fetch_aifs)}
+
+
+def published_vars(fetcher):
+    """Variables this model actually provides (the app greys out layers for the others)."""
+    return [v for v in C.VARS.values() if v.id not in fetcher.UNAVAILABLE_VARS]
 
 
 def build_manifest(fetcher, run, steps):
@@ -28,15 +34,15 @@ def build_manifest(fetcher, run, steps):
         "grid": {"latMax": C.LAT_MAX, "latMin": C.LAT_MIN, "lonMin": C.LON_MIN, "lonMax": C.LON_MAX,
                  "step": C.STEP_DEG, "nx": C.NX, "ny": C.NY},
         "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps],
-        "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in C.VARS.values()},
+        "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in published_vars(fetcher)},
         "path": "{var}/{h:03d}.png",
         "notes": {"precip": fetcher.PRECIP_NOTE},
     }
 
 
 def process_step(fetcher, run, h):
-    fields = derive(fetcher.read_step(run, h), h, fetcher.PRECIP_3H_AFTER_H)
-    return h, {vid: encode_field(fields[vid], C.VARS[vid].lo, C.VARS[vid].hi) for vid in C.VARS}
+    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h))
+    return h, {v.id: encode_field(fields[v.id], v.lo, v.hi) for v in published_vars(fetcher)}
 
 
 def live_run(url: str) -> str | None:

@@ -73,4 +73,11 @@ describe('point forecast helpers', () => {
     expect(rows.some(r => r.terrainAdjusted)).toBe(false);
     expect(rows.find(r => r.id === 'temp')!.text).toBe('30.0 °C');
   });
+
+  it('shows a dash, not "– km/h", for variables a model does not publish', () => {
+    const rows = buildPointRows({ ...values, gust: NaN, cape: NaN }, 0);
+    expect(rows.find(r => r.id === 'gust')!.text).toBe('–');
+    expect(rows.find(r => r.id === 'cape')!.text).toBe('–');
+    expect(rows.find(r => r.id === 'temp')!.text).toBe('30.0 °C');
+  });
 });

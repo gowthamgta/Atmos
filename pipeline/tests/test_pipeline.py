@@ -60,6 +60,6 @@ def test_precip_is_normalised_to_mm_per_hour():
                               "wind_gusts_10m", "pressure_msl", "cloud_cover", "cape",
                               "total_column_integrated_water_vapour"]}
     raw["precipitation"] = z + 6.0
-    assert np.allclose(derive(raw, 90, 90)["precip"], 6.0)    # still hourly totals
-    assert np.allclose(derive(raw, 93, 90)["precip"], 2.0)    # 3-hour totals become mm/h
-    assert np.allclose(derive(raw, 200, None)["precip"], 6.0) # models with hourly rain never divide
+    assert np.allclose(derive(raw, 1)["precip"], 6.0)    # hourly totals
+    assert np.allclose(derive(raw, 3)["precip"], 2.0)    # 3-hour totals become mm/h
+    assert np.allclose(derive(raw, 6)["precip"], 1.0)    # 6-hour totals (AIFS)

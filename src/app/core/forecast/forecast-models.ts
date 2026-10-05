@@ -16,6 +16,7 @@ const PAGES = 'https://gowthamgta.github.io/Atmos';
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'ecmwf_ifs', label: 'ECMWF IFS', resolution: '9 km', baseUrl: `${PAGES}/ecmwf_ifs` },
   { id: 'gfs', label: 'NOAA GFS', resolution: '13–28 km', baseUrl: `${PAGES}/gfs` },
+  { id: 'ecmwf_aifs', label: 'ECMWF AIFS (AI)', resolution: '28 km', baseUrl: `${PAGES}/ecmwf_aifs` },
 ];
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;

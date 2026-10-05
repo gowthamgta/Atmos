@@ -12,9 +12,10 @@ describe('forecast model registry', () => {
     }
   });
 
-  it('includes ECMWF IFS (default) and NOAA GFS', () => {
+  it('includes ECMWF IFS (default), NOAA GFS and ECMWF AIFS, matching the pipeline model ids', () => {
     expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('ecmwf_ifs');
     expect(forecastModelById('gfs').label).toBe('NOAA GFS');
+    expect(FORECAST_MODELS.map(m => m.id)).toEqual(['ecmwf_ifs', 'gfs', 'ecmwf_aifs']);
   });
 
   it('falls back to the default model for an unknown id', () => {
