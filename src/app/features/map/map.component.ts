@@ -14,7 +14,7 @@ import { MapLayerService, LayerConfig } from '../../core/services/map-layer.serv
 import { RadarDisplayFrame, RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite.service';
-import { satelliteCoordinates } from '../../core/satellite/satellite-image';
+import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
 /** [[west, south], [east, north]]: the whole forecast area (South India, Sri Lanka and the seas around them). */
@@ -575,23 +575,20 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
-  // --- Meteosat satellite pictures: one layer per picture, cross-faded by the loop position ---
+  // --- Meteosat satellite pictures: one GPU layer with smooth (bicubic) magnification and a cross-fade between pictures ---
 
-  /** Picture URL on the map for each frame time, so changed or dropped pictures can be told apart from unchanged ones. */
-  private satelliteMounted = new Map<number, string>();
+  private satelliteLayer: SatelliteImageLayer | null = null;
+  private satelliteKeys = '';
 
   private removeSatelliteLayers(): void {
-    if (!this.map) return;
-    for (const t of this.satelliteMounted.keys()) {
-      if (this.map.getLayer(`satellite-layer-${t}`)) this.map.removeLayer(`satellite-layer-${t}`);
-      if (this.map.getSource(`satellite-source-${t}`)) this.map.removeSource(`satellite-source-${t}`);
-    }
-    this.satelliteMounted.clear();
+    if (this.map && this.satelliteLayer && this.map.getLayer(this.satelliteLayer.id)) this.map.removeLayer(this.satelliteLayer.id);
+    this.satelliteLayer = null;
+    this.satelliteKeys = '';
   }
 
   /**
-   * Shows frame `floor(position)` fully and fades the next one in by the fractional part, so playback moves smoothly
-   * instead of jumping between pictures. Pictures are stacked oldest to newest, so the fading one is always on top.
+   * Shows frame `floor(position)` and fades the next one in by the fractional part, so playback moves smoothly instead
+   * of jumping between pictures.
    */
   private updateSatelliteOverlay(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number): void {
     if (!this.map) return;
@@ -599,37 +596,17 @@ export class MapComponent implements OnInit, OnDestroy {
       this.removeSatelliteLayers();
       return;
     }
-    const unchanged =
-      frames.length === this.satelliteMounted.size && frames.every(f => this.satelliteMounted.get(f.timeMs) === f.url);
-    if (!unchanged) {
-      // rebuild in time order so the stacking order stays oldest at the bottom
-      this.removeSatelliteLayers();
-      const coordinates = satelliteCoordinates();
-      const before = this.observationAnchorId(); // above the boundary lines, under the place names
-      for (const f of frames) {
-        this.map.addSource(`satellite-source-${f.timeMs}`, { type: 'image', url: f.url, coordinates });
-        this.map.addLayer(
-          {
-            id: `satellite-layer-${f.timeMs}`,
-            type: 'raster',
-            source: `satellite-source-${f.timeMs}`,
-            layout: { visibility: 'none' },
-            paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-resampling': 'linear' },
-          },
-          before
-        );
-        this.satelliteMounted.set(f.timeMs, f.url);
-      }
+    if (!this.satelliteLayer) {
+      this.satelliteLayer = new SatelliteImageLayer();
+      // above the boundary lines, under the place names
+      this.map.addLayer(this.satelliteLayer, this.observationAnchorId());
     }
-    const base = Math.min(Math.max(Math.floor(position), 0), frames.length - 1);
-    const frac = Math.min(Math.max(position - base, 0), 1); // the frame list can change under a playing loop
-    frames.forEach((f, k) => {
-      const id = `satellite-layer-${f.timeMs}`;
-      if (!this.map!.getLayer(id)) return;
-      const o = k === base ? opacity : k === base + 1 ? opacity * frac : 0;
-      this.map!.setLayoutProperty(id, 'visibility', o > 0.001 ? 'visible' : 'none');
-      this.map!.setPaintProperty(id, 'raster-opacity', o);
-    });
+    const keys = frames.map(f => f.url).join('|');
+    if (keys !== this.satelliteKeys) {
+      this.satelliteKeys = keys;
+      this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url })));
+    }
+    this.satelliteLayer.setPosition(position, opacity);
   }
 
   // --- Storm cells and cones ---
