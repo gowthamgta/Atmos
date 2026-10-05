@@ -79,7 +79,16 @@ function istClock(ms: number): string {
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .note { margin: 10px 0 0; font-size: 10px; color: var(--text-muted); }
-    @media (max-width: 700px) { .panel { bottom: 84px; } }
+    /* phones: keep it to a small card (time, slider, view) so the picture stays visible */
+    @media (max-width: 700px) {
+      .panel { bottom: 84px; width: min(260px, calc(100vw - 24px)); padding: 8px 10px; }
+      .heading strong { font-size: 13px; }
+      .play { width: 32px; height: 32px; }
+      .scan { margin: 6px 0 4px; }
+      .ends, .note, .opacity { display: none; }
+      .views { margin-top: 6px; }
+      .view { min-height: 30px; font-size: 11px; }
+    }
   `]
 })
 export class SatellitePanelComponent {

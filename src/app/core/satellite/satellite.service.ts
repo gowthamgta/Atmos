@@ -42,7 +42,7 @@ export class SatelliteService {
   readonly loading = signal(false);
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
-  readonly view = signal<SatelliteView>('clouds');
+  readonly view = signal<SatelliteView>('picture');
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -58,6 +58,8 @@ export class SatelliteService {
   private readonly pending = new Map<number, (r: SatelliteWorkerResponse) => void>();
   /** The downloaded pictures as served, kept so the view can change without downloading again. */
   private readonly raws = new Map<number, { product: SatelliteProduct; blob: Blob }>();
+  /** Overlay pictures being built or built, by "view|time". */
+  private readonly built = new Map<string, Promise<SatelliteFrame | null>>();
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
   private loadToken = 0;
@@ -122,6 +124,7 @@ export class SatelliteService {
     for (const t of [...this.raws.keys()]) if (!times.includes(t)) this.raws.delete(t); // older than an hour
     await this.publish(times, token, following);
     if (token !== this.loadToken) return;
+    this.prune(times);
     this.failed.set(this.frames().length === 0);
     this.loading.set(false);
   }
@@ -136,25 +139,41 @@ export class SatelliteService {
     }
   }
 
-  /** Build overlay pictures for every downloaded frame that has none yet, then list them oldest first. */
-  private async publish(times: number[], token: number, following: boolean): Promise<void> {
-    const have = new Map(this.frames().map(f => [f.timeMs, f]));
-    const view = this.view();
-    const built = await Promise.all(
-      times.filter(t => this.raws.has(t)).map(async t => {
-        const existing = have.get(t);
-        if (existing) return existing;
-        const raw = this.raws.get(t)!;
-        const url = await this.process(raw.blob, raw.product, view);
-        return url ? ({ timeMs: t, product: raw.product, url } satisfies SatelliteFrame) : null;
-      }),
-    );
-    if (token !== this.loadToken || view !== this.view()) {
-      for (const f of built) if (f && !have.has(f.timeMs)) URL.revokeObjectURL(f.url);
-      return;
+  /**
+   * The overlay picture for a downloaded frame in a view, built once and shared: overlapping refreshes must never
+   * build the same frame twice, or one would release a picture the map is still showing.
+   */
+  private frameFor(timeMs: number, view: SatelliteView): Promise<SatelliteFrame | null> {
+    const key = `${view}|${timeMs}`;
+    let pending = this.built.get(key);
+    if (!pending) {
+      const raw = this.raws.get(timeMs)!;
+      pending = this.process(raw.blob, raw.product, view).then(url => {
+        if (!url) this.built.delete(key); // try again on the next refresh
+        return url ? { timeMs, product: raw.product, url } : null;
+      });
+      this.built.set(key, pending);
     }
+    return pending;
+  }
+
+  /** Release pictures of other views or of frames that have left the hour. */
+  private prune(times: readonly number[]): void {
+    const view = this.view();
+    for (const [key, pending] of this.built) {
+      const [v, t] = key.split('|');
+      if (v === view && times.includes(Number(t))) continue;
+      this.built.delete(key);
+      void pending.then(f => f && URL.revokeObjectURL(f.url));
+    }
+  }
+
+  /** List the overlay pictures of every downloaded frame, oldest first. */
+  private async publish(times: number[], token: number, following: boolean): Promise<void> {
+    const view = this.view();
+    const built = await Promise.all(times.filter(t => this.raws.has(t)).map(t => this.frameFor(t, view)));
+    if (token !== this.loadToken || view !== this.view()) return; // a newer refresh or view took over
     const list = built.filter((f): f is SatelliteFrame => f !== null);
-    for (const f of this.frames()) if (!list.includes(f)) URL.revokeObjectURL(f.url);
     this.frames.set(list);
     this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));
   }
@@ -163,22 +182,13 @@ export class SatelliteService {
   async setView(view: SatelliteView): Promise<void> {
     if (view === this.view()) return;
     this.view.set(view);
-    const old = this.frames();
-    const rebuilt = await Promise.all(
-      old.map(async f => {
-        const raw = this.raws.get(f.timeMs);
-        const url = raw ? await this.process(raw.blob, raw.product, view) : null;
-        return url ? { ...f, url } : null;
-      }),
-    );
-    if (view !== this.view()) {
-      for (const f of rebuilt) if (f) URL.revokeObjectURL(f.url);
-      return; // changed again while rebuilding
-    }
+    const times = this.frames().map(f => f.timeMs);
+    const rebuilt = await Promise.all(times.filter(t => this.raws.has(t)).map(t => this.frameFor(t, view)));
+    if (view !== this.view()) return; // changed again while rebuilding
     const list = rebuilt.filter((f): f is SatelliteFrame => f !== null);
-    for (const f of old) URL.revokeObjectURL(f.url);
     this.frames.set(list);
     this.position.update(p => Math.min(p, Math.max(list.length - 1, 0)));
+    this.prune(times);
   }
 
   /** Overlay picture (object URL) for a downloaded frame, built in a web worker so the map stays smooth. */

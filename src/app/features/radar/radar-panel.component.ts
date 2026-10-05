@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
@@ -31,19 +31,23 @@ const FRESHNESS_LABEL: Record<string, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (active()) {
-      <section class="panel glass-panel" aria-label="Radar settings">
+      <section class="panel glass-panel" [class.compact]="!expanded()" aria-label="Radar settings">
         <header>
           <span class="live" aria-hidden="true"></span>
           <div class="heading">
             <strong>IMD radar</strong>
-            <span class="sub">Observed now, not a forecast</span>
+            <span class="sub full-only">Observed now, not a forecast</span>
+            <span class="sub compact-only" [attr.data-state]="freshness()">{{ compactStatus() }}</span>
           </div>
-          <button type="button" class="refresh" (click)="refresh()" [disabled]="refreshing()" aria-label="Refresh radar" title="Refresh radar">
+          <button type="button" class="icon-btn" (click)="refresh()" [disabled]="refreshing()" aria-label="Refresh radar" title="Refresh radar">
             {{ refreshing() ? '…' : '⟳' }}
+          </button>
+          <button type="button" class="icon-btn" (click)="expanded.set(!expanded())" [attr.aria-expanded]="expanded()" [attr.aria-label]="expanded() ? 'Show less' : 'Show more'" [title]="expanded() ? 'Show less' : 'Show more'">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" [style.transform]="expanded() ? 'rotate(180deg)' : ''"><path d="m6 15 6-6 6 6"/></svg>
           </button>
         </header>
 
-        <div class="scan">
+        <div class="scan full-only">
           <span>{{ scanLabel() }}</span>
           @if (age() !== null) {
             <span class="age" [attr.data-state]="freshness()">{{ age() }} min ago · {{ freshnessLabel() }}</span>
@@ -61,7 +65,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
-        <div class="stations">
+        <div class="stations full-only">
           <div class="label">Radars online: {{ online() }} of {{ stations.length }}</div>
           <div class="chips">
             @for (st of stations; track st.id) {
@@ -74,15 +78,15 @@ const FRESHNESS_LABEL: Record<string, string> = {
           </div>
         </div>
 
-        <label class="opacity">
+        <label class="opacity full-only">
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="opacity()" (input)="setOpacity($event)" aria-label="Radar opacity" />
         </label>
 
         <div class="legend" role="img" [attr.aria-label]="legendTitle()">
-          <div class="label">{{ legendTitle() }}</div>
+          <div class="label full-only">{{ legendTitle() }}</div>
           <div class="bar"></div>
-          <div class="scale">
+          <div class="scale full-only">
             @for (t of legendTicks(); track t) { <span>{{ t }}</span> }
           </div>
         </div>
@@ -97,9 +101,29 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .heading { flex: 1; min-width: 0; }
     .heading strong { display: block; font-size: 14px; }
     .sub { color: var(--text-muted); font-size: 11px; }
-    .refresh { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--text-primary); font-size: 18px; cursor: pointer; }
-    .refresh:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
-    .refresh:disabled { opacity: 0.5; cursor: progress; }
+    .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--text-primary); font-size: 18px; cursor: pointer; }
+    .icon-btn:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+    .icon-btn:disabled { opacity: 0.5; cursor: progress; }
+    .icon-btn svg { transition: transform 0.2s; }
+    .compact-only { display: none; }
+    .sub[data-state='fresh'] { color: #4ade80; }
+    .sub[data-state='recent'] { color: #facc15; }
+    .sub[data-state='stale'] { color: #fb923c; }
+    .sub[data-state='offline'] { color: #f87171; }
+    /* compact: one header line, the product buttons and a thin colour bar */
+    .panel.compact { padding: 8px 10px; }
+    .panel.compact .full-only { display: none; }
+    .panel.compact .compact-only { display: block; }
+    .panel.compact header { gap: 8px; }
+    .panel.compact .heading strong { font-size: 13px; }
+    .panel.compact .compact-only { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .panel.compact .icon-btn { width: 32px; height: 32px; font-size: 16px; }
+    .panel.compact .products { margin-top: 8px; gap: 4px; }
+    .panel.compact .prod { min-height: 32px; padding: 3px 2px; flex-direction: row; justify-content: center; gap: 4px; }
+    .panel.compact .pname { font-size: 12px; }
+    .panel.compact .phint { display: none; }
+    .panel.compact .legend { margin-top: 8px; }
+    .panel.compact .bar { height: 5px; }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 8px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
@@ -131,7 +155,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .legend { margin-top: 10px; }
     .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, #facc15 60%, #ef4444 80%, #a855f7 100%); }
     .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--text-secondary); }
-    @media (max-width: 700px) { .panel { bottom: 84px; } }
+    @media (max-width: 700px) { .panel { bottom: 84px; width: min(260px, calc(100vw - 24px)); } }
   `]
 })
 export class RadarPanelComponent {
@@ -139,6 +163,14 @@ export class RadarPanelComponent {
   private readonly radar = inject(RadarService);
 
   protected readonly products = PRODUCTS;
+  /** Phones start with the compact panel (it would cover half the map); larger screens start expanded. */
+  protected readonly expanded = signal(typeof window === 'undefined' || window.innerWidth > 700);
+  /** One-line status for the compact panel: scan age and freshness. */
+  protected readonly compactStatus = computed(() => {
+    const age = this.age();
+    if (age === null) return 'Syncing…';
+    return `${age} min · ${FRESHNESS_LABEL[this.freshness()] ?? ''} · ${this.online()}/${this.stations.length} on`;
+  });
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
   protected readonly product = this.radar.activeProduct;
