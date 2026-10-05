@@ -7,6 +7,8 @@ import {
   SATELLITE_LAG_MIN,
   frameTimes,
   latestFrameTime,
+  parseNewestTime,
+  satelliteCapabilitiesUrl,
   productForTime,
   satelliteFrameUrl,
   sunElevationDeg,
@@ -16,9 +18,9 @@ const T = (iso: string) => Date.parse(iso);
 
 describe('latestFrameTime', () => {
   it('lags the clock and lands on a 15-minute slot', () => {
-    expect(latestFrameTime(T('2026-10-05T06:29:00Z'))).toBe(T('2026-10-05T05:45:00Z'));
-    expect(latestFrameTime(T('2026-10-05T06:35:00Z'))).toBe(T('2026-10-05T06:00:00Z'));
-    expect(latestFrameTime(T('2026-10-05T06:34:59Z'))).toBe(T('2026-10-05T05:45:00Z'));
+    expect(latestFrameTime(T('2026-10-05T06:29:00Z'))).toBe(T('2026-10-05T06:00:00Z'));
+    expect(latestFrameTime(T('2026-10-05T06:40:00Z'))).toBe(T('2026-10-05T06:15:00Z'));
+    expect(latestFrameTime(T('2026-10-05T06:39:59Z'))).toBe(T('2026-10-05T06:00:00Z'));
   });
 
   it('never returns a frame younger than the lag', () => {
@@ -33,12 +35,18 @@ describe('latestFrameTime', () => {
 });
 
 describe('frameTimes', () => {
+  it('covers exactly the last hour: five pictures, 15 minutes apart', () => {
+    expect(SATELLITE_FRAME_COUNT).toBe(5);
+    const times = frameTimes(T('2026-10-05T06:15:00Z'));
+    expect(times.at(-1)! - times[0]).toBe(60 * 60_000);
+  });
+
   it('lists the loop oldest first, 15 minutes apart, ending on the latest', () => {
     const latest = T('2026-10-05T05:45:00Z');
     const times = frameTimes(latest);
     expect(times).toHaveLength(SATELLITE_FRAME_COUNT);
     expect(times.at(-1)).toBe(latest);
-    expect(times[0]).toBe(latest - 11 * 15 * 60_000);
+    expect(times[0]).toBe(latest - 4 * 15 * 60_000);
     for (let i = 1; i < times.length; i++) expect(times[i] - times[i - 1]).toBe(15 * 60_000);
   });
 });
@@ -93,5 +101,28 @@ describe('satelliteFrameUrl', () => {
     for (const p of [SATELLITE_HRV, SATELLITE_IR]) {
       expect(satelliteFrameUrl(p, T('2026-10-05T05:30:00Z')).toLowerCase()).not.toMatch(/key|token|secret|auth/);
     }
+  });
+});
+
+describe('parseNewestTime', () => {
+  it('reads the end of the time range the service lists', () => {
+    const xml = '<Layer><Dimension name="time" default="2026-10-05T06:15:00Z" units="ISO8601" nearestValue="1">2022-03-29T00:00:00.000Z/2026-10-05T06:15:00.000Z/PT15M</Dimension></Layer>';
+    expect(parseNewestTime(xml)).toBe(T('2026-10-05T06:15:00Z'));
+  });
+
+  it('reads a plain list of times and picks the newest', () => {
+    const xml = '<Dimension name="time" units="ISO8601">2026-10-05T05:45:00Z,2026-10-05T06:15:00Z,2026-10-05T06:00:00Z</Dimension>';
+    expect(parseNewestTime(xml)).toBe(T('2026-10-05T06:15:00Z'));
+  });
+
+  it('returns null when there is no time dimension or it cannot be read', () => {
+    expect(parseNewestTime('<Capabilities></Capabilities>')).toBeNull();
+    expect(parseNewestTime('<Dimension name="time">not a date</Dimension>')).toBeNull();
+    expect(parseNewestTime('')).toBeNull();
+  });
+
+  it('asks the capabilities of the layer being shown', () => {
+    expect(satelliteCapabilitiesUrl(SATELLITE_IR)).toContain('/msg_iodc/ir108/ows?');
+    expect(satelliteCapabilitiesUrl(SATELLITE_HRV)).toContain('/msg_iodc/rgb_eview/ows?');
   });
 });

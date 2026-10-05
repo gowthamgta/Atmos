@@ -1,38 +1,51 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { mercatorHeight, toOverlayPixels } from './satellite-image';
+import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import {
   SatelliteProduct,
+  SatelliteView,
   frameTimes,
   latestFrameTime,
+  parseNewestTime,
   productForTime,
+  satelliteCapabilitiesUrl,
   satelliteFrameUrl,
 } from './satellite.config';
 
 export interface SatelliteFrame {
   timeMs: number;
   product: SatelliteProduct;
-  /** Object URL of the finished overlay picture, or null when the satellite had no image for this time (such frames are not listed). */
-  url: string | null;
+  /** Object URL of the finished overlay picture. */
+  url: string;
 }
 
-const PLAY_INTERVAL_MS = 450;
-const REFRESH_MS = 5 * 60_000;
-const LOAD_CONCURRENCY = 4;
+/** Time a picture is shown while playing, and the pause on the newest picture before the loop restarts. */
+const STEP_MS = 1100;
+const HOLD_MS = 1800;
+/** How often to ask the service whether a newer picture exists (a tiny request; a picture is fetched only when there is one). */
+const CHECK_MS = 2 * 60_000;
+const LOAD_CONCURRENCY = 3;
 
 /**
- * Loads the last three hours of Meteosat-9 pictures, shows them one at a time and can play them as a loop. The picture
- * is HRV by day and infrared at night, chosen per frame. Nothing here needs a key: EUMETView is public.
+ * Loads the last hour of Meteosat-9 pictures (HRV by day, infrared at night, chosen per frame) and plays them as a
+ * loop that fades smoothly from one picture to the next. It asks the service for its newest picture time, so the
+ * loop is as recent as the service allows, and checks again every couple of minutes. Nothing here needs a key.
  */
 @Injectable({ providedIn: 'root' })
 export class SatelliteService {
   readonly frames = signal<SatelliteFrame[]>([]);
-  readonly index = signal(0);
+  /**
+   * Where the loop is, as a frame number with a fraction: 2.4 is 40% of the way from the third picture to the fourth.
+   * It only has a fraction while playing; otherwise it sits on a whole number.
+   */
+  readonly position = signal(0);
   readonly playing = signal(false);
   readonly loading = signal(false);
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
+  readonly view = signal<SatelliteView>('clouds');
 
-  readonly current = computed<SatelliteFrame | null>(() => this.frames()[this.index()] ?? null);
+  /** The picture the loop is nearest to. */
+  readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
   /** Minutes between the shown picture and now. */
   readonly ageMinutes = computed(() => {
     const f = this.current();
@@ -40,90 +53,159 @@ export class SatelliteService {
   });
 
   private readonly now = signal(Date.now());
-  private timer: ReturnType<typeof setInterval> | null = null;
-  private refreshTimer: ReturnType<typeof setInterval> | null = null;
+  private worker: Worker | null = null;
+  private nextRequest = 1;
+  private readonly pending = new Map<number, (r: SatelliteWorkerResponse) => void>();
+  /** The downloaded pictures as served, kept so the view can change without downloading again. */
+  private readonly raws = new Map<number, { product: SatelliteProduct; blob: Blob }>();
+  private checkTimer: ReturnType<typeof setInterval> | null = null;
+  private raf = 0;
   private loadToken = 0;
-  /** Pictures currently held, so their object URLs can be released once they drop out of the window. */
-  private retired: SatelliteFrame[] = [];
 
-  /** Start (or resume) fetching; refreshes itself every few minutes while on. */
+  /** Start (or resume) fetching; looks for newer pictures every couple of minutes while on. */
   activate(): void {
-    if (this.refreshTimer === null) this.refreshTimer = setInterval(() => void this.load(), REFRESH_MS);
-    if (this.frames().length === 0) void this.load();
+    if (this.checkTimer === null) this.checkTimer = setInterval(() => void this.load(), CHECK_MS);
+    void this.load();
   }
 
   deactivate(): void {
     this.pause();
-    if (this.refreshTimer !== null) clearInterval(this.refreshTimer);
-    this.refreshTimer = null;
+    if (this.checkTimer !== null) clearInterval(this.checkTimer);
+    this.checkTimer = null;
+    this.loadToken++; // abandon a load in progress
+    this.loading.set(false);
+  }
+
+  /** Newest picture time the service has, or a guess from the clock when it cannot be asked. */
+  private async newestTime(nowMs: number): Promise<number> {
+    const fallback = latestFrameTime(nowMs);
+    try {
+      // both layers are updated together, so either one says how recent the data is
+      const res = await fetch(satelliteCapabilitiesUrl(productForTime(fallback)));
+      if (!res.ok) return fallback;
+      const newest = parseNewestTime(await res.text());
+      // never trust a time in the future or one that is hours old
+      return newest !== null && newest <= nowMs && nowMs - newest < 6 * 3_600_000 ? newest : fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   async load(): Promise<void> {
     const token = ++this.loadToken;
     const nowMs = Date.now();
     this.now.set(nowMs);
-    const times = frameTimes(latestFrameTime(nowMs));
-    // keep the pictures we already have for these times (a missing one is tried again), fetch only the rest
-    const done = new Map<number, SatelliteFrame>();
-    for (const f of this.frames()) if (f.url && times.includes(f.timeMs)) done.set(f.timeMs, f);
-    const following = this.index() >= this.frames().length - 1; // watching the newest picture, so keep following it
-    this.loading.set(true);
+    const newest = await this.newestTime(nowMs);
+    if (token !== this.loadToken) return;
+    const times = frameTimes(newest);
+
+    const following = this.position() >= this.frames().length - 1; // watching the newest picture, so keep following it
+    if (!times.every(t => this.raws.has(t))) this.loading.set(true);
     this.failed.set(false);
 
-    const publish = () => {
-      const list = times.map(t => done.get(t)).filter((f): f is SatelliteFrame => !!f?.url); // only pictures that exist
-      this.frames.set(list);
-      this.index.update(i => (following ? list.length - 1 : Math.min(i, list.length - 1)));
-    };
-    if (done.size > 0) publish();
-
-    // newest first, a few at a time, so the picture you want appears quickly and the loop fills in behind it
-    const queue = times.filter(t => !done.has(t)).reverse();
+    // download what is missing, newest first, a few at a time
+    const queue = times.filter(t => !this.raws.has(t)).reverse();
     const worker = async () => {
       for (let t = queue.shift(); t !== undefined; t = queue.shift()) {
-        const frame = await this.loadFrame(t);
+        const product = productForTime(t);
+        const blob = await this.download(product, t);
         if (token !== this.loadToken) return;
-        done.set(t, frame);
-        publish();
+        if (blob) {
+          this.raws.set(t, { product, blob });
+          await this.publish(times, token, following);
+        }
       }
     };
     await Promise.all(Array.from({ length: LOAD_CONCURRENCY }, worker));
-    if (token !== this.loadToken) return; // a newer load took over
+    if (token !== this.loadToken) return;
 
-    // pictures that have scrolled out of the three-hour window are no longer needed
-    for (const f of this.retired) if (f.url && done.get(f.timeMs) !== f) URL.revokeObjectURL(f.url);
-    this.retired = [...done.values()];
-    publish();
+    for (const t of [...this.raws.keys()]) if (!times.includes(t)) this.raws.delete(t); // older than an hour
+    await this.publish(times, token, following);
+    if (token !== this.loadToken) return;
     this.failed.set(this.frames().length === 0);
     this.loading.set(false);
   }
 
-  private async loadFrame(timeMs: number): Promise<SatelliteFrame> {
-    const product = productForTime(timeMs);
+  private async download(product: SatelliteProduct, timeMs: number): Promise<Blob | null> {
     try {
       const res = await fetch(satelliteFrameUrl(product, timeMs));
-      if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/')) throw new Error(`HTTP ${res.status}`);
-      const bitmap = await createImageBitmap(await res.blob());
-      const { width, height } = bitmap;
-      const scratch = new OffscreenCanvas(width, height);
-      const sctx = scratch.getContext('2d', { willReadFrequently: true })!;
-      sctx.drawImage(bitmap, 0, 0);
-      bitmap.close();
-      const src = sctx.getImageData(0, 0, width, height).data;
-      const outHeight = mercatorHeight(width);
-      const pixels = toOverlayPixels(src, width, height, product.mode, outHeight);
-      const out = new OffscreenCanvas(width, outHeight);
-      out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
-      const blob = await out.convertToBlob({ type: 'image/png' });
-      return { timeMs, product, url: URL.createObjectURL(blob) };
+      if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/')) return null;
+      return await res.blob();
     } catch {
-      return { timeMs, product, url: null };
+      return null;
     }
   }
 
-  setIndex(i: number): void {
+  /** Build overlay pictures for every downloaded frame that has none yet, then list them oldest first. */
+  private async publish(times: number[], token: number, following: boolean): Promise<void> {
+    const have = new Map(this.frames().map(f => [f.timeMs, f]));
+    const view = this.view();
+    const built = await Promise.all(
+      times.filter(t => this.raws.has(t)).map(async t => {
+        const existing = have.get(t);
+        if (existing) return existing;
+        const raw = this.raws.get(t)!;
+        const url = await this.process(raw.blob, raw.product, view);
+        return url ? ({ timeMs: t, product: raw.product, url } satisfies SatelliteFrame) : null;
+      }),
+    );
+    if (token !== this.loadToken || view !== this.view()) {
+      for (const f of built) if (f && !have.has(f.timeMs)) URL.revokeObjectURL(f.url);
+      return;
+    }
+    const list = built.filter((f): f is SatelliteFrame => f !== null);
+    for (const f of this.frames()) if (!list.includes(f)) URL.revokeObjectURL(f.url);
+    this.frames.set(list);
+    this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));
+  }
+
+  /** Switch between cloud-only and the full picture; the pictures are rebuilt from what is already downloaded. */
+  async setView(view: SatelliteView): Promise<void> {
+    if (view === this.view()) return;
+    this.view.set(view);
+    const old = this.frames();
+    const rebuilt = await Promise.all(
+      old.map(async f => {
+        const raw = this.raws.get(f.timeMs);
+        const url = raw ? await this.process(raw.blob, raw.product, view) : null;
+        return url ? { ...f, url } : null;
+      }),
+    );
+    if (view !== this.view()) {
+      for (const f of rebuilt) if (f) URL.revokeObjectURL(f.url);
+      return; // changed again while rebuilding
+    }
+    const list = rebuilt.filter((f): f is SatelliteFrame => f !== null);
+    for (const f of old) URL.revokeObjectURL(f.url);
+    this.frames.set(list);
+    this.position.update(p => Math.min(p, Math.max(list.length - 1, 0)));
+  }
+
+  /** Overlay picture (object URL) for a downloaded frame, built in a web worker so the map stays smooth. */
+  private process(jpeg: Blob, product: SatelliteProduct, view: SatelliteView): Promise<string | null> {
+    if (typeof Worker === 'undefined') return Promise.resolve(null);
+    this.worker ??= this.createWorker();
+    const id = this.nextRequest++;
+    return new Promise(resolve => {
+      this.pending.set(id, r => resolve('png' in r ? URL.createObjectURL(r.png) : null));
+      this.worker!.postMessage({ id, jpeg, kind: product.id, view } satisfies SatelliteWorkerRequest);
+    });
+  }
+
+  private createWorker(): Worker {
+    const worker = new Worker(new URL('./satellite.worker', import.meta.url), { type: 'module' });
+    worker.onmessage = (e: MessageEvent<SatelliteWorkerResponse>) => {
+      const done = this.pending.get(e.data.id);
+      this.pending.delete(e.data.id);
+      done?.(e.data);
+    };
+    return worker;
+  }
+
+  /** Jump to a whole frame (the slider). */
+  setFrame(i: number): void {
     const n = this.frames().length;
-    if (n > 0) this.index.set(Math.min(Math.max(Math.round(i), 0), n - 1));
+    if (n > 0) this.position.set(Math.min(Math.max(Math.round(i), 0), n - 1));
   }
 
   togglePlay(): void {
@@ -131,18 +213,39 @@ export class SatelliteService {
     else this.play();
   }
 
+  /** Play the hour as a loop: each picture fades into the next, the newest holds a moment, then it starts again. */
   play(): void {
-    if (this.playing() || this.frames().length < 2) return;
+    if (this.playing() || this.frames().length < 2 || typeof requestAnimationFrame !== 'function') return;
     this.playing.set(true);
-    this.timer = setInterval(() => {
-      const n = this.frames().length;
-      this.index.update(i => (i + 1) % n);
-    }, PLAY_INTERVAL_MS);
+    if (this.position() >= this.frames().length - 1) this.position.set(0);
+    let last = performance.now();
+    let hold = 0;
+    const tick = (now: number) => {
+      if (!this.playing()) return;
+      const dt = Math.min(now - last, 100); // ignore long pauses (hidden tab)
+      last = now;
+      const top = this.frames().length - 1;
+      if (hold > 0) {
+        hold -= dt;
+        if (hold <= 0) this.position.set(0);
+      } else {
+        const p = this.position() + dt / STEP_MS;
+        if (p >= top) {
+          this.position.set(top);
+          hold = HOLD_MS;
+        } else {
+          this.position.set(p);
+        }
+      }
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
   }
 
   pause(): void {
     this.playing.set(false);
-    if (this.timer !== null) clearInterval(this.timer);
-    this.timer = null;
+    if (this.raf) cancelAnimationFrame(this.raf);
+    this.raf = 0;
+    this.position.update(p => Math.round(p));
   }
 }

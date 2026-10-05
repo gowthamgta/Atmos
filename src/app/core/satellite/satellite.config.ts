@@ -7,23 +7,24 @@
  *
  * Two quirks shaped this module:
  *  - Asking for a time the server does not have yet silently returns the newest image, which can still be
- *    partly assembled (visible seams). So the app only ever asks for frames at least `SATELLITE_LAG_MIN` old.
- *  - Images are plain latitude/longitude, so the map layer must place them with the Mercator correction
- *    (see SatelliteImageLayer), not as a stretched rectangle.
+ *    partly assembled (visible seams). So the app asks the service for its newest listed time (a tiny request) and
+ *    only falls back to a clock-based guess, `SATELLITE_LAG_MIN` behind, if that request fails.
+ *  - Images are plain latitude/longitude, so they are re-spaced to Mercator before they go on the map
+ *    (see satellite-image.ts), not stretched as a rectangle.
  */
 
 export const EUMETVIEW_WMS = 'https://view.eumetsat.int/geoserver/msg_iodc/wms';
 
 /** The area requested: South India, Sri Lanka and the seas around them (same as the forecast domain). */
 export const SATELLITE_BOUNDS = { west: 68, east: 90, south: 4, north: 22 } as const;
-/** Pixels requested (about 2 km per pixel; the satellite's high-resolution visible channel sees about 1-3 km here). */
-export const SATELLITE_SIZE = { width: 1100, height: 900 } as const;
+/** Pixels requested: about 1 km per pixel, finer than the satellite's own pixels (about 2-3 km here), so nothing is lost. */
+export const SATELLITE_SIZE = { width: 2200, height: 1800 } as const;
 
 export const SATELLITE_STEP_MIN = 15;
-/** How long after its start a frame is safe to use (the satellite scans for ~12 min, then it is processed). */
-export const SATELLITE_LAG_MIN = 35;
-/** Frames in the loop: 12 x 15 min = 3 hours. */
-export const SATELLITE_FRAME_COUNT = 12;
+/** Fallback only: how old a frame must be to be safe when the service's own newest time is not known. */
+export const SATELLITE_LAG_MIN = 25;
+/** Frames in the loop: 5 x 15 min = the last hour (the first frame is exactly 60 minutes before the newest). */
+export const SATELLITE_FRAME_COUNT = 5;
 
 /** The two pictures shown: HRV by day, infrared at night. */
 export type SatelliteChannel = 'hrv' | 'ir';
@@ -33,15 +34,16 @@ export interface SatelliteProduct {
   label: string;
   /** Layer name on EUMETView (workspace msg_iodc). */
   layer: string;
-  /**
-   * How the picture becomes an overlay. `dark-fade`: only near-black is see-through (colour images);
-   * `luma`: transparency follows brightness, so clear ground is see-through and clouds are opaque.
-   */
-  mode: 'luma' | 'dark-fade';
 }
 
-export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview', mode: 'dark-fade' };
-export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108', mode: 'luma' };
+export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview' };
+export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108' };
+
+/**
+ * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
+ * `picture`: the whole satellite picture (HRV keeps its land and sea colours).
+ */
+export type SatelliteView = 'clouds' | 'picture';
 
 /** Domain centre, used to decide whether it is day or night over the area. */
 const CENTRE = { lat: 13, lon: 79 };
@@ -74,6 +76,27 @@ export function productForTime(timeMs: number): SatelliteProduct {
   return sunElevationDeg(timeMs, CENTRE.lat, CENTRE.lon) >= DAYLIGHT_MIN_ELEVATION_DEG ? SATELLITE_HRV : SATELLITE_IR;
 }
 
+/** Capabilities document of a layer: tiny, and it lists the newest time the service really has. */
+export function satelliteCapabilitiesUrl(product: SatelliteProduct): string {
+  return `https://view.eumetsat.int/geoserver/msg_iodc/${product.layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`;
+}
+
+/**
+ * The newest time the service lists, from its capabilities document (a `start/end/period` or a plain list of times).
+ * Returns null when the document has no time dimension.
+ */
+export function parseNewestTime(capabilitiesXml: string): number | null {
+  const m = /<Dimension[^>]*\sname=["']time["'][^>]*>([^<]+)<\/Dimension>/i.exec(capabilitiesXml);
+  if (!m) return null;
+  let newest = NaN;
+  for (const part of m[1].split(',')) {
+    const pieces = part.trim().split('/');
+    const end = Date.parse(pieces.length >= 2 ? pieces[1] : pieces[0]);
+    if (!Number.isNaN(end)) newest = Number.isNaN(newest) ? end : Math.max(newest, end);
+  }
+  return Number.isNaN(newest) ? null : newest;
+}
+
 /** Epoch ms of the newest frame that is safe to request: `lagMin` before now, rounded down to a 15-minute slot. */
 export function latestFrameTime(nowMs: number, lagMin = SATELLITE_LAG_MIN, stepMin = SATELLITE_STEP_MIN): number {
   const step = stepMin * 60_000;
@@ -86,7 +109,7 @@ export function frameTimes(latestMs: number, count = SATELLITE_FRAME_COUNT, step
   return Array.from({ length: count }, (_, i) => latestMs - (count - 1 - i) * step);
 }
 
-/** GetMap URL for one frame. JPEG keeps a frame to 20-110 KB; transparency is done in the shader. */
+/** GetMap URL for one frame. JPEG keeps a frame to 20-400 KB; transparency is done afterwards, in the browser. */
 export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number): string {
   const b = SATELLITE_BOUNDS;
   const params = new URLSearchParams({

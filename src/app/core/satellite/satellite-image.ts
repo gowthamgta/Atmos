@@ -5,7 +5,7 @@
  * taller than the last one going north. So the picture's rows are re-spaced to Mercator before it is placed on the
  * map, and its dark or empty parts are made see-through.
  */
-import { SATELLITE_BOUNDS, SatelliteProduct } from './satellite.config';
+import { SATELLITE_BOUNDS, SatelliteChannel, SatelliteView } from './satellite.config';
 
 const RAD = Math.PI / 180;
 
@@ -45,28 +45,75 @@ function smoothstep(lo: number, hi: number, v: number): number {
 }
 
 /**
- * Opacity 0..255 of one pixel. Colour pictures (HRV) keep everything except true black, which is the empty corner or
- * edge of the image. Infrared is grey: clear ground is dark, so it fades out and only cloud (bright) is drawn.
+ * The typical brightness of land and sea in the blue channel of an HRV picture: its median. Cloud covers well under
+ * half of the area, so the median is the background, whatever the sun's height (it is low at dawn and dusk).
  */
-export function pixelAlpha(mode: SatelliteProduct['mode'], r: number, g: number, b: number): number {
-  if (mode === 'dark-fade') return Math.round(255 * smoothstep(3, 14, Math.max(r, g, b)));
-  const luma = (r + g + b) / 3 / 255;
-  return Math.round(255 * smoothstep(0.2, 0.55, luma) * 0.92);
+export function hrvBackground(src: Uint8ClampedArray): number {
+  const hist = new Uint32Array(256);
+  let n = 0;
+  for (let i = 2; i < src.length; i += 4 * 7) { // every 7th pixel is plenty
+    if (src[i - 2] + src[i - 1] + src[i] < 12) continue; // empty corners are not background
+    hist[src[i]]++;
+    n++;
+  }
+  if (n === 0) return 60; // nothing to measure (an all-black picture): use a typical value
+  let acc = 0;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= n / 2) return v;
+  }
+  return 60;
 }
 
 /**
- * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set its
- * opacity. `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
+ * Colour and opacity (0..255) of one pixel; the result is written into `out` at `o`.
+ *
+ * HRV pictures show land yellow, sea dark and cloud white or lavender, so cloud stands out in the blue channel.
+ * In `clouds` view the opacity follows how far the blue channel is above the background, and the cloud is drawn white;
+ * in `picture` view everything except true black is kept. Infrared is grey and bright where the cloud is cold and high.
+ */
+export function shadePixel(
+  kind: SatelliteChannel,
+  view: SatelliteView,
+  r: number,
+  g: number,
+  b: number,
+  background: number,
+  out: Uint8ClampedArray,
+  o: number,
+): void {
+  if (kind === 'hrv') {
+    if (view === 'picture') {
+      out[o] = r; out[o + 1] = g; out[o + 2] = b;
+      out[o + 3] = Math.round(255 * smoothstep(3, 14, Math.max(r, g, b)));
+      return;
+    }
+    const cloud = smoothstep(background + 20, background + 105, b);
+    const white = Math.min(255, 0.55 * g + 0.45 * b + 28 * cloud); // slightly brightened, so thin cloud reads clearly
+    out[o] = white; out[o + 1] = white; out[o + 2] = Math.min(255, white + 8);
+    out[o + 3] = Math.round(255 * Math.pow(cloud, 0.85) * 0.96);
+    return;
+  }
+  const luma = (r + g + b) / 3 / 255;
+  out[o] = r; out[o + 1] = g; out[o + 2] = b;
+  out[o + 3] = view === 'picture' ? Math.round(255 * 0.92) : Math.round(255 * smoothstep(0.2, 0.55, luma) * 0.92);
+}
+
+/**
+ * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set colour and
+ * opacity for the chosen view. `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
  */
 export function toOverlayPixels(
   src: Uint8ClampedArray,
   width: number,
   srcHeight: number,
-  mode: SatelliteProduct['mode'],
+  kind: SatelliteChannel,
+  view: SatelliteView,
   outHeight = mercatorHeight(width),
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight);
+  const background = kind === 'hrv' ? hrvBackground(src) : 0;
   for (let r = 0; r < outHeight; r++) {
     const f = rowMap[r];
     const y0 = Math.floor(f);
@@ -77,13 +124,13 @@ export function toOverlayPixels(
     let o = r * width * 4;
     for (let x = 0; x < width; x++, o += 4) {
       const i = x * 4;
-      const red = src[a + i] * (1 - w) + src[c + i] * w;
-      const green = src[a + i + 1] * (1 - w) + src[c + i + 1] * w;
-      const blue = src[a + i + 2] * (1 - w) + src[c + i + 2] * w;
-      out[o] = red;
-      out[o + 1] = green;
-      out[o + 2] = blue;
-      out[o + 3] = pixelAlpha(mode, red, green, blue);
+      shadePixel(
+        kind, view,
+        src[a + i] * (1 - w) + src[c + i] * w,
+        src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
+        src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
+        background, out, o,
+      );
     }
   }
   return out;

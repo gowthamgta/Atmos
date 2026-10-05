@@ -35,16 +35,21 @@ function istClock(ms: number): string {
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
           </div>
-          <input type="range" class="frames" min="0" [max]="Math.max(count() - 1, 0)" step="1" [value]="sat.index()" [disabled]="count() < 2" (input)="onFrame($event)" aria-label="Satellite time" />
+          <input type="range" class="frames" min="0" [max]="Math.max(count() - 1, 0)" step="0.01" [value]="sat.position()" [disabled]="count() < 2" (input)="onFrame($event)" aria-label="Satellite time" />
           <div class="ends"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
           @if (sat.loading()) { <div class="loading">Loading pictures…</div> }
         }
+
+        <div class="views" role="group" aria-label="What to show">
+          <button type="button" class="view" [class.active]="sat.view() === 'clouds'" [attr.aria-pressed]="sat.view() === 'clouds'" (click)="sat.setView('clouds')" title="Only the clouds, bright over the map">Clouds only</button>
+          <button type="button" class="view" [class.active]="sat.view() === 'picture'" [attr.aria-pressed]="sat.view() === 'picture'" (click)="sat.setView('picture')" title="The whole satellite picture, land and sea included">Full picture</button>
+        </div>
 
         <label class="opacity">
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="sat.opacity()" (input)="onOpacity($event)" aria-label="Satellite opacity" />
         </label>
-        <p class="note">High-resolution visible by day, infrared at night. © EUMETSAT</p>
+        <p class="note">Last hour, every 15 minutes. HRV by day, infrared at night. © EUMETSAT</p>
       </section>
     }
   `,
@@ -67,6 +72,10 @@ function istClock(ms: number): string {
     .loading, .msg { margin: 6px 0 0; color: var(--text-secondary); font-size: 11px; }
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
+    .views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .view { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; }
+    .view:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+    .view.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .note { margin: 10px 0 0; font-size: 10px; color: var(--text-muted); }
@@ -84,7 +93,7 @@ export class SatellitePanelComponent {
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   protected readonly productLabel = computed(() => {
     const p = this.sat.current()?.product;
-    return p ? (p.id === 'hrv' ? 'daylight picture (HRV)' : 'infrared (night)') : 'loading';
+    return p ? (p.id === 'hrv' ? 'daylight, HRV' : 'night, infrared') : 'loading';
   });
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
@@ -106,7 +115,7 @@ export class SatellitePanelComponent {
 
   protected onFrame(event: Event): void {
     this.sat.pause();
-    this.sat.setIndex(parseFloat((event.target as HTMLInputElement).value));
+    this.sat.setFrame(parseFloat((event.target as HTMLInputElement).value));
   }
 
   protected onOpacity(event: Event): void {

@@ -1,0 +1,34 @@
+/// <reference lib="webworker" />
+import { mercatorHeight, toOverlayPixels } from './satellite-image';
+import { SatelliteChannel, SatelliteView } from './satellite.config';
+
+export interface SatelliteWorkerRequest {
+  id: number;
+  jpeg: Blob;
+  kind: SatelliteChannel;
+  view: SatelliteView;
+}
+
+export type SatelliteWorkerResponse = { id: number; png: Blob } | { id: number; error: string };
+
+/** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
+addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) => {
+  const { id, jpeg, kind, view } = event.data;
+  try {
+    const bitmap = await createImageBitmap(jpeg);
+    const { width, height } = bitmap;
+    const scratch = new OffscreenCanvas(width, height);
+    const sctx = scratch.getContext('2d', { willReadFrequently: true })!;
+    sctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const src = sctx.getImageData(0, 0, width, height).data;
+    const outHeight = mercatorHeight(width);
+    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight);
+    const out = new OffscreenCanvas(width, outHeight);
+    out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
+    const png = await out.convertToBlob({ type: 'image/png' });
+    postMessage({ id, png } satisfies SatelliteWorkerResponse);
+  } catch (e) {
+    postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
+  }
+});

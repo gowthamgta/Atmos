@@ -12,7 +12,7 @@ import * as maplibregl from 'maplibre-gl';
 import { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { MapLayerService, LayerConfig } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
-import { SatelliteService } from '../../core/satellite/satellite.service';
+import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite.service';
 import { satelliteCoordinates } from '../../core/satellite/satellite-image';
 import {
   RadarProductKey,
@@ -288,13 +288,14 @@ export class MapComponent implements OnInit, OnDestroy {
     this.updateRadarMosaicOverlay(mosaic);
   });
 
-  // Reactive Effect: Meteosat satellite picture (the frame shown, whether the layer is on, and its opacity)
+  // Reactive Effect: Meteosat satellite pictures (which are loaded, where the loop is, whether the layer is on, opacity)
   private satelliteEffect = effect(() => {
     const on = this.layerService.layers().some(l => l.id === 'satellite' && l.active);
-    const url = this.satellite.current()?.url ?? null;
+    const frames = this.satellite.frames();
+    const position = this.satellite.position();
     const opacity = this.satellite.opacity();
     if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteOverlay(on ? url : null, opacity);
+    this.updateSatelliteOverlay(on, frames, position, opacity);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)
@@ -348,7 +349,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.map.removeSource('radar-source-mosaic');
     }
 
-    this.updateSatelliteOverlay(null, 0);
+    this.removeSatelliteLayers();
     this.forecastMap.detach();
     this.map?.remove();
     this.map = null;
@@ -564,29 +565,61 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
-  // --- Meteosat satellite picture (already re-spaced to Mercator, so it is placed by its corners) ---
+  // --- Meteosat satellite pictures: one layer per picture, cross-faded by the loop position ---
 
-  private updateSatelliteOverlay(url: string | null, opacity: number): void {
+  /** Picture URL on the map for each frame time, so changed or dropped pictures can be told apart from unchanged ones. */
+  private satelliteMounted = new Map<number, string>();
+
+  private removeSatelliteLayers(): void {
     if (!this.map) return;
-    const sourceId = 'satellite-source';
-    const layerId = 'satellite-layer';
-    if (!url) {
-      if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
-      if (this.map.getSource(sourceId)) this.map.removeSource(sourceId);
+    for (const t of this.satelliteMounted.keys()) {
+      if (this.map.getLayer(`satellite-layer-${t}`)) this.map.removeLayer(`satellite-layer-${t}`);
+      if (this.map.getSource(`satellite-source-${t}`)) this.map.removeSource(`satellite-source-${t}`);
+    }
+    this.satelliteMounted.clear();
+  }
+
+  /**
+   * Shows frame `floor(position)` fully and fades the next one in by the fractional part, so playback moves smoothly
+   * instead of jumping between pictures. Pictures are stacked oldest to newest, so the fading one is always on top.
+   */
+  private updateSatelliteOverlay(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number): void {
+    if (!this.map) return;
+    if (!on || frames.length === 0) {
+      this.removeSatelliteLayers();
       return;
     }
-    const coordinates = satelliteCoordinates();
-    const existing = this.map.getSource(sourceId) as maplibregl.ImageSource | undefined;
-    if (existing) {
-      existing.updateImage({ url, coordinates });
-    } else {
-      this.map.addSource(sourceId, { type: 'image', url, coordinates });
-      this.map.addLayer(
-        { id: layerId, type: 'raster', source: sourceId, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } },
-        this.overlayAnchorId()
-      );
+    const unchanged =
+      frames.length === this.satelliteMounted.size && frames.every(f => this.satelliteMounted.get(f.timeMs) === f.url);
+    if (!unchanged) {
+      // rebuild in time order so the stacking order stays oldest at the bottom
+      this.removeSatelliteLayers();
+      const coordinates = satelliteCoordinates();
+      const before = this.overlayAnchorId();
+      for (const f of frames) {
+        this.map.addSource(`satellite-source-${f.timeMs}`, { type: 'image', url: f.url, coordinates });
+        this.map.addLayer(
+          {
+            id: `satellite-layer-${f.timeMs}`,
+            type: 'raster',
+            source: `satellite-source-${f.timeMs}`,
+            layout: { visibility: 'none' },
+            paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-resampling': 'linear' },
+          },
+          before
+        );
+        this.satelliteMounted.set(f.timeMs, f.url);
+      }
     }
-    if (this.map.getLayer(layerId)) this.map.setPaintProperty(layerId, 'raster-opacity', opacity);
+    const base = Math.min(Math.max(Math.floor(position), 0), frames.length - 1);
+    const frac = position - base;
+    frames.forEach((f, k) => {
+      const id = `satellite-layer-${f.timeMs}`;
+      if (!this.map!.getLayer(id)) return;
+      const o = k === base ? opacity : k === base + 1 ? opacity * frac : 0;
+      this.map!.setLayoutProperty(id, 'visibility', o > 0.001 ? 'visible' : 'none');
+      this.map!.setPaintProperty(id, 'raster-opacity', o);
+    });
   }
 
   // --- Tamil Nadu boundary lines (state + 38 districts) ---
