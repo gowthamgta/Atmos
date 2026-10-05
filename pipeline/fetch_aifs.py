@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import requests
 from config import BUCKET_URL, NX, NY
+from derive import LEVEL_RAW_KEYS, unavailable_for
 from fetch_gfs import COARSE_GRID, read_regular_vars
 from fetch_ifs import download
 
@@ -20,11 +21,11 @@ STEP_HOURS = list(range(0, 145, 6))
 # Checked against Open-Meteo's hourly API: each value is the total of the 6 hours before the valid time
 # (file 5.1 mm vs six hourly API values summing to 5.4 mm), so it is divided by 6.
 PRECIP_NOTE = "mm/h: mean rate over the 6 h before the valid time"
-UNAVAILABLE_VARS: frozenset[str] = frozenset({"gust", "cape", "tcwv"})
-
 VARS = ["temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
-        "pressure_msl", "precipitation", "cloud_cover",
-        "wind_u_component_850hPa", "wind_v_component_850hPa", "wind_u_component_500hPa", "wind_v_component_500hPa"]
+        "pressure_msl", "precipitation", "cloud_cover", "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high",
+        "shortwave_radiation", *LEVEL_RAW_KEYS]
+PROVIDES = frozenset(VARS)
+UNAVAILABLE_VARS: frozenset[str] = unavailable_for(PROVIDES)  # gusts, CAPE, moisture, visibility
 
 
 def precip_window_hours(step_h: int) -> int:

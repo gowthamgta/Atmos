@@ -1,4 +1,5 @@
 """16-bit quantised fields stored as 8-bit RGB PNG (R = high byte, G = low byte, B = 0).
+Fewer than 16 significant bits can be requested (`bits`): the low bits are zeroed, so smooth fields compress better.
 
 Plain 8-bit PNG decodes identically in every browser via createImageBitmap, unlike 16-bit grayscale PNG.
 value = lo + (R*256 + G) / 65535 * (hi - lo); NaN encodes as 65535 with B = 255 (the "no data" flag).
@@ -9,9 +10,13 @@ import numpy as np
 from PIL import Image
 
 
-def encode_field(values: np.ndarray, lo: float, hi: float) -> bytes:
+def encode_field(values: np.ndarray, lo: float, hi: float, bits: int = 16) -> bytes:
     nan = ~np.isfinite(values)
-    q = np.clip(np.round((np.nan_to_num(values, nan=lo) - lo) / (hi - lo) * 65535), 0, 65535).astype(np.uint16)
+    q = np.clip(np.round((np.nan_to_num(values, nan=lo) - lo) / (hi - lo) * 65535), 0, 65535)
+    if bits < 16:  # round to the nearest multiple of the coarser step
+        step = float(1 << (16 - bits))
+        q = np.minimum(np.round(q / step) * step, 65535)
+    q = q.astype(np.uint16)
     q[nan] = 65535
     rgb = np.zeros(values.shape + (3,), np.uint8)
     rgb[..., 0] = q >> 8

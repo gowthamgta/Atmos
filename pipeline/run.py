@@ -37,6 +37,7 @@ def build_manifest(fetcher, run, steps):
                  "step": C.STEP_DEG, "nx": C.NX, "ny": C.NY},
         "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps],
         "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in published_vars(fetcher)},
+        "levels": list(C.LEVELS),
         "path": "{var}/{h:03d}.png",
         "notes": {"precip": fetcher.PRECIP_NOTE},
     }
@@ -44,7 +45,7 @@ def build_manifest(fetcher, run, steps):
 
 def process_step(fetcher, run, h):
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h))
-    return h, {v.id: encode_field(fields[v.id], v.lo, v.hi) for v in published_vars(fetcher)}
+    return h, {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher)}
 
 
 def live_run(url: str) -> str | None:

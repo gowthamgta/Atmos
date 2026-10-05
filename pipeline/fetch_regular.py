@@ -21,6 +21,7 @@ import omfiles
 import requests
 
 from config import BUCKET_URL, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN, NX, NY, STEP_DEG
+from derive import unavailable_for
 from net import download
 from regular import regrid_regular, window_indices
 
@@ -168,13 +169,15 @@ class RegularModel:
     """A model made of one or more regular-grid datasets; offers the same interface as the fetch_*.py modules."""
 
     def __init__(self, *, model_id: str, label: str, sources: list[Source], run_hours: tuple[int, ...],
-                 step_hours: list[int], unavailable: set[str]) -> None:
+                 step_hours: list[int]) -> None:
         self.MODEL_ID = model_id
         self.LABEL = label
         self.sources = sources
         self.RUN_HOURS = run_hours
         self.STEP_HOURS = step_hours
-        self.UNAVAILABLE_VARS = frozenset(unavailable)
+        provided = {k for s in sources for k in s.vars} | {k for s in sources for w in s.winds for k in w[:2]}
+        self.PROVIDES = frozenset(provided)
+        self.UNAVAILABLE_VARS = unavailable_for(provided)  # published variables this model cannot supply
         self.PRECIP_NOTE = "mm/h: mean rate over the output interval before the valid time (the model's own accumulation window)"
         self._info: dict[str, DatasetInfo] = {}
 

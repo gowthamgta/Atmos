@@ -13,6 +13,7 @@ import numpy as np
 import omfiles
 import requests
 from config import BUCKET_URL, LAT_MAX, LAT_MIN, LON_MIN, LON_MAX, NX, NY, STEP_DEG
+from derive import LEVEL_RAW_KEYS, unavailable_for
 from fetch_ifs import download
 from regular import regrid_regular, window_indices
 
@@ -24,9 +25,6 @@ STEP_HOURS = list(range(0, 145, 3))
 # (+126 h: file 7.65 mm vs 2.7 mm/h in the API), so it is divided by 3 after +120 h, like IFS after +90 h.
 PRECIP_NOTE = "mm/h: rain in the hour before the valid time (<= +120 h) or the mean rate over the 3 h before it (> +120 h)"
 
-UNAVAILABLE_VARS: frozenset[str] = frozenset()
-
-
 def precip_window_hours(step_h: int) -> int:
     """Hours covered by the source precipitation value at this forecast hour."""
     return 3 if step_h > 120 else 1
@@ -37,9 +35,12 @@ COARSE = "ncep_gfs025"  # 0.25 degree: pressure, gusts, CAPE
 
 # (dataset, source variable) -> key used by derive.py
 FINE_VARS = ["temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
-             "cloud_cover", "precipitation", "total_column_integrated_water_vapour"]
-COARSE_VARS = ["pressure_msl", "wind_gusts_10m", "cape",
-               "wind_u_component_850hPa", "wind_v_component_850hPa", "wind_u_component_500hPa", "wind_v_component_500hPa"]
+             "cloud_cover", "precipitation", "total_column_integrated_water_vapour",
+             "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "shortwave_radiation"]
+COARSE_VARS = ["pressure_msl", "wind_gusts_10m", "cape", "visibility", *LEVEL_RAW_KEYS]
+
+PROVIDES = frozenset(FINE_VARS) | frozenset(COARSE_VARS)
+UNAVAILABLE_VARS: frozenset[str] = unavailable_for(PROVIDES)  # published variables GFS cannot supply
 
 # regular grid geometry of the two datasets (row 0 = south, column 0 = -180 degrees)
 FINE_GRID = dict(rows=1536, cols=3072, lat_first=-89.912125, dlat=2 * 89.912125 / 1535, lon_first=-180.0, dlon=360 / 3072)

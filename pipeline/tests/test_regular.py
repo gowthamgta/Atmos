@@ -56,7 +56,7 @@ def test_rain_window_is_the_gap_to_the_previous_output_time():
 
 def test_steps_for_keeps_only_steps_every_dataset_has():
     model = FR.RegularModel(model_id="x", label="X", run_hours=(0,), step_hours=[0, 3, 6, 9, 12],
-                            sources=[FR.Source("a", {}), FR.Source("b", {})], unavailable=set())
+                            sources=[FR.Source("a", {}), FR.Source("b", {})])
     info = lambda offs: FR.DatasetInfo(None, offs, (0, 0, 1, 1))  # noqa: E731
     model._info = {"a": info([0.0, 3.0, 6.0, 9.0, 12.0]), "b": info([0.0, 3.0, 6.0, 12.0])}
     assert model.steps_for(None) == [0, 3, 6, 12]
@@ -86,3 +86,101 @@ def test_a_model_without_humidity_still_derives_without_crashing():
     out = derive(raw, 3)
     assert np.isnan(out["rh"]).all() and np.isnan(out["feels"]).all()
     assert np.allclose(out["t2m"], 30)
+
+
+# --- pressure levels, extra parameters and availability ---------------------------------------------------------
+
+import config as C
+import derive as D
+import encode as E
+import fetch_aifs, fetch_gfs, fetch_ifs
+
+
+def test_every_level_has_five_fields_with_sensible_ranges():
+    assert C.LEVELS == (925, 850, 700, 500, 300, 200)
+    for lvl in C.LEVELS:
+        for kind in ("u", "v", "t", "rh", "gh"):
+            var = C.VARS[f"{kind}{lvl}"]
+            assert var.hi > var.lo and var.bits == 12
+    # a typical value of each level must sit inside its encoding range (no clipping)
+    assert C.VARS["t850"].lo < 20 < C.VARS["t850"].hi and C.VARS["t500"].lo < -8 < C.VARS["t500"].hi
+    assert C.VARS["gh500"].lo < 5880 < C.VARS["gh500"].hi and C.VARS["gh200"].lo < 12400 < C.VARS["gh200"].hi
+    assert C.VARS["t300"].lo < -42 < C.VARS["t300"].hi and C.VARS["t200"].lo < -55 < C.VARS["t200"].hi
+
+
+def test_dew_point_is_the_inverse_of_relative_humidity():
+    t = np.array([30.0, 20.0, 5.0], np.float32)
+    td = np.array([25.0, 10.0, -3.0], np.float32)
+    rh = D.relative_humidity(t, td)
+    assert np.allclose(D.dew_point(t, rh), td, atol=0.05)
+    assert np.allclose(D.dew_point(t, np.array([100, 100, 100], np.float32)), t, atol=0.05)   # saturated: dew point = air temperature
+
+
+def _raw(**extra):
+    z = np.zeros((2, 2), np.float32)
+    raw = {"temperature_2m": z + 30, "relative_humidity_2m": z + 70, "wind_u_component_10m": z, "wind_v_component_10m": z,
+           "wind_gusts_10m": z, "pressure_msl": z + 101000, "precipitation": z, "cloud_cover": z, "cape": z,
+           "total_column_integrated_water_vapour": z}
+    raw.update({k: z + v for k, v in extra.items()})
+    return raw
+
+
+def test_derive_handles_levels_and_the_extra_surface_parameters():
+    out = D.derive(_raw(temperature_850hPa=20, relative_humidity_850hPa=60, geopotential_height_850hPa=1500,
+                        wind_u_component_850hPa=8, wind_v_component_850hPa=-2, cloud_cover_low=40, cloud_cover_mid=20,
+                        cloud_cover_high=10, visibility=12000, shortwave_radiation=650))
+    assert np.allclose(out["t850"], 20) and np.allclose(out["rh850"], 60) and np.allclose(out["gh850"], 1500)
+    assert np.allclose(out["u850"], 8) and np.allclose(out["v850"], -2)
+    assert np.allclose(out["cloud_low"], 40) and np.allclose(out["cloud_high"], 10)
+    assert np.allclose(out["vis"], 12.0)          # metres in the file, kilometres published
+    assert np.allclose(out["solar"], 650)
+    assert np.allclose(out["dew"], D.dew_point(np.float32(30), np.float32(70)), atol=0.01)   # derived from temperature and humidity
+    assert np.isnan(out["t500"]).all()            # a level the model lacks stays empty
+
+
+def test_dew_point_prefers_the_models_own_value():
+    out = D.derive(_raw(dew_point_2m=22.5))
+    assert np.allclose(out["dew"], 22.5)
+
+
+def test_unavailable_for_follows_the_raw_fields_a_model_has():
+    everything = set(D.LEVEL_RAW_KEYS) | {"temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
+        "wind_gusts_10m", "pressure_msl", "precipitation", "cloud_cover", "cape", "total_column_integrated_water_vapour",
+        "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility", "shortwave_radiation"}
+    assert D.unavailable_for(everything) == frozenset()
+    no_humidity = everything - {"relative_humidity_2m"}
+    assert D.unavailable_for(no_humidity) == {"rh", "feels", "dew"}                        # none of the three can be made
+    assert D.unavailable_for(no_humidity | {"dew_point_2m"}) == frozenset()                 # a dew point restores all three
+    assert D.unavailable_for(everything - {"wind_v_component_10m"}) == {"v10", "feels"}     # feels-like needs both wind components
+    assert D.unavailable_for(everything - {"geopotential_height_500hPa"}) == {"gh500"}
+    assert D.unavailable_for(everything - {"relative_humidity_200hPa"}) == {"rh200"}
+
+
+def test_the_three_hand_written_models_provide_all_levels():
+    for mod in (fetch_ifs, fetch_gfs, fetch_aifs):
+        for key in D.LEVEL_RAW_KEYS:
+            assert key in mod.PROVIDES, (mod.MODEL_ID, key)
+        assert not any(v[0] in "utv" and v[1:].isdigit() for v in mod.UNAVAILABLE_VARS if v[1:].isdigit())
+
+
+def test_regular_models_publish_what_their_datasets_have():
+    by_id = {m.MODEL_ID: m for m in models_regular.ALL}
+    assert "rh200" in by_id["jma_gsm"].UNAVAILABLE_VARS and "rh500" not in by_id["jma_gsm"].UNAVAILABLE_VARS
+    assert {"cloud_low", "cloud_mid", "cloud_high"} <= by_id["gdps"].UNAVAILABLE_VARS     # the Canadian surface set has none
+    assert {"rh", "feels", "dew"} <= by_id["aigfs"].UNAVAILABLE_VARS                      # AI-GFS has no surface humidity
+    assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv"}                            # UKMO: everything else, winds via speed + direction
+    assert "vis" not in by_id["cma_grapes"].UNAVAILABLE_VARS and "solar" not in by_id["cma_grapes"].UNAVAILABLE_VARS
+    for m in models_regular.ALL:
+        assert not (set(D.LEVEL_RAW_KEYS) - m.PROVIDES - {"relative_humidity_200hPa"}), m.MODEL_ID    # every model has all six levels
+
+
+def test_reduced_precision_encoding_stays_within_its_error_bound_and_compresses_better():
+    rng = np.random.default_rng(3)
+    base = np.linspace(-20, 20, 181 * 221, dtype=np.float32).reshape(181, 221)
+    field = base + rng.normal(0, 0.05, base.shape).astype(np.float32)
+    full = E.encode_field(field, -30, 30)
+    coarse = E.encode_field(field, -30, 30, bits=12)
+    back = E.decode_field(coarse, -30, 30)
+    assert np.abs(back - field).max() <= (60 / 65535) * 8 + 1e-3          # half a 12-bit step, 16 codes wide
+    assert len(coarse) < len(full)
+    assert np.isnan(E.decode_field(E.encode_field(np.array([[np.nan, 1.0]], np.float32), -30, 30, bits=12), -30, 30)[0, 0])
