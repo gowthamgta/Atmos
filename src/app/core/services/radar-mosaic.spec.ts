@@ -36,41 +36,48 @@ const eastOf = (station: (typeof IMD_RADAR_STATIONS)[number], km: number): [numb
 ];
 
 describe('composeRadarMosaic', () => {
-  it('merges CAZ, PPI and SRI (not the accumulated PAC total)', () => {
-    expect(MERGED_PRODUCTS).toEqual(['caz', 'ppi', 'sri']);
+  it('merges only CAZ and PPZ', () => {
+    expect(MERGED_PRODUCTS).toEqual(['caz', 'ppz']);
   });
 
   it('takes the strongest of a station\'s scans where they overlap, without diluting it', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 2.0)],
-      ['karaikal:ppi', scan(karaikal, 'ppi', 3.5)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 3.5)],
     ])!;
     const [lat, lng] = eastOf(karaikal, 40);
     // one radar, two scans: the result is the stronger scan itself (a blend would pull it below 3.5)
     expect(valueAt(mosaic, lat, lng)).toBeCloseTo(3.5, 1);
   });
 
-  it('keeps the wider scan where the narrower ones do not reach', () => {
+  it('keeps the wider scan where the narrower one does not reach', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 2.0)],
-      ['karaikal:ppi', scan(karaikal, 'ppi', 3.5)],
-      ['karaikal:sri', scan(karaikal, 'sri', 4.0)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 4.0)],
     ])!;
     const near = eastOf(karaikal, 60);
-    const far = eastOf(karaikal, 200); // beyond PPI and SRI (150 km), inside CAZ (255 km)
+    const far = eastOf(karaikal, 200); // beyond PPZ (158 km), inside CAZ (255 km)
     expect(valueAt(mosaic, near[0], near[1])).toBeCloseTo(4.0, 1);
     expect(valueAt(mosaic, far[0], far[1])).toBeCloseTo(2.0, 1);
   });
 
-  it('lets a strong CAZ show over a weaker PPI too, and works with CAZ alone', () => {
+  it('lets a strong CAZ show over a weaker PPZ too, and works with CAZ alone', () => {
     const both = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.2)],
-      ['karaikal:ppi', scan(karaikal, 'ppi', 1.5)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 1.5)],
     ])!;
     const [lat, lng] = eastOf(karaikal, 50);
     expect(valueAt(both, lat, lng)).toBeCloseTo(4.2, 1);
     const alone = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan(karaikal, 'caz', 1.2)]])!;
     expect(valueAt(alone, lat, lng)).toBeCloseTo(1.2, 1);
+  });
+
+  it('supports PPI scan composed alone', () => {
+    const ppiMosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'ppi', 3.8)],
+    ])!;
+    const [lat, lng] = eastOf(karaikal, 40);
+    expect(valueAt(ppiMosaic, lat, lng)).toBeCloseTo(3.8, 1);
   });
 
   it('still blends different stations where they overlap, keeping the storm core', () => {
@@ -79,7 +86,7 @@ describe('composeRadarMosaic', () => {
     const lng = (karaikal.lng + kochi.lng) / 2;
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.0)],
-      ['karaikal:ppi', scan(karaikal, 'ppi', 4.0)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 4.0)],
       ['kochi', scan(kochi, 'caz', 2.0)],
     ])!;
     const v = valueAt(mosaic, lat, lng);

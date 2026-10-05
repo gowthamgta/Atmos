@@ -423,11 +423,11 @@ export class RadarService implements OnDestroy {
         const station = queue.shift();
         if (!station) break;
         try {
-          // The merged extras (PPI, SRI) are fetched alongside; a missing one is simply left out of the merge. IMD updates
-          // about every 10 minutes, so they are refreshed every few minutes, not every minute (they add up to megabytes),
+          // When active product is 'caz' (merged mode), PPZ is fetched alongside; a missing one is simply left out of the merge.
+          // IMD updates about every 10 minutes, so extras are refreshed every few minutes,
           // and the X-band radar's are skipped: its images are big and the Chennai S-band radar covers the same ground.
           const now = Date.now();
-          const wantExtras = station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
+          const wantExtras = productKey === 'caz' && station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
           if (wantExtras) this.extrasFetchedAt.set(station.id, now);
           const extras = wantExtras
             ? await Promise.all(
@@ -948,8 +948,11 @@ export class RadarService implements OnDestroy {
 
   /** Rebuilds the live composite from the latest still of every radar. */
   private generateMergedMosaic(): void {
-    // CAZ results are keyed by station id, the merged extras by `stationId:product`
-    this.compositeMosaic.set(this.composeMosaic([...this.allRadarResults(), ...this.extraResults()]));
+    // In merged mode ('caz'), combine CAZ with PPZ extras; in 'ppi' mode, compose pure PPI scans
+    const sources = this.activeProduct() === 'caz'
+      ? [...this.allRadarResults(), ...this.extraResults()]
+      : [...this.allRadarResults()];
+    this.compositeMosaic.set(this.composeMosaic(sources));
   }
 
   /** The live composite on the storm-tracking grid. */

@@ -2,17 +2,16 @@
  * Merging radar scans into one picture (pure, so it can be tested).
  *
  * Each source is a processed scan of one station and product: an intensity field on that scan's own square, with its
- * geographic bounds. A station's scans (CAZ, PPI, SRI) are merged by taking the strongest value, so the picture reaches
- * as far as the furthest scan and keeps the near-range detail of the others; the stations are then blended where they
- * overlap, keeping storm cores.
+ * geographic bounds. A station's scans (CAZ and PPZ) are merged by taking the strongest value, so the picture reaches
+ * as far as the furthest scan and keeps the near-range detail of the other; the stations are then blended where they
+ * overlap, keeping storm cores. PPI is displayed separately.
  */
 import type { ProcessedRadarResult, RadarObservationTiming, RadarProductKey, RadarStationConfig } from '../domain/models/radar.model';
 import { quantizeRadarField } from './radar-field';
 
-/** The live scans merged into the one radar picture. CAZ (column maximum, 250 km) reaches furthest; PPI (the lowest
- *  sweep) and SRI (surface rain rate, converted to the same dBZ scale) add the near-range detail they see best. Where
- *  several of them see rain the strongest value wins. PAC is an accumulated total, not what is falling now. */
-export const MERGED_PRODUCTS: readonly RadarProductKey[] = ['caz', 'ppi', 'sri'];
+/** The live scans merged into the one composite picture: CAZ (column maximum, 250 km) and PPZ (reflectivity Z, 150 km).
+ *  Where both see rain the strongest value wins. PPI is available as a separate scan menu. */
+export const MERGED_PRODUCTS: readonly RadarProductKey[] = ['caz', 'ppz'];
 
 /** Resolution of the composite: 0.5 km per pixel. */
 export const MOSAIC_KM_PER_PX = 0.5;

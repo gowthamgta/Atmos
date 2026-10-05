@@ -2,6 +2,19 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
+import { RadarProductKey } from '../../core/domain/models/radar.model';
+
+interface ProductOption {
+  key: RadarProductKey;
+  name: string;
+  hint: string;
+  title: string;
+}
+
+const PRODUCTS: readonly ProductOption[] = [
+  { key: 'caz', name: 'Merged', hint: 'CAZ + PPZ', title: 'Merged Column Max (CAZ) & Reflectivity Z (PPZ)' },
+  { key: 'ppi', name: 'PPI', hint: 'Base scan', title: 'Plan Position Indicator (Base reflectivity sweep)' },
+];
 
 /** "14:45" (IST) for a time in epoch ms. */
 function istClock(ms: number): string {
@@ -48,9 +61,13 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
-        <div class="merged" title="Max reflectivity (reaches furthest, about 250 km), base scan and surface rain rate (about 150 km) are combined into one picture; where several see rain the strongest value is shown.">
-          <span class="merged-name">All scans merged</span>
-          <span class="merged-sub full-only">Max reflectivity · base scan · rain rate</span>
+        <div class="products" role="group" aria-label="Radar scan mode">
+          @for (p of products; track p.key) {
+            <button type="button" class="prod" [class.active]="product() === p.key" [attr.aria-pressed]="product() === p.key" [title]="p.title" (click)="setProduct(p.key)">
+              <span class="pname">{{ p.name }}</span>
+              <span class="phint">{{ p.hint }}</span>
+            </button>
+          }
         </div>
 
         @if (historyAvailable()) {
@@ -115,10 +132,12 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
-    .merged { display: flex; flex-direction: column; margin-top: 10px; padding: 7px 10px; border-radius: 10px; background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.35); color: var(--neon-cyan); }
-    .merged-name { font-weight: 700; font-size: 13px; }
-    .merged-sub { font-size: 10px; color: var(--text-secondary); }
-    .panel.compact .merged { margin-top: 8px; padding: 5px 10px; }
+    .products { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
+    .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+    .prod:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+    .prod.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
+    .pname { font-weight: 700; font-size: 13px; }
+    .phint { font-size: 10px; opacity: 0.8; }
     .loop { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
     .loop .play { width: 32px; height: 32px; font-size: 13px; }
     .scrub { flex: 1; min-width: 0; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
@@ -136,7 +155,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .sub[data-state='recent'] { color: #facc15; }
     .sub[data-state='stale'] { color: #fb923c; }
     .sub[data-state='offline'] { color: #f87171; }
-    /* compact: one header line, the merged label, the loop and a thin colour bar */
+    /* compact: one header line, the product buttons, the loop and a thin colour bar */
     .panel.compact { padding: 8px 10px; }
     .panel.compact .full-only { display: none; }
     .panel.compact .compact-only { display: block; }
@@ -144,6 +163,10 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .panel.compact .heading strong { font-size: 13px; }
     .panel.compact .compact-only { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .panel.compact .icon-btn { width: 32px; height: 32px; font-size: 16px; }
+    .panel.compact .products { margin-top: 8px; gap: 4px; }
+    .panel.compact .prod { min-height: 32px; padding: 3px 2px; flex-direction: row; justify-content: center; gap: 4px; }
+    .panel.compact .pname { font-size: 12px; }
+    .panel.compact .phint { display: none; }
     .panel.compact .legend { margin-top: 8px; }
     .panel.compact .bar { height: 5px; }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
@@ -208,6 +231,7 @@ export class RadarPanelComponent {
   });
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
+  protected readonly products = PRODUCTS;
   protected readonly product = this.radar.activeProduct;
   protected readonly opacity = this.radar.radarOpacity;
   protected readonly stations = this.radar.stations;
@@ -220,19 +244,15 @@ export class RadarPanelComponent {
   protected readonly opacityPercent = computed(() => Math.round(this.opacity() * 100));
   protected readonly freshnessLabel = computed(() => FRESHNESS_LABEL[this.freshness()] ?? '');
   protected readonly scanLabel = computed(() => {
+    const p = this.product();
     const st = this.shortName(this.radar.activeStation().name);
     const t = this.radar.observationTiming();
-    return t?.ist ? `${st} scan ${t.ist}` : `${st} scan`;
+    const mode = p === 'ppi' ? 'PPI sweep' : 'merged scan';
+    return t?.ist ? `${st} ${mode} ${t.ist}` : `${st} ${mode}`;
   });
 
-  protected readonly legendTitle = computed(() => {
-    const p = this.product();
-    return p === 'sri' ? 'Rain rate (mm/h)' : p === 'pac' ? 'Rain total (mm)' : 'Reflectivity (dBZ)';
-  });
-  protected readonly legendTicks = computed(() => {
-    const p = this.product();
-    return p === 'sri' ? ['0.4', '2', '10', '50', '100+'] : p === 'pac' ? ['0.4', '2', '10', '50', '100+'] : ['17', '28', '39', '50', '60+'];
-  });
+  protected readonly legendTitle = computed(() => 'Reflectivity (dBZ)');
+  protected readonly legendTicks = computed(() => ['17', '28', '39', '50', '60+']);
 
   constructor() {
     // On larger screens the last hour is built as soon as the radar is shown (phones wait for the play button, since
@@ -276,6 +296,10 @@ export class RadarPanelComponent {
     const m = this.radar.getStationAge(id);
     if (m === null || this.radar.getStationFreshness(id) === 'offline') return '—'; // an offline radar has no meaningful age
     return m >= 120 ? `${Math.round(m / 60)}h` : `${m}m`;
+  }
+
+  protected setProduct(key: RadarProductKey): void {
+    this.radar.setProduct(key);
   }
 
   protected select(id: string): void {

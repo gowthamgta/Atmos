@@ -40,18 +40,24 @@ describe('Radar Domain & Config', () => {
       expect(st!.products.sri.url).toContain(st!.code);
       expect(st!.products.pac).toBeDefined();
       expect(st!.products.pac.url).toContain(st!.code);
+      expect(st!.products.ppz).toBeDefined();
+      expect(st!.products.ppz.url).toContain(st!.code);
     }
 
     const tvm = IMD_RADAR_STATIONS.find(s => s.id === 'thiruvananthapuram')!;
     expect(tvm.products.caz.file).toBe('caz_tvm.gif');
     expect(tvm.products.sri.rangeKm).toBe(124);
+    expect(tvm.products.ppz.rangeKm).toBe(240);
     expect(tvm.products.caz.palette?.length).toBe(15);
+    expect(tvm.products.ppz.file).toBe('ppz_tvm.gif');
 
     const mlr = IMD_RADAR_STATIONS.find(s => s.id === 'mangaluru')!;
     expect(mlr.products.caz.file).toBe('caz_mlr.gif');
+    expect(mlr.products.ppz.file).toBe('ppz_mlr.gif');
     expect(mlr.band).toBe('C-Band');
     // Pure white is excluded: the Mangaluru basemap draws district borders in white
     expect(mlr.products.caz.palette!.some(p => p.rgb.every(c => c === 255))).toBe(false);
+    expect(mlr.products.ppz.crop?.w).toBe(880);
 
     const cni = IMD_RADAR_STATIONS.find(s => s.id === 'chennai')!;
     expect(cni.band).toBe('S-Band');
@@ -63,6 +69,7 @@ describe('Radar Domain & Config', () => {
     expect(cni.products.ppi.crop?.w).toBe(800);
     expect(cni.products.sri.crop?.w).toBe(600);
     expect(cni.products.pac.crop?.w).toBe(599);
+    expect(cni.products.ppz.crop?.w).toBe(800);
 
     const koc = IMD_RADAR_STATIONS.find(s => s.id === 'kochi')!;
     expect(koc.band).toBe('S-Band');
@@ -77,6 +84,7 @@ describe('Radar Domain & Config', () => {
     expect(koc.products.ppi.crop?.w).toBe(600);
     expect(koc.products.sri.crop?.w).toBe(708);
     expect(koc.products.pac.crop?.w).toBe(708);
+    expect(koc.products.ppz.crop?.w).toBe(600);
 
     const plk = IMD_RADAR_STATIONS.find(s => s.id === 'pallikaranai')!;
     expect(plk.band).toBe('X-Band');
@@ -87,6 +95,8 @@ describe('Radar Domain & Config', () => {
     expect(plk.products.ppi.crop?.w).toBe(2430);
     expect(plk.products.sri.crop?.w).toBe(2430);
     expect(plk.products.pac.crop?.w).toBe(2430);
+    expect(plk.products.ppz.crop?.w).toBe(2430);
+    expect(plk.products.ppz.crop?.h).toBe(2485);
   });
 
   it('should correctly extract ISO timestamp from synthetic binary GIF comment', () => {

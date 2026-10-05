@@ -1,4 +1,4 @@
-export type RadarProductKey = 'caz' | 'ppi' | 'sri' | 'pac';
+export type RadarProductKey = 'caz' | 'ppi' | 'sri' | 'pac' | 'ppz';
 export type RadarBand = 'S-Band' | 'C-Band' | 'X-Band';
 
 export interface RadarCropConfig {
@@ -215,7 +215,7 @@ function createImdStation(params: {
     icon: string,
     defaultR: number
   ): RadarProductConfig => {
-    const rangeKm = params.productRanges?.[key] || defaultR;
+    const rangeKm = params.productRanges?.[key] ?? (key === 'ppz' ? params.productRanges?.ppi : undefined) ?? defaultR;
     const rings = getRings(rangeKm);
     const { bounds, maplibreCoordinates } = computeRadarBounds(params.lat, params.lng, rangeKm);
     return {
@@ -228,8 +228,8 @@ function createImdStation(params: {
       rings,
       bounds,
       maplibreCoordinates,
-      crop: params.crops?.[key],
-      palette: params.palettes?.[key]
+      crop: params.crops?.[key] ?? (key === 'ppz' ? params.crops?.ppi : undefined),
+      palette: params.palettes?.[key] ?? (key === 'ppz' ? params.palettes?.ppi : undefined)
     };
   };
 
@@ -253,7 +253,8 @@ function createImdStation(params: {
       caz: createProdConfig('caz', 'CAZ', 'Column Maximum Reflectivity (MAX_Z)', '🌩️', defaultRangeKm),
       ppi: createProdConfig('ppi', 'PPI', 'Plan Position Indicator (Base Sweep)', '⚡', band === 'X-Band' ? 85 : 150),
       sri: createProdConfig('sri', 'SRI', 'Surface Rainfall Intensity (mm/h)', '🌧️', band === 'X-Band' ? 85 : 150),
-      pac: createProdConfig('pac', 'PAC', 'Precipitation Accumulation (Rain Total)', '💧', band === 'X-Band' ? 85 : 150)
+      pac: createProdConfig('pac', 'PAC', 'Precipitation Accumulation (Rain Total)', '💧', band === 'X-Band' ? 85 : 150),
+      ppz: createProdConfig('ppz', 'PPZ', 'Plan Position Indicator (Reflectivity Z)', '🎯', band === 'X-Band' ? 85 : 150)
     }
   };
 }
@@ -275,13 +276,15 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       caz: 255,
       ppi: 158,
       sri: 158,
-      pac: 158
+      pac: 158,
+      ppz: 158
     },
     crops: {
       caz: { x: 0, y: 201, w: 519, h: 519 },
       ppi: { x: 0, y: 0, w: 720, h: 720 },
       sri: { x: 0, y: 0, w: 720, h: 720 },
-      pac: { x: 0, y: 0, w: 720, h: 720 }
+      pac: { x: 0, y: 0, w: 720, h: 720 },
+      ppz: { x: 0, y: 0, w: 720, h: 720 }
     }
   }),
   createImdStation({
@@ -299,13 +302,15 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       caz: 255,
       ppi: 158,
       sri: 158,
-      pac: 158
+      pac: 158,
+      ppz: 158
     },
     crops: {
       caz: { x: 0, y: 201, w: 500, h: 499 },
       ppi: { x: 0, y: 0, w: 800, h: 800 },
       sri: { x: 0, y: 0, w: 600, h: 600 },
-      pac: { x: 0, y: 0, w: 599, h: 599 }
+      pac: { x: 0, y: 0, w: 599, h: 599 },
+      ppz: { x: 0, y: 0, w: 800, h: 800 }
     }
   }),
   createImdStation({
@@ -323,13 +328,15 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       caz: 87,
       ppi: 87,
       sri: 87,
-      pac: 87
+      pac: 87,
+      ppz: 87
     },
     crops: {
       caz: { x: 29, y: 628, w: 1800, h: 1800 },
       ppi: { x: 28, y: 0, w: 2430, h: 2490 },
       sri: { x: 28, y: 0, w: 2430, h: 2485 },
-      pac: { x: 28, y: 0, w: 2430, h: 2485 }
+      pac: { x: 28, y: 0, w: 2430, h: 2485 },
+      ppz: { x: 28, y: 0, w: 2430, h: 2485 }
     }
   }),
   createImdStation({
@@ -347,13 +354,15 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       caz: 255,
       ppi: 158,
       sri: 158,
-      pac: 158
+      pac: 158,
+      ppz: 158
     },
     crops: {
       caz: { x: 100, y: 300, w: 600, h: 600 },
       ppi: { x: 100, y: 300, w: 600, h: 600 },
       sri: { x: 40, y: 40, w: 708, h: 708 },
-      pac: { x: 40, y: 40, w: 708, h: 708 }
+      pac: { x: 40, y: 40, w: 708, h: 708 },
+      ppz: { x: 100, y: 300, w: 600, h: 600 }
     }
   }),
   createImdStation({
@@ -371,19 +380,22 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       caz: 240,
       ppi: 240,
       sri: 124,
-      pac: 76
+      pac: 76,
+      ppz: 240
     },
     crops: {
       caz: { x: 43, y: 181, w: 514, h: 514 },
       ppi: { x: 43, y: 45, w: 652, h: 652 },
       sri: { x: 43, y: 45, w: 652, h: 652 },
-      pac: { x: 43, y: 45, w: 652, h: 652 }
+      pac: { x: 43, y: 45, w: 652, h: 652 },
+      ppz: { x: 43, y: 45, w: 652, h: 652 }
     },
     palettes: {
       caz: paletteFromBins(TVM_COLORS, [56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4, 0]),
       ppi: paletteFromBins(TVM_COLORS, [60.67, 56.33, 52.0, 47.67, 43.33, 39.0, 34.67, 30.33, 26.0, 21.67, 17.33, 13.0, 8.67, 4.33, 0]),
       sri: paletteFromBins(TVM_COLORS, TVM_RAIN_BINS, rainRateToDbz),
-      pac: paletteFromBins(TVM_COLORS, TVM_RAIN_BINS, rainRateToDbz)
+      pac: paletteFromBins(TVM_COLORS, TVM_RAIN_BINS, rainRateToDbz),
+      ppz: paletteFromBins(TVM_COLORS, [60.67, 56.33, 52.0, 47.67, 43.33, 39.0, 34.67, 30.33, 26.0, 21.67, 17.33, 13.0, 8.67, 4.33, 0])
     }
   }),
   createImdStation({
@@ -402,19 +414,22 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       caz: { x: 0, y: 200, w: 880, h: 880 },
       ppi: { x: 0, y: 0, w: 822, h: 822 },
       sri: { x: 0, y: 0, w: 800, h: 800 },
-      pac: { x: 0, y: 0, w: 1200, h: 1200 }
+      pac: { x: 0, y: 0, w: 1200, h: 1200 },
+      ppz: { x: 0, y: 0, w: 880, h: 880 }
     },
     productRanges: {
       caz: 250,
       ppi: 250,
       sri: 250,
-      pac: 250
+      pac: 250,
+      ppz: 250
     },
     palettes: {
       caz: MLR_REFLECTIVITY_PALETTE,
       ppi: MLR_REFLECTIVITY_PALETTE,
       sri: MLR_SRI_PALETTE,
-      pac: MLR_PAC_PALETTE
+      pac: MLR_PAC_PALETTE,
+      ppz: MLR_REFLECTIVITY_PALETTE
     }
   })
 ];
