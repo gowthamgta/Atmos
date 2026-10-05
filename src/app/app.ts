@@ -1,6 +1,8 @@
 import { Component, inject, ViewChild, signal } from '@angular/core';
 import { MapComponent } from './features/map/map.component';
 import { LayersComponent } from './features/layers/layers.component';
+import { ForecastRailComponent } from './features/forecast/forecast-rail.component';
+import { ForecastTimelineComponent } from './features/forecast/forecast-timeline.component';
 import { RadarService } from './core/services/radar.service';
 import { MapLayerService } from './core/services/map-layer.service';
 import { RadarProductKey } from './core/domain/models/radar.model';
@@ -10,7 +12,9 @@ import { RadarProductKey } from './core/domain/models/radar.model';
   standalone: true,
   imports: [
     MapComponent,
-    LayersComponent
+    LayersComponent,
+    ForecastRailComponent,
+    ForecastTimelineComponent
   ],
   templateUrl: './app.html',
   styleUrl: './app.css'

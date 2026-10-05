@@ -4,8 +4,22 @@
     {
       "name": "dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["start"],
+      "runtimeArgs": [
+        "start"
+      ],
       "port": 4200,
+      "autoPort": false
+    },
+    {
+      "name": "dev-4300",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start",
+        "--",
+        "--port",
+        "4300"
+      ],
+      "port": 4300,
       "autoPort": false
     }
   ]

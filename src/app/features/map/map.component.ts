@@ -40,6 +40,7 @@ const RADAR_COVERAGE_BOUNDS = computeRadarCoverageBounds();
 const BOUNDARY_SOURCE_ID = 'tn-boundaries';
 const BOUNDARY_FIRST_LAYER_ID = 'tn-district-casing';
 import { MicroclimateService } from '../../core/services/microclimate.service';
+import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
 import { blendDirectionDeg } from '../../core/domain/models/microclimate.model';
 
 @Component({
@@ -1004,6 +1005,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private layerService = inject(MapLayerService);
   private radarService = inject(RadarService);
   protected mcService = inject(MicroclimateService);
+  private forecastMap = inject(ForecastMapController);
 
   readonly hoverInfo = this.radarService.hoverInfo;
   readonly mcInspection = this.mcService.inspectionInfo;
@@ -1197,6 +1199,7 @@ export class MapComponent implements OnInit, OnDestroy {
       if (this.map?.getSource(sId)) this.map.removeSource(sId);
     }
 
+    this.forecastMap.detach();
     this.map?.remove();
     this.map = null;
   }
@@ -1314,6 +1317,9 @@ export class MapComponent implements OnInit, OnDestroy {
 
       // 6. Initial overlay sync & trigger concurrent fetch of all radar sweeps
       this.syncOverlays(this.layerService.layers());
+
+      // 7. ECMWF forecast layer (GPU), mounted below the boundary lines
+      this.forecastMap.attach(map, this.overlayAnchorId());
     });
 
     map.on('click', (e) => {
