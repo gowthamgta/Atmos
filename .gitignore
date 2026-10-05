@@ -50,3 +50,6 @@ __pycache__/
 *.grib2
 *.idx
 .env
+
+# Local Claude Code settings
+/.claude/settings.local.json
