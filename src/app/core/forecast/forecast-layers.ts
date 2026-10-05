@@ -58,8 +58,10 @@ export interface ForecastLayerDef {
   ticks: readonly number[];
   /** Fraction of full opacity. */
   opacity: number;
-  /** How the 1 km terrain correction applies to this variable (null = shown at model resolution). */
+  /** How the 1 km terrain downscaling applies to this variable (null: smooth interpolation of the model field only). */
   terrain: TerrainMode | null;
+  /** Pressure-level layers: about how high the level is (m). Where the ground is higher, the level is underground. */
+  levelHeightM?: number;
   /** Present when the layer can be shown at a pressure level: what changes there. */
   atLevel?: (level: number) => LevelSpec;
 }
@@ -114,26 +116,26 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
     atLevel: l => ({ varId: `t${l}`, min: TEMP_RANGE[l][0], max: TEMP_RANGE[l][1], ticks: TEMP_RANGE[l][2] }),
   },
   { id: 'feels', label: 'Feels like', icon: '🥵', group: 'Temperature', varId: 'feels', unit: '°C', min: 18, max: 48, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40, 45], opacity: 0.85, terrain: 'temperature' },
-  { id: 'dew', label: 'Dew point', icon: '💦', group: 'Temperature', varId: 'dew', unit: '°C', min: 10, max: 28, stops: DEW, gamma: 1, clearBelow: 0, ticks: [12, 16, 20, 24, 28], opacity: 0.85, terrain: null },
+  { id: 'dew', label: 'Dew point', icon: '💦', group: 'Temperature', varId: 'dew', unit: '°C', min: 10, max: 28, stops: DEW, gamma: 1, clearBelow: 0, ticks: [12, 16, 20, 24, 28], opacity: 0.85, terrain: 'dewpoint' },
   {
     id: 'wind', label: 'Wind', icon: '🍃', group: 'Wind', varId: 'u10', varId2: 'v10', unit: 'km/h', displayScale: 3.6, min: 0, max: 20, stops: WIND,
-    gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 0.8, terrain: null,
+    gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 0.8, terrain: 'wind',
     atLevel: l => ({ varId: `u${l}`, varId2: `v${l}`, min: 0, max: WIND_RANGE[l][0], ticks: WIND_RANGE[l][1] }),
   },
-  { id: 'gust', label: 'Wind gusts', icon: '💨', group: 'Wind', varId: 'gust', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: WIND, gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 0.85, terrain: null },
+  { id: 'gust', label: 'Wind gusts', icon: '💨', group: 'Wind', varId: 'gust', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: WIND, gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 0.85, terrain: 'wind' },
   {
     id: 'humidity', label: 'Humidity', icon: '💧', group: 'Rain and humidity', varId: 'rh', unit: '%', min: 30, max: 100, stops: HUMIDITY, gamma: 1,
     clearBelow: 0, ticks: [40, 60, 80, 100], opacity: 0.85, terrain: 'humidity',
     atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100] }),
   },
-  { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: null },
-  { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: null },
+  { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
+  { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'clouds', label: 'Clouds (total)', icon: '☁', group: 'Clouds and sky', varId: 'cloud', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
-  { id: 'cloud_low', label: 'Low clouds', icon: '🌥', group: 'Clouds and sky', varId: 'cloud_low', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
+  { id: 'cloud_low', label: 'Low clouds', icon: '🌥', group: 'Clouds and sky', varId: 'cloud_low', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: 'lowcloud' },
   { id: 'cloud_mid', label: 'Mid clouds', icon: '⛅', group: 'Clouds and sky', varId: 'cloud_mid', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
   { id: 'cloud_high', label: 'High clouds', icon: '🌤', group: 'Clouds and sky', varId: 'cloud_high', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Clouds and sky', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
-  { id: 'solar', label: 'Sunshine', icon: '☀', group: 'Clouds and sky', varId: 'solar', unit: 'W/m²', min: 0, max: 1000, stops: SUN, gamma: 1, clearBelow: 15, ticks: [200, 400, 600, 800, 1000], opacity: 0.8, terrain: null },
+  { id: 'solar', label: 'Sunshine', icon: '☀', group: 'Clouds and sky', varId: 'solar', unit: 'W/m²', min: 0, max: 1000, stops: SUN, gamma: 1, clearBelow: 15, ticks: [200, 400, 600, 800, 1000], opacity: 0.8, terrain: 'solar' },
   {
     id: 'pressure', label: 'Pressure', icon: '⏲', group: 'Pressure and storms', varId: 'msl', unit: 'hPa', min: 1000, max: 1020, stops: PRESSURE, gamma: 1,
     clearBelow: 0, ticks: [1000, 1005, 1010, 1015, 1020], opacity: 0.8, terrain: null,
@@ -159,6 +161,7 @@ export function resolveLayer(def: ForecastLayerDef, level: Level): ForecastLayer
     varId2: spec.varId2,                // a scalar level layer must not inherit the surface layer's second component
     label: `${spec.label ?? def.label} · ${level} hPa`,
     terrain: null,                      // the 1 km terrain correction only applies to the near-surface fields
+    levelHeightM: LEVEL_KM[level] * 1000, // where the ground reaches above the level it is shown faded
     clearBelow: 0,
   };
 }

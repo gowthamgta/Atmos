@@ -612,7 +612,7 @@ export class MapComponent implements OnInit, OnDestroy {
       }
     }
     const base = Math.min(Math.max(Math.floor(position), 0), frames.length - 1);
-    const frac = position - base;
+    const frac = Math.min(Math.max(position - base, 0), 1); // the frame list can change under a playing loop
     frames.forEach((f, k) => {
       const id = `satellite-layer-${f.timeMs}`;
       if (!this.map!.getLayer(id)) return;

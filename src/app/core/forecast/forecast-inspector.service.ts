@@ -88,15 +88,15 @@ export class ForecastInspectorService {
         })
       );
       if (my !== this.token) return; // a newer request replaced this one
-      const heights = this.terrain.heightsAt(lat, lon);
+      const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().gridKm);
       this.point.set({
         lat,
         lon,
         district: place.district,
         state: place.state,
-        elevationM: heights?.fine ?? null,
+        elevationM: ground?.fine ?? null,
         timeMs: time,
-        rows: buildPointRows(values, heights?.delta ?? null, level),
+        rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }),
       });
     } catch (err) {
       console.warn('[forecast] inspect failed', err);

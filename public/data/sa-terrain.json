@@ -8,6 +8,15 @@
   "nx": 2201,
   "ny": 1801
  },
+ "smooth": {
+  "latMax": 22.0,
+  "latMin": 4.0,
+  "lonMin": 68.0,
+  "lonMax": 90.0,
+  "step": 0.05,
+  "nx": 441,
+  "ny": 361
+ },
  "model": {
   "latMax": 22.0,
   "latMin": 4.0,
@@ -17,7 +26,15 @@
   "nx": 221,
   "ny": 181
  },
+ "modelKms": [
+  9,
+  10,
+  13,
+  15,
+  28,
+  55
+ ],
  "min": 0,
  "max": 4000.0,
- "encoding": "rg16"
+ "encoding": "terrain-rgb"
 }

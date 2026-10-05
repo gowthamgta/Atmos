@@ -12,6 +12,19 @@ import { ForecastStateService } from './forecast-state.service';
 import { TerrainService } from './terrain.service';
 import { bracketSteps } from './forecast.model';
 
+/** How strongly the 1 km relief is shaded into the forecast colours when it is on. */
+const RELIEF_STRENGTH = 0.55;
+
+/**
+ * The wind that lifts air over the hills, for the rain and low-cloud downscaling: 850 hPa (about 1.5 km, the height of
+ * the Ghats' crest) when the model publishes it, otherwise the 10 m wind. Null when neither is available.
+ */
+export function liftWindVars(vars: Record<string, unknown>): [string, string] | null {
+  if ('u850' in vars && 'v850' in vars) return ['u850', 'v850'];
+  if ('u10' in vars && 'v10' in vars) return ['u10', 'v10'];
+  return null;
+}
+
 /**
  * Owns the forecast GL layers on the map (colour field and wind particles): mounts them, and keeps them showing
  * the right field images and blend weight for the selected layer and time. The map component only calls
@@ -113,15 +126,19 @@ export class ForecastMapController {
       layer.setLayer(null);
       return;
     }
-    // 1 km terrain for the per-pixel height correction (loaded once, only when a layer uses it)
+    // 1 km terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels
     const terrainData = this.terrain.data();
-    layer.setTerrain(terrainData);
-    if (def.terrain && !terrainData) {
+    const modelGround = terrainData ? this.terrain.modelGround(terrainData, this.catalog.model().gridKm).bitmap : null;
+    layer.setTerrain(terrainData, modelGround);
+    layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
+    layer.setTime(time);
+    if (!terrainData) {
       this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));
     }
 
     const info = manifest.vars[def.varId];
-    if (!info || (def.varId2 && !manifest.vars[def.varId2])) {
+    const info2 = def.varId2 ? manifest.vars[def.varId2] : undefined;
+    if (!info || (def.varId2 && !info2)) {
       console.warn(`[forecast] variable ${def.varId2 ?? def.varId} missing from run ${manifest.run}`);
       layer.setLayer(null);
       return;
@@ -133,13 +150,29 @@ export class ForecastMapController {
     const hB = manifest.steps[b].h;
     const prefix = `${manifest.model}/${manifest.run}`;
     const varIds = def.varId2 ? [def.varId, def.varId2] : [def.varId];
+    // rain and low cloud are redistributed by the wind blowing over the hills (850 hPa, at ridge height, when published)
+    const lift = def.terrain === 'rain' || def.terrain === 'lowcloud' ? liftWindVars(manifest.vars) : null;
+    const liftIds = lift ? [lift[0], lift[1]] : [];
 
-    void Promise.all(varIds.flatMap(v => [this.loader.get(v, hA), this.loader.get(v, hB)]))
+    void Promise.all([...varIds, ...liftIds].flatMap(v => [this.loader.get(v, hA), this.loader.get(v, hB)]))
       .then(bitmaps => {
         if (my !== this.token || !this.layer) return; // a newer selection replaced this one
         const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap });
         layer.setGrid(manifest.grid);
-        layer.setLayer(def, [info.min, info.max]);
+        layer.setLayer(def, [info.min, info.max], info2 ? [info2.min, info2.max] : undefined);
+        const n = varIds.length * 2;
+        layer.setLiftWind(
+          lift
+            ? {
+                uA: frame(lift[0], hA, bitmaps[n]),
+                uB: frame(lift[0], hB, bitmaps[n + 1]),
+                vA: frame(lift[1], hA, bitmaps[n + 2]),
+                vB: frame(lift[1], hB, bitmaps[n + 3]),
+                encU: [manifest.vars[lift[0]].min, manifest.vars[lift[0]].max],
+                encV: [manifest.vars[lift[1]].min, manifest.vars[lift[1]].max],
+              }
+            : null
+        );
         layer.setFrames(
           frame(def.varId, hA, bitmaps[0]),
           frame(def.varId, hB, bitmaps[1]),
@@ -149,7 +182,7 @@ export class ForecastMapController {
         );
         // Warm the neighbours so scrubbing and playback stay smooth.
         const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
-        for (const v of varIds) this.loader.prefetch(v, ahead);
+        for (const v of [...varIds, ...liftIds]) this.loader.prefetch(v, ahead);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
   }

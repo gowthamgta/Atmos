@@ -46,6 +46,8 @@ export class ForecastStateService {
   readonly windParticles = signal(false);
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
   readonly isobars = signal(false);
+  /** 1 km hill shading blended into the forecast colours (on by default; it makes the terrain readable in every layer). */
+  readonly relief = signal(true);
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
   readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 
@@ -134,6 +136,11 @@ export class ForecastStateService {
     this.mapLayers.deactivateAll();
     this.isobars.set(true);
     this.start();
+  }
+
+  /** Turn the 1 km relief shading of the colour layers on or off. */
+  toggleRelief(): void {
+    this.relief.update(on => !on);
   }
 
   private pauseIfIdle(): void {
