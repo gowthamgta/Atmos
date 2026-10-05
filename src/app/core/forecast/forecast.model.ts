@@ -1,8 +1,5 @@
 /** Types and pure helpers for the pre-processed ECMWF IFS fields published by pipeline/run.py. */
 
-/** Where the nwp.yml workflow deploys the data (GitHub Pages, CORS-open). */
-export const FORECAST_BASE_URL = 'https://gowthamgta.github.io/Atmos/ecmwf_ifs';
-
 export interface ForecastGrid {
   latMax: number;
   latMin: number;

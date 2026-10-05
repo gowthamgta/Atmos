@@ -2,6 +2,8 @@ import { EffectRef, Injectable, Injector, effect, inject } from '@angular/core';
 import { Marker } from 'maplibre-gl';
 import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
+import { WindParticlesLayer } from '../rendering/wind-particles.layer';
+import { decodeFieldBitmap } from './field-decode';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastInspectorService } from './forecast-inspector.service';
@@ -10,8 +12,9 @@ import { TerrainService } from './terrain.service';
 import { bracketSteps } from './forecast.model';
 
 /**
- * Owns the forecast GL layer on the map: mounts it, and keeps it showing the right two field images
- * and blend weight for the selected layer and time. The map component only calls attach()/detach().
+ * Owns the forecast GL layers on the map (colour field and wind particles): mounts them, and keeps them showing
+ * the right field images and blend weight for the selected layer and time. The map component only calls
+ * attach()/detach().
  */
 @Injectable({ providedIn: 'root' })
 export class ForecastMapController {
@@ -24,40 +27,48 @@ export class ForecastMapController {
 
   private map: MapLibreMap | null = null;
   private layer: ScalarFieldLayer | null = null;
-  private effectRef: EffectRef | null = null;
-  private markerEffect: EffectRef | null = null;
+  private windLayer: WindParticlesLayer | null = null;
+  private effects: EffectRef[] = [];
   private marker: Marker | null = null;
   /** Bumped on every update so slow downloads for an old selection are dropped. */
   private token = 0;
+  private windToken = 0;
 
-  /** Mount the layer below `beforeId` (so boundaries and labels stay on top). */
+  /** Mount the layers below `beforeId` (so boundaries and labels stay on top). */
   attach(map: MapLibreMap, beforeId?: string): void {
     this.detach();
     this.map = map;
     this.layer = new ScalarFieldLayer();
     map.addLayer(this.layer, beforeId);
-    this.effectRef = effect(() => this.update(), { injector: this.injector });
+    this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 4500 : 9000);
+    map.addLayer(this.windLayer, beforeId); // added second, so the streaks draw over the colour field
     map.on('click', this.onMapClick);
-    this.markerEffect = effect(() => this.syncMarker(), { injector: this.injector });
+    this.effects = [
+      effect(() => this.update(), { injector: this.injector }),
+      effect(() => this.updateWind(), { injector: this.injector }),
+      effect(() => this.syncMarker(), { injector: this.injector }),
+    ];
   }
 
   detach(): void {
-    this.effectRef?.destroy();
-    this.effectRef = null;
-    this.markerEffect?.destroy();
-    this.markerEffect = null;
+    this.effects.forEach(e => e.destroy());
+    this.effects = [];
     this.map?.off('click', this.onMapClick);
     this.marker?.remove();
     this.marker = null;
     this.token++;
-    if (this.map && this.layer && this.map.getLayer(this.layer.id)) this.map.removeLayer(this.layer.id);
+    this.windToken++;
+    for (const l of [this.layer, this.windLayer]) {
+      if (this.map && l && this.map.getLayer(l.id)) this.map.removeLayer(l.id);
+    }
     this.layer = null;
+    this.windLayer = null;
     this.map = null;
   }
 
-  /** Clicking the map while a forecast layer is shown inspects that point. */
+  /** Clicking the map while a forecast overlay is shown inspects that point. */
   private readonly onMapClick = (e: MapMouseEvent): void => {
-    if (this.state.activeLayer()) this.inspector.select(e.lngLat.lat, e.lngLat.lng);
+    if (this.state.forecastActive()) this.inspector.select(e.lngLat.lat, e.lngLat.lng);
   };
 
   private syncMarker(): void {
@@ -97,8 +108,8 @@ export class ForecastMapController {
     }
 
     const info = manifest.vars[def.varId];
-    if (!info) {
-      console.warn(`[forecast] variable ${def.varId} missing from run ${manifest.run}`);
+    if (!info || (def.varId2 && !manifest.vars[def.varId2])) {
+      console.warn(`[forecast] variable ${def.varId2 ?? def.varId} missing from run ${manifest.run}`);
       layer.setLayer(null);
       return;
     }
@@ -107,22 +118,66 @@ export class ForecastMapController {
     const { a, b, mix } = bracketSteps(validTimes, time);
     const hA = manifest.steps[a].h;
     const hB = manifest.steps[b].h;
-    const run = manifest.run;
+    const prefix = `${manifest.model}/${manifest.run}`;
+    const varIds = def.varId2 ? [def.varId, def.varId2] : [def.varId];
 
-    void Promise.all([this.loader.get(def.varId, hA), this.loader.get(def.varId, hB)])
-      .then(([bmpA, bmpB]) => {
+    void Promise.all(varIds.flatMap(v => [this.loader.get(v, hA), this.loader.get(v, hB)]))
+      .then(bitmaps => {
         if (my !== this.token || !this.layer) return; // a newer selection replaced this one
+        const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap });
         layer.setGrid(manifest.grid);
         layer.setLayer(def, [info.min, info.max]);
         layer.setFrames(
-          { key: `${run}/${def.varId}/${hA}`, bitmap: bmpA },
-          { key: `${run}/${def.varId}/${hB}`, bitmap: bmpB },
-          mix
+          frame(def.varId, hA, bitmaps[0]),
+          frame(def.varId, hB, bitmaps[1]),
+          mix,
+          def.varId2 ? frame(def.varId2, hA, bitmaps[2]) : null,
+          def.varId2 ? frame(def.varId2, hB, bitmaps[3]) : null
         );
         // Warm the neighbours so scrubbing and playback stay smooth.
         const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
-        this.loader.prefetch(def.varId, ahead);
+        for (const v of varIds) this.loader.prefetch(v, ahead);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
+  }
+
+  /** Feeds the particle layer the two wind steps around the selected time. */
+  private updateWind(): void {
+    const wind = this.windLayer;
+    if (!wind) return;
+    const manifest = this.catalog.manifest();
+    const time = this.state.timeMs();
+    const validTimes = this.catalog.validTimes();
+    const on = this.state.windParticles();
+    if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars['u10'] || !manifest.vars['v10']) {
+      wind.setVisible(false);
+      wind.setWind(null);
+      return;
+    }
+
+    const my = ++this.windToken;
+    const { a, b, mix } = bracketSteps(validTimes, time);
+    const hA = manifest.steps[a].h;
+    const hB = manifest.steps[b].h;
+    const u = manifest.vars['u10'];
+    const v = manifest.vars['v10'];
+
+    void Promise.all([this.loader.get('u10', hA), this.loader.get('u10', hB), this.loader.get('v10', hA), this.loader.get('v10', hB)])
+      .then(([uA, uB, vA, vB]) => {
+        if (my !== this.windToken || !this.windLayer) return;
+        wind.setWind({
+          grid: manifest.grid,
+          uA: decodeFieldBitmap(uA, u.min, u.max),
+          uB: decodeFieldBitmap(uB, u.min, u.max),
+          vA: decodeFieldBitmap(vA, v.min, v.max),
+          vB: decodeFieldBitmap(vB, v.min, v.max),
+          mix,
+        });
+        wind.setVisible(true);
+        const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
+        this.loader.prefetch('u10', ahead);
+        this.loader.prefetch('v10', ahead);
+      })
+      .catch(err => console.warn('[forecast] wind load failed', err));
   }
 }

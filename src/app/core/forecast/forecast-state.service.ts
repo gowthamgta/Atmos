@@ -1,4 +1,5 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { MapLayerService } from '../services/map-layer.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { FORECAST_LAYERS, ForecastLayerDef, forecastLayerById } from './forecast-layers';
 
@@ -9,6 +10,7 @@ export class ForecastStateService {
   private static readonly PLAY_HOURS_PER_SECOND = 4;
 
   private readonly catalog = inject(ForecastCatalogService);
+  private readonly mapLayers = inject(MapLayerService);
 
   readonly layers = FORECAST_LAYERS;
   readonly activeLayerId = signal<string | null>(null);
@@ -16,6 +18,10 @@ export class ForecastStateService {
   /** Selected time in epoch ms (UTC); null until the first layer is switched on. */
   readonly timeMs = signal<number | null>(null);
   readonly playing = signal(false);
+  /** Animated wind streaks over the map; independent of the colour layer. */
+  readonly windParticles = signal(false);
+  /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
+  readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles());
 
   readonly startMs = computed(() => this.catalog.validTimes()[0] ?? null);
   readonly endMs = computed(() => this.catalog.validTimes().at(-1) ?? null);
@@ -23,14 +29,53 @@ export class ForecastStateService {
   private raf = 0;
   private lastFrame = 0;
 
+  constructor() {
+    // Radar and the legacy overlays share the single-overlay slot: turning one on replaces the forecast layer.
+    effect(() => {
+      if (this.mapLayers.activeLayers().length > 0) {
+        untracked(() => {
+          this.activeLayerId.set(null);
+          this.windParticles.set(false);
+          this.pause();
+        });
+      }
+    });
+  }
+
   /** Turn a layer on (or off when it is already active). */
   toggleLayer(id: string): void {
     if (this.activeLayerId() === id) {
       this.activeLayerId.set(null);
-      this.pause();
+      if (!this.windParticles()) this.pause();
       return;
     }
+    this.mapLayers.deactivateAll(); // radar and legacy overlays make way
     this.activeLayerId.set(id);
+    if (id === 'wind') this.windParticles.set(true); // the wind layer is shown with its animation
+    this.start();
+  }
+
+  /** Show or hide the wind animation over whatever layer is active. */
+  toggleWindParticles(): void {
+    if (this.windParticles()) {
+      this.windParticles.set(false);
+      if (!this.activeLayerId()) this.pause();
+      return;
+    }
+    this.mapLayers.deactivateAll();
+    this.windParticles.set(true);
+    this.start();
+  }
+
+  /** Radar is its own entry in the layer menu: selecting it replaces any forecast layer. */
+  selectRadar(): void {
+    this.activeLayerId.set(null);
+    this.windParticles.set(false);
+    this.pause();
+    this.mapLayers.selectSingleLayer('radar');
+  }
+
+  private start(): void {
     void this.catalog.ensureLoaded().then(() => this.initialiseTime());
   }
 

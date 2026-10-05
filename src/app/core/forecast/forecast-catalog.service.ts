@@ -1,5 +1,6 @@
 import { Injectable, OnDestroy, computed, signal } from '@angular/core';
-import { FORECAST_BASE_URL, ForecastManifest } from './forecast.model';
+import { DEFAULT_MODEL_ID, ForecastModelDef, forecastModelById } from './forecast-models';
+import { ForecastManifest } from './forecast.model';
 
 export type CatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -8,6 +9,9 @@ export type CatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 export class ForecastCatalogService implements OnDestroy {
   private static readonly REFRESH_MS = 10 * 60 * 1000;
 
+  /** Which model is shown; changing it reloads the catalog for that model. */
+  readonly activeModelId = signal<string>(DEFAULT_MODEL_ID);
+  readonly model = computed<ForecastModelDef>(() => forecastModelById(this.activeModelId()));
   readonly manifest = signal<ForecastManifest | null>(null);
   readonly status = signal<CatalogStatus>('idle');
   /** Valid times (epoch ms) of every step, ascending. */
@@ -25,6 +29,15 @@ export class ForecastCatalogService implements OnDestroy {
     return this.manifest() ? Promise.resolve() : this.refresh();
   }
 
+  /** Switch model: drops the current run and loads the newest run of the new model. */
+  setModel(id: string): Promise<void> {
+    if (id === this.activeModelId()) return Promise.resolve();
+    this.activeModelId.set(id);
+    this.manifest.set(null);
+    this.inflight = null; // do not reuse a request that was for the previous model
+    return this.refresh();
+  }
+
   /** Re-reads latest.json and, if the run changed, the manifest. De-duplicates concurrent calls. */
   refresh(): Promise<void> {
     this.inflight ??= this.load().finally(() => (this.inflight = null));
@@ -32,18 +45,21 @@ export class ForecastCatalogService implements OnDestroy {
   }
 
   fieldUrl(varId: string, stepHour: number, run = this.manifest()?.run): string {
-    return `${FORECAST_BASE_URL}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png`;
+    return `${this.model().baseUrl}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png`;
   }
 
   private async load(): Promise<void> {
     if (!this.manifest()) this.status.set('loading');
+    const { baseUrl, id } = this.model();
     try {
-      const latest = await this.getJson<{ run: string }>(`${FORECAST_BASE_URL}/latest.json?t=${Math.floor(Date.now() / 60000)}`);
+      const latest = await this.getJson<{ run: string }>(`${baseUrl}/latest.json?t=${Math.floor(Date.now() / 60000)}`);
+      if (id !== this.activeModelId()) return; // the model was switched while this request was in flight
       if (latest.run === this.manifest()?.run) {
         this.status.set('ready');
         return;
       }
-      const manifest = await this.getJson<ForecastManifest>(`${FORECAST_BASE_URL}/${latest.run}/manifest.json`);
+      const manifest = await this.getJson<ForecastManifest>(`${baseUrl}/${latest.run}/manifest.json`);
+      if (id !== this.activeModelId()) return;
       this.manifest.set(manifest);
       this.status.set('ready');
     } catch (err) {

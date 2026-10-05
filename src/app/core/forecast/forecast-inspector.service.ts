@@ -36,9 +36,9 @@ export class ForecastInspectorService {
       }
       void this.compute(sel.lat, sel.lon);
     });
-    // Switching every forecast layer off closes the card.
+    // Switching every forecast overlay off closes the card.
     effect(() => {
-      if (!this.state.activeLayerId()) this.close();
+      if (!this.state.forecastActive()) this.close();
     });
   }
 

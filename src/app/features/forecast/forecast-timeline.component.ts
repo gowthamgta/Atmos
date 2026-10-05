@@ -11,7 +11,7 @@ const IST_OFFSET_MS = 5.5 * 3_600_000;
   selector: 'app-forecast-timeline',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (state.activeLayer() && range(); as r) {
+    @if (state.forecastActive() && range(); as r) {
       <section class="timeline glass-panel" aria-label="Forecast timeline">
         <button
           type="button" class="play" (click)="state.togglePlay()"
@@ -112,7 +112,7 @@ export class ForecastTimelineComponent {
 
   @HostListener('window:keydown', ['$event'])
   protected onKey(e: KeyboardEvent): void {
-    if (!this.state.activeLayer() || this.catalog.status() !== 'ready') return;
+    if (!this.state.forecastActive() || this.catalog.status() !== 'ready') return;
     const target = e.target as HTMLElement | null;
     if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return; // inputs handle their own keys
     if (e.key === ' ' && !(target instanceof HTMLButtonElement)) {

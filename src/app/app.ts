@@ -1,4 +1,4 @@
-import { Component, inject, ViewChild, signal } from '@angular/core';
+import { Component, computed, inject, ViewChild, signal } from '@angular/core';
 import { MapComponent } from './features/map/map.component';
 import { LayersComponent } from './features/layers/layers.component';
 import { ForecastRailComponent } from './features/forecast/forecast-rail.component';
@@ -29,6 +29,7 @@ export class App {
 
   readonly showLayers = signal(false);
   readonly activeProduct = this.radarService.activeProduct;
+  readonly radarActive = computed(() => this.layerService.layers().some(l => l.id === 'radar' && l.active));
 
   toggleLayers(): void {
     this.showLayers.update(v => !v);

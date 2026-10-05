@@ -16,24 +16,13 @@ import { MapLayerService, LayerConfig } from '../../core/services/map-layer.serv
 import { RadarService } from '../../core/services/radar.service';
 import {
   RadarProductKey,
-  ProcessedRadarResult,
-  IMD_RADAR_STATIONS
+  ProcessedRadarResult
 } from '../../core/domain/models/radar.model';
 
-/** [[west, south], [east, north]] covering every station's CAZ (widest) radar disc. */
-function computeRadarCoverageBounds(): [[number, number], [number, number]] {
-  let west = 180, south = 90, east = -180, north = -90;
-  for (const st of IMD_RADAR_STATIONS) {
-    const [[s, w], [n, e]] = st.products.caz.bounds;
-    west = Math.min(west, w);
-    south = Math.min(south, s);
-    east = Math.max(east, e);
-    north = Math.max(north, n);
-  }
-  return [[west, south], [east, north]];
-}
-
-const RADAR_COVERAGE_BOUNDS = computeRadarCoverageBounds();
+/** [[west, south], [east, north]]: the whole forecast area (South India, Sri Lanka and the seas around them). */
+const SOUTH_INDIA_VIEW: [[number, number], [number, number]] = [[67.5, 3.5], [90.5, 22.5]];
+/** How far the map can be panned and zoomed out: wide enough to roam freely beyond the forecast area. */
+const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [[52, -10], [108, 34]];
 
 // Tamil Nadu state + district outlines (built by scripts/build-tn-data.py). The lines are drawn
 // above every raster overlay (radar, microclimate) so boundaries stay readable on top of them.
@@ -1284,15 +1273,12 @@ export class MapComponent implements OnInit, OnDestroy {
           }
         ]
       },
-      // Open on the whole South India radar mosaic so echoes are visible immediately
-      bounds: RADAR_COVERAGE_BOUNDS,
-      fitBoundsOptions: { padding: 24 },
-      minZoom: 5.5,
+      // Open on the whole forecast area; the map can be panned and zoomed out freely beyond it
+      bounds: SOUTH_INDIA_VIEW,
+      fitBoundsOptions: { padding: 12 },
+      minZoom: 3.2,
       maxZoom: 15,
-      maxBounds: [
-        [72.0, 6.0],   // SW — Arabian Sea coverage of Mangaluru / Thiruvananthapuram radars
-        [83.0, 16.0]   // NE — eastern edge of Karaikal / Chennai coverage
-      ],
+      maxBounds: MAP_MAX_BOUNDS,
       attributionControl: false
     });
     this.map = map;
@@ -1646,7 +1632,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
   public flyToMosaicCenter(): void {
     if (!this.map) return;
-    this.map.fitBounds(RADAR_COVERAGE_BOUNDS, { padding: 24, essential: true });
+    this.map.fitBounds(SOUTH_INDIA_VIEW, { padding: 12, essential: true });
   }
 
   public zoomIn(): void {

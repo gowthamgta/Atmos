@@ -86,6 +86,11 @@ export class MapLayerService {
     });
   }
 
+  /** Turn every map layer off (radar and the legacy overlays). */
+  deactivateAll(): void {
+    this.layers.update(layers => layers.map(l => ({ ...l, active: false })));
+  }
+
   selectSingleLayer(id: string): void {
     this.layers.update(layers =>
       layers.map(l => ({

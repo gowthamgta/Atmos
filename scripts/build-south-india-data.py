@@ -34,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 from PIL import Image
 from shapely.geometry import mapping, shape
+from shapely.ops import unary_union
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'pipeline'))
@@ -179,6 +180,16 @@ def build_districts(cache, out_path):
     for name, geom in states.items():
         features.append({'type': 'Feature', 'properties': {'kind': 'state', 'name': name},
                          'geometry': simplified(geom, 0.003)})
+
+    # Sri Lanka: country outline only (drawn like the state outlines, and used for the click inspector)
+    lka_url = 'https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/gbOpen/LKA/ADM0/geoBoundaries-LKA-ADM0_simplified.geojson'
+    lka = json.load(open(fetch(lka_url, os.path.join(cache, 'lka-adm0.geojson')), encoding='utf-8'))
+    lka_shape = unary_union([shape(f['geometry']) for f in lka['features']])
+    features.append({'type': 'Feature', 'properties': {'kind': 'state', 'name': 'Sri Lanka'},
+                     'geometry': simplified(lka_shape, 0.003)})
+    lka_point = lka_shape.representative_point()
+    features.append({'type': 'Feature', 'properties': {'kind': 'label', 'name': 'Sri Lanka', 'state': 'Sri Lanka', 'rank': 1},
+                     'geometry': {'type': 'Point', 'coordinates': round_coords([lka_point.x, lka_point.y])}})
 
     districts = []
     for f in a2['features']:

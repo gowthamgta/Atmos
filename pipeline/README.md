@@ -41,3 +41,14 @@ repository activity; re-enable under the Actions tab if that happens.
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
 3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.
+
+## Adding another model (GFS, ICON, UKMO, AIFS...)
+The app is model-agnostic: it reads `<baseUrl>/latest.json` and `<baseUrl>/<run>/manifest.json`, then the PNGs listed
+by the manifest. To add a model:
+1. Write a fetcher like `fetch_ifs.py` that returns the same source variables on the same 0.1° grid
+   (`config.py` has the grid and the variable list), and a `run` entry point that writes
+   `site/<model_id>/<run>/...`, `manifest.json` and `latest.json` in the layout above.
+2. Add a job (or a matrix entry) to `.github/workflows/nwp.yml`. All models deploy into the same Pages site;
+   each job should add its folder to the artifact without removing the others.
+3. Add one entry to `FORECAST_MODELS` in `src/app/core/forecast/forecast-models.ts`. The model selector in the layer
+   rail appears automatically once there is more than one entry.

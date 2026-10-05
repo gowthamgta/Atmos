@@ -1,5 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { MapLayerService } from '../../core/services/map-layer.service';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
+import { FORECAST_MODELS } from '../../core/forecast/forecast-models';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast-layers';
 
@@ -8,7 +10,24 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
   selector: 'app-forecast-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nav class="rail glass-panel" aria-label="Forecast layers">
+    <nav class="rail glass-panel" aria-label="Map layers">
+      @if (models.length > 1) {
+        <select class="model" aria-label="Forecast model" [value]="catalog.activeModelId()" (change)="onModel($event)">
+          @for (m of models; track m.id) {
+            <option [value]="m.id">{{ m.label }} · {{ m.resolution }}</option>
+          }
+        </select>
+      }
+
+      <button
+        type="button" class="rail-btn" [class.active]="radarActive()" [attr.aria-pressed]="radarActive()"
+        aria-label="Radar" title="IMD Doppler radar" (click)="toggleRadar()"
+      >
+        <span class="rail-icon" aria-hidden="true">📡</span>
+        <span class="rail-label">Radar (IMD)</span>
+      </button>
+      <hr class="sep" />
+
       @for (layer of state.layers; track layer.id) {
         <button
           type="button"
@@ -23,6 +42,15 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
           <span class="rail-label">{{ layer.label }}</span>
         </button>
       }
+      <hr class="sep" />
+
+      <button
+        type="button" class="rail-btn" [class.active]="state.windParticles()" [attr.aria-pressed]="state.windParticles()"
+        aria-label="Wind animation" title="Animated wind streaks (any layer)" (click)="state.toggleWindParticles()"
+      >
+        <span class="rail-icon" aria-hidden="true">〰</span>
+        <span class="rail-label">Wind animation</span>
+      </button>
     </nav>
 
     @if (state.activeLayer(); as layer) {
@@ -39,7 +67,7 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
         } @else if (catalog.status() === 'error') {
           <div class="legend-note error">Forecast unavailable. Retrying every 10 min.</div>
         } @else {
-          <div class="legend-note">ECMWF IFS · run {{ runLabel() }}</div>
+          <div class="legend-note">{{ catalog.model().label }} {{ catalog.model().resolution }} · run {{ runLabel() }}</div>
         }
       </div>
     }
@@ -61,6 +89,8 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
     .rail-btn:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 1px; }
     .rail-btn.active { background: rgba(0,229,255,0.15); border-color: rgba(0,229,255,0.45); color: var(--neon-cyan); }
     .rail-icon { font-size: 18px; width: 24px; text-align: center; }
+    .sep { width: 100%; height: 1px; margin: 3px 0; border: 0; background: rgba(255,255,255,0.1); }
+    .model { margin: 2px 0 4px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--text-primary); font: 12px var(--font-body); }
     .rail-label { display: none; }
     @media (min-width: 900px) { .rail-label { display: inline; } }
     .legend {
@@ -78,6 +108,19 @@ import { legendPosition, paletteGradientCss } from '../../core/forecast/forecast
 export class ForecastRailComponent {
   protected readonly state = inject(ForecastStateService);
   protected readonly catalog = inject(ForecastCatalogService);
+  private readonly mapLayers = inject(MapLayerService);
+  protected readonly models = FORECAST_MODELS;
+
+  protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
+
+  protected toggleRadar(): void {
+    if (this.radarActive()) this.mapLayers.deactivateAll();
+    else this.state.selectRadar();
+  }
+
+  protected onModel(event: Event): void {
+    void this.catalog.setModel((event.target as HTMLSelectElement).value);
+  }
 
   protected readonly runLabel = computed(() => {
     const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})Z$/.exec(this.catalog.runLabel());

@@ -86,13 +86,17 @@ describe('forecast layer registry', () => {
     for (const l of FORECAST_LAYERS) {
       expect(l.max).toBeGreaterThan(l.min);
       expect(l.stops.length).toBeGreaterThanOrEqual(2);
-      expect(l.ticks.every(t => t >= l.min && t <= l.max)).toBe(true);
+      const scale = l.displayScale ?? 1; // ticks are in the displayed unit, the range in the field's own unit
+      expect(l.ticks.every(t => t / scale >= l.min && t / scale <= l.max)).toBe(true);
     }
   });
 
   it('only references pipeline variables that exist', () => {
     const published = ['t2m', 'rh', 'feels', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cape', 'tcwv'];
-    for (const l of FORECAST_LAYERS) expect(published).toContain(l.varId);
+    for (const l of FORECAST_LAYERS) {
+      expect(published).toContain(l.varId);
+      if (l.varId2) expect(published).toContain(l.varId2);
+    }
   });
 
   it('builds an opaque palette that starts and ends on the first and last colour', () => {
@@ -110,5 +114,12 @@ describe('forecast layer registry', () => {
     expect(legendPosition(rain, 20)).toBe(1);
     expect(legendPosition(rain, 5)).toBeCloseTo(0.5, 6); // sqrt(5/20)
     expect(forecastLayerById('nope')).toBeNull();
+  });
+
+  it('places km/h ticks using the m/s field range', () => {
+    const wind = forecastLayerById('wind')!;
+    expect(wind.varId2).toBe('v10');
+    expect(legendPosition(wind, 72)).toBeCloseTo(1, 9); // 20 m/s = 72 km/h is the top of the palette
+    expect(legendPosition(wind, 36)).toBeCloseTo(0.5, 9);
   });
 });

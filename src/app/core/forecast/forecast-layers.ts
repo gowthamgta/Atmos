@@ -8,8 +8,13 @@ export interface ForecastLayerDef {
   icon: string;
   /** Pipeline variable id (see pipeline/config.py). */
   varId: string;
+  /** Second component for vector layers: the layer shows hypot(varId, varId2), e.g. wind speed from u and v. */
+  varId2?: string;
+  /** Unit of the legend and ticks (the field values times `displayScale`). */
   unit: string;
-  /** Display range mapped onto the palette (not the encoding range). */
+  /** Multiplier from the field's own unit to the displayed unit (m/s to km/h is 3.6). Default 1. */
+  displayScale?: number;
+  /** Display range mapped onto the palette, in the field's own unit (not the encoding range). */
   min: number;
   max: number;
   /** Evenly spaced palette stops. */
@@ -18,7 +23,7 @@ export interface ForecastLayerDef {
   gamma: number;
   /** Values below this are transparent (0 = never). */
   clearBelow: number;
-  /** Ticks shown under the legend bar. */
+  /** Ticks shown under the legend bar, in the displayed unit. */
   ticks: readonly number[];
   /** Fraction of full opacity. */
   opacity: number;
@@ -26,23 +31,26 @@ export interface ForecastLayerDef {
   terrain: TerrainMode | null;
 }
 
-const TEMP = ['#2b4c8c', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#b5179e'];
-const HUMIDITY = ['#f2e8cf', '#c9d8c5', '#7fb7be', '#3f7cac', '#1d3f72', '#0b1f4d'];
-const RAIN = ['#7dd3fc', '#38bdf8', '#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7'];
-const CAPE = ['#64748b', '#06b6d4', '#22c55e', '#eab308', '#f97316', '#ef4444', '#d946ef'];
-const CLOUD = ['#334155', '#64748b', '#94a3b8', '#e2e8f0', '#ffffff'];
-const PRESSURE = ['#6d28d9', '#2563eb', '#06b6d4', '#a3e635', '#facc15', '#f97316', '#dc2626'];
-const WIND = ['#38bdf8', '#22c55e', '#eab308', '#f97316', '#ef4444', '#a855f7'];
-const WATER = ['#fdf4e3', '#a7d8de', '#4ba3c3', '#2b6cb0', '#1e3a8a', '#4c1d95'];
+/** Dark-theme palettes: the low end sinks into the dark basemap, mid-tones stay saturated and deep,
+ *  and only the extremes get bright, so overlays never glare against the dark map. */
+const TEMP = ['#2b3a8f', '#256d9b', '#1f9a8a', '#86a936', '#e0a526', '#e0651f', '#b3202f', '#6e1038'];
+const HUMIDITY = ['#6b4423', '#9a7b3a', '#5d8a5b', '#2f8a9a', '#2a5bb0', '#4b2d9a'];
+const RAIN = ['#1e4fa0', '#1f8fb8', '#27ae75', '#c8b11f', '#e07a1f', '#d62f3a', '#b030c8'];
+const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
+const CLOUD = ['#1c2330', '#3a4558', '#6b778c', '#a3adbd', '#e8edf5'];
+const WIND = ['#1b3a6b', '#1f7a9a', '#2aa876', '#b5c22a', '#e0902a', '#d9422a', '#a82f9a'];
+const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
+const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
 
 export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'temp', label: 'Temperature', icon: '🌡', varId: 't2m', unit: '°C', min: 18, max: 42, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature' },
   { id: 'feels', label: 'Feels like', icon: '🥵', varId: 'feels', unit: '°C', min: 18, max: 48, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40, 45], opacity: 0.85, terrain: 'temperature' },
   { id: 'humidity', label: 'Humidity', icon: '💧', varId: 'rh', unit: '%', min: 30, max: 100, stops: HUMIDITY, gamma: 1, clearBelow: 0, ticks: [40, 60, 80, 100], opacity: 0.85, terrain: 'humidity' },
+  { id: 'wind', label: 'Wind', icon: '🍃', varId: 'u10', varId2: 'v10', unit: 'km/h', displayScale: 3.6, min: 0, max: 20, stops: WIND, gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 0.8, terrain: null },
   { id: 'rain', label: 'Rain', icon: '🌧', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: null },
   { id: 'clouds', label: 'Clouds', icon: '☁', varId: 'cloud', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
   { id: 'cape', label: 'Thunderstorm energy', icon: '⚡', varId: 'cape', unit: 'J/kg', min: 0, max: 4000, stops: CAPE, gamma: 0.7, clearBelow: 100, ticks: [500, 1000, 2000, 3000, 4000], opacity: 0.85, terrain: null },
-  { id: 'gust', label: 'Wind gusts', icon: '💨', varId: 'gust', unit: 'm/s', min: 0, max: 25, stops: WIND, gamma: 1, clearBelow: 0, ticks: [5, 10, 15, 20, 25], opacity: 0.85, terrain: null },
+  { id: 'gust', label: 'Wind gusts', icon: '💨', varId: 'gust', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: WIND, gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 0.85, terrain: null },
   { id: 'pressure', label: 'Pressure', icon: '⏲', varId: 'msl', unit: 'hPa', min: 1000, max: 1020, stops: PRESSURE, gamma: 1, clearBelow: 0, ticks: [1000, 1005, 1010, 1015, 1020], opacity: 0.8, terrain: null },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: null },
 ];
@@ -75,8 +83,9 @@ export function paletteGradientCss(stops: readonly string[]): string {
   return `linear-gradient(to right, ${stops.join(', ')})`;
 }
 
-/** Position 0..1 of a value within the display range after the layer's gamma. */
-export function legendPosition(def: ForecastLayerDef, value: number): number {
+/** Position 0..1 of a value (in the displayed unit) within the display range after the layer's gamma. */
+export function legendPosition(def: ForecastLayerDef, displayedValue: number): number {
+  const value = displayedValue / (def.displayScale ?? 1);
   const t = Math.min(Math.max((value - def.min) / (def.max - def.min), 0), 1);
   return Math.pow(t, def.gamma);
 }
