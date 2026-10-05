@@ -11,7 +11,7 @@ import {
   ProcessedRadarResult
 } from '../domain/models/radar.model';
 
-import { blurSeparable, gaussianKernel, quantizeRadarField, resampleBilinear } from './radar-field';
+import { blurSeparable, dequantizeRadar, gaussianKernel, quantizeRadarField, resampleBilinear } from './radar-field';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
@@ -1375,20 +1375,19 @@ export class RadarService implements OnDestroy {
     let maxV = 0.0;
     let bestStation: RadarStationConfig | null = null;
 
-    const mosaic = this.compositeMosaic();
-    if (mosaic && mosaic.fieldData) {
-      const { field, cropW, cropH, bounds } = mosaic.fieldData;
-      const [southWest, northEast] = bounds;
-      const minLat = southWest[0];
-      const minLng = southWest[1];
-      const maxLat = northEast[0];
-      const maxLng = northEast[1];
+    // read the picture on screen: the live mosaic, or the loop frame being played or scrubbed
+    const shown = this.displayed();
+    if (shown) {
+      const { field, width: cropW, height: cropH, coordinates } = shown;
+      const maxLat = coordinates[0][1];
+      const minLat = coordinates[2][1];
+      const minLng = coordinates[0][0];
+      const maxLng = coordinates[1][0];
 
       if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) {
-        const normY = (maxLat - lat) / (maxLat - minLat);
-        const normX = (lng - minLng) / (maxLng - minLng);
-        const srcX = normX * (cropW - 1);
-        const srcY = normY * (cropH - 1);
+        // rows are evenly spaced in latitude, columns in longitude, first and last on the edges
+        const srcX = ((lng - minLng) / (maxLng - minLng)) * (cropW - 1);
+        const srcY = ((maxLat - lat) / (maxLat - minLat)) * (cropH - 1);
 
         if (srcX >= 0 && srcX < cropW && srcY >= 0 && srcY < cropH) {
           const x0 = Math.floor(srcX);
@@ -1402,7 +1401,7 @@ export class RadarService implements OnDestroy {
           const s10 = field[y0 * cropW + x1];
           const s01 = field[y1 * cropW + x0];
           const s11 = field[y1 * cropW + x1];
-          maxV = (s00 * (1 - wx) + s10 * wx) * (1 - wy) + (s01 * (1 - wx) + s11 * wx) * wy;
+          maxV = dequantizeRadar((s00 * (1 - wx) + s10 * wx) * (1 - wy) + (s01 * (1 - wx) + s11 * wx) * wy);
 
           // Find closest active station for name attribution
           let minD = Infinity;

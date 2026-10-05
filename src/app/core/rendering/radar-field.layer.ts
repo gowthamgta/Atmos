@@ -45,7 +45,8 @@ const FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
 uniform sampler2D u_field;   // R8: intensity / ${RADAR_FIELD_MAX}
-uniform vec4 u_box;          // mercator x0, y0 (top), x1, y1 (bottom) of the mosaic
+uniform vec4 u_box;          // mercator x0 and x1 of the mosaic (its west and east edges); y0, y1 unused
+uniform vec2 u_lat;          // latitude (degrees) of the top and the bottom row
 uniform ivec2 u_size;
 uniform float u_opacity;
 uniform float u_sharpen;
@@ -79,24 +80,29 @@ float bicubic(vec2 px) {
 }
 
 void main() {
-  vec2 uv = vec2((v_merc.x - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
+  // The mosaic's rows are evenly spaced in latitude, columns in longitude (= mercator x). The screen is mercator, so
+  // the row comes from this pixel's latitude; mapping it linearly in mercator would shift the picture by up to 5 km.
+  float lat = degrees(atan(sinh(3.14159265358979 * (1.0 - 2.0 * v_merc.y))));
+  vec2 uv = vec2((v_merc.x - u_box.x) / (u_box.z - u_box.x), (u_lat.x - lat) / (u_lat.x - u_lat.y));
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) discard;
-  vec2 px = uv * vec2(u_size);
+  // the first and last row/column sit on the edges of the box (index = fraction * (size - 1)), centres at +0.5
+  vec2 px = uv * (vec2(u_size) - 1.0) + 0.5;
   vec2 gx = dFdx(uv);
   vec2 gy = dFdy(uv);
   bool magnifying = max(length(gx * vec2(u_size)), length(gy * vec2(u_size))) < 1.0;
 
+  vec2 tc = px / vec2(u_size); // texture coordinates of the same point
   float v;
   if (magnifying) {
     v = bicubic(px);
     if (u_sharpen > 0.0) {
       vec2 d = 2.0 / vec2(u_size);
-      float blur = (textureLod(u_field, uv + vec2(d.x, 0.0), 0.0).r + textureLod(u_field, uv - vec2(d.x, 0.0), 0.0).r +
-                    textureLod(u_field, uv + vec2(0.0, d.y), 0.0).r + textureLod(u_field, uv - vec2(0.0, d.y), 0.0).r) * 0.25;
+      float blur = (textureLod(u_field, tc + vec2(d.x, 0.0), 0.0).r + textureLod(u_field, tc - vec2(d.x, 0.0), 0.0).r +
+                    textureLod(u_field, tc + vec2(0.0, d.y), 0.0).r + textureLod(u_field, tc - vec2(0.0, d.y), 0.0).r) * 0.25;
       v = clamp(v + u_sharpen * (v - blur), 0.0, 1.0);
     }
   } else {
-    v = textureGrad(u_field, uv, gx, gy).r;
+    v = textureGrad(u_field, tc, gx, gy).r;
   }
   v *= ${f(RADAR_FIELD_MAX)};
 
@@ -132,6 +138,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
   private readonly textures = new Map<Uint8Array, WebGLTexture>(); // insertion order = least recently used first
   private frame: RadarLayerFrame | null = null;
   private box: [number, number, number, number] = [0, 0, 1, 1];
+  private lat: [number, number] = [1, 0];
   private opacity = 1;
   private sharpen = 0.12;
 
@@ -141,6 +148,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
     if (frame) {
       const [nw, , se] = frame.coordinates;
       this.box = [mercatorUnitX(nw[0]), mercatorUnitY(nw[1]), mercatorUnitX(se[0]), mercatorUnitY(se[1])];
+      this.lat = [nw[1], se[1]];
       this.uploadQuad();
     }
     this.map?.triggerRepaint();
@@ -167,7 +175,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`radar program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_field', 'u_box', 'u_size', 'u_opacity', 'u_sharpen']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['u_matrix', 'u_field', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen']) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
     this.uploadQuad();
@@ -235,6 +243,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
     gl.uniformMatrix4fv(u['u_matrix'], false, options.defaultProjectionData.mainMatrix as unknown as Float32List);
     gl.uniform1i(u['u_field'], 0);
     gl.uniform4f(u['u_box'], this.box[0], this.box[1], this.box[2], this.box[3]);
+    gl.uniform2f(u['u_lat'], this.lat[0], this.lat[1]);
     gl.uniform2i(u['u_size'], frame.width, frame.height);
     gl.uniform1f(u['u_opacity'], this.opacity);
     gl.uniform1f(u['u_sharpen'], this.sharpen);
