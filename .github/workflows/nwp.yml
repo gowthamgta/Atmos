@@ -1,8 +1,9 @@
 name: nwp
 
-# Fetch the newest ECMWF IFS 00Z/12Z run, cut out South India, encode and upload to Backblaze B2.
+# Fetch the newest ECMWF IFS 00Z/12Z run, cut out South India, encode it, and deploy the result to
+# GitHub Pages (free, CORS-open). No external storage, no billing.
 # Open-Meteo finishes each run roughly 7-9 h after the reference time, so we retry hourly;
-# the script exits early if the run is not ready or is already published.
+# the script exits early if the run is not ready or is already live.
 on:
   schedule:
     - cron: "30 8-11 * * *"
@@ -10,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Re-publish even if this run is already uploaded"
+        description: "Rebuild and deploy even if this run is already live"
         type: boolean
         default: false
 
@@ -19,9 +20,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ecmwf-ifs:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      deploy: ${{ steps.build.outputs.deploy }}
     defaults:
       run:
         working-directory: pipeline
@@ -34,10 +37,28 @@ jobs:
           cache-dependency-path: pipeline/requirements.txt
       - run: pip install -r requirements.txt
       - run: python -m pytest -q tests
-      - name: Fetch, encode and publish
-        env:
-          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
-          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-          B2_BUCKET: ${{ secrets.B2_BUCKET }}
-        run: python run.py --publish ${{ inputs.force && '--force' || '' }}
+      - name: Fetch and encode
+        id: build
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          python run.py --out site --live-url "https://${owner}.github.io/${repo}/ecmwf_ifs/latest.json" ${{ inputs.force && '--force' || '' }}
+          if [ -f site/ecmwf_ifs/latest.json ]; then echo "deploy=true" >> "$GITHUB_OUTPUT"; else echo "deploy=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.build.outputs.deploy == 'true'
+        with:
+          path: pipeline/site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -45,6 +45,7 @@ Thumbs.db
 
 # Pipeline
 /pipeline/out/
+/pipeline/site/
 /pipeline/.venv/
 __pycache__/
 *.grib2
