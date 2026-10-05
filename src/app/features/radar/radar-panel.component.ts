@@ -2,21 +2,6 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
-import { RadarProductKey } from '../../core/domain/models/radar.model';
-
-interface ProductOption {
-  key: RadarProductKey;
-  name: string;
-  hint: string;
-  title: string;
-}
-
-const PRODUCTS: readonly ProductOption[] = [
-  { key: 'caz', name: 'CAZ', hint: 'Max dBZ', title: 'Column maximum reflectivity (MAX_Z)' },
-  { key: 'ppi', name: 'PPI', hint: 'Base Z', title: 'Plan position indicator (base reflectivity)' },
-  { key: 'sri', name: 'SRI', hint: 'Rain rate', title: 'Surface rainfall intensity (mm/h)' },
-  { key: 'pac', name: 'PAC', hint: 'Total', title: 'Precipitation accumulation (rain total)' },
-];
 
 /** "14:45" (IST) for a time in epoch ms. */
 function istClock(ms: number): string {
@@ -32,7 +17,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
   syncing: 'Syncing',
 };
 
-/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs product, freshness and opacity. */
+/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs the merged picture's freshness, the last-hour loop and opacity. */
 @Component({
   selector: 'app-radar-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -63,13 +48,9 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
-        <div class="products" role="group" aria-label="Radar product">
-          @for (p of products; track p.key) {
-            <button type="button" class="prod" [class.active]="product() === p.key" [attr.aria-pressed]="product() === p.key" [title]="p.title" (click)="setProduct(p.key)">
-              <span class="pname">{{ p.name }}</span>
-              <span class="phint">{{ p.hint }}</span>
-            </button>
-          }
+        <div class="merged" title="Max reflectivity (reaches furthest, about 250 km), base scan and surface rain rate (about 150 km) are combined into one picture; where several see rain the strongest value is shown.">
+          <span class="merged-name">All scans merged</span>
+          <span class="merged-sub full-only">Max reflectivity · base scan · rain rate</span>
         </div>
 
         @if (historyAvailable()) {
@@ -134,6 +115,10 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
+    .merged { display: flex; flex-direction: column; margin-top: 10px; padding: 7px 10px; border-radius: 10px; background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.35); color: var(--neon-cyan); }
+    .merged-name { font-weight: 700; font-size: 13px; }
+    .merged-sub { font-size: 10px; color: var(--text-secondary); }
+    .panel.compact .merged { margin-top: 8px; padding: 5px 10px; }
     .loop { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
     .loop .play { width: 32px; height: 32px; font-size: 13px; }
     .scrub { flex: 1; min-width: 0; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
@@ -151,7 +136,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .sub[data-state='recent'] { color: #facc15; }
     .sub[data-state='stale'] { color: #fb923c; }
     .sub[data-state='offline'] { color: #f87171; }
-    /* compact: one header line, the product buttons and a thin colour bar */
+    /* compact: one header line, the merged label, the loop and a thin colour bar */
     .panel.compact { padding: 8px 10px; }
     .panel.compact .full-only { display: none; }
     .panel.compact .compact-only { display: block; }
@@ -159,10 +144,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .panel.compact .heading strong { font-size: 13px; }
     .panel.compact .compact-only { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .panel.compact .icon-btn { width: 32px; height: 32px; font-size: 16px; }
-    .panel.compact .products { margin-top: 8px; gap: 4px; }
-    .panel.compact .prod { min-height: 32px; padding: 3px 2px; flex-direction: row; justify-content: center; gap: 4px; }
-    .panel.compact .pname { font-size: 12px; }
-    .panel.compact .phint { display: none; }
     .panel.compact .legend { margin-top: 8px; }
     .panel.compact .bar { height: 5px; }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
@@ -172,12 +153,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .age[data-state='recent'] { color: #facc15; }
     .age[data-state='stale'] { color: #fb923c; }
     .age[data-state='offline'] { color: #f87171; }
-    .products { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-    .prod { display: flex; flex-direction: column; align-items: center; gap: 1px; min-height: 44px; padding: 6px 2px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: pointer; }
-    .prod:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
-    .prod.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
-    .pname { font-weight: 700; font-size: 13px; }
-    .phint { font-size: 10px; opacity: 0.8; }
     .stations { margin-top: 10px; }
     .label { color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
@@ -202,7 +177,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
 export class RadarPanelComponent {
   private readonly layers = inject(MapLayerService);
 
-  protected readonly products = PRODUCTS;
   protected readonly radar = inject(RadarService);
   protected readonly storms = inject(StormTracksService);
   protected readonly frames = this.radar.history;
@@ -302,10 +276,6 @@ export class RadarPanelComponent {
     const m = this.radar.getStationAge(id);
     if (m === null || this.radar.getStationFreshness(id) === 'offline') return '—'; // an offline radar has no meaningful age
     return m >= 120 ? `${Math.round(m / 60)}h` : `${m}m`;
-  }
-
-  protected setProduct(key: RadarProductKey): void {
-    this.radar.setProduct(key);
   }
 
   protected select(id: string): void {

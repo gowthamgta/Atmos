@@ -15,6 +15,7 @@ import { blurSeparable, dequantizeRadar, gaussianKernel, quantizeRadarField, res
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
+import { MERGED_PRODUCTS, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
@@ -34,6 +35,8 @@ export interface RadarHistoryFrame extends RadarDisplayFrame {
 const yieldToBrowser = () => new Promise<void>(r => setTimeout(r, 0));
 
 export { RADAR_COLOR_STOPS, sampleRadarColorRamp } from './radar-field';
+
+export { MERGED_PRODUCTS } from './radar-mosaic';
 
 /**
  * Blur applied to the reconstructed intensity, in pixels of the 1024 grid (about 0.5 km each). Light: the GPU layer
@@ -151,6 +154,8 @@ export class RadarService implements OnDestroy {
   readonly lastSyncTime = signal<string | null>(null);
   readonly isRefreshing = signal<boolean>(false);
   readonly allRadarResults = signal<Map<string, ProcessedRadarResult>>(new Map());
+  /** The merged scans other than CAZ (PPI, SRI), keyed `stationId:product`. CAZ stays in allRadarResults. */
+  private readonly extraResults = signal<Map<string, ProcessedRadarResult>>(new Map());
   readonly compositeMosaic = signal<ProcessedRadarResult | null>(null);
   readonly hoverInfo = signal<RadarHoverInfo | null>(null);
 
@@ -233,6 +238,8 @@ export class RadarService implements OnDestroy {
   // Last processed sweep per station, keyed by a hash of the GIF bytes. IMD publishes new images
   // roughly every 10 minutes, so most 1-minute refreshes can reuse the previous result.
   private sweepCache = new Map<string, { key: string; result: ProcessedRadarResult | null }>();
+  private readonly extrasFetchedAt = new Map<string, number>();
+  private static readonly EXTRAS_REFRESH_MS = 4 * 60_000;
 
   constructor() {
     this.fetchAllRadarSweeps();
@@ -369,6 +376,8 @@ export class RadarService implements OnDestroy {
   setProduct(product: RadarProductKey): void {
     this.activeProduct.set(product);
     this.allRadarResults.set(new Map());
+    this.extraResults.set(new Map());
+    this.extrasFetchedAt.clear();
     this.compositeMosaic.set(null);
     this.clearHistory();
     this.fetchAllRadarSweeps();
@@ -414,10 +423,34 @@ export class RadarService implements OnDestroy {
         const station = queue.shift();
         if (!station) break;
         try {
+          // The merged extras (PPI, SRI) are fetched alongside; a missing one is simply left out of the merge. IMD updates
+          // about every 10 minutes, so they are refreshed every few minutes, not every minute (they add up to megabytes),
+          // and the X-band radar's are skipped: its images are big and the Chennai S-band radar covers the same ground.
+          const now = Date.now();
+          const wantExtras = station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
+          if (wantExtras) this.extrasFetchedAt.set(station.id, now);
+          const extras = wantExtras
+            ? await Promise.all(
+                MERGED_PRODUCTS.filter(p => p !== productKey).map(async p => [p, await this.processStationSweep(station, p, isTransparent, false).catch(() => null)] as const)
+              )
+            : [];
+          if (wantExtras && requestId === this.currentRequestId) {
+            this.extraResults.update(map => {
+              const next = new Map(map);
+              for (const [p, r] of extras) {
+                if (r) next.set(`${station.id}:${p}`, r);
+                else next.delete(`${station.id}:${p}`);
+              }
+              return next;
+            });
+          }
           const res = await this.processStationSweep(station, productKey, isTransparent);
           if (res && requestId === this.currentRequestId) {
             // Unchanged image: same result object, nothing to redraw
-            if (this.allRadarResults().get(station.id) === res) continue;
+            if (this.allRadarResults().get(station.id) === res) {
+              if (extras.some(([, r]) => r)) this.scheduleMosaic(); // a merged scan may have changed even if CAZ did not
+              continue;
+            }
             this.allRadarResults.update(map => {
               const next = new Map(map);
               next.set(station.id, res);
@@ -476,7 +509,9 @@ export class RadarService implements OnDestroy {
   async processStationSweep(
     station: RadarStationConfig,
     productKey: RadarProductKey,
-    isTransparent: boolean
+    isTransparent: boolean,
+    /** The primary scan (CAZ) sets the station's timing and online state; the merged extras do not. */
+    primary = true
   ): Promise<ProcessedRadarResult | null> {
     const productConfig = station.products[productKey] || station.products.caz;
     const cacheBuster = Date.now();
@@ -572,7 +607,7 @@ export class RadarService implements OnDestroy {
     if (timing) {
       timing.ageMinutes = ageMinutes;
       timing.freshness = freshness;
-      this.stationTimings.update(m => new Map(m).set(station.id, timing!));
+      if (primary) this.stationTimings.update(m => new Map(m).set(station.id, timing!));
     }
 
     // Skip decoding only if radar sweep is older than 24 hours (1440 mins) or unreadable
@@ -585,15 +620,16 @@ export class RadarService implements OnDestroy {
 
     // Same image as last time: reuse the processed result instead of decoding it again
     const cacheKey = `${productKey}|${isTransparent}|${this.hashBytes(new Uint8Array(rawArrayBuf))}`;
-    const cached = this.sweepCache.get(station.id);
+    const cacheId = `${station.id}:${productKey}`;
+    const cached = this.sweepCache.get(cacheId);
     if (cached && cached.key === cacheKey) {
       if (!cached.result || cached.result.isDisplayed === isDisplayed) return cached.result;
       const updated = { ...cached.result, isDisplayed, timing };
-      this.sweepCache.set(station.id, { key: cacheKey, result: updated });
+      this.sweepCache.set(cacheId, { key: cacheKey, result: updated });
       return updated;
     }
-    const processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, rawArrayBuf, timing, isDisplayed);
-    this.sweepCache.set(station.id, { key: cacheKey, result: processed });
+    const processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, rawArrayBuf, timing, isDisplayed, primary);
+    this.sweepCache.set(cacheId, { key: cacheKey, result: processed });
     return processed;
   }
 
@@ -604,7 +640,8 @@ export class RadarService implements OnDestroy {
     isTransparent: boolean,
     rawArrayBuf: ArrayBuffer,
     timing: RadarObservationTiming | null,
-    isDisplayed: boolean
+    isDisplayed: boolean,
+    primary = true
   ): Promise<ProcessedRadarResult | null> {
     let w = 0;
     let h = 0;
@@ -656,7 +693,7 @@ export class RadarService implements OnDestroy {
     if (!rgba || w < 50 || h < 50) {
       return null;
     }
-    return this.processRgba(station, productKey, productConfig, isTransparent, rgba, w, h, timing, isDisplayed, true);
+    return this.processRgba(station, productKey, productConfig, isTransparent, rgba, w, h, timing, isDisplayed, primary);
   }
 
   /**
@@ -901,194 +938,18 @@ export class RadarService implements OnDestroy {
     return result;
   }
 
-  /**
-   * Generates a single unified composite radar mosaic across all active stations.
-   * Where multiple radars overlap (e.g. Karaikal and Kochi), their rain intensity
-   * fields are merged seamlessly before color mapping, preserving peak storm cores
-   * and smoothly blending contours, completely eliminating overlapping layer seams.
-   */
-  private composeMosaic(allResults: Iterable<[string, ProcessedRadarResult]>): ProcessedRadarResult | null {
-
-    const activeStations: {
-      station: RadarStationConfig;
-      res: ProcessedRadarResult;
-      south: number;
-      west: number;
-      north: number;
-      east: number;
-      cropW: number;
-      cropH: number;
-      field: Float32Array;
-      cosLat: number;
-    }[] = [];
-
-    let latestTiming: RadarObservationTiming | null = null;
-
-    for (const [stId, res] of allResults) {
-      if (res.isDisplayed === false || !res.fieldData) continue;
-      const st = this.stations.find(s => s.id === stId);
-      if (!st) continue;
-
-      const b = res.fieldData.bounds;
-      activeStations.push({
-        station: st,
-        res,
-        south: b[0][0],
-        west: b[0][1],
-        north: b[1][0],
-        east: b[1][1],
-        cropW: res.fieldData.cropW,
-        cropH: res.fieldData.cropH,
-        field: res.fieldData.field,
-        cosLat: Math.cos((st.lat * Math.PI) / 180)
-      });
-
-      if (res.timing && (!latestTiming || (res.timing.epochMs && (!latestTiming.epochMs || res.timing.epochMs > latestTiming.epochMs)))) {
-        latestTiming = res.timing;
-      }
-    }
-
-    if (activeStations.length === 0) return null;
-
-    // 1. Calculate combined bounding box of all active stations
-    let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
-    for (const s of activeStations) {
-      if (s.west < minLng) minLng = s.west;
-      if (s.east > maxLng) maxLng = s.east;
-      if (s.south < minLat) minLat = s.south;
-      if (s.north > maxLat) maxLat = s.north;
-    }
-
-    // 2. Composite resolution: 0.5 km per pixel, the same as the stations' own fields
-    const midLat = (minLat + maxLat) / 2;
-    const cosMidLat = Math.cos((midLat * Math.PI) / 180);
-    const dLngKm = (maxLng - minLng) * 111.32 * cosMidLat;
-    const dLatKm = (maxLat - minLat) * 111.32;
-
-    const px = (km: number) => Math.min(RadarService.MOSAIC_MAX_PX, Math.max(512, Math.round(km / RadarService.MOSAIC_KM_PER_PX)));
-    const outW = px(dLngKm);
-    const outH = px(dLatKm);
-
-    const compositeField = new Float32Array(outW * outH);
-
-    // 3. Composite. Each radar only visits the pixels inside its own footprint and adds its contribution to
-    // per-pixel accumulators; a second pass then merges them. (Looping every pixel over every radar did the
-    // same arithmetic six times over for pixels most radars cannot even see.)
-    const lngSpan = maxLng - minLng;
-    const latSpan = maxLat - minLat;
-    const total = outW * outH;
-    const peak = new Float32Array(total);        // strongest echo over this pixel
-    const weightedSum = new Float32Array(total); // sum of value * distance weight
-    const weightTotal = new Float32Array(total);
-    const radarCount = new Uint8Array(total);    // how many radars see an echo here
-
-    for (const s of activeStations) {
-      const x0 = Math.max(0, Math.floor(((s.west - minLng) / lngSpan) * (outW - 1)));
-      const x1 = Math.min(outW - 1, Math.ceil(((s.east - minLng) / lngSpan) * (outW - 1)));
-      const y0 = Math.max(0, Math.floor(((maxLat - s.north) / latSpan) * (outH - 1)));
-      const y1 = Math.min(outH - 1, Math.ceil(((maxLat - s.south) / latSpan) * (outH - 1)));
-      const f = s.field;
-      const cx = s.cropW / 2;
-      const cy = s.cropH / 2;
-      const range = s.station.operationalRangeKm;
-
-      for (let y = y0; y <= y1; y++) {
-        const lat = maxLat - (y / (outH - 1)) * latSpan;
-        if (lat < s.south || lat > s.north) continue;
-        const dLat = (lat - s.station.lat) * 111.32;
-        const v = (s.north - lat) / (s.north - s.south);
-        const fy = v * (s.cropH - 1);
-        const yA = Math.floor(fy);
-        const yB = Math.min(yA + 1, s.cropH - 1);
-        const wy = fy - yA;
-        const rowOffset = y * outW;
-
-        for (let x = x0; x <= x1; x++) {
-          const lng = minLng + (x / (outW - 1)) * lngSpan;
-          if (lng < s.west || lng > s.east) continue;
-
-          // Distance to the station centre (the radar's operational range)
-          const dLng = (lng - s.station.lng) * 111.32 * s.cosLat;
-          const distKm = Math.hypot(dLat, dLng);
-          if (distKm > range) continue;
-
-          // Normalised coordinates in the station crop
-          const u = (lng - s.west) / (s.east - s.west);
-          const fx = u * (s.cropW - 1);
-          const cDist = Math.hypot(fx - cx, fy - cy);
-          if (cDist > cx - 2) continue;
-
-          // Bilinear sample from the station field
-          const xA = Math.floor(fx);
-          const xB = Math.min(xA + 1, s.cropW - 1);
-          const wx = fx - xA;
-          let val = (f[yA * s.cropW + xA] * (1 - wx) + f[yA * s.cropW + xB] * wx) * (1 - wy) +
-            (f[yB * s.cropW + xA] * (1 - wx) + f[yB * s.cropW + xB] * wx) * wy;
-
-          // Smooth dish edge feathering so range boundaries never show seams
-          const dishEdgeDist = (cx - 2) - cDist;
-          if (dishEdgeDist < 8) val *= Math.max(0, dishEdgeDist / 8);
-
-          if (val > 0) {
-            const i = rowOffset + x;
-            if (val > peak[i]) peak[i] = val;
-            const w = Math.max(0.1, 1 - distKm / range);
-            weightedSum[i] += val * w;
-            weightTotal[i] += w;
-            radarCount[i]++;
-          }
-        }
-      }
-    }
-
-    // 4. Merge overlapping radars (the GPU layer does the colouring, from the merged intensity)
-    for (let i = 0; i < total; i++) {
-      const count = radarCount[i];
-      if (count === 0) continue;
-
-      let mergedVal = peak[i];
-      if (count > 1) {
-        // Merge overlapping radars: preserve peak storm core while smoothly blending surrounding contours
-        const avgVal = weightTotal[i] > 0 ? weightedSum[i] / weightTotal[i] : peak[i];
-        mergedVal = 0.80 * peak[i] + 0.20 * avgVal;
-      }
-
-      compositeField[i] = mergedVal;
-    }
-
-    const result: ProcessedRadarResult = {
-      stationId: 'composite-mosaic',
-      dataUrl: '',
-      displayField: quantizeRadarField(compositeField),
-      coordinates: [
-        [minLng, maxLat], // NW
-        [maxLng, maxLat], // NE
-        [maxLng, minLat], // SE
-        [minLng, minLat]  // SW
-      ],
-      fieldData: {
-        field: compositeField,
-        cropW: outW,
-        cropH: outH,
-        cx: outW / 2,
-        cy: outH / 2,
-        radius: Math.hypot(outW, outH) / 2,
-        bounds: [[minLat, minLng], [maxLat, maxLng]]
-      },
-      timing: latestTiming,
-      isDisplayed: true
-    };
-
-    return result;
-  }
 
   /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
-  private static readonly MOSAIC_KM_PER_PX = 0.5;
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
+
+  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>): ProcessedRadarResult | null {
+    return composeRadarMosaic(this.stations, sources, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX);
+  }
 
   /** Rebuilds the live composite from the latest still of every radar. */
   private generateMergedMosaic(): void {
-    this.compositeMosaic.set(this.composeMosaic(this.allRadarResults()));
+    // CAZ results are keyed by station id, the merged extras by `stationId:product`
+    this.compositeMosaic.set(this.composeMosaic([...this.allRadarResults(), ...this.extraResults()]));
   }
 
   /** The live composite on the storm-tracking grid. */
