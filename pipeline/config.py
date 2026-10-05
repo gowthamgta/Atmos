@@ -2,9 +2,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-MODEL = "ecmwf_ifs"
 BUCKET_URL = "https://openmeteo.s3.amazonaws.com"
-LATEST_URL = f"{BUCKET_URL}/data_spatial/ecmwf_ifs/latest.json"
+LATEST_URL = f"{BUCKET_URL}/data_spatial/ecmwf_ifs/latest.json"  # IFS; GFS builds its own in fetch_gfs.py
 
 # South India + seas; regular lat/lon grid at 0.1 degrees (~11 km, close to IFS's native ~9 km)
 LAT_MAX, LAT_MIN = 22.0, 4.0
@@ -13,13 +12,7 @@ STEP_DEG = 0.1
 NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 181 rows, north to south
 NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 221 columns, west to east
 
-# Forecast hours to fetch: 3-hourly out to 144 h (the 1-hourly part is subsampled to keep downloads small)
-STEP_HOURS = list(range(0, 145, 3))
-RUN_HOURS = (0, 12)                                 # 00Z and 12Z runs only
-
-# IFS precipitation is mm in the preceding hour up to +90 h, then mm in the preceding 3 h (verified against
-# Open-Meteo's hourly API, which divides the 3 h totals by 3). We publish mm/h throughout.
-PRECIP_3H_AFTER_H = 90
+# Each model module (fetch_ifs.py, fetch_gfs.py) declares its own MODEL_ID, RUN_HOURS, STEP_HOURS and rain semantics.
 
 
 @dataclass(frozen=True)

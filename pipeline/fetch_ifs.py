@@ -8,6 +8,15 @@ import requests
 from config import BUCKET_URL, LATEST_URL, LAT_MAX, LAT_MIN, LON_MIN, NX, NY, SOURCE_VARS, STEP_DEG
 from o1280 import OFFSETS, band_rows, regrid_band
 
+MODEL_ID = "ecmwf_ifs"
+LABEL = "ECMWF IFS"
+RUN_HOURS = (0, 12)                      # 00Z and 12Z runs only (they reach +240 h; we use +144 h)
+STEP_HOURS = list(range(0, 145, 3))      # 3-hourly: the 1-hourly part is subsampled to keep downloads small
+# IFS precipitation is mm in the preceding hour up to +90 h, then mm in the preceding 3 h (verified against
+# Open-Meteo's hourly API, which divides the 3 h totals by 3). We publish mm/h throughout.
+PRECIP_3H_AFTER_H: int | None = 90
+PRECIP_NOTE = "mm/h: rain in the hour before the valid time (<= +90 h) or the mean rate over the 3 h before it (> +90 h)"
+
 LATS = LAT_MAX - STEP_DEG * np.arange(NY)
 LONS = LON_MIN + STEP_DEG * np.arange(NX)
 R0, R1 = band_rows(LAT_MIN, LAT_MAX)

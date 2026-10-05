@@ -192,6 +192,15 @@ def build_districts(cache, out_path):
                      'geometry': {'type': 'Point', 'coordinates': round_coords([lka_point.x, lka_point.y])}})
 
     districts = []
+    # Sri Lanka's 25 districts (its internal borders), named and ranked like the Indian ones
+    lka2_url = 'https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/gbOpen/LKA/ADM2/geoBoundaries-LKA-ADM2_simplified.geojson'
+    lka2 = json.load(open(fetch(lka2_url, os.path.join(cache, 'lka-adm2.geojson')), encoding='utf-8'))
+    for f in lka2['features']:
+        g = shape(f['geometry'])
+        districts.append(('Sri Lanka', ascii_name(f['properties']['shapeName']).strip(), g, g.representative_point()))
+        counts.setdefault('Sri Lanka', 0)
+        counts['Sri Lanka'] += 1
+
     for f in a2['features']:
         g = shape(f['geometry'])
         point = g.representative_point()
@@ -204,9 +213,12 @@ def build_districts(cache, out_path):
         districts.append((owner, ascii_name(f['properties']['shapeName']).strip(), g, point))
         counts[owner] += 1
 
-    areas = sorted(g.area for _, _, g, _ in districts)
+    # Label priority (1 = shown first when zooming in) from district size, ranked within each country
+    areas = {'Sri Lanka': sorted(g.area for o, _, g, _ in districts if o == 'Sri Lanka'),
+             'India': sorted(g.area for o, _, g, _ in districts if o != 'Sri Lanka')}
     for owner, name, g, point in districts:
-        rank = 1 if g.area >= areas[int(len(areas) * 0.66)] else 2 if g.area >= areas[int(len(areas) * 0.25)] else 3
+        pool = areas['Sri Lanka' if owner == 'Sri Lanka' else 'India']
+        rank = 1 if g.area >= pool[int(len(pool) * 0.66)] else 2 if g.area >= pool[int(len(pool) * 0.25)] else 3
         features.append({'type': 'Feature', 'properties': {'kind': 'district', 'name': name, 'state': owner},
                          'geometry': simplified(g, 0.0012)})
         features.append({'type': 'Feature',

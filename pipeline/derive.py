@@ -2,7 +2,6 @@
 from __future__ import annotations
 import numpy as np
 
-from config import PRECIP_3H_AFTER_H
 
 
 def relative_humidity(t_c: np.ndarray, td_c: np.ndarray) -> np.ndarray:
@@ -18,10 +17,17 @@ def apparent_temperature(t_c: np.ndarray, rh: np.ndarray, wind_ms: np.ndarray) -
     return t_c + 0.33 * e - 0.70 * wind_ms - 4.00
 
 
-def derive(raw: dict[str, np.ndarray], step_h: int = 0) -> dict[str, np.ndarray]:
-    t, td = raw["temperature_2m"], raw["dew_point_2m"]
+def derive(raw: dict[str, np.ndarray], step_h: int = 0, precip_3h_after_h: int | None = None) -> dict[str, np.ndarray]:
+    """Published variables from one model step.
+
+    `raw` uses Open-Meteo's source names and units (pressure in Pa). Models without a dew point (GFS) supply
+    relative_humidity_2m instead. `precip_3h_after_h`: from this forecast hour on, the source precipitation is a
+    3-hour total and is divided by 3 to get mm/h (None: always hourly).
+    """
+    t = raw["temperature_2m"]
     u, v = raw["wind_u_component_10m"], raw["wind_v_component_10m"]
-    rh = relative_humidity(t, td)
+    rh = np.clip(raw["relative_humidity_2m"], 0, 100) if "relative_humidity_2m" in raw else relative_humidity(t, raw["dew_point_2m"])
+    three_hourly = precip_3h_after_h is not None and step_h > precip_3h_after_h
     return {
         "t2m": t,
         "rh": rh,
@@ -30,7 +36,7 @@ def derive(raw: dict[str, np.ndarray], step_h: int = 0) -> dict[str, np.ndarray]
         "v10": v,
         "gust": raw["wind_gusts_10m"],
         "msl": raw["pressure_msl"] / 100.0,
-        "precip": raw["precipitation"] / (3.0 if step_h > PRECIP_3H_AFTER_H else 1.0),  # mm/h
+        "precip": raw["precipitation"] / (3.0 if three_hourly else 1.0),  # mm/h
         "cloud": raw["cloud_cover"],
         "cape": raw["cape"],
         "tcwv": raw["total_column_integrated_water_vapour"],

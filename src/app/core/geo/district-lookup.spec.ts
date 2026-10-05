@@ -42,7 +42,8 @@ describe('real district data', () => {
 
   it('covers every South Indian state with districts', () => {
     const states = new Set(index.districts.map(d => d.state));
-    expect([...states].sort()).toEqual(['Andhra Pradesh', 'Karnataka', 'Kerala', 'Puducherry', 'Tamil Nadu', 'Telangana']);
+    expect([...states].sort()).toEqual(['Andhra Pradesh', 'Karnataka', 'Kerala', 'Puducherry', 'Sri Lanka', 'Tamil Nadu', 'Telangana']);
+    expect(index.districts.filter(d => d.state === 'Sri Lanka')).toHaveLength(25);
     expect(index.districts.filter(d => d.state === 'Tamil Nadu')).toHaveLength(38);
   });
 
@@ -53,6 +54,8 @@ describe('real district data', () => {
     ['Bengaluru', 12.97, 77.59, 'Karnataka'],
     ['Hyderabad', 17.38, 78.48, 'Telangana'],
     ['Visakhapatnam', 17.69, 83.22, 'Andhra Pradesh'],
+    ['Colombo', 6.93, 79.86, 'Sri Lanka'],
+    ['Jaffna', 9.66, 80.02, 'Sri Lanka'],
   ])('puts %s in the right state', (_name, lat, lon, state) => {
     expect(findPlace(index, lat, lon).state).toBe(state);
   });

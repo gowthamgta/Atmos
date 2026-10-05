@@ -21,9 +21,9 @@ python run.py --out site --force                 # full run into ./site
 
 ## Output (served from `https://<user>.github.io/<repo>/`)
 ```
-ecmwf_ifs/latest.json                       {"model","run"}
-ecmwf_ifs/<run>/manifest.json               grid, steps, per-variable range/unit
-ecmwf_ifs/<run>/<var>/<hhh>.png             value = min + (R*256+G)/65535*(max-min); B=255 means no data
+<model>/latest.json                         {"model","run"}
+<model>/<run>/manifest.json                 grid, steps, per-variable range/unit
+<model>/<run>/<var>/<hhh>.png               value = min + (R*256+G)/65535*(max-min); B=255 means no data
 ```
 Variables: t2m, rh, feels, u10, v10, gust, msl, precip, cloud, cape, tcwv (see `config.py`).
 Step 0 is the analysis hour, so gust, precip and CAPE are no-data there.
@@ -42,13 +42,28 @@ repository activity; re-enable under the Actions tab if that happens.
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
 3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.
 
-## Adding another model (GFS, ICON, UKMO, AIFS...)
-The app is model-agnostic: it reads `<baseUrl>/latest.json` and `<baseUrl>/<run>/manifest.json`, then the PNGs listed
-by the manifest. To add a model:
-1. Write a fetcher like `fetch_ifs.py` that returns the same source variables on the same 0.1° grid
-   (`config.py` has the grid and the variable list), and a `run` entry point that writes
-   `site/<model_id>/<run>/...`, `manifest.json` and `latest.json` in the layout above.
-2. Add a job (or a matrix entry) to `.github/workflows/nwp.yml`. All models deploy into the same Pages site;
-   each job should add its folder to the artifact without removing the others.
-3. Add one entry to `FORECAST_MODELS` in `src/app/core/forecast/forecast-models.ts`. The model selector in the layer
-   rail appears automatically once there is more than one entry.
+## Models
+| id | source | native grid | runs used | steps | rain after |
+|---|---|---|---|---|---|
+| `ecmwf_ifs` | Open-Meteo `ecmwf_ifs` | O1280, ~9 km | 00Z, 12Z | 3-hourly to +144 h | +90 h is a 3 h total |
+| `gfs` | Open-Meteo `ncep_gfs013` (0.117°: temperature, humidity, wind, rain, cloud, moisture) + `ncep_gfs025` (0.25°: pressure, gusts, CAPE) | regular lat/lon | 00Z, 06Z, 12Z, 18Z | 3-hourly to +144 h | +120 h is a 3 h total |
+
+Both are resampled onto the same 0.1° grid and published in the same format, so the app treats them alike. GFS has no
+dew point, so its own relative humidity is used. Observed differences from IFS on a shared valid time: temperature
+within about 0.8 °C (correlation 0.95), CAPE about half of IFS's (a known model difference).
+
+`python run.py --model gfs ...` / `--model ecmwf_ifs ...`. The workflow runs both every hour; each exits early when its
+newest run is not ready, is not one it uses, or is already live. A Pages deploy replaces the whole site, so `mirror.py`
+copies any model that was not rebuilt from the live site into the artifact (otherwise a GFS update would delete IFS).
+
+## Adding another model (AIFS, ICON, UKMO...)
+1. Write `fetch_<name>.py` with the same interface as `fetch_ifs.py` / `fetch_gfs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`,
+   `STEP_HOURS`, `PRECIP_3H_AFTER_H` (None if rain is always hourly), `PRECIP_NOTE`, `latest_run()` and
+   `read_step(run, h)` returning the source variables on the 0.1° grid (`temperature_2m`, `dew_point_2m` or
+   `relative_humidity_2m`, `wind_u/v_component_10m`, `wind_gusts_10m`, `pressure_msl` in Pa, `precipitation`,
+   `cloud_cover`, `cape`, `total_column_integrated_water_vapour`). Check the rain semantics against Open-Meteo's hourly
+   API as was done for IFS and GFS.
+2. Register the module in `MODELS` in `run.py`, and add the id to the model list in `.github/workflows/nwp.yml`
+   (both the build loop and the `mirror.py --models` call).
+3. Add one entry to `FORECAST_MODELS` in `src/app/core/forecast/forecast-models.ts` (the folder name must equal
+   `MODEL_ID`). The model selector in the layer rail lists it automatically.

@@ -44,7 +44,7 @@ __screenshots__/
 Thumbs.db
 
 # Pipeline
-/pipeline/out/
+/pipeline/out*/
 /pipeline/site/
 /pipeline/.venv/
 __pycache__/

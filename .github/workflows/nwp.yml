@@ -1,17 +1,16 @@
 name: nwp
 
-# Fetch the newest ECMWF IFS 00Z/12Z run, cut out South India, encode it, and deploy the result to
-# GitHub Pages (free, CORS-open). No external storage, no billing.
-# Open-Meteo finishes each run roughly 7-9 h after the reference time, so we retry hourly;
-# the script exits early if the run is not ready or is already live.
+# Fetch the newest runs of each model (ECMWF IFS, NOAA GFS) from Open-Meteo's public data, cut out South India,
+# encode them, and deploy the result to GitHub Pages (free, CORS-open). No external storage, no billing.
+# Runs hourly: each model exits early when its newest run is not ready, is not one it uses, or is already live.
+# A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
-    - cron: "30 8-11 * * *"
-    - cron: "30 20-23 * * *"
+    - cron: "30 * * * *"
   workflow_dispatch:
     inputs:
       force:
-        description: "Rebuild and deploy even if this run is already live"
+        description: "Rebuild and deploy even if the newest runs are already live"
         type: boolean
         default: false
 
@@ -22,7 +21,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     outputs:
       deploy: ${{ steps.build.outputs.deploy }}
     defaults:
@@ -42,8 +41,19 @@ jobs:
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           repo="${GITHUB_REPOSITORY#*/}"
-          python run.py --out site --live-url "https://${owner}.github.io/${repo}/ecmwf_ifs/latest.json" ${{ inputs.force && '--force' || '' }}
-          if [ -f site/ecmwf_ifs/latest.json ]; then echo "deploy=true" >> "$GITHUB_OUTPUT"; else echo "deploy=false" >> "$GITHUB_OUTPUT"; fi
+          base="https://${owner}.github.io/${repo}"
+          force="${{ inputs.force && '--force' || '' }}"
+          for model in ecmwf_ifs gfs; do
+            # one model failing must not stop the other
+            python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force \
+              || echo "::warning::$model failed; the live copy stays in place"
+          done
+          if ls site/*/latest.json >/dev/null 2>&1; then
+            python mirror.py --site site --base-url "$base" --models ecmwf_ifs gfs
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-pages-artifact@v3
         if: steps.build.outputs.deploy == 'true'
         with:

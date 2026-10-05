@@ -8,7 +8,8 @@ import {
   computed,
   ViewChild,
   ElementRef,
-  untracked
+  untracked,
+  isDevMode
 } from '@angular/core';
 import * as maplibregl from 'maplibre-gl';
 import { Map as MapLibreMap, Marker } from 'maplibre-gl';
@@ -1282,6 +1283,7 @@ export class MapComponent implements OnInit, OnDestroy {
       attributionControl: false
     });
     this.map = map;
+    if (isDevMode()) (window as unknown as Record<string, unknown>)['__atmosMap'] = map; // debugging handle, dev builds only
 
     map.on('load', () => {
       this.isMapLoaded.set(true);

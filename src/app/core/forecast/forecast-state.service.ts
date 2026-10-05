@@ -79,6 +79,12 @@ export class ForecastStateService {
     void this.catalog.ensureLoaded().then(() => this.initialiseTime());
   }
 
+  /** After switching model: pull the selected time into the new model's forecast window. */
+  reclampTime(): void {
+    const t = this.timeMs();
+    if (t !== null) this.setTime(t);
+  }
+
   setTime(ms: number): void {
     const start = this.startMs();
     const end = this.endMs();

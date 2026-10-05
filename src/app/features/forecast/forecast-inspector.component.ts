@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject } from '@angular/core';
+import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
 
 const IST = 'Asia/Kolkata';
@@ -34,7 +35,7 @@ const IST = 'Asia/Kolkata';
               </div>
             }
           </dl>
-          <footer>▲ adjusted to 1 km terrain; other values are ECMWF at about 9 km.</footer>
+          <footer>▲ adjusted to 1 km terrain; other values are {{ catalog.model().label }} at {{ catalog.model().resolution }}.</footer>
         } @else if (inspector.busy()) {
           <div class="meta">Loading…</div>
         } @else {
@@ -67,6 +68,7 @@ const IST = 'Asia/Kolkata';
 })
 export class ForecastInspectorComponent {
   protected readonly inspector = inject(ForecastInspectorService);
+  protected readonly catalog = inject(ForecastCatalogService);
 
   protected readonly placeTitle = computed(() => {
     const p = this.inspector.point();

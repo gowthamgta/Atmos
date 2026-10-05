@@ -119,7 +119,7 @@ export class ForecastRailComponent {
   }
 
   protected onModel(event: Event): void {
-    void this.catalog.setModel((event.target as HTMLSelectElement).value);
+    void this.catalog.setModel((event.target as HTMLSelectElement).value).then(() => this.state.reclampTime());
   }
 
   protected readonly runLabel = computed(() => {
