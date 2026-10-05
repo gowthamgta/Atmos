@@ -7,9 +7,12 @@ IMMUTABLE = "public, max-age=31536000, immutable"
 
 
 def client():
+    endpoint = os.environ["B2_ENDPOINT"].strip()
+    if not endpoint.startswith("http"):
+        endpoint = "https://" + endpoint
     return boto3.client(
         "s3",
-        endpoint_url=os.environ["B2_ENDPOINT"],
+        endpoint_url=endpoint,
         aws_access_key_id=os.environ["B2_KEY_ID"],
         aws_secret_access_key=os.environ["B2_APP_KEY"],
     )
