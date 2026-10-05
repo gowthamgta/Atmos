@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { ECHO_FADE_FULL, ECHO_FADE_START, blurSeparable, echoAlphaFeather, gaussianKernel, resampleBilinear } from './radar-field';
+import {
+  ECHO_FADE_FULL,
+  ECHO_FADE_START,
+  RADAR_COLOR_STOPS,
+  RADAR_FIELD_MAX,
+  blurSeparable,
+  dequantizeRadar,
+  echoAlphaFeather,
+  gaussianKernel,
+  quantizeRadarField,
+  resampleBilinear,
+} from './radar-field';
 
 describe('gaussianKernel', () => {
   it('is normalised, symmetric and peaks in the middle', () => {
@@ -109,5 +120,27 @@ describe('echoAlphaFeather', () => {
     expect(lightest).toBeGreaterThan(0.3);
     expect(lightest).toBeLessThan(0.9);
     expect(echoAlphaFeather(1.2)).toBe(1); // light rain and heavier are not faded
+  });
+});
+
+describe('quantizeRadarField', () => {
+  it('keeps every intensity within one byte step, clips the ends, and leaves rain-free pixels at zero', () => {
+    const values = [0, 0.04, 0.5, 1.2, 2.0, 3.0, 4.4, 5.2, 5.99, 7, -1];
+    const bytes = quantizeRadarField(Float32Array.from(values));
+    const step = RADAR_FIELD_MAX / 255;
+    values.forEach((v, i) => {
+      const expected = Math.min(Math.max(v, 0), RADAR_FIELD_MAX);
+      expect(Math.abs(dequantizeRadar(bytes[i]) - expected)).toBeLessThanOrEqual(step / 2 + 1e-6);
+    });
+    expect(bytes[0]).toBe(0);
+    expect(bytes[9]).toBe(255);
+    expect(bytes[10]).toBe(0);
+  });
+
+  it('is finer than the colour scale, so classes and the colours between them survive', () => {
+    const stops = RADAR_COLOR_STOPS.map(s => s.val);
+    const gaps = stops.slice(1).map((v, i) => v - stops[i]);
+    expect(RADAR_FIELD_MAX / 255).toBeLessThan(Math.min(...gaps) / 10);
+    expect(RADAR_FIELD_MAX).toBeGreaterThan(stops[stops.length - 1]);
   });
 });

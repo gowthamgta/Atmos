@@ -15,6 +15,7 @@ import { RadarDisplayFrame, RadarService } from '../../core/services/radar.servi
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite.service';
 import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
+import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
@@ -312,9 +313,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private radarOpacityEffect = effect(() => {
     const opacity = this.radarService.radarOpacity();
     if (!this.map || !this.isMapLoaded()) return;
-    if (this.map.getLayer('radar-layer-mosaic')) {
-      this.map.setPaintProperty('radar-layer-mosaic', 'raster-opacity', opacity);
-    }
+    this.radarLayer?.setOpacity(opacity);
   });
 
   // Reactive Effect: Recenter Mosaic Request
@@ -345,12 +344,7 @@ export class MapComponent implements OnInit, OnDestroy {
     this.ringLabelMarkers.forEach(m => m.remove());
     this.ringLabelMarkers = [];
 
-    if (this.map?.getLayer('radar-layer-mosaic')) {
-      this.map.removeLayer('radar-layer-mosaic');
-    }
-    if (this.map?.getSource('radar-source-mosaic')) {
-      this.map.removeSource('radar-source-mosaic');
-    }
+    this.removeRadarLayer();
 
     this.removeSatelliteLayers();
     this.forecastMap.detach();
@@ -512,68 +506,30 @@ export class MapComponent implements OnInit, OnDestroy {
 
   // --- 1. IMD Doppler Weather Radar Unified Merged Composite Mosaic ---
 
+  private radarLayer: RadarFieldLayer | null = null;
+
+  private removeRadarLayer(): void {
+    if (this.map && this.radarLayer && this.map.getLayer(this.radarLayer.id)) this.map.removeLayer(this.radarLayer.id);
+    this.radarLayer = null;
+  }
+
+  /**
+   * The radar is drawn on the GPU from the mosaic's intensity (see RadarFieldLayer), so the layer is added when there is
+   * a picture to show and the radar is on, and removed otherwise.
+   */
   private updateRadarMosaicOverlay(mosaic: RadarDisplayFrame | null): void {
     if (!this.map || !this.isMapLoaded()) return;
-
-    const sourceId = 'radar-source-mosaic';
-    const layerId = 'radar-layer-mosaic';
-
-    if (!mosaic) {
-      if (this.map.getLayer(layerId)) {
-        this.map.removeLayer(layerId);
-      }
-      if (this.map.getSource(sourceId)) {
-        this.map.removeSource(sourceId);
-      }
+    if (!mosaic || !this.isRadarActive) {
+      this.removeRadarLayer();
       return;
     }
-
-    const existingSource = this.map.getSource(sourceId) as maplibregl.ImageSource;
-    if (existingSource && typeof existingSource.updateImage === 'function') {
-      existingSource.updateImage({
-        url: mosaic.url,
-        coordinates: mosaic.coordinates
-      });
-    } else if (!existingSource) {
-      this.map.addSource(sourceId, {
-        type: 'image',
-        url: mosaic.url,
-        coordinates: mosaic.coordinates
-      });
-
+    if (!this.radarLayer) {
+      this.radarLayer = new RadarFieldLayer();
+      this.radarLayer.setOpacity(this.radarService.radarOpacity());
       // above the boundary lines (the echoes stay readable) but under the storm cones and place names
-      const targetBefore = this.map.getLayer(STORM_FIRST_LAYER_ID) ? STORM_FIRST_LAYER_ID : this.observationAnchorId();
-
-      this.map.addLayer(
-        {
-          id: layerId,
-          type: 'raster',
-          source: sourceId,
-          paint: {
-            'raster-opacity': this.radarService.radarOpacity(),
-            'raster-fade-duration': 0,
-            'raster-resampling': 'linear'
-          },
-          layout: {
-            visibility: this.isRadarActive ? 'visible' : 'none'
-          }
-        },
-        targetBefore
-      );
+      this.map.addLayer(this.radarLayer, this.map.getLayer(STORM_FIRST_LAYER_ID) ? STORM_FIRST_LAYER_ID : this.observationAnchorId());
     }
-
-    if (this.map.getLayer(layerId)) {
-      this.map.setLayoutProperty(
-        layerId,
-        'visibility',
-        this.isRadarActive ? 'visible' : 'none'
-      );
-      this.map.setPaintProperty(
-        layerId,
-        'raster-opacity',
-        this.radarService.radarOpacity()
-      );
-    }
+    this.radarLayer.setFrame(mosaic);
   }
 
   // --- Meteosat satellite pictures: one GPU layer with smooth (bicubic) magnification and a cross-fade between pictures ---
@@ -869,14 +825,8 @@ export class MapComponent implements OnInit, OnDestroy {
     const wasRadarActive = this.isRadarActive;
     this.isRadarActive = radarLayer?.active ?? true;
 
-    // Toggle Unified Radar Mosaic Layer (opacity is owned by radarOpacityEffect)
-    if (this.map.getLayer('radar-layer-mosaic')) {
-      this.map.setLayoutProperty(
-        'radar-layer-mosaic',
-        'visibility',
-        this.isRadarActive ? 'visible' : 'none'
-      );
-    }
+    // Show or hide the radar mosaic (its opacity is owned by radarOpacityEffect)
+    untracked(() => this.updateRadarMosaicOverlay(this.radarService.displayed()));
 
     // Toggle Concentric Range Rings
     if (this.map.getLayer('radar-rings-lines')) {

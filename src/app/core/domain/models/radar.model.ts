@@ -87,6 +87,8 @@ export interface RadarFieldData {
 export interface ProcessedRadarResult {
   stationId?: string;
   dataUrl: string;
+  /** The mosaic's intensity as one byte per pixel (see quantizeRadarField), for the GPU layer. */
+  displayField?: Uint8Array;
   fieldData: RadarFieldData;
   timing: RadarObservationTiming | null;
   coordinates: [[number, number], [number, number], [number, number], [number, number]];

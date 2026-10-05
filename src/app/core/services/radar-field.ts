@@ -90,3 +90,54 @@ export function echoAlphaFeather(v: number): number {
   const t = (v - ECHO_FADE_START) / (ECHO_FADE_FULL - ECHO_FADE_START);
   return t * t * (3 - 2 * t);
 }
+
+/** The radar colour scale: intensity (0 = nothing, 1.2 light rain, 3 heavy 36+ dBZ, 5.2 hail) to colour and opacity. */
+export const RADAR_COLOR_STOPS = [
+  { val: 0.0, r: 58, g: 217, b: 228, a: 0.00 }, // Transparent
+  { val: 0.5, r: 58, g: 217, b: 228, a: 0.65 }, // #3ad9e4ff (Light Echo, < 18 dBZ)
+  { val: 1.2, r: 0, g: 163, b: 63, a: 0.82 },   // #00a33fff (Light Rain, 18 - 25 dBZ)
+  { val: 2.0, r: 175, g: 198, b: 0, a: 0.90 },  // #afc600ff (Moderate Rain, 26 - 35 dBZ)
+  { val: 3.0, r: 250, g: 204, b: 21, a: 0.96 }, // #facc15 (Heavy Rain, 36 - 44 dBZ)
+  { val: 4.4, r: 239, g: 68, b: 68, a: 1.00 },  // #ef4444 (Torrential Rain, 45 - 54 dBZ)
+  { val: 5.2, r: 168, g: 85, b: 247, a: 1.00 }  // #a855f7 (Severe Storm / Hail, >= 55 dBZ)
+];
+
+export function sampleRadarColorRamp(v: number): [number, number, number, number] {
+  if (v <= RADAR_COLOR_STOPS[0].val) return [0, 0, 0, 0];
+  if (v >= RADAR_COLOR_STOPS[RADAR_COLOR_STOPS.length - 1].val) {
+    const last = RADAR_COLOR_STOPS[RADAR_COLOR_STOPS.length - 1];
+    return [last.r, last.g, last.b, Math.round(last.a * 255)];
+  }
+  for (let i = 0; i < RADAR_COLOR_STOPS.length - 1; i++) {
+    const s0 = RADAR_COLOR_STOPS[i];
+    const s1 = RADAR_COLOR_STOPS[i + 1];
+    if (v >= s0.val && v <= s1.val) {
+      const t = (v - s0.val) / (s1.val - s0.val);
+      const smoothT = t * t * (3 - 2 * t);
+      const cr = Math.round(s0.r + (s1.r - s0.r) * smoothT);
+      const cg = Math.round(s0.g + (s1.g - s0.g) * smoothT);
+      const cb = Math.round(s0.b + (s1.b - s0.b) * smoothT);
+      const ca = Math.round((s0.a + (s1.a - s0.a) * smoothT) * 255);
+      return [cr, cg, cb, ca];
+    }
+  }
+  return [0, 0, 0, 0];
+}
+
+/** The largest intensity the 8-bit display field can hold (the scale tops out at 5.2; above 6 is clipped). */
+export const RADAR_FIELD_MAX = 6;
+
+/** Intensity field to one byte per pixel (steps of about 0.024, far finer than the colour classes), for the GPU. */
+export function quantizeRadarField(field: Float32Array): Uint8Array {
+  const out = new Uint8Array(field.length);
+  const k = 255 / RADAR_FIELD_MAX;
+  for (let i = 0; i < field.length; i++) {
+    const v = field[i];
+    out[i] = v <= 0 ? 0 : v >= RADAR_FIELD_MAX ? 255 : Math.round(v * k);
+  }
+  return out;
+}
+
+export function dequantizeRadar(byte: number): number {
+  return (byte * RADAR_FIELD_MAX) / 255;
+}

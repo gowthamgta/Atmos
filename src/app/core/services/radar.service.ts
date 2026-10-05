@@ -11,14 +11,16 @@ import {
   ProcessedRadarResult
 } from '../domain/models/radar.model';
 
-import { blurSeparable, echoAlphaFeather, gaussianKernel, resampleBilinear } from './radar-field';
+import { blurSeparable, gaussianKernel, quantizeRadarField, resampleBilinear } from './radar-field';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 
-/** What the map shows for the radar: one picture (object URL) placed by its corners, and its time. */
+/** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
-  url: string;
+  field: Uint8Array;
+  width: number;
+  height: number;
   coordinates: [[number, number], [number, number], [number, number], [number, number]];
   timeMs: number | null;
 }
@@ -29,49 +31,15 @@ export interface RadarHistoryFrame extends RadarDisplayFrame {
   track: Float32Array;
 }
 
-/** Encodes a canvas as PNG off the main thread (toBlob) and returns an object URL. */
-function canvasToUrl(canvas: HTMLCanvasElement): Promise<string> {
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(b => (b ? resolve(URL.createObjectURL(b)) : reject(new Error('radar image encode failed'))), 'image/png')
-  );
-}
-
 const yieldToBrowser = () => new Promise<void>(r => setTimeout(r, 0));
 
-export const RADAR_COLOR_STOPS = [
-  { val: 0.0, r: 58, g: 217, b: 228, a: 0.00 }, // Transparent
-  { val: 0.5, r: 58, g: 217, b: 228, a: 0.65 }, // #3ad9e4ff (Light Echo, < 18 dBZ)
-  { val: 1.2, r: 0, g: 163, b: 63, a: 0.82 },   // #00a33fff (Light Rain, 18 - 25 dBZ)
-  { val: 2.0, r: 175, g: 198, b: 0, a: 0.90 },  // #afc600ff (Moderate Rain, 26 - 35 dBZ)
-  { val: 3.0, r: 250, g: 204, b: 21, a: 0.96 }, // #facc15 (Heavy Rain, 36 - 44 dBZ)
-  { val: 4.4, r: 239, g: 68, b: 68, a: 1.00 },  // #ef4444 (Torrential Rain, 45 - 54 dBZ)
-  { val: 5.2, r: 168, g: 85, b: 247, a: 1.00 }  // #a855f7 (Severe Storm / Hail, >= 55 dBZ)
-];
+export { RADAR_COLOR_STOPS, sampleRadarColorRamp } from './radar-field';
 
-export function sampleRadarColorRamp(v: number): [number, number, number, number] {
-  if (v <= RADAR_COLOR_STOPS[0].val) return [0, 0, 0, 0];
-  if (v >= RADAR_COLOR_STOPS[RADAR_COLOR_STOPS.length - 1].val) {
-    const last = RADAR_COLOR_STOPS[RADAR_COLOR_STOPS.length - 1];
-    return [last.r, last.g, last.b, Math.round(last.a * 255)];
-  }
-  for (let i = 0; i < RADAR_COLOR_STOPS.length - 1; i++) {
-    const s0 = RADAR_COLOR_STOPS[i];
-    const s1 = RADAR_COLOR_STOPS[i + 1];
-    if (v >= s0.val && v <= s1.val) {
-      const t = (v - s0.val) / (s1.val - s0.val);
-      const smoothT = t * t * (3 - 2 * t);
-      const cr = Math.round(s0.r + (s1.r - s0.r) * smoothT);
-      const cg = Math.round(s0.g + (s1.g - s0.g) * smoothT);
-      const cb = Math.round(s0.b + (s1.b - s0.b) * smoothT);
-      const ca = Math.round((s0.a + (s1.a - s0.a) * smoothT) * 255);
-      return [cr, cg, cb, ca];
-    }
-  }
-  return [0, 0, 0, 0];
-}
-
-/** Blur applied to the reconstructed intensity, in pixels of the 1024 grid (about 0.5 km each). */
-const RADAR_BLUR_SIGMA_PX = 2.2;
+/**
+ * Blur applied to the reconstructed intensity, in pixels of the 1024 grid (about 0.5 km each). Light: the GPU layer
+ * smooths the intensity itself when it draws, so contours stay crisp at any zoom.
+ */
+const RADAR_BLUR_SIGMA_PX = 1.5;
 
 // ── Radial interference (spoke) removal ──
 // Sun strikes and RF interference paint long, thin wedges that point straight at the radar.
@@ -202,8 +170,14 @@ export class RadarService implements OnDestroy {
     const frame = i === null ? null : this.history()[i];
     if (frame) return frame;
     const live = this.compositeMosaic();
-    return live && live.dataUrl && live.isDisplayed !== false
-      ? { url: live.dataUrl, coordinates: live.coordinates, timeMs: live.timing?.epochMs ?? null }
+    return live && live.displayField && live.isDisplayed !== false
+      ? {
+          field: live.displayField,
+          width: live.fieldData.cropW,
+          height: live.fieldData.cropH,
+          coordinates: live.coordinates,
+          timeMs: live.timing?.epochMs ?? null,
+        }
       : null;
   });
   /** Fixed ~4 km grid over every radar's coverage, for storm tracking (the same for every loop frame). */
@@ -395,7 +369,7 @@ export class RadarService implements OnDestroy {
   setProduct(product: RadarProductKey): void {
     this.activeProduct.set(product);
     this.allRadarResults.set(new Map());
-    this.setComposite(null);
+    this.compositeMosaic.set(null);
     this.clearHistory();
     this.fetchAllRadarSweeps();
   }
@@ -403,7 +377,7 @@ export class RadarService implements OnDestroy {
   setTransparent(transparent: boolean): void {
     this.transparentMode.set(transparent);
     this.allRadarResults.set(new Map());
-    this.setComposite(null);
+    this.compositeMosaic.set(null);
     this.clearHistory();
     this.fetchAllRadarSweeps();
   }
@@ -485,7 +459,7 @@ export class RadarService implements OnDestroy {
     if (this.mosaicTimer) return;
     this.mosaicTimer = setTimeout(() => {
       this.mosaicTimer = null;
-      void this.generateMergedMosaic();
+      this.generateMergedMosaic();
     }, 150);
   }
 
@@ -933,8 +907,7 @@ export class RadarService implements OnDestroy {
    * fields are merged seamlessly before color mapping, preserving peak storm cores
    * and smoothly blending contours, completely eliminating overlapping layer seams.
    */
-  private composeMosaic(allResults: Iterable<[string, ProcessedRadarResult]>): { canvas: HTMLCanvasElement; result: ProcessedRadarResult } | null {
-    if (typeof document === 'undefined') return null;
+  private composeMosaic(allResults: Iterable<[string, ProcessedRadarResult]>): ProcessedRadarResult | null {
 
     const activeStations: {
       station: RadarStationConfig;
@@ -996,18 +969,10 @@ export class RadarService implements OnDestroy {
     const outW = px(dLngKm);
     const outH = px(dLatKm);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = outW;
-    canvas.height = outH;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return null;
-
-    const imgData = ctx.createImageData(outW, outH);
-    const data = imgData.data;
     const compositeField = new Float32Array(outW * outH);
 
     // 3. Composite. Each radar only visits the pixels inside its own footprint and adds its contribution to
-    // per-pixel accumulators; a second pass then merges and colours. (Looping every pixel over every radar did the
+    // per-pixel accumulators; a second pass then merges them. (Looping every pixel over every radar did the
     // same arithmetic six times over for pixels most radars cannot even see.)
     const lngSpan = maxLng - minLng;
     const latSpan = maxLat - minLat;
@@ -1076,7 +1041,7 @@ export class RadarService implements OnDestroy {
       }
     }
 
-    // 4. Merge overlapping radars and colour
+    // 4. Merge overlapping radars (the GPU layer does the colouring, from the merged intensity)
     for (let i = 0; i < total; i++) {
       const count = radarCount[i];
       if (count === 0) continue;
@@ -1089,24 +1054,12 @@ export class RadarService implements OnDestroy {
       }
 
       compositeField[i] = mergedVal;
-
-      if (mergedVal >= 0.05) {
-        const borderBlend = echoAlphaFeather(mergedVal);
-        const [r, g, b, a] = sampleRadarColorRamp(mergedVal);
-        const pIdx = i * 4;
-        data[pIdx] = r;
-        data[pIdx + 1] = g;
-        data[pIdx + 2] = b;
-        data[pIdx + 3] = Math.round(a * borderBlend);
-      }
     }
-
-    ctx.putImageData(imgData, 0, 0);
-    const dataUrl = ''; // set once the canvas is encoded
 
     const result: ProcessedRadarResult = {
       stationId: 'composite-mosaic',
-      dataUrl,
+      dataUrl: '',
+      displayField: quantizeRadarField(compositeField),
       coordinates: [
         [minLng, maxLat], // NW
         [maxLng, maxLat], // NE
@@ -1126,38 +1079,16 @@ export class RadarService implements OnDestroy {
       isDisplayed: true
     };
 
-    return { canvas, result };
+    return result;
   }
 
   /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
   private static readonly MOSAIC_KM_PER_PX = 0.5;
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
-  private mosaicVersion = 0;
 
   /** Rebuilds the live composite from the latest still of every radar. */
-  private async generateMergedMosaic(): Promise<void> {
-    const version = ++this.mosaicVersion;
-    const composed = this.composeMosaic(this.allRadarResults());
-    if (!composed) {
-      if (version === this.mosaicVersion) this.setComposite(null);
-      return;
-    }
-    const url = await canvasToUrl(composed.canvas);
-    if (version !== this.mosaicVersion) {
-      URL.revokeObjectURL(url);
-      return;
-    }
-    this.setComposite({ ...composed.result, dataUrl: url });
-  }
-
-  /** Swap the live composite, releasing the previous picture once the map has moved on to the new one. */
-  private setComposite(next: ProcessedRadarResult | null): void {
-    const prev = this.compositeMosaic();
-    this.compositeMosaic.set(next);
-    if (prev?.dataUrl.startsWith('blob:')) {
-      const old = prev.dataUrl;
-      setTimeout(() => URL.revokeObjectURL(old), 5000);
-    }
+  private generateMergedMosaic(): void {
+    this.compositeMosaic.set(this.composeMosaic(this.allRadarResults()));
   }
 
   /** The live composite on the storm-tracking grid. */
@@ -1256,13 +1187,15 @@ export class RadarService implements OnDestroy {
           if (cur && Number(t) < cur.timeMs) decoded.delete(key);
         }
         const composed = entries.length > 0 ? this.composeMosaic(entries) : null;
-        if (composed) {
-          const url = await canvasToUrl(composed.canvas);
-          if (token !== this.historyToken) {
-            URL.revokeObjectURL(url);
-            return;
-          }
-          frames.push({ url, coordinates: composed.result.coordinates, timeMs: slots[k], track: this.toTrack(composed.result.fieldData) });
+        if (composed?.displayField) {
+          frames.push({
+            field: composed.displayField,
+            width: composed.fieldData.cropW,
+            height: composed.fieldData.cropH,
+            coordinates: composed.coordinates,
+            timeMs: slots[k],
+            track: this.toTrack(composed.fieldData),
+          });
         }
         this.historyProgress.set((k + 1) / slots.length);
       }
@@ -1291,7 +1224,7 @@ export class RadarService implements OnDestroy {
     const wasLive = this.playIndex() === null;
     this.history.set(frames);
     if (!wasLive) this.playIndex.set(frames.length > 0 ? Math.min(this.playIndex()!, frames.length - 1) : null);
-    setTimeout(() => old.forEach(f => URL.revokeObjectURL(f.url)), 5000);
+    void old; // the loop frames hold plain arrays now: nothing to release by hand
   }
 
   clearHistory(): void {
