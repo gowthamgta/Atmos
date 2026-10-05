@@ -1,8 +1,8 @@
 <!-- Full-screen map background -->
 <app-map></app-map>
 
-<!-- Forecast: layer rail, legend, timeline and click card. Radar: its own small panel. -->
-<app-forecast-rail></app-forecast-rail>
+<!-- Forecast: legend, timeline and click card. Radar: its own small panel. The layer menu lives in the header. -->
+<app-forecast-legend></app-forecast-legend>
 <app-radar-panel></app-radar-panel>
 <app-forecast-timeline></app-forecast-timeline>
 <app-forecast-inspector></app-forecast-inspector>
@@ -12,7 +12,10 @@
     <span class="brand-icon" aria-hidden="true">⚡</span>
     <span>Atmos</span><span class="brand-accent">IQ</span>
   </h1>
-  <app-about></app-about>
+  <div class="top-actions">
+    <app-layer-menu></app-layer-menu>
+    <app-about></app-about>
+  </div>
 </header>
 
 <!-- Zoom and recenter -->

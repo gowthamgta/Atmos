@@ -29,6 +29,12 @@
   pointer-events: auto;
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .brand-name {
   margin: 0;
   font-family: var(--font-display);

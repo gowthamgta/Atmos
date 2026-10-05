@@ -184,7 +184,7 @@ export interface IsobarCollection {
   }[];
 }
 
-/** GeoJSON isobars for a mean-sea-level pressure field in hPa: a line every `step` hPa, every 10 hPa emphasised. */
+/** GeoJSON contour lines of a pressure or height field: a line every `step`, every fifth line emphasised. */
 export function isobarGeoJson(msl: ArrayLike<number>, grid: ForecastGrid, step = 2): IsobarCollection {
   const field = smoothField(msl, grid.nx, grid.ny, 2);
   const lines = contourLines(field, grid, contourLevels(field, step));
@@ -194,7 +194,7 @@ export function isobarGeoJson(msl: ArrayLike<number>, grid: ForecastGrid, step =
       .filter(l => l.points.length >= 3)
       .map(l => ({
         type: 'Feature' as const,
-        properties: { level: l.level, label: String(Math.round(l.level)), major: Math.round(l.level) % 10 === 0 },
+        properties: { level: l.level, label: String(Math.round(l.level)), major: Math.round(l.level / step) % 5 === 0 },
         geometry: { type: 'LineString' as const, coordinates: l.points },
       })),
   };

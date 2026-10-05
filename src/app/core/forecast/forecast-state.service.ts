@@ -1,7 +1,19 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { MapLayerService } from '../services/map-layer.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
-import { FORECAST_LAYERS, ForecastLayerDef, forecastLayerById, layerAvailable } from './forecast-layers';
+import {
+  ALL_LEVELS,
+  FORECAST_LAYERS,
+  ForecastLayerDef,
+  Level,
+  availableLevels,
+  contourSpec,
+  forecastLayerById,
+  layerAvailableAt,
+  resolveLayer,
+  supportsLevels,
+  windVars,
+} from './forecast-layers';
 
 /** Which forecast layer is shown, at what time, and playback state. */
 @Injectable({ providedIn: 'root' })
@@ -14,7 +26,19 @@ export class ForecastStateService {
 
   readonly layers = FORECAST_LAYERS;
   readonly activeLayerId = signal<string | null>(null);
-  readonly activeLayer = computed<ForecastLayerDef | null>(() => forecastLayerById(this.activeLayerId()));
+  /** Altitude: the ground, or a pressure level. Layers that cannot be drawn aloft show the ground. */
+  readonly level = signal<Level>('surface');
+  /** The selected layer exactly as it is drawn at the selected altitude (variables, range, ticks, label). */
+  readonly activeLayer = computed<ForecastLayerDef | null>(() => {
+    const def = forecastLayerById(this.activeLayerId());
+    return def ? resolveLayer(def, this.level()) : null;
+  });
+  /** Altitudes the current model has data for. */
+  readonly levels = computed<Level[]>(() => availableLevels(this.catalog.manifest()?.vars));
+  /** The two variables the wind animation follows at the selected altitude. */
+  readonly windVars = computed(() => windVars(this.level()));
+  /** Variable and line spacing for the pressure lines at the selected altitude. */
+  readonly contour = computed(() => contourSpec(this.level()));
   /** Selected time in epoch ms (UTC); null until the first layer is switched on. */
   readonly timeMs = signal<number | null>(null);
   readonly playing = signal(false);
@@ -32,11 +56,18 @@ export class ForecastStateService {
   private lastFrame = 0;
 
   constructor() {
+    // Switching to a model that lacks the selected altitude falls back to the ground.
+    effect(() => {
+      const manifest = this.catalog.manifest();
+      if (manifest && !this.levels().includes(this.level())) untracked(() => this.level.set('surface'));
+    });
     // Switching to a model that does not provide the active layer's variables (e.g. gusts on AIFS) turns it off.
     effect(() => {
       const manifest = this.catalog.manifest();
-      const def = this.activeLayer();
-      if (manifest && def && !layerAvailable(def, manifest.vars)) untracked(() => this.activeLayerId.set(null));
+      const base = forecastLayerById(this.activeLayerId());
+      if (manifest && base && !layerAvailableAt(base, this.level(), manifest.vars)) {
+        untracked(() => this.activeLayerId.set(null));
+      }
     });
     // Radar and the legacy overlays share the single-overlay slot: turning one on replaces the forecast layer.
     effect(() => {
@@ -59,9 +90,26 @@ export class ForecastStateService {
       return;
     }
     this.mapLayers.deactivateAll(); // radar and legacy overlays make way
+    if (!supportsLevels(forecastLayerById(id))) this.level.set('surface'); // this layer only exists at the ground
     this.activeLayerId.set(id);
     if (forecastLayerById(id)?.varId2) this.windParticles.set(true); // wind layers are shown with their animation
     this.start();
+  }
+
+  /**
+   * Choose the altitude. A layer that cannot be shown aloft (rain, gusts...) is replaced by temperature, so the map
+   * always shows something at the chosen altitude.
+   */
+  setLevel(level: Level): void {
+    if (!ALL_LEVELS.includes(level) || !this.levels().includes(level)) return;
+    this.level.set(level);
+    if (level !== 'surface' && !supportsLevels(forecastLayerById(this.activeLayerId()))) {
+      this.toggleLayerOn('temp');
+    }
+  }
+
+  private toggleLayerOn(id: string): void {
+    if (this.activeLayerId() !== id) this.toggleLayer(id);
   }
 
   /** Show or hide the wind animation over whatever layer is active. */

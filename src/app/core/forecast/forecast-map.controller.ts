@@ -192,7 +192,7 @@ export class ForecastMapController {
     if (map.getSource(ForecastMapController.ISOBAR_SOURCE)) map.removeSource(ForecastMapController.ISOBAR_SOURCE);
   }
 
-  /** Contours the blended sea-level pressure field and pushes it to the map (at most ~7 times a second). */
+  /** Contours the blended pressure (or height) field and pushes it to the map (at most ~7 times a second). */
   private updateIsobars(): void {
     const map = this.map;
     if (!map) return;
@@ -204,19 +204,21 @@ export class ForecastMapController {
     for (const id of ['forecast-isobar-lines', 'forecast-isobar-labels']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
     }
-    if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars['msl']) return;
+    // sea-level pressure at the ground; the height of the pressure surface at altitude
+    const spec = this.state.contour();
+    const info = manifest?.vars[spec.varId];
+    if (!on || !manifest || !info || time === null || validTimes.length === 0) return;
 
     const my = ++this.isobarToken;
     const { a, b, mix } = bracketSteps(validTimes, time);
-    const info = manifest.vars['msl'];
-    void Promise.all([this.loader.get('msl', manifest.steps[a].h), this.loader.get('msl', manifest.steps[b].h)])
+    void Promise.all([this.loader.get(spec.varId, manifest.steps[a].h), this.loader.get(spec.varId, manifest.steps[b].h)])
       .then(([bmpA, bmpB]) => {
         if (my !== this.isobarToken || !this.map) return;
         const fa = decodeFieldBitmap(bmpA, info.min, info.max);
         const fb = decodeFieldBitmap(bmpB, info.min, info.max);
         const blended = new Float32Array(fa.length);
         for (let i = 0; i < fa.length; i++) blended[i] = fa[i] * (1 - mix) + fb[i] * mix;
-        const geojson = isobarGeoJson(blended, manifest.grid, 2);
+        const geojson = isobarGeoJson(blended, manifest.grid, spec.step);
         this.pushIsobars(geojson);
       })
       .catch(err => console.warn('[forecast] isobars failed', err));
@@ -243,9 +245,8 @@ export class ForecastMapController {
     const time = this.state.timeMs();
     const validTimes = this.catalog.validTimes();
     const on = this.state.windParticles();
-    // 10 m wind by default; the 850 / 500 hPa wind layers animate their own level
-    const active = this.state.activeLayer();
-    const [uVar, vVar] = active?.varId2 ? [active.varId, active.varId2] : ['u10', 'v10'];
+    // the animation follows the selected altitude: the 10 m wind at the ground, otherwise that pressure level
+    const [uVar, vVar] = this.state.windVars();
     if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars[uVar] || !manifest.vars[vVar]) {
       wind.setVisible(false);
       wind.setWind(null);

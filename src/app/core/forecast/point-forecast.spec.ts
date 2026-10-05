@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { INSPECT_VARS, blendTime, buildPointRows, windFromUV } from './point-forecast';
+import { blendTime, buildPointRows, inspectVars, windFromUV } from './point-forecast';
 import {
   LAPSE_RATE_C_PER_M,
   MAX_TERRAIN_DELTA_M,
@@ -26,7 +26,6 @@ describe('terrain correction', () => {
   });
 
   it('uses a humidity gain consistent with a 4.7 °C/km shrinking of the dew-point gap', () => {
-    // 0.0617 per °C of saturation vapour pressure * (6.5 - 1.8) °C per km
     expect(RH_LOG_PER_M * 1000).toBeCloseTo(0.0617 * 4.7, 3);
     expect(LAPSE_RATE_C_PER_M).toBe(0.0065);
   });
@@ -49,43 +48,68 @@ describe('point forecast helpers', () => {
   });
 
   it('gives meteorological wind direction (where the wind comes FROM)', () => {
-    expect(windFromUV(0, -5).fromDeg).toBeCloseTo(0, 6); // blowing south = from the north
-    expect(windFromUV(-5, 0).fromDeg).toBeCloseTo(90, 6); // blowing west = from the east
+    expect(windFromUV(0, -5).fromDeg).toBeCloseTo(0, 6);
+    expect(windFromUV(-5, 0).fromDeg).toBeCloseTo(90, 6);
     expect(windFromUV(0, 5).fromDeg).toBeCloseTo(180, 6);
     expect(windFromUV(5, 0).fromDeg).toBeCloseTo(270, 6);
     expect(windFromUV(3, 4).speedMs).toBeCloseTo(5, 9);
   });
 
-  const values = Object.fromEntries(INSPECT_VARS.map(v => [v, 0])) as Record<(typeof INSPECT_VARS)[number], number>;
-  Object.assign(values, { t2m: 30, feels: 34, rh: 70, u10: 0, v10: -5, gust: 10, precip: 2.34, cloud: 80, msl: 1008.4, cape: 1500 });
+  it('asks for the ground fields, plus the chosen altitude when there is one', () => {
+    const ground = inspectVars('surface');
+    expect(ground).toContain('t2m');
+    expect(ground.some(v => /\d{3}$/.test(v))).toBe(false);
+    expect(inspectVars(850)).toEqual([...ground, 't850', 'rh850', 'u850', 'v850', 'gh850']);
+  });
+
+  const values: Record<string, number> = {
+    t2m: 30, feels: 34, dew: 24, rh: 70, u10: 0, v10: -5, gust: 10, precip: 2.34, cloud: 80, cloud_low: 40, cloud_mid: 20, cloud_high: 10,
+    vis: 8.4, msl: 1008.4, cape: 1500,
+  };
+  const find = (rows: ReturnType<typeof buildPointRows>, id: string) => rows.find(r => r.id === id)!;
 
   it('marks only temperature, feels-like and humidity as terrain-adjusted', () => {
     const rows = buildPointRows(values, 1000);
     expect(rows.filter(r => r.terrainAdjusted).map(r => r.id)).toEqual(['temp', 'feels', 'humidity']);
-    expect(rows.find(r => r.id === 'temp')!.text).toBe('23.5 °C');
-    expect(rows.find(r => r.id === 'wind')!.text).toMatch(/^18 km\/h from N/);
-    expect(rows.find(r => r.id === 'rain')!.text).toBe('2.3 mm/h');
-    expect(rows.find(r => r.id === 'pressure')!.text).toBe('1008 hPa');
+    expect(find(rows, 'temp').text).toBe('23.5 °C');
+    expect(find(rows, 'wind').text).toMatch(/^18 km\/h from N/);
+    expect(find(rows, 'rain').text).toBe('2.3 mm/h');
+    expect(find(rows, 'pressure').text).toBe('1008 hPa');
+  });
+
+  it('shows the extra surface parameters', () => {
+    const rows = buildPointRows(values, null);
+    expect(find(rows, 'dew').text).toBe('24.0 °C');
+    expect(find(rows, 'cloudlayers').text).toBe('40 / 20 / 10 %');
+    expect(find(rows, 'vis').text).toBe('8.4 km');
   });
 
   it('shows raw model values when the terrain is not available', () => {
     const rows = buildPointRows(values, null);
     expect(rows.some(r => r.terrainAdjusted)).toBe(false);
-    expect(rows.find(r => r.id === 'temp')!.text).toBe('30.0 °C');
+    expect(find(rows, 'temp').text).toBe('30.0 °C');
   });
 
-  it('shows a dash, not "– km/h", for variables a model does not publish', () => {
-    const rows = buildPointRows({ ...values, gust: NaN, cape: NaN }, 0);
-    expect(rows.find(r => r.id === 'gust')!.text).toBe('–');
-    expect(rows.find(r => r.id === 'cape')!.text).toBe('–');
-    expect(rows.find(r => r.id === 'temp')!.text).toBe('30.0 °C');
+  it('shows a dash, not "– km/h", for variables a model does not publish, and hides rows it cannot fill', () => {
+    const rows = buildPointRows({ ...values, gust: NaN, cape: NaN, vis: NaN, cloud_low: NaN, cloud_mid: NaN, cloud_high: NaN }, 0);
+    expect(find(rows, 'gust').text).toBe('–');
+    expect(find(rows, 'cape').text).toBe('–');
+    expect(find(rows, 'temp').text).toBe('30.0 °C');
+    expect(rows.some(r => r.id === 'vis' || r.id === 'cloudlayers')).toBe(false);
   });
 
-  it('adds winds aloft only when the model provides them', () => {
-    const withLevels = buildPointRows({ ...values, u850: 10, v850: 0, u500: 0, v500: -20 }, 0);
-    expect(withLevels.find(r => r.id === 'wind850')!.text).toMatch(/^36 km\/h from W/);
-    expect(withLevels.find(r => r.id === 'wind500')!.text).toMatch(/^72 km\/h from N/);
-    const without = buildPointRows({ ...values, u850: NaN, v850: NaN, u500: NaN, v500: NaN }, 0);
-    expect(without.some(r => r.id === 'wind850' || r.id === 'wind500')).toBe(false);
+  it('adds a block for the chosen altitude, and none at the ground', () => {
+    const aloft = { ...values, t850: 19.2, rh850: 62, u850: 10, v850: 0, gh850: 1532 };
+    const rows = buildPointRows(aloft, 0, 850);
+    const heading = find(rows, 'level-heading');
+    expect(heading.heading).toBe(true);
+    expect(heading.label).toContain('850 hPa');
+    expect(find(rows, 'lvl-temp').text).toBe('19.2 °C');
+    expect(find(rows, 'lvl-humidity').text).toBe('62 %');
+    expect(find(rows, 'lvl-wind').text).toMatch(/^36 km\/h from W/);
+    expect(find(rows, 'lvl-height').text).toBe('1532 m');
+    expect(buildPointRows(aloft, 0, 'surface').some(r => r.id.startsWith('lvl-'))).toBe(false);
+    // a model without that level shows dashes rather than failing
+    expect(find(buildPointRows(values, 0, 500), 'lvl-temp').text).toBe('–');
   });
 });

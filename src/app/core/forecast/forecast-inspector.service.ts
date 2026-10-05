@@ -5,7 +5,7 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastStateService } from './forecast-state.service';
 import { bracketSteps } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
-import { INSPECT_VARS, InspectVar, PointForecast, blendTime, buildPointRows } from './point-forecast';
+import { PointForecast, blendTime, buildPointRows, inspectVars } from './point-forecast';
 import { TerrainService } from './terrain.service';
 
 /** Click-to-inspect: reads every forecast variable at a point, blended to the selected time. */
@@ -29,6 +29,7 @@ export class ForecastInspectorService {
     effect(() => {
       const sel = this.selected();
       this.state.timeMs();
+      this.state.level();
       this.catalog.manifest();
       if (!sel) {
         this.point.set(null);
@@ -69,9 +70,10 @@ export class ForecastInspectorService {
         this.districts.lookup(lat, lon),
         this.terrain.ensureLoaded().catch(() => null), // terrain is optional; values fall back to model resolution
       ]);
-      const values = {} as Record<InspectVar, number>;
+      const level = this.state.level();
+      const values: Record<string, number> = {};
       await Promise.all(
-        INSPECT_VARS.map(async id => {
+        inspectVars(level).map(async id => {
           const info = manifest.vars[id];
           if (!info) {
             values[id] = NaN; // this model does not publish the variable (e.g. gusts on AIFS)
@@ -94,7 +96,7 @@ export class ForecastInspectorService {
         state: place.state,
         elevationM: heights?.fine ?? null,
         timeMs: time,
-        rows: buildPointRows(values, heights?.delta ?? null),
+        rows: buildPointRows(values, heights?.delta ?? null, level),
       });
     } catch (err) {
       console.warn('[forecast] inspect failed', err);

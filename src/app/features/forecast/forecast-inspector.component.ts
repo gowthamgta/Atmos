@@ -29,10 +29,14 @@ const IST = 'Asia/Kolkata';
           </div>
           <dl>
             @for (row of p.rows; track row.id) {
-              <div class="row">
-                <dt>{{ row.label }}</dt>
-                <dd>{{ row.text }}@if (row.terrainAdjusted) { <span class="adj" title="Adjusted to 1 km terrain">▲</span> }</dd>
-              </div>
+              @if (row.heading) {
+                <div class="heading">{{ row.label }}</div>
+              } @else {
+                <div class="row">
+                  <dt>{{ row.label }}</dt>
+                  <dd>{{ row.text }}@if (row.terrainAdjusted) { <span class="adj" title="Adjusted to 1 km terrain">▲</span> }</dd>
+                </div>
+              }
             }
           </dl>
           <footer>▲ adjusted to 1 km terrain; other values are {{ catalog.model().label }} at {{ catalog.model().resolution }}.</footer>
@@ -55,6 +59,7 @@ const IST = 'Asia/Kolkata';
     .close:focus-visible { outline: 2px solid var(--neon-cyan); }
     .meta { margin: 4px 0 8px; font-size: 11px; color: var(--text-muted); }
     dl { margin: 0; }
+    .heading { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,229,255,0.35); font-size: 12px; font-weight: 700; color: var(--neon-cyan); }
     .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.07); font-size: 13px; }
     dt { color: var(--text-secondary); }
     dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }

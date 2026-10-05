@@ -25,9 +25,14 @@ python run.py --out site --force                 # full run into ./site
 <model>/<run>/manifest.json                 grid, steps, per-variable range/unit
 <model>/<run>/<var>/<hhh>.png               value = min + (R*256+G)/65535*(max-min); B=255 means no data
 ```
-Variables: t2m, rh, feels, u10, v10, gust, msl, precip, cloud, cape, tcwv, plus winds on pressure levels u850/v850
-(about 1.5 km up) and u500/v500 (about 5.5 km) for models that provide them: GFS and AIFS, not the free IFS source
-(see `config.py`).
+Variables (see `config.py`):
+- surface: `t2m`, `rh`, `feels`, `dew` (dew point), `u10`/`v10`, `gust`, `msl`, `precip`, `cloud`, `cloud_low`/`cloud_mid`/`cloud_high`,
+  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`
+- pressure levels 925, 850, 700, 500, 300 and 200 hPa (about 0.8, 1.5, 3, 5.6, 9.2 and 12 km up), five fields each:
+  `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height). These are stored with 12 significant bits (error far below
+  anything visible: 0.003 degC, 0.02 m/s), which makes them about 25% smaller.
+A model only publishes what it can supply; the manifest lists exactly those variables and the app greys out the rest.
+A full run is about 1 MB per forecast step per model, around 300 MB for all ten models.
 Step 0 is the analysis hour, so gust, precip and CAPE are no-data there.
 Each deploy replaces the previous one, so only the newest run exists. A client that still holds the old
 `latest.json` gets a 404; it should re-fetch `latest.json` and retry.
@@ -51,15 +56,15 @@ Sources are Open-Meteo's public `data_spatial` datasets.
 | id | model | grid / range | runs | rain value covers | not provided |
 |---|---|---|---|---|---|
 | `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | O1280, +144 h, 3-hourly | 00Z 12Z | 1 h to +90 h, then 3 h | - |
-| `ecmwf_aifs` | ECMWF AIFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, moisture |
+| `ecmwf_aifs` | ECMWF AIFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, moisture, visibility |
 | `gfs` | NOAA GFS (0.117° surface + 0.25° pressure/gusts/CAPE) | +144 h, 3-hourly | 4 a day | 1 h to +120 h, then 3 h | - |
-| `ukmo` | UK Met Office global 10 km | ~10 km, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | moisture |
-| `dwd_icon` | DWD ICON global | regular grid, +144 h, 3-hourly | 00Z 12Z | 1 h to +78 h, then 3 h | moisture |
-| `arpege` | Météo-France ARPEGE | 0.25°, +102 h, 3-hourly | 4 a day | 1 h to +48 h, then 3 h | moisture |
-| `gdps` | Environment Canada GDPS (surface + upper-level datasets) | ~15 km, +144 h, 3-hourly | 00Z 12Z | 1 h, then 3 h | CAPE, moisture |
+| `ukmo` | UK Met Office global 10 km | ~10 km, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
+| `dwd_icon` | DWD ICON global | regular grid, +144 h, 3-hourly | 00Z 12Z | 1 h to +78 h, then 3 h | sunshine, visibility, moisture |
+| `arpege` | Météo-France ARPEGE | 0.25°, +102 h, 3-hourly | 4 a day | 1 h to +48 h, then 3 h | visibility, moisture |
+| `gdps` | Environment Canada GDPS (surface + upper-level datasets) | ~15 km, +144 h, 3-hourly | 00Z 12Z | 1 h, then 3 h | low/mid/high cloud, CAPE, visibility, moisture |
 | `cma_grapes` | CMA GRAPES global | ~15 km, +120 h, 6-hourly sampled | 00Z 12Z | 3 h | moisture |
-| `jma_gsm` | JMA GSM | 0.5°, +132 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, moisture |
-| `aigfs` | NCEP AI-GFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | humidity, feels-like, gusts, CAPE, moisture |
+| `jma_gsm` | JMA GSM | 0.5°, +132 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, sunshine, visibility, moisture, humidity at 200 hPa |
+| `aigfs` | NCEP AI-GFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | humidity, dew point, feels-like, gusts, CAPE, sunshine, visibility, moisture |
 
 How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
 accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);

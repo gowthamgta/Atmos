@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, HostListener, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject } from '@angular/core';
+import { PanelService } from '../../core/ui/panel.service';
 
 interface Credit {
   name: string;
@@ -26,18 +27,18 @@ const CREDITS: readonly Credit[] = [
   selector: 'app-about',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <button type="button" class="info-btn" (click)="open.set(!open())" [attr.aria-expanded]="open()" aria-label="About and data credits" title="About and data credits">
+    <button type="button" class="info-btn" (click)="panels.toggle('about')" [attr.aria-expanded]="open()" aria-label="About and data credits" title="About and data credits">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>
       </svg>
     </button>
 
     @if (open()) {
-      <div class="backdrop" (click)="open.set(false)" aria-hidden="true"></div>
+      <div class="backdrop" (click)="panels.close('about')" aria-hidden="true"></div>
       <section class="card glass-panel-solid" role="dialog" aria-label="About AtmosIQ">
         <header>
           <strong>AtmosIQ</strong>
-          <button type="button" class="close" (click)="open.set(false)" aria-label="Close" title="Close (Esc)">×</button>
+          <button type="button" class="close" (click)="panels.close('about')" aria-label="Close" title="Close (Esc)">×</button>
         </header>
         <p>
           A forecast map for South India and the seas around it. Ten weather models, resampled onto one 0.1° grid, with
@@ -81,10 +82,11 @@ const CREDITS: readonly Credit[] = [
 })
 export class AboutComponent {
   protected readonly credits = CREDITS;
-  protected readonly open = signal(false);
+  protected readonly panels = inject(PanelService);
+  protected readonly open = computed(() => this.panels.open() === 'about');
 
   @HostListener('window:keydown.escape')
   protected onEscape(): void {
-    this.open.set(false);
+    this.panels.close('about');
   }
 }

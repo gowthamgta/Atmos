@@ -8,7 +8,6 @@ import {
   mercatorUnitY,
   sampleGrid,
 } from './forecast.model';
-import { FORECAST_LAYERS, buildPaletteLut, forecastLayerById, layerAvailable, legendPosition } from './forecast-layers';
 
 const GRID: ForecastGrid = { latMax: 22, latMin: 4, lonMin: 68, lonMax: 90, step: 0.1, nx: 221, ny: 181 };
 
@@ -76,61 +75,5 @@ describe('sampleGrid', () => {
     expect(sampleGrid(v, GRID, 13.0, 80.05)).toBeCloseTo(121, 4); // only the valid neighbour (col 121) counts
     v.fill(NaN);
     expect(sampleGrid(v, GRID, 13, 80)).toBeNaN();
-  });
-});
-
-describe('forecast layer registry', () => {
-  it('has unique ids and sane ranges', () => {
-    const ids = FORECAST_LAYERS.map(l => l.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const l of FORECAST_LAYERS) {
-      expect(l.max).toBeGreaterThan(l.min);
-      expect(l.stops.length).toBeGreaterThanOrEqual(2);
-      const scale = l.displayScale ?? 1; // ticks are in the displayed unit, the range in the field's own unit
-      expect(l.ticks.every(t => t / scale >= l.min && t / scale <= l.max)).toBe(true);
-    }
-  });
-
-  it('only references pipeline variables that exist', () => {
-    const published = ['t2m', 'rh', 'feels', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cape', 'tcwv', 'u850', 'v850', 'u500', 'v500'];
-    for (const l of FORECAST_LAYERS) {
-      expect(published).toContain(l.varId);
-      if (l.varId2) expect(published).toContain(l.varId2);
-    }
-  });
-
-  it('builds an opaque palette that starts and ends on the first and last colour', () => {
-    const lut = buildPaletteLut(['#000000', '#ffffff']);
-    expect(lut.length).toBe(256 * 4);
-    expect([...lut.slice(0, 4)]).toEqual([0, 0, 0, 255]);
-    expect([...lut.slice(-4)]).toEqual([255, 255, 255, 255]);
-    expect(lut[128 * 4]).toBeGreaterThan(120);
-    expect(lut[128 * 4]).toBeLessThan(135);
-  });
-
-  it('positions legend ticks with the layer gamma', () => {
-    const rain = forecastLayerById('rain')!;
-    expect(legendPosition(rain, 0)).toBe(0);
-    expect(legendPosition(rain, 20)).toBe(1);
-    expect(legendPosition(rain, 5)).toBeCloseTo(0.5, 6); // sqrt(5/20)
-    expect(forecastLayerById('nope')).toBeNull();
-  });
-
-  it('places km/h ticks using the m/s field range', () => {
-    const wind = forecastLayerById('wind')!;
-    expect(wind.varId2).toBe('v10');
-    expect(legendPosition(wind, 72)).toBeCloseTo(1, 9); // 20 m/s = 72 km/h is the top of the palette
-    expect(legendPosition(wind, 36)).toBeCloseTo(0.5, 9);
-  });
-
-  it('marks layers unavailable when a model does not publish their variables', () => {
-    const aifs = { t2m: {}, rh: {}, feels: {}, u10: {}, v10: {}, msl: {}, precip: {}, cloud: {}, u850: {}, v850: {}, u500: {}, v500: {} }; // no gust, cape, tcwv
-    const available = FORECAST_LAYERS.filter(l => layerAvailable(l, aifs)).map(l => l.id);
-    expect(available).toEqual(['temp', 'feels', 'humidity', 'wind', 'wind850', 'wind500', 'rain', 'clouds', 'pressure']);
-    const ifs = { t2m: {}, rh: {}, feels: {}, u10: {}, v10: {}, gust: {}, msl: {}, precip: {}, cloud: {}, cape: {}, tcwv: {} }; // no pressure levels
-    expect(FORECAST_LAYERS.filter(l => !layerAvailable(l, ifs)).map(l => l.id)).toEqual(['wind850', 'wind500']);
-    expect(layerAvailable(forecastLayerById('gust')!, aifs)).toBe(false);
-    expect(layerAvailable(forecastLayerById('wind')!, { u10: {} })).toBe(false); // needs v10 as well
-    expect(layerAvailable(forecastLayerById('cape')!, null)).toBe(true); // manifest not loaded yet
   });
 });

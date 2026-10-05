@@ -1,17 +1,28 @@
 import { degToCompass } from '../domain/models/compass';
+import { Level, LEVEL_KM } from './forecast-layers';
 import { TerrainMode, applyTerrain } from './terrain-correction';
 
-/** Variables read for a clicked point (pipeline ids). */
-export const INSPECT_VARS = ['t2m', 'feels', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'msl', 'cape', 'u850', 'v850', 'u500', 'v500'] as const;
-export type InspectVar = (typeof INSPECT_VARS)[number];
+/** Fields read for the click card at the ground. */
+export const SURFACE_INSPECT_VARS = [
+  't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
+] as const;
+
+/** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
+export function inspectVars(level: Level): string[] {
+  const vars: string[] = [...SURFACE_INSPECT_VARS];
+  if (level !== 'surface') vars.push(`t${level}`, `rh${level}`, `u${level}`, `v${level}`, `gh${level}`);
+  return vars;
+}
 
 export interface PointRow {
   id: string;
   label: string;
-  /** Preformatted value including the unit. */
+  /** Preformatted value including the unit. Empty for a heading row. */
   text: string;
   /** True when the 1 km terrain correction was applied. */
   terrainAdjusted: boolean;
+  /** A section heading rather than a value. */
+  heading?: boolean;
 }
 
 export interface PointForecast {
@@ -44,33 +55,47 @@ const fmt = (v: number, digits = 0): string => (Number.isNaN(v) ? '–' : v.toFi
 const withUnit = (v: number, digits: number, unit: string): string => (Number.isNaN(v) ? '–' : `${v.toFixed(digits)} ${unit}`);
 const KMH_PER_MS = 3.6;
 
+function windText(u: number, v: number): string {
+  const w = windFromUV(u, v);
+  return Number.isNaN(w.speedMs) ? '–' : `${fmt(w.speedMs * KMH_PER_MS)} km/h from ${degToCompass(w.fromDeg)}`;
+}
+
 /** Turns blended raw field values (and the terrain height difference) into display rows. */
-export function buildPointRows(values: Record<InspectVar, number>, terrainDz: number | null): PointRow[] {
-  const adjust = (mode: TerrainMode, v: number) => (terrainDz === null ? v : applyTerrain(mode, v, terrainDz));
+export function buildPointRows(values: Record<string, number>, terrainDz: number | null, level: Level = 'surface'): PointRow[] {
+  const v = (id: string): number => values[id] ?? NaN;
+  const adjust = (mode: TerrainMode, x: number) => (terrainDz === null ? x : applyTerrain(mode, x, terrainDz));
   const adjusted = terrainDz !== null;
-  const wind = windFromUV(values.u10, values.v10);
   const rows: PointRow[] = [
-    { id: 'temp', label: 'Temperature', text: withUnit(adjust('temperature', values.t2m), 1, '°C'), terrainAdjusted: adjusted },
-    { id: 'feels', label: 'Feels like', text: withUnit(adjust('temperature', values.feels), 1, '°C'), terrainAdjusted: adjusted },
-    { id: 'humidity', label: 'Humidity', text: withUnit(adjust('humidity', values.rh), 0, '%'), terrainAdjusted: adjusted },
-    {
-      id: 'wind',
-      label: 'Wind',
-      text: Number.isNaN(wind.speedMs) ? '–' : `${fmt(wind.speedMs * KMH_PER_MS)} km/h from ${degToCompass(wind.fromDeg)}`,
-      terrainAdjusted: false,
-    },
-    { id: 'gust', label: 'Gusts', text: withUnit(values.gust * KMH_PER_MS, 0, 'km/h'), terrainAdjusted: false },
-    { id: 'rain', label: 'Rain', text: withUnit(values.precip, values.precip < 10 ? 1 : 0, 'mm/h'), terrainAdjusted: false },
-    { id: 'clouds', label: 'Clouds', text: withUnit(values.cloud, 0, '%'), terrainAdjusted: false },
-    { id: 'pressure', label: 'Pressure', text: withUnit(values.msl, 0, 'hPa'), terrainAdjusted: false },
-    { id: 'cape', label: 'Thunderstorm energy', text: withUnit(values.cape, 0, 'J/kg'), terrainAdjusted: false },
+    { id: 'temp', label: 'Temperature', text: withUnit(adjust('temperature', v('t2m')), 1, '°C'), terrainAdjusted: adjusted },
+    { id: 'feels', label: 'Feels like', text: withUnit(adjust('temperature', v('feels')), 1, '°C'), terrainAdjusted: adjusted },
+    { id: 'dew', label: 'Dew point', text: withUnit(v('dew'), 1, '°C'), terrainAdjusted: false },
+    { id: 'humidity', label: 'Humidity', text: withUnit(adjust('humidity', v('rh')), 0, '%'), terrainAdjusted: adjusted },
+    { id: 'wind', label: 'Wind', text: windText(v('u10'), v('v10')), terrainAdjusted: false },
+    { id: 'gust', label: 'Gusts', text: withUnit(v('gust') * KMH_PER_MS, 0, 'km/h'), terrainAdjusted: false },
+    { id: 'rain', label: 'Rain', text: withUnit(v('precip'), v('precip') < 10 ? 1 : 0, 'mm/h'), terrainAdjusted: false },
+    { id: 'clouds', label: 'Clouds', text: withUnit(v('cloud'), 0, '%'), terrainAdjusted: false },
   ];
-  // winds aloft only where the model provides them (not every model has pressure levels)
-  for (const [id, label, u, v] of [['wind850', 'Wind 850 hPa', values.u850, values.v850], ['wind500', 'Wind 500 hPa', values.u500, values.v500]] as const) {
-    const w = windFromUV(u, v);
-    if (!Number.isNaN(w.speedMs)) {
-      rows.push({ id, label, text: `${fmt(w.speedMs * KMH_PER_MS)} km/h from ${degToCompass(w.fromDeg)}`, terrainAdjusted: false });
-    }
+  const layers = [v('cloud_low'), v('cloud_mid'), v('cloud_high')];
+  if (layers.some(x => !Number.isNaN(x))) {
+    rows.push({ id: 'cloudlayers', label: 'Low / mid / high', text: `${layers.map(x => fmt(x)).join(' / ')} %`, terrainAdjusted: false });
+  }
+  if (!Number.isNaN(v('vis'))) {
+    rows.push({ id: 'vis', label: 'Visibility', text: withUnit(v('vis'), v('vis') < 10 ? 1 : 0, 'km'), terrainAdjusted: false });
+  }
+  rows.push(
+    { id: 'pressure', label: 'Pressure', text: withUnit(v('msl'), 0, 'hPa'), terrainAdjusted: false },
+    { id: 'cape', label: 'Thunderstorm energy', text: withUnit(v('cape'), 0, 'J/kg'), terrainAdjusted: false },
+  );
+
+  if (level !== 'surface') {
+    const alt = `${level} hPa · about ${LEVEL_KM[level]} km`;
+    rows.push({ id: 'level-heading', label: `At ${alt}`, text: '', terrainAdjusted: false, heading: true });
+    rows.push(
+      { id: 'lvl-temp', label: 'Temperature', text: withUnit(v(`t${level}`), 1, '°C'), terrainAdjusted: false },
+      { id: 'lvl-humidity', label: 'Humidity', text: withUnit(v(`rh${level}`), 0, '%'), terrainAdjusted: false },
+      { id: 'lvl-wind', label: 'Wind', text: windText(v(`u${level}`), v(`v${level}`)), terrainAdjusted: false },
+      { id: 'lvl-height', label: 'Height', text: withUnit(v(`gh${level}`), 0, 'm'), terrainAdjusted: false },
+    );
   }
   return rows;
 }
