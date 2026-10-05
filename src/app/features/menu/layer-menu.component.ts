@@ -44,6 +44,9 @@ function ladderKm(level: Level): string {
           <button type="button" class="radar" [class.active]="radarActive()" [attr.aria-pressed]="radarActive()" (click)="toggleRadar()">
             <span aria-hidden="true">📡</span> Radar <span class="radar-sub">IMD · observed</span>
           </button>
+          <button type="button" class="radar" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Meteosat-9: high-resolution visible by day, infrared at night">
+            <span aria-hidden="true">🛰</span> Satellite <span class="radar-sub">Meteosat · observed</span>
+          </button>
           <label class="model">
             <span class="sr">Forecast model</span>
             <select (change)="onModel($event)" aria-label="Forecast model">
@@ -120,7 +123,7 @@ function ladderKm(level: Level): string {
       position: fixed; z-index: 1100; top: 66px; right: 14px; width: min(400px, calc(100vw - 20px));
       max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); overflow-y: auto; padding: 12px; color: var(--text-primary); font-family: var(--font-body);
     }
-    .top-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .top-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
     .radar {
       flex: none; display: flex; flex-direction: column; align-items: flex-start; min-height: 44px; padding: 6px 12px; border-radius: 12px;
       border: 1px solid transparent; background: rgba(255,255,255,0.06); color: var(--text-primary); font: 600 13px var(--font-body); cursor: pointer;
@@ -128,7 +131,8 @@ function ladderKm(level: Level): string {
     .radar-sub { font-weight: 400; font-size: 10px; color: var(--text-secondary); }
     .radar:hover { background: rgba(255,255,255,0.12); }
     .radar.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
-    .model { flex: 1; min-width: 0; }
+    .model { flex: 1 1 100%; min-width: 0; }
+    .radar { flex: 1 1 0; }
     select {
       width: 100%; height: 100%; min-height: 44px; padding: 6px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
       background: rgba(255,255,255,0.06); color: var(--text-primary); font: 12px var(--font-body);
@@ -179,21 +183,24 @@ export class LayerMenuComponent {
   protected readonly allLevels = computed<Level[]>(() => ['surface', 925, 850, 700, 500, 300, 200]);
   protected readonly open = computed(() => this.panels.open() === 'layers');
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
+  protected readonly satelliteActive = computed(() => this.mapLayers.layers().some(l => l.id === 'satellite' && l.active));
 
   /** Layers grouped for display. */
   protected readonly groups = computed(() =>
     LAYER_GROUPS.map(name => ({ name, layers: this.state.layers.filter(l => l.group === name) })).filter(g => g.layers.length > 0)
   );
 
-  protected readonly triggerIcon = computed(() => (this.radarActive() ? '📡' : this.state.activeLayer()?.icon ?? '☰'));
+  protected readonly triggerIcon = computed(() => (this.radarActive() ? '📡' : this.satelliteActive() ? '🛰' : this.state.activeLayer()?.icon ?? '☰'));
   protected readonly triggerMain = computed(() => {
     if (this.radarActive()) return 'IMD radar';
+    if (this.satelliteActive()) return 'Satellite';
     const base = this.state.layers.find(l => l.id === this.state.activeLayerId());
     if (base) return base.label;
     return this.state.windParticles() || this.state.isobars() ? 'Overlays' : 'Layers';
   });
   protected readonly triggerSub = computed(() => {
     if (this.radarActive()) return 'Observed now';
+    if (this.satelliteActive()) return 'Meteosat-9';
     if (!this.state.forecastActive()) return 'Tap to choose';
     const level = this.state.level();
     return `${this.catalog.model().label} · ${level === 'surface' ? 'ground' : level + ' hPa'}`;
@@ -244,6 +251,11 @@ export class LayerMenuComponent {
   protected toggleRadar(): void {
     if (this.radarActive()) this.mapLayers.deactivateAll();
     else this.state.selectRadar();
+  }
+
+  protected toggleSatellite(): void {
+    if (this.satelliteActive()) this.mapLayers.deactivateAll();
+    else this.state.selectSatellite();
   }
 
   protected onModel(event: Event): void {

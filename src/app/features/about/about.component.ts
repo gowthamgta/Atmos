@@ -18,6 +18,7 @@ const CREDITS: readonly Credit[] = [
   { name: 'JMA GSM', what: 'Japan Meteorological Agency' },
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
+  { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView' },
   { name: 'Terrain', what: 'AWS Terrain Tiles (SRTM and other public DEMs)' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
   { name: 'Base map', what: '© Esri' },

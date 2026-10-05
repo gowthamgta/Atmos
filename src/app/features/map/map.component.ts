@@ -12,6 +12,8 @@ import * as maplibregl from 'maplibre-gl';
 import { Map as MapLibreMap, Marker } from 'maplibre-gl';
 import { MapLayerService, LayerConfig } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
+import { SatelliteService } from '../../core/satellite/satellite.service';
+import { satelliteCoordinates } from '../../core/satellite/satellite-image';
 import {
   RadarProductKey,
   ProcessedRadarResult
@@ -264,6 +266,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private layerService = inject(MapLayerService);
   private radarService = inject(RadarService);
   private forecastMap = inject(ForecastMapController);
+  private satellite = inject(SatelliteService);
 
   readonly hoverInfo = this.radarService.hoverInfo;
   private map: MapLibreMap | null = null;
@@ -283,6 +286,15 @@ export class MapComponent implements OnInit, OnDestroy {
     const mosaic = this.radarService.compositeMosaic();
     if (!this.map || !this.isMapLoaded()) return;
     this.updateRadarMosaicOverlay(mosaic);
+  });
+
+  // Reactive Effect: Meteosat satellite picture (the frame shown, whether the layer is on, and its opacity)
+  private satelliteEffect = effect(() => {
+    const on = this.layerService.layers().some(l => l.id === 'satellite' && l.active);
+    const url = this.satellite.current()?.url ?? null;
+    const opacity = this.satellite.opacity();
+    if (!this.map || !this.isMapLoaded()) return;
+    this.updateSatelliteOverlay(on ? url : null, opacity);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)
@@ -336,6 +348,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.map.removeSource('radar-source-mosaic');
     }
 
+    this.updateSatelliteOverlay(null, 0);
     this.forecastMap.detach();
     this.map?.remove();
     this.map = null;
@@ -549,6 +562,31 @@ export class MapComponent implements OnInit, OnDestroy {
         this.radarService.radarOpacity()
       );
     }
+  }
+
+  // --- Meteosat satellite picture (already re-spaced to Mercator, so it is placed by its corners) ---
+
+  private updateSatelliteOverlay(url: string | null, opacity: number): void {
+    if (!this.map) return;
+    const sourceId = 'satellite-source';
+    const layerId = 'satellite-layer';
+    if (!url) {
+      if (this.map.getLayer(layerId)) this.map.removeLayer(layerId);
+      if (this.map.getSource(sourceId)) this.map.removeSource(sourceId);
+      return;
+    }
+    const coordinates = satelliteCoordinates();
+    const existing = this.map.getSource(sourceId) as maplibregl.ImageSource | undefined;
+    if (existing) {
+      existing.updateImage({ url, coordinates });
+    } else {
+      this.map.addSource(sourceId, { type: 'image', url, coordinates });
+      this.map.addLayer(
+        { id: layerId, type: 'raster', source: sourceId, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 0, 'raster-resampling': 'linear' } },
+        this.overlayAnchorId()
+      );
+    }
+    if (this.map.getLayer(layerId)) this.map.setPaintProperty(layerId, 'raster-opacity', opacity);
   }
 
   // --- Tamil Nadu boundary lines (state + 38 districts) ---

@@ -2,6 +2,7 @@ import { Component, ViewChild } from '@angular/core';
 import { MapComponent } from './features/map/map.component';
 import { AboutComponent } from './features/about/about.component';
 import { RadarPanelComponent } from './features/radar/radar-panel.component';
+import { SatellitePanelComponent } from './features/satellite/satellite-panel.component';
 import { ForecastLegendComponent } from './features/forecast/forecast-legend.component';
 import { LayerMenuComponent } from './features/menu/layer-menu.component';
 import { ForecastTimelineComponent } from './features/forecast/forecast-timeline.component';
@@ -14,6 +15,7 @@ import { ForecastInspectorComponent } from './features/forecast/forecast-inspect
     MapComponent,
     AboutComponent,
     RadarPanelComponent,
+    SatellitePanelComponent,
     ForecastLegendComponent,
     LayerMenuComponent,
     ForecastTimelineComponent,

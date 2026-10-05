@@ -149,6 +149,15 @@ export class ForecastStateService {
     this.mapLayers.selectSingleLayer('radar');
   }
 
+  /** The Meteosat satellite picture is the other observed layer; like the radar it replaces any forecast layer. */
+  selectSatellite(): void {
+    this.activeLayerId.set(null);
+    this.windParticles.set(false);
+    this.isobars.set(false);
+    this.pause();
+    this.mapLayers.selectSingleLayer('satellite');
+  }
+
   private start(): void {
     void this.catalog.ensureLoaded().then(() => this.initialiseTime());
   }
