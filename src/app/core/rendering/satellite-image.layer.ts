@@ -31,7 +31,7 @@ uniform float u_mixB;     // 0..1: how much of picture B is faded in over A
 uniform float u_opacity;
 uniform float u_sharpen;
 uniform int u_hasB;
-uniform int u_lite;
+uniform float u_wide;      // weight of the wider (4 picture pixel) blur scale in the sharpening; 0 = one scale only
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -84,7 +84,7 @@ vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnify
     // the blur is read bicubically too, so it adds no blockiness of its own.
     vec4 fine = bicubicLod(tex, px, 1);
     vec3 detail = (c.rgb - fine.rgb);
-    if (u_lite == 0) detail += 0.5 * (fine.rgb - bicubicLod(tex, px, 2).rgb);
+    if (u_wide > 0.0) detail += u_wide * (fine.rgb - bicubicLod(tex, px, 2).rgb);
     c.rgb = clamp(c.rgb + u_sharpen * detail * c.a, 0.0, c.a);
   }
   return c;
@@ -137,7 +137,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private frames: SatelliteLayerFrame[] = [];
   private position = 0;
   private opacity = 0.9;
-  private sharpen = 1.6;
+  private look: 'picture' | 'clouds' = 'picture';
   private lite = false;
 
   /** The pictures of the loop, oldest first. Pictures no longer listed are released. */
@@ -151,6 +151,15 @@ export class SatelliteImageLayer implements CustomLayerInterface {
       this.slots.delete(key);
     }
     for (const f of frames) if (!this.slots.has(f.key)) void this.load(f);
+    this.map?.triggerRepaint();
+  }
+
+  /**
+   * What is being shown. The full picture is the satellite's own image, so it only gets a gentle lift (smooth bicubic
+   * magnification and mild sharpening); the cloud-only picture is a rendering of our own and takes stronger sharpening.
+   */
+  setLook(look: 'picture' | 'clouds'): void {
+    this.look = look;
     this.map?.triggerRepaint();
   }
 
@@ -201,7 +210,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_hasB', 'u_lite']) {
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_hasB', 'u_wide']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.vao = gl.createVertexArray();
@@ -289,9 +298,9 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
-    gl.uniform1f(u['u_sharpen'], this.sharpen);
+    gl.uniform1f(u['u_sharpen'], this.look === 'clouds' ? 1.2 : 0.45);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
-    gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
+    gl.uniform1f(u['u_wide'], this.lite || this.look === 'picture' ? 0 : 0.5);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);

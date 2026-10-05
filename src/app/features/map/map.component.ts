@@ -298,8 +298,10 @@ export class MapComponent implements OnInit, OnDestroy {
     const frames = this.satellite.frames();
     const position = this.satellite.position();
     const opacity = this.satellite.opacity();
+    const view = this.satellite.view();
     if (!this.map || !this.isMapLoaded()) return;
     this.updateSatelliteOverlay(on, frames, position, opacity);
+    this.satelliteLayer?.setLook(view);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)
