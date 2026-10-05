@@ -11,15 +11,16 @@ import {
   ProcessedRadarResult
 } from '../domain/models/radar.model';
 
+import { blurSeparable, echoAlphaFeather, gaussianKernel, resampleBilinear } from './radar-field';
+
 export const RADAR_COLOR_STOPS = [
-  { val: 0.0,  r: 37,  g: 99,  b: 235, a: 0.00 }, // Transparent
-  { val: 0.5,  r: 30,  g: 64,  b: 215, a: 0.65 }, // Blue (Light Echo, 12 - 18 dBZ)
-  { val: 1.2,  r: 14,  g: 165, b: 233, a: 0.82 }, // Sky Blue / Cyan (18 - 25 dBZ)
-  { val: 2.0,  r: 34,  g: 197, b: 94,  a: 0.90 }, // Green (Moderate Rain, 26 - 35 dBZ)
-  { val: 3.0,  r: 250, g: 204, b: 21,  a: 0.96 }, // Yellow (Heavy Rain, 36 - 42 dBZ)
-  { val: 3.7,  r: 249, g: 115, b: 22,  a: 0.98 }, // Vibrant Orange (Intense Core, 42 - 48 dBZ)
-  { val: 4.4,  r: 239, g: 68,  b: 68,  a: 1.00 }, // Red (Torrential Rain, 48 - 55 dBZ)
-  { val: 5.2,  r: 168, g: 85,  b: 247, a: 1.00 }  // Purple (Severe Storm / Hail, 55+ dBZ)
+  { val: 0.0, r: 58, g: 217, b: 228, a: 0.00 }, // Transparent
+  { val: 0.5, r: 58, g: 217, b: 228, a: 0.65 }, // #3ad9e4ff (Light Echo, < 18 dBZ)
+  { val: 1.2, r: 0, g: 163, b: 63, a: 0.82 },   // #00a33fff (Light Rain, 18 - 25 dBZ)
+  { val: 2.0, r: 175, g: 198, b: 0, a: 0.90 },  // #afc600ff (Moderate Rain, 26 - 35 dBZ)
+  { val: 3.0, r: 250, g: 204, b: 21, a: 0.96 }, // #facc15 (Heavy Rain, 36 - 44 dBZ)
+  { val: 4.4, r: 239, g: 68, b: 68, a: 1.00 },  // #ef4444 (Torrential Rain, 45 - 54 dBZ)
+  { val: 5.2, r: 168, g: 85, b: 247, a: 1.00 }  // #a855f7 (Severe Storm / Hail, >= 55 dBZ)
 ];
 
 export function sampleRadarColorRamp(v: number): [number, number, number, number] {
@@ -43,6 +44,9 @@ export function sampleRadarColorRamp(v: number): [number, number, number, number
   }
   return [0, 0, 0, 0];
 }
+
+/** Blur applied to the reconstructed intensity, in pixels of the 1024 grid (about 0.5 km each). */
+const RADAR_BLUR_SIGMA_PX = 2.2;
 
 // ── Radial interference (spoke) removal ──
 // Sun strikes and RF interference paint long, thin wedges that point straight at the radar.
@@ -667,38 +671,32 @@ export class RadarService implements OnDestroy {
     const outImgData = outCtx.createImageData(outSize, outSize);
     const outData = outImgData.data;
 
-    const rawGrid = new Float32Array(outSize * outSize);
     let hasAnyEcho = false;
     const isXBand = station.band === 'X-Band';
 
-    // 3. Sample from source image strictly within the circular radar sweep dish
+    // 3. Classify every source pixel once, at the image's own resolution. Resampling the colour classes (rather than
+    // the picture) lets the intensity be interpolated smoothly below, instead of copying stair-stepped blocks.
+    const classes = new Float32Array(cropW * cropH);
+    for (let sy = 0; sy < cropH; sy++) {
+      const py = cropY + sy;
+      if (py < 0 || py >= h) continue;
+      for (let sx = 0; sx < cropW; sx++) {
+        const px = cropX + sx;
+        if (px < 0 || px >= w) continue;
+        const srcIdx = (py * w + px) * 4;
+        classes[sy * cropW + sx] = this.classifyRainPixel(rgba[srcIdx], rgba[srcIdx + 1], rgba[srcIdx + 2], isTransparent, isXBand, productConfig.palette);
+      }
+    }
+    const rawGrid = resampleBilinear(classes, cropW, cropH, outSize);
+
+    // Circular dish mask: completely clip anything outside the radar sweep circle
     for (let outY = 0; outY < outSize; outY++) {
       const dy = outY - halfSize;
       const rowOffset = outY * outSize;
-      const normY = outY / (outSize - 1);
-      const srcY = Math.round(cropY + normY * (cropH - 1));
-
       for (let outX = 0; outX < outSize; outX++) {
         const dx = outX - halfSize;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        // Circular Dish Mask: completely clip anything outside radar sweep circle
-        if (dist > maxRadius) continue;
-
-        const normX = outX / (outSize - 1);
-        const srcX = Math.round(cropX + normX * (cropW - 1));
-
-        if (srcX < 0 || srcX >= w || srcY < 0 || srcY >= h) continue;
-
-        const srcIdx = (srcY * w + srcX) * 4;
-        const r = rgba[srcIdx];
-        const g = rgba[srcIdx + 1];
-        const b = rgba[srcIdx + 2];
-
-        const rainVal = this.classifyRainPixel(r, g, b, isTransparent, isXBand, productConfig.palette);
-        if (rainVal > 0) {
-          rawGrid[rowOffset + outX] = rainVal;
-          hasAnyEcho = true;
-        }
+        if (Math.sqrt(dx * dx + dy * dy) > maxRadius) rawGrid[rowOffset + outX] = 0;
+        else if (rawGrid[rowOffset + outX] > 0) hasAnyEcho = true;
       }
     }
 
@@ -780,58 +778,9 @@ export class RadarService implements OnDestroy {
     }
 
     if (isTransparent && hasAnyEcho) {
-      // 4. Organic Contour Curvature & Smooth Border Blending
-      // - Gentle radius-1.5 circular filter connects discrete pixel blocks into continuous lobes
-      const dilatedGrid = new Float32Array(outSize * outSize);
-      for (let y = 0; y < outSize; y++) {
-        const rowOffset = y * outSize;
-        for (let x = 0; x < outSize; x++) {
-          let maxVal = rawGrid[rowOffset + x];
-          for (let dy = -1; dy <= 1; dy++) {
-            const ny = y + dy;
-            if (ny < 0 || ny >= outSize) continue;
-            const nRow = ny * outSize;
-            for (let dx = -1; dx <= 1; dx++) {
-              const nx = x + dx;
-              if (nx < 0 || nx >= outSize) continue;
-              const v = rawGrid[nRow + nx];
-              if (v > maxVal) maxVal = v;
-            }
-          }
-          dilatedGrid[rowOffset + x] = maxVal;
-        }
-      }
-
-      // - 2-Pass Separable Gaussian Blur (radius 3) rounds out 90-degree corners into smooth curved arcs
-      const kernel = [0.05, 0.12, 0.22, 0.22, 0.22, 0.12, 0.05];
-      const kRadius = 3;
-      const tempGrid = new Float32Array(outSize * outSize);
-      const blurredGrid = new Float32Array(outSize * outSize);
-
-      // Horizontal pass
-      for (let y = 0; y < outSize; y++) {
-        const rowOffset = y * outSize;
-        for (let x = 0; x < outSize; x++) {
-          let sum = 0;
-          for (let k = -kRadius; k <= kRadius; k++) {
-            const nx = Math.min(outSize - 1, Math.max(0, x + k));
-            sum += dilatedGrid[rowOffset + nx] * kernel[k + kRadius];
-          }
-          tempGrid[rowOffset + x] = sum;
-        }
-      }
-
-      // Vertical pass
-      for (let y = 0; y < outSize; y++) {
-        for (let x = 0; x < outSize; x++) {
-          let sum = 0;
-          for (let k = -kRadius; k <= kRadius; k++) {
-            const ny = Math.min(outSize - 1, Math.max(0, y + k));
-            sum += tempGrid[ny * outSize + x] * kernel[k + kRadius];
-          }
-          blurredGrid[y * outSize + x] = sum;
-        }
-      }
+      // 4. Natural blending: the smoothly resampled intensity is blurred with a Gaussian (about 1 km), which rounds
+      // every contour and blends the colour classes into each other without growing the echoes.
+      const blurredGrid = blurSeparable(rawGrid, outSize, gaussianKernel(RADAR_BLUR_SIGMA_PX));
 
       // - Color mapping with smooth Hermite border feathering (blends seamlessly into terrain)
       for (let y = 0; y < outSize; y++) {
@@ -857,13 +806,9 @@ export class RadarService implements OnDestroy {
 
           finalField[rowOffset + x] = val;
 
-          if (val >= 0.06) {
-            // Smooth border blend (alpha feathering from 0.06 to 0.32)
-            let borderBlend = 1.0;
-            if (val < 0.32) {
-              const t = Math.max(0, Math.min(1, (val - 0.06) / (0.32 - 0.06)));
-              borderBlend = t * t * (3 - 2 * t);
-            }
+          if (val >= 0.05) {
+            // Faint values fade in gradually, so there is no hard coloured outline around an echo
+            const borderBlend = echoAlphaFeather(val);
 
             let edgeAlpha = 1.0;
             const edgeDist = Math.min(x, y, outSize - 1 - x, outSize - 1 - y, dishEdgeDist);
@@ -1015,100 +960,98 @@ export class RadarService implements OnDestroy {
     const data = imgData.data;
     const compositeField = new Float32Array(outW * outH);
 
-    // 3. Composite pixel loop
+    // 3. Composite. Each radar only visits the pixels inside its own footprint and adds its contribution to
+    // per-pixel accumulators; a second pass then merges and colours. (Looping every pixel over every radar did the
+    // same arithmetic six times over for pixels most radars cannot even see.)
     const lngSpan = maxLng - minLng;
     const latSpan = maxLat - minLat;
+    const total = outW * outH;
+    const peak = new Float32Array(total);        // strongest echo over this pixel
+    const weightedSum = new Float32Array(total); // sum of value * distance weight
+    const weightTotal = new Float32Array(total);
+    const radarCount = new Uint8Array(total);    // how many radars see an echo here
 
-    for (let y = 0; y < outH; y++) {
-      const rowOffset = y * outW;
-      const lat = maxLat - (y / (outH - 1)) * latSpan;
+    for (const s of activeStations) {
+      const x0 = Math.max(0, Math.floor(((s.west - minLng) / lngSpan) * (outW - 1)));
+      const x1 = Math.min(outW - 1, Math.ceil(((s.east - minLng) / lngSpan) * (outW - 1)));
+      const y0 = Math.max(0, Math.floor(((maxLat - s.north) / latSpan) * (outH - 1)));
+      const y1 = Math.min(outH - 1, Math.ceil(((maxLat - s.south) / latSpan) * (outH - 1)));
+      const f = s.field;
+      const cx = s.cropW / 2;
+      const cy = s.cropH / 2;
+      const range = s.station.operationalRangeKm;
 
-      for (let x = 0; x < outW; x++) {
-        const lng = minLng + (x / (outW - 1)) * lngSpan;
+      for (let y = y0; y <= y1; y++) {
+        const lat = maxLat - (y / (outH - 1)) * latSpan;
+        if (lat < s.south || lat > s.north) continue;
+        const dLat = (lat - s.station.lat) * 111.32;
+        const v = (s.north - lat) / (s.north - s.south);
+        const fy = v * (s.cropH - 1);
+        const yA = Math.floor(fy);
+        const yB = Math.min(yA + 1, s.cropH - 1);
+        const wy = fy - yA;
+        const rowOffset = y * outW;
 
-        let maxVal = 0;
-        let weightedSum = 0;
-        let totalWeight = 0;
-        let activeCount = 0;
+        for (let x = x0; x <= x1; x++) {
+          const lng = minLng + (x / (outW - 1)) * lngSpan;
+          if (lng < s.west || lng > s.east) continue;
 
-        for (let i = 0; i < activeStations.length; i++) {
-          const s = activeStations[i];
-          if (lat < s.south || lat > s.north || lng < s.west || lng > s.east) continue;
-
-          // Check distance to station center
-          const dLat = (lat - s.station.lat) * 111.32;
+          // Distance to the station centre (the radar's operational range)
           const dLng = (lng - s.station.lng) * 111.32 * s.cosLat;
           const distKm = Math.hypot(dLat, dLng);
-          if (distKm > s.station.operationalRangeKm) continue;
+          if (distKm > range) continue;
 
-          // Normalized coordinates in station crop
+          // Normalised coordinates in the station crop
           const u = (lng - s.west) / (s.east - s.west);
-          const v = (s.north - lat) / (s.north - s.south);
           const fx = u * (s.cropW - 1);
-          const fy = v * (s.cropH - 1);
-
-          const cx = s.cropW / 2;
-          const cy = s.cropH / 2;
           const cDist = Math.hypot(fx - cx, fy - cy);
           if (cDist > cx - 2) continue;
 
-          // Bilinear sample from station field
-          const x0 = Math.floor(fx);
-          const x1 = Math.min(x0 + 1, s.cropW - 1);
-          const y0 = Math.floor(fy);
-          const y1 = Math.min(y0 + 1, s.cropH - 1);
-          const wx = fx - x0;
-          const wy = fy - y0;
-
-          const f = s.field;
-          const s00 = f[y0 * s.cropW + x0];
-          const s10 = f[y0 * s.cropW + x1];
-          const s01 = f[y1 * s.cropW + x0];
-          const s11 = f[y1 * s.cropW + x1];
-
-          let val = (s00 * (1 - wx) + s10 * wx) * (1 - wy) + (s01 * (1 - wx) + s11 * wx) * wy;
+          // Bilinear sample from the station field
+          const xA = Math.floor(fx);
+          const xB = Math.min(xA + 1, s.cropW - 1);
+          const wx = fx - xA;
+          let val = (f[yA * s.cropW + xA] * (1 - wx) + f[yA * s.cropW + xB] * wx) * (1 - wy) +
+            (f[yB * s.cropW + xA] * (1 - wx) + f[yB * s.cropW + xB] * wx) * wy;
 
           // Smooth dish edge feathering so range boundaries never show seams
           const dishEdgeDist = (cx - 2) - cDist;
-          if (dishEdgeDist < 8) {
-            val *= Math.max(0, dishEdgeDist / 8);
-          }
+          if (dishEdgeDist < 8) val *= Math.max(0, dishEdgeDist / 8);
 
           if (val > 0) {
-            if (val > maxVal) maxVal = val;
-            const w = Math.max(0.1, 1 - distKm / s.station.operationalRangeKm);
-            weightedSum += val * w;
-            totalWeight += w;
-            activeCount++;
+            const i = rowOffset + x;
+            if (val > peak[i]) peak[i] = val;
+            const w = Math.max(0.1, 1 - distKm / range);
+            weightedSum[i] += val * w;
+            weightTotal[i] += w;
+            radarCount[i]++;
           }
         }
+      }
+    }
 
-        if (activeCount === 0) continue;
+    // 4. Merge overlapping radars and colour
+    for (let i = 0; i < total; i++) {
+      const count = radarCount[i];
+      if (count === 0) continue;
 
-        let mergedVal = maxVal;
-        if (activeCount > 1) {
-          // Merge overlapping radars: preserve peak storm core while smoothly blending surrounding contours
-          const avgVal = totalWeight > 0 ? weightedSum / totalWeight : maxVal;
-          mergedVal = 0.80 * maxVal + 0.20 * avgVal;
-        }
+      let mergedVal = peak[i];
+      if (count > 1) {
+        // Merge overlapping radars: preserve peak storm core while smoothly blending surrounding contours
+        const avgVal = weightTotal[i] > 0 ? weightedSum[i] / weightTotal[i] : peak[i];
+        mergedVal = 0.80 * peak[i] + 0.20 * avgVal;
+      }
 
-        compositeField[rowOffset + x] = mergedVal;
+      compositeField[i] = mergedVal;
 
-        if (mergedVal >= 0.06) {
-          // Smooth Hermite border blend
-          let borderBlend = 1.0;
-          if (mergedVal < 0.32) {
-            const t = Math.max(0, Math.min(1, (mergedVal - 0.06) / (0.32 - 0.06)));
-            borderBlend = t * t * (3 - 2 * t);
-          }
-
-          const [r, g, b, a] = sampleRadarColorRamp(mergedVal);
-          const pIdx = (rowOffset + x) * 4;
-          data[pIdx] = r;
-          data[pIdx + 1] = g;
-          data[pIdx + 2] = b;
-          data[pIdx + 3] = Math.round(a * borderBlend);
-        }
+      if (mergedVal >= 0.05) {
+        const borderBlend = echoAlphaFeather(mergedVal);
+        const [r, g, b, a] = sampleRadarColorRamp(mergedVal);
+        const pIdx = i * 4;
+        data[pIdx] = r;
+        data[pIdx + 1] = g;
+        data[pIdx + 2] = b;
+        data[pIdx + 3] = Math.round(a * borderBlend);
       }
     }
 
@@ -1336,9 +1279,9 @@ export class RadarService implements OnDestroy {
 
     if (maxV >= 0.15 && bestStation) {
       const dbz = Math.min(65, Math.max(12, Math.round(12 + maxV * 9.6)));
-      let label = 'Light Rain';
-      let color = '#0ea5e9'; // Blue
-      let rate = '0.5 – 2.5 mm/h';
+      let label = 'Light Echo';
+      let color = '#3ad9e4ff'; // Deep Blue
+      let rate = '< 1.0 mm/h';
 
       if (dbz >= 55) {
         label = 'Severe Storm / Hail';
@@ -1354,15 +1297,15 @@ export class RadarService implements OnDestroy {
         rate = '10 – 30 mm/h';
       } else if (dbz >= 26) {
         label = 'Moderate Rain';
-        color = '#22c55e'; // Green
+        color = '#afc600ff'; // Green
         rate = '2.5 – 10 mm/h';
       } else if (dbz >= 18) {
         label = 'Light Rain';
-        color = '#0ea5e9'; // Sky Blue
+        color = '#00a33fff'; // Sky Blue
         rate = '1.0 – 2.5 mm/h';
       } else {
         label = 'Light Echo';
-        color = '#2563eb'; // Deep Blue
+        color = '#3ad9e4ff'; // Deep Blue
         rate = '< 1.0 mm/h';
       }
 

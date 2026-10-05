@@ -129,7 +129,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .legend { margin-top: 10px; }
-    .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #1e40d7 0%, #0ea5e9 15%, #22c55e 32%, #facc15 53%, #f97316 68%, #ef4444 83%, #a855f7 100%); }
+    .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, #facc15 60%, #ef4444 80%, #a855f7 100%); }
     .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--text-secondary); }
     @media (max-width: 700px) { .panel { bottom: 84px; } }
   `]

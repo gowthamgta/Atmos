@@ -260,11 +260,11 @@ describe('Radar Overlap Color Merging & Color Ramp', () => {
     expect(r1).toBeLessThan(100);
     expect(a1).toBeGreaterThan(150);
 
-    // 2.0 -> Green (Moderate Rain)
+    // 2.0 -> Green (Moderate Rain: #afc600ff)
     const [r2, g2, b2, a2] = sampleRadarColorRamp(2.0);
     expect(g2).toBeGreaterThan(180);
-    expect(r2).toBeLessThan(60);
-    expect(b2).toBeLessThan(120);
+    expect(r2).toBeGreaterThan(150);
+    expect(b2).toBeLessThan(50);
 
     // 3.0 -> Yellow (Heavy Rain)
     const [r3, g3, b3, a3] = sampleRadarColorRamp(3.0);
@@ -277,7 +277,7 @@ describe('Radar Overlap Color Merging & Color Ramp', () => {
     expect(r4).toBeGreaterThan(240);
     expect(g4).toBeGreaterThan(100);
     expect(g4).toBeLessThan(150);
-    expect(b4).toBeLessThan(40);
+    expect(b4).toBeLessThan(50);
 
     // 4.4 -> Red (Torrential Rain)
     const [r5, g5, b5, a5] = sampleRadarColorRamp(4.4);
