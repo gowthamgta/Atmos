@@ -3,6 +3,7 @@ import { Marker } from 'maplibre-gl';
 import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
+import { isobarGeoJson } from './contours';
 import { decodeFieldBitmap } from './field-decode';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -33,6 +34,12 @@ export class ForecastMapController {
   /** Bumped on every update so slow downloads for an old selection are dropped. */
   private token = 0;
   private windToken = 0;
+  private isobarToken = 0;
+  private isobarTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastIsobarUpdate = 0;
+
+  private static readonly ISOBAR_SOURCE = 'forecast-isobars';
+  private static readonly ISOBAR_MIN_INTERVAL_MS = 150;
 
   /** Mount the layers below `beforeId` (so boundaries and labels stay on top). */
   attach(map: MapLibreMap, beforeId?: string): void {
@@ -42,10 +49,12 @@ export class ForecastMapController {
     map.addLayer(this.layer, beforeId);
     this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 4500 : 9000);
     map.addLayer(this.windLayer, beforeId); // added second, so the streaks draw over the colour field
+    this.addIsobarLayers(map, beforeId);
     map.on('click', this.onMapClick);
     this.effects = [
       effect(() => this.update(), { injector: this.injector }),
       effect(() => this.updateWind(), { injector: this.injector }),
+      effect(() => this.updateIsobars(), { injector: this.injector }),
       effect(() => this.syncMarker(), { injector: this.injector }),
     ];
   }
@@ -58,6 +67,10 @@ export class ForecastMapController {
     this.marker = null;
     this.token++;
     this.windToken++;
+    this.isobarToken++;
+    if (this.isobarTimer) clearTimeout(this.isobarTimer);
+    this.isobarTimer = null;
+    if (this.map) this.removeIsobarLayers(this.map);
     for (const l of [this.layer, this.windLayer]) {
       if (this.map && l && this.map.getLayer(l.id)) this.map.removeLayer(l.id);
     }
@@ -139,6 +152,87 @@ export class ForecastMapController {
         for (const v of varIds) this.loader.prefetch(v, ahead);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
+  }
+
+  private addIsobarLayers(map: MapLibreMap, beforeId?: string): void {
+    map.addSource(ForecastMapController.ISOBAR_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({
+      id: 'forecast-isobar-lines',
+      type: 'line',
+      source: ForecastMapController.ISOBAR_SOURCE,
+      layout: { 'line-join': 'round', 'line-cap': 'round', visibility: 'none' },
+      paint: {
+        'line-color': 'rgba(255, 255, 255, 0.62)',
+        'line-width': ['case', ['get', 'major'], 1.7, 0.9],
+      },
+    }, beforeId);
+    map.addLayer({
+      id: 'forecast-isobar-labels',
+      type: 'symbol',
+      source: ForecastMapController.ISOBAR_SOURCE,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 320,
+        'text-field': ['get', 'label'],
+        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+        'text-size': 11,
+        'text-keep-upright': true,
+        visibility: 'none',
+      },
+      paint: {
+        'text-color': 'rgba(255, 255, 255, 0.92)',
+        'text-halo-color': 'rgba(8, 12, 22, 0.85)',
+        'text-halo-width': 1.4,
+      },
+    }, beforeId);
+  }
+
+  private removeIsobarLayers(map: MapLibreMap): void {
+    for (const id of ['forecast-isobar-labels', 'forecast-isobar-lines']) if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(ForecastMapController.ISOBAR_SOURCE)) map.removeSource(ForecastMapController.ISOBAR_SOURCE);
+  }
+
+  /** Contours the blended sea-level pressure field and pushes it to the map (at most ~7 times a second). */
+  private updateIsobars(): void {
+    const map = this.map;
+    if (!map) return;
+    const manifest = this.catalog.manifest();
+    const time = this.state.timeMs();
+    const validTimes = this.catalog.validTimes();
+    const on = this.state.isobars();
+    const visibility = on ? 'visible' : 'none';
+    for (const id of ['forecast-isobar-lines', 'forecast-isobar-labels']) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility);
+    }
+    if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars['msl']) return;
+
+    const my = ++this.isobarToken;
+    const { a, b, mix } = bracketSteps(validTimes, time);
+    const info = manifest.vars['msl'];
+    void Promise.all([this.loader.get('msl', manifest.steps[a].h), this.loader.get('msl', manifest.steps[b].h)])
+      .then(([bmpA, bmpB]) => {
+        if (my !== this.isobarToken || !this.map) return;
+        const fa = decodeFieldBitmap(bmpA, info.min, info.max);
+        const fb = decodeFieldBitmap(bmpB, info.min, info.max);
+        const blended = new Float32Array(fa.length);
+        for (let i = 0; i < fa.length; i++) blended[i] = fa[i] * (1 - mix) + fb[i] * mix;
+        const geojson = isobarGeoJson(blended, manifest.grid, 2);
+        this.pushIsobars(geojson);
+      })
+      .catch(err => console.warn('[forecast] isobars failed', err));
+  }
+
+  private pushIsobars(geojson: ReturnType<typeof isobarGeoJson>): void {
+    const apply = () => {
+      this.isobarTimer = null;
+      this.lastIsobarUpdate = performance.now();
+      const source = this.map?.getSource(ForecastMapController.ISOBAR_SOURCE) as { setData?: (d: unknown) => void } | undefined;
+      source?.setData?.(geojson);
+    };
+    if (this.isobarTimer) clearTimeout(this.isobarTimer); // only the newest data matters
+    const wait = ForecastMapController.ISOBAR_MIN_INTERVAL_MS - (performance.now() - this.lastIsobarUpdate);
+    if (wait <= 0) apply();
+    else this.isobarTimer = setTimeout(apply, wait);
   }
 
   /** Feeds the particle layer the two wind steps around the selected time. */

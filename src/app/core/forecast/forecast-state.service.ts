@@ -20,8 +20,10 @@ export class ForecastStateService {
   readonly playing = signal(false);
   /** Animated wind streaks over the map; independent of the colour layer. */
   readonly windParticles = signal(false);
+  /** Pressure lines (isobars) over the map; independent of the colour layer. */
+  readonly isobars = signal(false);
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
-  readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles());
+  readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 
   readonly startMs = computed(() => this.catalog.validTimes()[0] ?? null);
   readonly endMs = computed(() => this.catalog.validTimes().at(-1) ?? null);
@@ -42,6 +44,7 @@ export class ForecastStateService {
         untracked(() => {
           this.activeLayerId.set(null);
           this.windParticles.set(false);
+          this.isobars.set(false);
           this.pause();
         });
       }
@@ -52,7 +55,7 @@ export class ForecastStateService {
   toggleLayer(id: string): void {
     if (this.activeLayerId() === id) {
       this.activeLayerId.set(null);
-      if (!this.windParticles()) this.pause();
+      this.pauseIfIdle();
       return;
     }
     this.mapLayers.deactivateAll(); // radar and legacy overlays make way
@@ -65,7 +68,7 @@ export class ForecastStateService {
   toggleWindParticles(): void {
     if (this.windParticles()) {
       this.windParticles.set(false);
-      if (!this.activeLayerId()) this.pause();
+      this.pauseIfIdle();
       return;
     }
     this.mapLayers.deactivateAll();
@@ -73,10 +76,27 @@ export class ForecastStateService {
     this.start();
   }
 
+  /** Show or hide the pressure lines over whatever layer is active. */
+  toggleIsobars(): void {
+    if (this.isobars()) {
+      this.isobars.set(false);
+      this.pauseIfIdle();
+      return;
+    }
+    this.mapLayers.deactivateAll();
+    this.isobars.set(true);
+    this.start();
+  }
+
+  private pauseIfIdle(): void {
+    if (!this.forecastActive()) this.pause();
+  }
+
   /** Radar is its own entry in the layer menu: selecting it replaces any forecast layer. */
   selectRadar(): void {
     this.activeLayerId.set(null);
     this.windParticles.set(false);
+    this.isobars.set(false);
     this.pause();
     this.mapLayers.selectSingleLayer('radar');
   }

@@ -53,6 +53,13 @@ import { ForecastLayerDef, layerAvailable, legendPosition, paletteGradientCss } 
         <span class="rail-icon" aria-hidden="true">〰</span>
         <span class="rail-label">Wind animation</span>
       </button>
+      <button
+        type="button" class="rail-btn" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()"
+        aria-label="Isobars" title="Pressure lines (isobars) over any layer" (click)="state.toggleIsobars()"
+      >
+        <span class="rail-icon" aria-hidden="true">≋</span>
+        <span class="rail-label">Isobars</span>
+      </button>
     </nav>
 
     @if (state.activeLayer(); as layer) {
