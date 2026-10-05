@@ -1,5 +1,5 @@
 /* ============================================================
-   App Shell Layout — Dedicated Dual Weather Radar Platform
+   App shell: full-screen map with floating panels
    ============================================================ */
 
 :host {
@@ -21,6 +21,7 @@
   z-index: 1000;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   pointer-events: none;
 }
@@ -28,13 +29,8 @@
   pointer-events: auto;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
 .brand-name {
+  margin: 0;
   font-family: var(--font-display);
   font-size: 19px;
   font-weight: 700;
@@ -44,6 +40,7 @@
   align-items: center;
   gap: 2px;
   user-select: none;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
 }
 .brand-icon {
   font-size: 20px;
@@ -55,164 +52,29 @@
   text-shadow: 0 0 12px rgba(0, 229, 255, 0.5);
 }
 
-/* --- Radar Product Quick Selector (Floating Glass Bar) --- */
-.quick-products-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-}
-
-.quick-pill {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  white-space: nowrap;
-}
-.quick-pill:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--text-primary);
-}
-.quick-pill.active {
-  background: rgba(0, 229, 255, 0.16);
-  border-color: rgba(0, 229, 255, 0.4);
-  color: #38bdf8;
-  box-shadow: 0 0 16px rgba(0, 229, 255, 0.25);
-}
-
-.pill-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-}
-.pill-dot.caz {
-  background: #d946ef;
-  box-shadow: 0 0 8px #d946ef;
-}
-.pill-dot.ppi {
-  background: #38bdf8;
-  box-shadow: 0 0 8px #38bdf8;
-}
-.pill-dot.sri {
-  background: #22c55e;
-  box-shadow: 0 0 8px #22c55e;
-}
-.pill-dot.pac {
-  background: #06b6d4;
-  box-shadow: 0 0 8px #06b6d4;
-}
-
-/* --- Top Actions --- */
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.action-btn {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 8px 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-body);
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  position: relative;
-}
-.action-btn:hover,
-.action-btn.active {
-  color: var(--neon-cyan);
-  border-color: rgba(0, 229, 255, 0.35);
-  box-shadow: 0 0 14px rgba(0, 229, 255, 0.25);
-}
-
-.basemap-btn {
-  font-size: 12px;
-  padding: 7px 11px;
-}
-.action-icon {
-  font-size: 14px;
-}
-.action-text {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.badge-dot {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #38bdf8;
-  box-shadow: 0 0 6px #38bdf8;
-}
-
-/* --- Sidebar Right (Radar Settings & Legend Drawer) --- */
-.sidebar-right {
-  position: fixed;
-  top: 70px;
-  right: 14px;
-  z-index: 950;
-  max-height: calc(100vh - 90px);
-  max-height: calc(100dvh - 90px);
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
-
-/* --- Zoom & Recenter controls --- */
+/* --- Zoom and recenter --- */
 .zoom-controls {
   position: fixed;
-  bottom: 24px;
-  right: 16px;
+  bottom: 96px;
+  right: 12px;
   z-index: 900;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 .zoom-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
+  border-radius: 12px;
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 .zoom-btn:hover {
@@ -220,78 +82,16 @@
   border-color: rgba(0, 229, 255, 0.4);
   box-shadow: 0 0 16px rgba(0, 229, 255, 0.3);
 }
-
-/* ============================================================
-   Mobile Viewport Responsive Rules
-   ============================================================ */
-@media (max-width: 768px) {
-  .top-bar {
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .brand-name {
-    font-size: 16px;
-    letter-spacing: 1px;
-  }
-  .brand-icon {
-    font-size: 18px;
-  }
-
-  .quick-products-bar {
-    order: 3;
-    width: 100%;
-    justify-content: space-between;
-    padding: 3px 4px;
-  }
-  .quick-pill {
-    flex: 1;
-    justify-content: center;
-    padding: 8px 6px;
-    font-size: 12px;
-  }
-
-  .top-actions {
-    gap: 6px;
-  }
-  .action-btn {
-    padding: 7px 10px;
-  }
-  .recenter-top-btn {
-    display: none; /* Handled by zoom-controls FAB */
-  }
-
-  .sidebar-right {
-    top: auto;
-    bottom: 8px;
-    left: 8px;
-    right: 8px;
-    max-height: 72vh;
-    border-radius: 16px;
-    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
-  }
-
-  .zoom-controls {
-    bottom: 84px;
-    right: 12px;
-  }
-  .zoom-btn {
-    width: 44px;
-    height: 44px;
-  }
+.zoom-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
 }
 
+@media (max-width: 768px) {
+  .top-bar { top: 10px; left: 10px; right: 10px; }
+  .brand-name { font-size: 17px; }
+  .zoom-controls { bottom: 84px; right: 10px; }
+}
 @media (max-width: 480px) {
-  .brand-name span:not(.brand-icon) {
-    display: inline;
-  }
-  .basemap-btn .action-text {
-    display: none;
-  }
-  .basemap-btn {
-    padding: 8px 10px;
-  }
+  .brand-name span:not(.brand-icon) { font-size: 16px; }
 }

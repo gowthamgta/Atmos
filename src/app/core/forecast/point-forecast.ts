@@ -1,4 +1,4 @@
-import { degToCompass } from '../domain/models/microclimate.model';
+import { degToCompass } from '../domain/models/compass';
 import { TerrainMode, applyTerrain } from './terrain-correction';
 
 /** Variables read for a clicked point (pipeline ids). */

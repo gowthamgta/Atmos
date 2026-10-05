@@ -41,7 +41,7 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
-# Baked Tamil Nadu terrain + boundary data (rebuilt only by scripts/build-tn-data.py)
+# Baked terrain and boundary data (rebuilt only by scripts/build-south-india-data.py)
 [[headers]]
   for = "/data/*"
   [headers.values]

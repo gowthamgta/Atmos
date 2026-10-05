@@ -84,9 +84,10 @@ import { ForecastLayerDef, layerAvailable, legendPosition, paletteGradientCss } 
   styles: [`
     :host { display: contents; }
     .rail {
-      position: fixed; right: 12px; top: 50%; transform: translateY(-50%);
+      /* a column down the right edge, from under the header to just above the zoom buttons */
+      position: fixed; right: 12px; top: 68px; max-height: calc(100vh - 320px); max-height: calc(100dvh - 320px);
       z-index: 900; display: flex; flex-direction: column; gap: 4px; padding: 6px;
-      max-height: calc(100vh - 220px); overflow-y: auto;
+      overflow-y: auto;
     }
     .rail-btn {
       display: flex; align-items: center; gap: 8px; min-width: 44px; min-height: 44px; padding: 6px 10px;
