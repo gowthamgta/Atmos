@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEBLOCK_MAX_STEP,
+  blurField,
+  cloudCover,
+  shadeCloudLayer,
   JPEG_BLOCK,
   deblockJpeg,
   latFromMercatorY,
@@ -184,5 +187,74 @@ describe('deblockJpeg', () => {
     const flat = new Uint8ClampedArray(16 * 16 * 4).fill(120);
     deblockJpeg(flat, 16, 16);
     expect(new Set(flat).size).toBe(1);
+  });
+});
+
+describe('cloud extraction', () => {
+  const px = (r: number, g: number, b: number) => Uint8ClampedArray.from([r, g, b, 255]);
+  const cover = (r: number, g: number, b: number, kind: 'hrv' | 'ir' = 'hrv') => cloudCover(px(r, g, b), 1, 1, kind, 58)[0];
+
+  it('finds white and lavender cloud but not sea, yellow land or bright sunlit land', () => {
+    expect(cover(244, 245, 203)).toBeGreaterThan(0.9); // thick cloud
+    expect(cover(116, 113, 160)).toBeGreaterThan(0.5); // thin lavender cloud
+    expect(cover(57, 57, 58)).toBe(0); // sea
+    expect(cover(103, 102, 38)).toBe(0); // land
+    expect(cover(159, 158, 76)).toBe(0); // bright, sunlit land: a high blue value is not enough, it is yellow
+  });
+
+  it('reads cold, high cloud as bright in infrared', () => {
+    expect(cover(250, 250, 250, 'ir')).toBeGreaterThan(0.9);
+    expect(cover(40, 40, 40, 'ir')).toBe(0);
+  });
+
+  it('blurs without changing the total and spreads a spike evenly', () => {
+    const size = 21;
+    const f = new Float32Array(size * size);
+    f[10 * size + 10] = 100;
+    const out = blurField(f, size, size, 1.5);
+    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 1);
+    expect(out[10 * size + 11]).toBeCloseTo(out[10 * size + 9], 6);
+    expect(out[11 * size + 10]).toBeCloseTo(out[9 * size + 10], 6);
+    expect(out[10 * size + 10]).toBeLessThan(100);
+  });
+});
+
+describe('shadeCloudLayer', () => {
+  /** A bright oval cloud (strongest in the middle) on sea, `size` x `size`. */
+  function oval(size: number): Uint8ClampedArray {
+    const px = new Uint8ClampedArray(size * size * 4);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const d = Math.hypot((x - size / 2) / (size * 0.28), (y - size / 2) / (size * 0.2));
+        const cloud = Math.max(0, 1 - d * d);
+        const v = cloud > 0 ? 120 + cloud * 130 : 0;
+        px.set(cloud > 0.02 ? [v, v, Math.min(255, v - 8)] : [57, 57, 58], 0);
+        px.set(cloud > 0.02 ? [v, v, Math.min(255, v - 8), 255] : [57, 57, 58, 255], (y * size + x) * 4);
+      }
+    }
+    return px;
+  }
+  const size = 64;
+  const out = shadeCloudLayer(oval(size), size, size, 'hrv', 58);
+  const at = (x: number, y: number) => out.slice((y * size + x) * 4, (y * size + x) * 4 + 4);
+
+  it('leaves the open sea fully transparent and the cloud opaque, with a soft edge between', () => {
+    expect(at(2, 2)[3]).toBe(0);
+    expect(at(32, 32)[3]).toBeGreaterThan(230);
+    const alphas = Array.from({ length: size }, (_, x) => at(x, 32)[3]);
+    expect(alphas.some(a => a > 10 && a < 245)).toBe(true); // a ramp, not a hard step
+  });
+
+  it('shades thin cloud cool and thick cloud white, so the cloud has depth', () => {
+    const centre = at(32, 32);
+    const rim = Array.from({ length: size }, (_, x) => at(x, 32)).find(p => p[3] > 120 && p[3] < 200)!;
+    expect(centre[0]).toBeGreaterThan(rim[0]); // brighter in the thick middle than on the thin rim
+    expect(rim[2]).toBeGreaterThanOrEqual(rim[0]); // and the rim leans blue-grey, not warm
+  });
+
+  it('lights the north-west facing side more than the south-east facing side', () => {
+    const lit = at(32 - 12, 32 - 5); // up-left of the middle: slopes up towards the middle, facing the light
+    const dark = at(32 + 12, 32 + 5);
+    expect(lit[0]).toBeGreaterThan(dark[0]);
   });
 });

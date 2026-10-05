@@ -133,6 +133,119 @@ export function shadePixel(
 }
 
 /**
+ * How much cloud there is at each pixel (0 none .. 1 thick), from the satellite picture.
+ *
+ * HRV picture: cloud is white or lavender, so its blue channel is high compared with the typical land and sea (the
+ * `background`), and unlike bright, sunlit land (yellow: blue far below red and green) its blue is close to its red and
+ * green. Both must hold, which keeps the bright land speckle out. Infrared: cold, high cloud is bright.
+ */
+export function cloudCover(src: Uint8ClampedArray, width: number, height: number, kind: SatelliteChannel, background: number): Float32Array {
+  const out = new Float32Array(width * height);
+  for (let i = 0, p = 0; i < out.length; i++, p += 4) {
+    const r = src[p];
+    const g = src[p + 1];
+    const b = src[p + 2];
+    if (kind === 'hrv') {
+      const ratio = b / Math.max(1, (r + g) / 2); // about 0.4 on yellow land, 0.8 and more in cloud
+      out[i] = smoothstep(background + 15, background + 100, b) * smoothstep(0.55, 0.78, ratio);
+    } else {
+      out[i] = smoothstep(0.2, 0.55, (r + g + b) / 3 / 255);
+    }
+  }
+  return out;
+}
+
+/** Gaussian blur of a `width` x `height` field (separable, edges clamped), sigma in pixels. */
+export function blurField(field: Float32Array, width: number, height: number, sigma: number): Float32Array {
+  const radius = Math.max(1, Math.ceil(sigma * 3));
+  const kernel = new Float32Array(2 * radius + 1);
+  let sum = 0;
+  for (let i = -radius; i <= radius; i++) sum += (kernel[i + radius] = Math.exp(-(i * i) / (2 * sigma * sigma)));
+  for (let i = 0; i < kernel.length; i++) kernel[i] /= sum;
+  const tmp = new Float32Array(field.length);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      let acc = 0;
+      for (let k = -radius; k <= radius; k++) acc += field[row + Math.min(width - 1, Math.max(0, x + k))] * kernel[k + radius];
+      tmp[row + x] = acc;
+    }
+  }
+  const out = new Float32Array(field.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let acc = 0;
+      for (let k = -radius; k <= radius; k++) acc += tmp[Math.min(height - 1, Math.max(0, y + k)) * width + x] * kernel[k + radius];
+      out[y * width + x] = acc;
+    }
+  }
+  return out;
+}
+
+/** Cloud look: how soft the mask is, how strongly the cloud tops are lit, and the tones of shadowed and sunlit cloud. */
+export const CLOUD_MASK_SIGMA = 1.3;
+export const CLOUD_RELIEF_SIGMA = 2;
+export const CLOUD_RELIEF_STRENGTH = 14;
+export const CLOUD_SHADOW: readonly [number, number, number] = [150, 164, 196];
+export const CLOUD_LIT: readonly [number, number, number] = [255, 255, 255];
+
+/**
+ * Cloud only, with depth. The cover is smoothed into a soft mask (no speckle, no jagged edges), then:
+ *  - colour: thin or shadowed cloud is a cool blue-grey, thick cloud white, and the picture's own brightness keeps the
+ *    real texture of the cloud (cells, streaks) instead of a flat fill;
+ *  - lighting: the cloud's brightness (brighter is thicker, higher cloud) is treated as a height field lit from the
+ *    north-west, so cloud tops facing the sun are bright and the far sides are shaded, which gives billowing cloud its
+ *    volume. Using the brightness, not just the mask, is what keeps the inside of a big cloud from going flat white.
+ * Returns straight (not premultiplied) RGBA of the same size.
+ */
+export function shadeCloudLayer(
+  src: Uint8ClampedArray,
+  width: number,
+  height: number,
+  kind: SatelliteChannel,
+  background: number,
+): Uint8ClampedArray<ArrayBuffer> {
+  const cover = cloudCover(src, width, height, kind, background);
+  const mask = blurField(cover, width, height, CLOUD_MASK_SIGMA);
+  // the height field: cloud cover times how bright the picture is there
+  const heights = new Float32Array(cover.length);
+  for (let i = 0, p = 0; i < heights.length; i++, p += 4) {
+    const lum = kind === 'hrv' ? (0.55 * src[p + 1] + 0.45 * src[p + 2]) / 255 : (src[p] + src[p + 1] + src[p + 2]) / 765;
+    heights[i] = cover[i] * lum;
+  }
+  const relief = blurField(heights, width, height, CLOUD_RELIEF_SIGMA);
+  const out = new Uint8ClampedArray(width * height * 4);
+  const lx = -0.55;
+  const ly = -0.55;
+  const lz = 0.63; // light from the north-west (image left and up), fairly high
+  for (let y = 0; y < height; y++) {
+    const y0 = Math.max(0, y - 1) * width;
+    const y1 = Math.min(height - 1, y + 1) * width;
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const a = smoothstep(0.06, 0.8, mask[i]);
+      if (a <= 0) continue;
+      const x0 = Math.max(0, x - 1);
+      const x1 = Math.min(width - 1, x + 1);
+      // slope of the thickness (height) field
+      const gx = (relief[y * width + x1] - relief[y * width + x0]) * 0.5 * CLOUD_RELIEF_STRENGTH;
+      const gy = (relief[y1 + x] - relief[y0 + x]) * 0.5 * CLOUD_RELIEF_STRENGTH;
+      const inv = 1 / Math.hypot(gx, gy, 1);
+      const lambert = (-gx * inv * lx) + (-gy * inv * ly) + inv * lz; // the surface normal is (-gx, -gy, 1) / length
+      const light = Math.min(1.12, Math.max(0.62, 1 + 0.9 * (lambert - lz)));
+      // thickness (brightness) picks the tone from cool grey-blue to white
+      const p = i * 4;
+      const thick = smoothstep(0.3, 0.95, relief[i]);
+      for (let c = 0; c < 3; c++) {
+        out[p + c] = (CLOUD_SHADOW[c] + (CLOUD_LIT[c] - CLOUD_SHADOW[c]) * thick) * light;
+      }
+      out[p + 3] = 255 * a * 0.97;
+    }
+  }
+  return out;
+}
+
+/**
  * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set colour and
  * opacity for the chosen view. `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
  */
@@ -147,6 +260,9 @@ export function toOverlayPixels(
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
+  // Clouds only: shade the clouds at the picture's own resolution first, then re-space the rows (premultiplied, so
+  // the soft cloud edges blend without fringes). Other views shade each re-spaced pixel.
+  const clouds = view === 'clouds' ? shadeCloudLayer(src, width, srcHeight, kind, background) : null;
   for (let r = 0; r < outHeight; r++) {
     const f = rowMap[r];
     const y0 = Math.floor(f);
@@ -157,6 +273,15 @@ export function toOverlayPixels(
     let o = r * width * 4;
     for (let x = 0; x < width; x++, o += 4) {
       const i = x * 4;
+      if (clouds) {
+        const aA = clouds[a + i + 3] / 255;
+        const aB = clouds[c + i + 3] / 255;
+        const alpha = aA * (1 - w) + aB * w;
+        if (alpha <= 0) continue;
+        for (let k = 0; k < 3; k++) out[o + k] = (clouds[a + i + k] * aA * (1 - w) + clouds[c + i + k] * aB * w) / alpha;
+        out[o + 3] = alpha * 255;
+        continue;
+      }
       shadePixel(
         kind, view,
         src[a + i] * (1 - w) + src[c + i] * w,
