@@ -16,10 +16,12 @@ import config as C
 import fetch_aifs
 import fetch_gfs
 import fetch_ifs
+import models_regular
 from derive import derive
 from encode import encode_field
 
-MODELS = {m.MODEL_ID: m for m in (fetch_ifs, fetch_gfs, fetch_aifs)}
+# modules and RegularModel instances share one interface (MODEL_ID, RUN_HOURS, latest_run(), read_step(), ...)
+MODELS = {m.MODEL_ID: m for m in (fetch_ifs, fetch_gfs, fetch_aifs, *models_regular.ALL)}
 
 
 def published_vars(fetcher):
@@ -62,13 +64,20 @@ def write(path: str, data: bytes) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True, choices=sorted(MODELS))
-    ap.add_argument("--out", required=True, help="site folder to write")
+    ap.add_argument("--model", choices=sorted(MODELS))
+    ap.add_argument("--out", help="site folder to write")
+    ap.add_argument("--list-models", action="store_true", help="print the model ids, one per line, and exit")
     ap.add_argument("--steps", help="comma-separated forecast hours (default: all)")
     ap.add_argument("--force", action="store_true", help="ignore the run-hour and already-live checks")
     ap.add_argument("--live-url", help="latest.json of the deployed model, to skip runs that are already live")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
+    if args.list_models:
+        for model_id in MODELS:
+            print(model_id)
+        return 0
+    if not args.model or not args.out:
+        ap.error("--model and --out are required")
 
     fetcher = MODELS[args.model]
     run = fetcher.latest_run()
@@ -80,7 +89,8 @@ def main() -> int:
         if args.live_url and live_run(args.live_url) == run_id:
             print(f"{args.model}: run {run_id} is already live; nothing to do")
             return 0
-    steps = [int(s) for s in args.steps.split(",")] if args.steps else fetcher.STEP_HOURS
+    all_steps = fetcher.steps_for(run) if hasattr(fetcher, "steps_for") else fetcher.STEP_HOURS  # shorter runs publish fewer steps
+    steps = [int(s) for s in args.steps.split(",")] if args.steps else all_steps
     print(f"{args.model}: run {run_id}, {len(steps)} steps", flush=True)
 
     done = []

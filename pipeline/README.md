@@ -45,28 +45,38 @@ repository activity; re-enable under the Actions tab if that happens.
 3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.
 
 ## Models
-| id | source | native grid | runs used | steps | rain after |
+Ten models, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.
+Sources are Open-Meteo's public `data_spatial` datasets.
+
+| id | model | grid / range | runs | rain value covers | not provided |
 |---|---|---|---|---|---|
-| `ecmwf_ifs` | Open-Meteo `ecmwf_ifs` | O1280, ~9 km | 00Z, 12Z | 3-hourly to +144 h | +90 h is a 3 h total |
-| `ecmwf_aifs` | Open-Meteo `ecmwf_aifs025_single` (ECMWF's AI model; no gusts, CAPE or column moisture, so those layers are greyed out) | regular 0.25° | 00Z, 06Z, 12Z, 18Z | 6-hourly to +144 h (the model goes to +360 h) | every value is a 6 h total |
-| `gfs` | Open-Meteo `ncep_gfs013` (0.117°: temperature, humidity, wind, rain, cloud, moisture) + `ncep_gfs025` (0.25°: pressure, gusts, CAPE) | regular lat/lon | 00Z, 06Z, 12Z, 18Z | 3-hourly to +144 h | +120 h is a 3 h total |
+| `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | O1280, +144 h, 3-hourly | 00Z 12Z | 1 h to +90 h, then 3 h | - |
+| `ecmwf_aifs` | ECMWF AIFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, moisture |
+| `gfs` | NOAA GFS (0.117° surface + 0.25° pressure/gusts/CAPE) | +144 h, 3-hourly | 4 a day | 1 h to +120 h, then 3 h | - |
+| `ukmo` | UK Met Office global 10 km | ~10 km, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | moisture |
+| `dwd_icon` | DWD ICON global | regular grid, +144 h, 3-hourly | 00Z 12Z | 1 h to +78 h, then 3 h | moisture |
+| `arpege` | Météo-France ARPEGE | 0.25°, +102 h, 3-hourly | 4 a day | 1 h to +48 h, then 3 h | moisture |
+| `gdps` | Environment Canada GDPS (surface + upper-level datasets) | ~15 km, +144 h, 3-hourly | 00Z 12Z | 1 h, then 3 h | CAPE, moisture |
+| `cma_grapes` | CMA GRAPES global | ~15 km, +120 h, 6-hourly sampled | 00Z 12Z | 3 h | moisture |
+| `jma_gsm` | JMA GSM | 0.5°, +132 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, moisture |
+| `aigfs` | NCEP AI-GFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | humidity, feels-like, gusts, CAPE, moisture |
 
-All are resampled onto the same 0.1° grid and published in the same format, so the app treats them alike. GFS has no
-dew point, so its own relative humidity is used. Observed differences from IFS on a shared valid time: temperature
-within about 0.8 °C (correlation 0.95), CAPE about half of IFS's (a known model difference).
+How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
+accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);
+850/500 hPa winds against the API (all within about 0.15 m/s). Models without a variable simply do not publish it and
+the app greys the matching layer out.
 
-`python run.py --model gfs|ecmwf_ifs|ecmwf_aifs ...`. The workflow runs both every hour; each exits early when its
+`python run.py --model <id> ...` (`--list-models` prints the ids; the workflow uses it). The workflow runs both every hour; each exits early when its
 newest run is not ready, is not one it uses, or is already live. A Pages deploy replaces the whole site, so `mirror.py`
 copies any model that was not rebuilt from the live site into the artifact (otherwise a GFS update would delete IFS).
 
-## Adding another model (AIFS, ICON, UKMO...)
-1. Write `fetch_<name>.py` with the same interface as `fetch_ifs.py` / `fetch_gfs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`,
-   `STEP_HOURS`, `PRECIP_NOTE`, `UNAVAILABLE_VARS` (published variables the model lacks), `precip_window_hours(step)`
-   (hours the source rain value covers), `latest_run()` and `read_step(run, h)` returning the source variables on the 0.1° grid (`temperature_2m`, `dew_point_2m` or
-   `relative_humidity_2m`, `wind_u/v_component_10m`, `wind_gusts_10m`, `pressure_msl` in Pa, `precipitation`,
-   `cloud_cover`, `cape`, `total_column_integrated_water_vapour`). Check the rain semantics against Open-Meteo's hourly
-   API as was done for IFS and GFS.
-2. Register the module in `MODELS` in `run.py`, and add the id to the model list in `.github/workflows/nwp.yml`
-   (both the build loop and the `mirror.py --models` call).
-3. Add one entry to `FORECAST_MODELS` in `src/app/core/forecast/forecast-models.ts` (the folder name must equal
-   `MODEL_ID`). The model selector in the layer rail lists it automatically.
+## Adding another model
+Most global models in Open-Meteo's bucket are regular-grid datasets: add a `RegularModel` entry to `models_regular.py`
+(datasets, variable names, run hours, steps, unavailable variables). The grid and units are read from the files; wind
+given as speed and direction is converted to u/v; the rain window comes from the model's own output spacing.
+Then add one entry to `FORECAST_MODELS` in `src/app/core/forecast/forecast-models.ts` (the folder name must equal the
+model id). The workflow picks the model up from `run.py --list-models`.
+Models on other grids (such as ICON's native icosahedral grid) need their own `fetch_<name>.py` with the same interface
+as `fetch_ifs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`, `STEP_HOURS`, `PRECIP_NOTE`, `UNAVAILABLE_VARS`,
+`precip_window_hours(step)`, `latest_run()`, `read_step(run, h)`, and register it in `MODELS` in `run.py`.
+Check the rain window and the winds against Open-Meteo's API as was done for the models above.

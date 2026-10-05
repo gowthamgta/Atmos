@@ -15,8 +15,15 @@ const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'ecmwf_ifs', label: 'ECMWF IFS', resolution: '9 km', baseUrl: `${PAGES}/ecmwf_ifs` },
-  { id: 'gfs', label: 'NOAA GFS', resolution: '13–28 km', baseUrl: `${PAGES}/gfs` },
   { id: 'ecmwf_aifs', label: 'ECMWF AIFS (AI)', resolution: '28 km', baseUrl: `${PAGES}/ecmwf_aifs` },
+  { id: 'gfs', label: 'NOAA GFS', resolution: '13–28 km', baseUrl: `${PAGES}/gfs` },
+  { id: 'ukmo', label: 'UK Met Office', resolution: '10 km', baseUrl: `${PAGES}/ukmo` },
+  { id: 'dwd_icon', label: 'DWD ICON', resolution: '13 km', baseUrl: `${PAGES}/dwd_icon` },
+  { id: 'arpege', label: 'Météo-France ARPEGE', resolution: '28 km', baseUrl: `${PAGES}/arpege` },
+  { id: 'gdps', label: 'Canada GDPS', resolution: '15 km', baseUrl: `${PAGES}/gdps` },
+  { id: 'cma_grapes', label: 'CMA GRAPES', resolution: '15 km', baseUrl: `${PAGES}/cma_grapes` },
+  { id: 'jma_gsm', label: 'JMA GSM', resolution: '55 km', baseUrl: `${PAGES}/jma_gsm` },
+  { id: 'aigfs', label: 'NCEP AI-GFS (AI)', resolution: '28 km', baseUrl: `${PAGES}/aigfs` },
 ];
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;

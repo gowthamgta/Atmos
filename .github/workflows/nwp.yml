@@ -1,6 +1,6 @@
 name: nwp
 
-# Fetch the newest runs of each model (ECMWF IFS, NOAA GFS, ECMWF AIFS) from Open-Meteo's public data, cut out South India,
+# Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data, cut out South India,
 # encode them, and deploy the result to GitHub Pages (free, CORS-open). No external storage, no billing.
 # Runs hourly: each model exits early when its newest run is not ready, is not one it uses, or is already live.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
@@ -43,13 +43,14 @@ jobs:
           repo="${GITHUB_REPOSITORY#*/}"
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
-          for model in ecmwf_ifs gfs ecmwf_aifs; do
+          models=$(python run.py --list-models)
+          for model in $models; do
             # one model failing must not stop the other
             python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force \
               || echo "::warning::$model failed; the live copy stays in place"
           done
           if ls site/*/latest.json >/dev/null 2>&1; then
-            python mirror.py --site site --base-url "$base" --models ecmwf_ifs gfs ecmwf_aifs
+            python mirror.py --site site --base-url "$base" --models $models
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"

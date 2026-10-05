@@ -126,21 +126,21 @@ def test_aifs_urls_steps_and_unavailable_variables():
     assert fetch_aifs.STEP_HOURS == list(range(0, 145, 6))
     assert fetch_aifs.UNAVAILABLE_VARS == {"gust", "cape", "tcwv"}
     assert fetch_gfs.UNAVAILABLE_VARS == frozenset()
-    assert fetch_ifs.UNAVAILABLE_VARS == {"u850", "v850", "u500", "v500"}
+    assert fetch_ifs.UNAVAILABLE_VARS == frozenset()      # winds aloft come from the 0.25 degree IFS dataset
 
 
 def test_manifest_lists_only_variables_the_model_provides():
     full = pipeline_run.build_manifest(fetch_ifs, RUN, [0, 3])["vars"]
     aifs = pipeline_run.build_manifest(fetch_aifs, RUN, [0, 6])["vars"]
     assert {"gust", "cape", "tcwv"} <= set(full)
-    assert not ({"u850", "v850", "u500", "v500"} & set(full))      # IFS has no pressure levels here
+    assert {"u850", "v850", "u500", "v500"} <= set(full)
     assert not ({"gust", "cape", "tcwv"} & set(aifs))
     assert {"u850", "v850", "u500", "v500"} <= set(aifs)
     assert {"t2m", "rh", "feels", "u10", "v10", "msl", "precip", "cloud"} <= set(aifs)
 
 
 def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
-    assert sorted(pipeline_run.MODELS) == ["ecmwf_aifs", "ecmwf_ifs", "gfs"]
+    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "gfs", "ecmwf_aifs", "dwd_icon", "ukmo", "arpege", "gdps", "jma_gsm", "cma_grapes", "aigfs"])
     for m in pipeline_run.MODELS.values():
         assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)
 

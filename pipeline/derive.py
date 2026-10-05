@@ -27,7 +27,12 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
     t = raw["temperature_2m"]
     missing = np.full_like(t, np.nan)
     u, v = raw["wind_u_component_10m"], raw["wind_v_component_10m"]
-    rh = np.clip(raw["relative_humidity_2m"], 0, 100) if "relative_humidity_2m" in raw else relative_humidity(t, raw["dew_point_2m"])
+    if "relative_humidity_2m" in raw:
+        rh = np.clip(raw["relative_humidity_2m"], 0, 100)
+    elif "dew_point_2m" in raw:
+        rh = relative_humidity(t, raw["dew_point_2m"])
+    else:
+        rh = missing  # a model without humidity: rh and feels-like are not published
     return {
         "t2m": t,
         "rh": rh,
