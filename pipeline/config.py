@@ -35,6 +35,11 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("cloud", "%", 0, 100),
     Var("cape", "J/kg", 0, 6000),
     Var("tcwv", "kg/m²", 0, 80),
+    # winds on pressure levels: 850 hPa is about 1.5 km up (monsoon flow), 500 hPa about 5.5 km (steering winds)
+    Var("u850", "m/s", -60, 60),
+    Var("v850", "m/s", -60, 60),
+    Var("u500", "m/s", -60, 60),
+    Var("v500", "m/s", -60, 60),
 ]}
 
 # Variables read from the .om files

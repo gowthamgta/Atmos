@@ -23,7 +23,8 @@ PRECIP_NOTE = "mm/h: mean rate over the 6 h before the valid time"
 UNAVAILABLE_VARS: frozenset[str] = frozenset({"gust", "cape", "tcwv"})
 
 VARS = ["temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
-        "pressure_msl", "precipitation", "cloud_cover"]
+        "pressure_msl", "precipitation", "cloud_cover",
+        "wind_u_component_850hPa", "wind_v_component_850hPa", "wind_u_component_500hPa", "wind_v_component_500hPa"]
 
 
 def precip_window_hours(step_h: int) -> int:

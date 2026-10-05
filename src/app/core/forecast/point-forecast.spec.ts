@@ -80,4 +80,12 @@ describe('point forecast helpers', () => {
     expect(rows.find(r => r.id === 'cape')!.text).toBe('–');
     expect(rows.find(r => r.id === 'temp')!.text).toBe('30.0 °C');
   });
+
+  it('adds winds aloft only when the model provides them', () => {
+    const withLevels = buildPointRows({ ...values, u850: 10, v850: 0, u500: 0, v500: -20 }, 0);
+    expect(withLevels.find(r => r.id === 'wind850')!.text).toMatch(/^36 km\/h from W/);
+    expect(withLevels.find(r => r.id === 'wind500')!.text).toMatch(/^72 km\/h from N/);
+    const without = buildPointRows({ ...values, u850: NaN, v850: NaN, u500: NaN, v500: NaN }, 0);
+    expect(without.some(r => r.id === 'wind850' || r.id === 'wind500')).toBe(false);
+  });
 });

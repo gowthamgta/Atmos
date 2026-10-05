@@ -16,7 +16,8 @@ STEP_HOURS = list(range(0, 145, 3))      # 3-hourly: the 1-hourly part is subsam
 # Open-Meteo's hourly API, which divides the 3 h totals by 3). We publish mm/h throughout.
 PRECIP_NOTE = "mm/h: rain in the hour before the valid time (<= +90 h) or the mean rate over the 3 h before it (> +90 h)"
 
-UNAVAILABLE_VARS: frozenset[str] = frozenset()   # published variables this model does not provide
+# published variables this model does not provide (the free IFS source has surface fields only)
+UNAVAILABLE_VARS: frozenset[str] = frozenset({"u850", "v850", "u500", "v500"})
 
 
 def precip_window_hours(step_h: int) -> int:

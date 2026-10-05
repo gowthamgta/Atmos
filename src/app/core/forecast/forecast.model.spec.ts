@@ -92,7 +92,7 @@ describe('forecast layer registry', () => {
   });
 
   it('only references pipeline variables that exist', () => {
-    const published = ['t2m', 'rh', 'feels', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cape', 'tcwv'];
+    const published = ['t2m', 'rh', 'feels', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cape', 'tcwv', 'u850', 'v850', 'u500', 'v500'];
     for (const l of FORECAST_LAYERS) {
       expect(published).toContain(l.varId);
       if (l.varId2) expect(published).toContain(l.varId2);
@@ -124,9 +124,11 @@ describe('forecast layer registry', () => {
   });
 
   it('marks layers unavailable when a model does not publish their variables', () => {
-    const aifs = { t2m: {}, rh: {}, feels: {}, u10: {}, v10: {}, msl: {}, precip: {}, cloud: {} }; // no gust, cape, tcwv
+    const aifs = { t2m: {}, rh: {}, feels: {}, u10: {}, v10: {}, msl: {}, precip: {}, cloud: {}, u850: {}, v850: {}, u500: {}, v500: {} }; // no gust, cape, tcwv
     const available = FORECAST_LAYERS.filter(l => layerAvailable(l, aifs)).map(l => l.id);
-    expect(available).toEqual(['temp', 'feels', 'humidity', 'wind', 'rain', 'clouds', 'pressure']);
+    expect(available).toEqual(['temp', 'feels', 'humidity', 'wind', 'wind850', 'wind500', 'rain', 'clouds', 'pressure']);
+    const ifs = { t2m: {}, rh: {}, feels: {}, u10: {}, v10: {}, gust: {}, msl: {}, precip: {}, cloud: {}, cape: {}, tcwv: {} }; // no pressure levels
+    expect(FORECAST_LAYERS.filter(l => !layerAvailable(l, ifs)).map(l => l.id)).toEqual(['wind850', 'wind500']);
     expect(layerAvailable(forecastLayerById('gust')!, aifs)).toBe(false);
     expect(layerAvailable(forecastLayerById('wind')!, { u10: {} })).toBe(false); // needs v10 as well
     expect(layerAvailable(forecastLayerById('cape')!, null)).toBe(true); // manifest not loaded yet

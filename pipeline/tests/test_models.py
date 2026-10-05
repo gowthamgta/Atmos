@@ -68,7 +68,8 @@ def test_derive_uses_the_models_own_relative_humidity_when_there_is_no_dew_point
            "total_column_integrated_water_vapour": z + 50}
     out = derive(raw)
     assert np.allclose(out["rh"], 70) and np.allclose(out["msl"], 1010) and np.allclose(out["t2m"], 30)
-    assert set(out) == {"t2m", "rh", "feels", "u10", "v10", "gust", "msl", "precip", "cloud", "cape", "tcwv"}
+    assert set(out) == {"t2m", "rh", "feels", "u10", "v10", "gust", "msl", "precip", "cloud", "cape", "tcwv", "u850", "v850", "u500", "v500"}
+    assert np.isnan(out["u850"]).all()   # a model without pressure-level winds gives empty fields (never published)
     raw["relative_humidity_2m"] = z + 140            # nonsense is clipped to the physical range
     assert np.allclose(derive(raw)["rh"], 100)
 
@@ -124,14 +125,17 @@ def test_aifs_urls_steps_and_unavailable_variables():
     assert fetch_aifs.file_url(RUN, 6).endswith("/ecmwf_aifs025_single/2026/10/05/0600Z/2026-10-05T1200.om")
     assert fetch_aifs.STEP_HOURS == list(range(0, 145, 6))
     assert fetch_aifs.UNAVAILABLE_VARS == {"gust", "cape", "tcwv"}
-    assert fetch_ifs.UNAVAILABLE_VARS == fetch_gfs.UNAVAILABLE_VARS == frozenset()
+    assert fetch_gfs.UNAVAILABLE_VARS == frozenset()
+    assert fetch_ifs.UNAVAILABLE_VARS == {"u850", "v850", "u500", "v500"}
 
 
 def test_manifest_lists_only_variables_the_model_provides():
     full = pipeline_run.build_manifest(fetch_ifs, RUN, [0, 3])["vars"]
     aifs = pipeline_run.build_manifest(fetch_aifs, RUN, [0, 6])["vars"]
     assert {"gust", "cape", "tcwv"} <= set(full)
+    assert not ({"u850", "v850", "u500", "v500"} & set(full))      # IFS has no pressure levels here
     assert not ({"gust", "cape", "tcwv"} & set(aifs))
+    assert {"u850", "v850", "u500", "v500"} <= set(aifs)
     assert {"t2m", "rh", "feels", "u10", "v10", "msl", "precip", "cloud"} <= set(aifs)
 
 
@@ -139,3 +143,15 @@ def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
     assert sorted(pipeline_run.MODELS) == ["ecmwf_aifs", "ecmwf_ifs", "gfs"]
     for m in pipeline_run.MODELS.values():
         assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)
+
+
+def test_derive_passes_pressure_level_winds_through():
+    z = np.zeros((2, 2), np.float32)
+    raw = {"temperature_2m": z + 30, "relative_humidity_2m": z + 70, "wind_u_component_10m": z, "wind_v_component_10m": z,
+           "wind_gusts_10m": z, "pressure_msl": z + 101000, "precipitation": z, "cloud_cover": z, "cape": z,
+           "total_column_integrated_water_vapour": z,
+           "wind_u_component_850hPa": z + 12, "wind_v_component_850hPa": z - 3,
+           "wind_u_component_500hPa": z + 20, "wind_v_component_500hPa": z + 1}
+    out = derive(raw)
+    assert np.allclose(out["u850"], 12) and np.allclose(out["v850"], -3)
+    assert np.allclose(out["u500"], 20) and np.allclose(out["v500"], 1)

@@ -38,7 +38,8 @@ COARSE = "ncep_gfs025"  # 0.25 degree: pressure, gusts, CAPE
 # (dataset, source variable) -> key used by derive.py
 FINE_VARS = ["temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
              "cloud_cover", "precipitation", "total_column_integrated_water_vapour"]
-COARSE_VARS = ["pressure_msl", "wind_gusts_10m", "cape"]
+COARSE_VARS = ["pressure_msl", "wind_gusts_10m", "cape",
+               "wind_u_component_850hPa", "wind_v_component_850hPa", "wind_u_component_500hPa", "wind_v_component_500hPa"]
 
 # regular grid geometry of the two datasets (row 0 = south, column 0 = -180 degrees)
 FINE_GRID = dict(rows=1536, cols=3072, lat_first=-89.912125, dlat=2 * 89.912125 / 1535, lon_first=-180.0, dlon=360 / 3072)

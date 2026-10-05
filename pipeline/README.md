@@ -25,7 +25,9 @@ python run.py --out site --force                 # full run into ./site
 <model>/<run>/manifest.json                 grid, steps, per-variable range/unit
 <model>/<run>/<var>/<hhh>.png               value = min + (R*256+G)/65535*(max-min); B=255 means no data
 ```
-Variables: t2m, rh, feels, u10, v10, gust, msl, precip, cloud, cape, tcwv (see `config.py`).
+Variables: t2m, rh, feels, u10, v10, gust, msl, precip, cloud, cape, tcwv, plus winds on pressure levels u850/v850
+(about 1.5 km up) and u500/v500 (about 5.5 km) for models that provide them: GFS and AIFS, not the free IFS source
+(see `config.py`).
 Step 0 is the analysis hour, so gust, precip and CAPE are no-data there.
 Each deploy replaces the previous one, so only the newest run exists. A client that still holds the old
 `latest.json` gets a 404; it should re-fetch `latest.json` and retry.

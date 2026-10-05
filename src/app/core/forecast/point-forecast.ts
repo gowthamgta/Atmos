@@ -2,7 +2,7 @@ import { degToCompass } from '../domain/models/microclimate.model';
 import { TerrainMode, applyTerrain } from './terrain-correction';
 
 /** Variables read for a clicked point (pipeline ids). */
-export const INSPECT_VARS = ['t2m', 'feels', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'msl', 'cape'] as const;
+export const INSPECT_VARS = ['t2m', 'feels', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'msl', 'cape', 'u850', 'v850', 'u500', 'v500'] as const;
 export type InspectVar = (typeof INSPECT_VARS)[number];
 
 export interface PointRow {
@@ -65,5 +65,12 @@ export function buildPointRows(values: Record<InspectVar, number>, terrainDz: nu
     { id: 'pressure', label: 'Pressure', text: withUnit(values.msl, 0, 'hPa'), terrainAdjusted: false },
     { id: 'cape', label: 'Thunderstorm energy', text: withUnit(values.cape, 0, 'J/kg'), terrainAdjusted: false },
   ];
+  // winds aloft only where the model provides them (not every model has pressure levels)
+  for (const [id, label, u, v] of [['wind850', 'Wind 850 hPa', values.u850, values.v850], ['wind500', 'Wind 500 hPa', values.u500, values.v500]] as const) {
+    const w = windFromUV(u, v);
+    if (!Number.isNaN(w.speedMs)) {
+      rows.push({ id, label, text: `${fmt(w.speedMs * KMH_PER_MS)} km/h from ${degToCompass(w.fromDeg)}`, terrainAdjusted: false });
+    }
+  }
   return rows;
 }

@@ -25,6 +25,7 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
     model's accumulation window at this step) and is divided by it to get mm/h.
     """
     t = raw["temperature_2m"]
+    missing = np.full_like(t, np.nan)
     u, v = raw["wind_u_component_10m"], raw["wind_v_component_10m"]
     rh = np.clip(raw["relative_humidity_2m"], 0, 100) if "relative_humidity_2m" in raw else relative_humidity(t, raw["dew_point_2m"])
     return {
@@ -39,4 +40,9 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
         "cloud": raw["cloud_cover"],
         "cape": raw["cape"],
         "tcwv": raw["total_column_integrated_water_vapour"],
+        # pressure-level winds exist only in some models; the others publish nothing for them
+        "u850": raw.get("wind_u_component_850hPa", missing),
+        "v850": raw.get("wind_v_component_850hPa", missing),
+        "u500": raw.get("wind_u_component_500hPa", missing),
+        "v500": raw.get("wind_v_component_500hPa", missing),
     }

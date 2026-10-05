@@ -47,6 +47,8 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'feels', label: 'Feels like', icon: '🥵', varId: 'feels', unit: '°C', min: 18, max: 48, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40, 45], opacity: 0.85, terrain: 'temperature' },
   { id: 'humidity', label: 'Humidity', icon: '💧', varId: 'rh', unit: '%', min: 30, max: 100, stops: HUMIDITY, gamma: 1, clearBelow: 0, ticks: [40, 60, 80, 100], opacity: 0.85, terrain: 'humidity' },
   { id: 'wind', label: 'Wind', icon: '🍃', varId: 'u10', varId2: 'v10', unit: 'km/h', displayScale: 3.6, min: 0, max: 20, stops: WIND, gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 0.8, terrain: null },
+  { id: 'wind850', label: 'Wind 850 hPa (~1.5 km)', icon: '🌬', varId: 'u850', varId2: 'v850', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: WIND, gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 0.8, terrain: null },
+  { id: 'wind500', label: 'Wind 500 hPa (~5.5 km)', icon: '✈', varId: 'u500', varId2: 'v500', unit: 'km/h', displayScale: 3.6, min: 0, max: 30, stops: WIND, gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80, 100], opacity: 0.8, terrain: null },
   { id: 'rain', label: 'Rain', icon: '🌧', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: null },
   { id: 'clouds', label: 'Clouds', icon: '☁', varId: 'cloud', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
   { id: 'cape', label: 'Thunderstorm energy', icon: '⚡', varId: 'cape', unit: 'J/kg', min: 0, max: 4000, stops: CAPE, gamma: 0.7, clearBelow: 100, ticks: [500, 1000, 2000, 3000, 4000], opacity: 0.85, terrain: null },

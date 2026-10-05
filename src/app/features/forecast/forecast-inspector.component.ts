@@ -46,7 +46,7 @@ const IST = 'Asia/Kolkata';
   `,
   styles: [`
     :host { display: contents; }
-    .card { position: fixed; top: 76px; left: 12px; z-index: 950; width: min(300px, calc(100vw - 24px)); padding: 12px 14px 10px; color: var(--text-primary); font-family: var(--font-body); }
+    .card { position: fixed; top: 76px; left: 12px; z-index: 950; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow-y: auto; padding: 12px 14px 10px; color: var(--text-primary); font-family: var(--font-body); }
     header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
     .place strong { display: block; font-size: 15px; }
     .sub { font-size: 12px; color: var(--text-secondary); }

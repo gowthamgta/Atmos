@@ -235,7 +235,7 @@ export class ForecastMapController {
     else this.isobarTimer = setTimeout(apply, wait);
   }
 
-  /** Feeds the particle layer the two wind steps around the selected time. */
+  /** Feeds the particle layer the two wind steps around the selected time, at the active wind layer's level. */
   private updateWind(): void {
     const wind = this.windLayer;
     if (!wind) return;
@@ -243,7 +243,10 @@ export class ForecastMapController {
     const time = this.state.timeMs();
     const validTimes = this.catalog.validTimes();
     const on = this.state.windParticles();
-    if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars['u10'] || !manifest.vars['v10']) {
+    // 10 m wind by default; the 850 / 500 hPa wind layers animate their own level
+    const active = this.state.activeLayer();
+    const [uVar, vVar] = active?.varId2 ? [active.varId, active.varId2] : ['u10', 'v10'];
+    if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars[uVar] || !manifest.vars[vVar]) {
       wind.setVisible(false);
       wind.setWind(null);
       return;
@@ -253,10 +256,10 @@ export class ForecastMapController {
     const { a, b, mix } = bracketSteps(validTimes, time);
     const hA = manifest.steps[a].h;
     const hB = manifest.steps[b].h;
-    const u = manifest.vars['u10'];
-    const v = manifest.vars['v10'];
+    const u = manifest.vars[uVar];
+    const v = manifest.vars[vVar];
 
-    void Promise.all([this.loader.get('u10', hA), this.loader.get('u10', hB), this.loader.get('v10', hA), this.loader.get('v10', hB)])
+    void Promise.all([this.loader.get(uVar, hA), this.loader.get(uVar, hB), this.loader.get(vVar, hA), this.loader.get(vVar, hB)])
       .then(([uA, uB, vA, vB]) => {
         if (my !== this.windToken || !this.windLayer) return;
         wind.setWind({
@@ -269,8 +272,8 @@ export class ForecastMapController {
         });
         wind.setVisible(true);
         const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
-        this.loader.prefetch('u10', ahead);
-        this.loader.prefetch('v10', ahead);
+        this.loader.prefetch(uVar, ahead);
+        this.loader.prefetch(vVar, ahead);
       })
       .catch(err => console.warn('[forecast] wind load failed', err));
   }

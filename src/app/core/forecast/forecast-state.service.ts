@@ -60,7 +60,7 @@ export class ForecastStateService {
     }
     this.mapLayers.deactivateAll(); // radar and legacy overlays make way
     this.activeLayerId.set(id);
-    if (id === 'wind') this.windParticles.set(true); // the wind layer is shown with its animation
+    if (forecastLayerById(id)?.varId2) this.windParticles.set(true); // wind layers are shown with their animation
     this.start();
   }
 
