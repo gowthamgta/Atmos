@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   EUMETVIEW_WMS,
+  FY4B_BASE,
+  FY4B_IR,
+  FY4B_RGB,
+  type Fy4Frame,
+  fy4PictureUrl,
+  fy4ProductFor,
+  parseFy4State,
   SATELLITE_FRAME_COUNT,
   SATELLITE_HRV,
   SATELLITE_IR,
@@ -124,5 +131,35 @@ describe('parseNewestTime', () => {
   it('asks the capabilities of the layer being shown', () => {
     expect(satelliteCapabilitiesUrl(SATELLITE_IR)).toContain('/msg_iodc/ir108/ows?');
     expect(satelliteCapabilitiesUrl(SATELLITE_HRV)).toContain('/msg_iodc/rgb_eview/ows?');
+  });
+});
+
+describe('FY-4B pictures', () => {
+  const frame = (time: string, extra: object = {}) => ({ time, kind: 'day', hd: `${time.slice(0, 10)}.jpg`, lite: `${time.slice(0, 10)}_lite.jpg`, ...extra });
+
+  it('keeps the frames that are readable, oldest first', () => {
+    const state = {
+      frames: [
+        frame('2026-10-06T05:30:00Z'),
+        frame('2026-10-06T05:15:00Z'),
+        frame('not a time'),
+        frame('2026-10-06T05:45:00Z', { kind: 'dusk' }),
+        frame('2026-10-06T05:00:00Z', { hd: '../secret.jpg' }),
+        frame('2026-10-06T05:20:00Z', { lite: undefined }),
+      ],
+    };
+    expect(parseFy4State(state).map(f => f.time)).toEqual(['2026-10-06T05:15:00Z', '2026-10-06T05:30:00Z']);
+    expect(parseFy4State(null)).toEqual([]);
+    expect(parseFy4State({ frames: 'x' })).toEqual([]);
+  });
+
+  it('picks the picture size by device and the product by day or night', () => {
+    const f = frame('2026-10-06T05:15:00Z') as Fy4Frame;
+    expect(fy4PictureUrl(f, false)).toBe(`${FY4B_BASE}/${f.hd}`);
+    expect(fy4PictureUrl(f, true)).toBe(`${FY4B_BASE}/${f.lite}`);
+    expect(fy4ProductFor(f)).toBe(FY4B_RGB);
+    expect(fy4ProductFor({ ...f, kind: 'night' })).toBe(FY4B_IR);
+    expect(FY4B_RGB.source).toBe('fy4b');
+    expect(SATELLITE_HRV.source).toBe('meteosat');
   });
 });

@@ -288,3 +288,28 @@ describe('panSharpen', () => {
     expect(out[i + 1]).toBeGreaterThan(out[i]);
   });
 });
+
+describe('true-colour (FY-4B) pictures', () => {
+  it('finds cloud as bright in every channel, and not green land or blue sea', () => {
+    const src = new Uint8ClampedArray([
+      200, 210, 215, 255,   // cloud
+      60, 110, 70, 255,     // green land
+      15, 30, 70, 255,      // sea
+    ]);
+    const cover = cloudCover(src, 3, 1, 'rgb', 0);
+    expect(cover[0]).toBeGreaterThan(0.95);
+    expect(cover[1]).toBe(0);
+    expect(cover[2]).toBe(0);
+  });
+
+  it('keeps the picture in the full view and makes true black (no data) see-through in the infrared one', () => {
+    const out = new Uint8ClampedArray(4);
+    shadePixel('rgb', 'picture', 60, 110, 70, 0, out, 0);
+    expect(Array.from(out.slice(0, 3))).toEqual([60, 110, 70]);
+    expect(out[3]).toBeGreaterThan(200);
+    shadePixel('ir', 'picture', 0, 0, 0, 0, out, 0);
+    expect(out[3]).toBe(0);
+    shadePixel('ir', 'picture', 40, 40, 40, 0, out, 0);
+    expect(out[3]).toBeGreaterThan(200);
+  });
+});

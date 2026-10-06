@@ -115,7 +115,7 @@ export function shadePixel(
   out: Uint8ClampedArray,
   o: number,
 ): void {
-  if (kind === 'hrv') {
+  if (kind === 'hrv' || kind === 'rgb') {
     if (view === 'picture') {
       out[o] = r; out[o + 1] = g; out[o + 2] = b;
       out[o + 3] = Math.round(255 * smoothstep(3, 14, Math.max(r, g, b)));
@@ -129,7 +129,8 @@ export function shadePixel(
   }
   const luma = (r + g + b) / 3 / 255;
   out[o] = r; out[o + 1] = g; out[o + 2] = b;
-  out[o + 3] = view === 'picture' ? Math.round(255 * 0.92) : Math.round(255 * smoothstep(0.2, 0.55, luma) * 0.92);
+  // true black is no data (FY-4B does not reach the far south of the domain): see-through
+  out[o + 3] = r + g + b === 0 ? 0 : view === 'picture' ? Math.round(255 * 0.92) : Math.round(255 * smoothstep(0.2, 0.55, luma) * 0.92);
 }
 
 /**
@@ -145,7 +146,10 @@ export function cloudCover(src: Uint8ClampedArray, width: number, height: number
     const r = src[p];
     const g = src[p + 1];
     const b = src[p + 2];
-    if (kind === 'hrv') {
+    if (kind === 'rgb') {
+      // true colour: cloud is bright in every channel, land and sea are not (red is low over both)
+      out[i] = smoothstep(0.34, 0.68, Math.min(r, g, b) / 255);
+    } else if (kind === 'hrv') {
       const ratio = b / Math.max(1, (r + g) / 2); // about 0.4 on yellow land, 0.8 and more in cloud
       out[i] = smoothstep(background + 15, background + 100, b) * smoothstep(0.55, 0.78, ratio);
     } else {

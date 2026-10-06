@@ -37,18 +37,66 @@ export const SATELLITE_LAG_MIN = 25;
 /** Frames in the loop: 5 x 15 min = the last hour (the first frame is exactly 60 minutes before the newest). */
 export const SATELLITE_FRAME_COUNT = 5;
 
-/** The two pictures shown: HRV by day, infrared at night. */
-export type SatelliteChannel = 'hrv' | 'ir';
+/** The pictures shown: Meteosat's HRV or FY-4B's true colour (`rgb`) by day, infrared at night. */
+export type SatelliteChannel = 'hrv' | 'rgb' | 'ir';
+
+/** The two satellites: Meteosat-9 (EUMETSAT's map service) and FY-4B (pictures the pipeline builds from NSMC's, see pipeline/fy4.py). */
+export type SatelliteSource = 'meteosat' | 'fy4b';
 
 export interface SatelliteProduct {
   id: SatelliteChannel;
   label: string;
-  /** Layer name on EUMETView (workspace msg_iodc). */
+  /** Layer name on EUMETView (workspace msg_iodc); empty for FY-4B. */
   layer: string;
+  source: SatelliteSource;
 }
 
-export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview' };
-export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108' };
+export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview', source: 'meteosat' };
+export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108', source: 'meteosat' };
+export const FY4B_RGB: SatelliteProduct = { id: 'rgb', label: 'True colour', layer: '', source: 'fy4b' };
+export const FY4B_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: '', source: 'fy4b' };
+
+export interface SatelliteSourceInfo {
+  id: SatelliteSource;
+  label: string;
+  credit: string;
+}
+
+export const SATELLITE_SOURCES: Record<SatelliteSource, SatelliteSourceInfo> = {
+  meteosat: { id: 'meteosat', label: 'Meteosat-9', credit: '© EUMETSAT' },
+  fy4b: { id: 'fy4b', label: 'FY-4B', credit: 'FY-4B AGRI, NSMC / CMA' },
+};
+
+/** Where the pipeline publishes the FY-4B pictures (same Pages site as the forecast data). */
+export const FY4B_BASE = 'https://gowthamgta.github.io/Atmos/fy4';
+
+/** One FY-4B picture as listed in `latest.json`. */
+export interface Fy4Frame {
+  /** ISO time of the scan. */
+  time: string;
+  kind: 'day' | 'night';
+  /** File names next to latest.json: the full-size picture and the phone-size one. */
+  hd: string;
+  lite: string;
+}
+
+/** The FY-4B `latest.json`, checked: only frames with a readable time and both file names are kept, oldest first. */
+export function parseFy4State(json: unknown): Fy4Frame[] {
+  const frames = (json as { frames?: unknown })?.frames;
+  if (!Array.isArray(frames)) return [];
+  const ok = frames.filter((f): f is Fy4Frame =>
+    !!f && typeof f.time === 'string' && !Number.isNaN(Date.parse(f.time)) && (f.kind === 'day' || f.kind === 'night') &&
+    typeof f.hd === 'string' && typeof f.lite === 'string' && !/[\/]/.test(f.hd) && !/[\/]/.test(f.lite));
+  return ok.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+}
+
+export function fy4PictureUrl(frame: Fy4Frame, phone: boolean): string {
+  return `${FY4B_BASE}/${phone ? frame.lite : frame.hd}`;
+}
+
+export function fy4ProductFor(frame: Fy4Frame): SatelliteProduct {
+  return frame.kind === 'day' ? FY4B_RGB : FY4B_IR;
+}
 
 /**
  * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).

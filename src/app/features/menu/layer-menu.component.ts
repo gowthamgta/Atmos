@@ -13,6 +13,8 @@ import {
 } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { PanelService } from '../../core/ui/panel.service';
+import { SATELLITE_SOURCES } from '../../core/satellite/satellite.config';
+import { SatelliteService } from '../../core/satellite/satellite.service';
 
 /** Height in km of an altitude, for the ladder ("10 m" at the ground). */
 function ladderKm(level: Level): string {
@@ -44,8 +46,8 @@ function ladderKm(level: Level): string {
           <button type="button" class="radar" [class.active]="radarActive()" [attr.aria-pressed]="radarActive()" (click)="toggleRadar()">
             <span aria-hidden="true">📡</span> Radar <span class="radar-sub">IMD · observed</span>
           </button>
-          <button type="button" class="radar" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Meteosat-9: true colour by day, infrared at night">
-            <span aria-hidden="true">🛰</span> Satellite <span class="radar-sub">Meteosat · observed</span>
+          <button type="button" class="radar" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Live satellite: Meteosat-9 or FY-4B, true colour by day, infrared at night">
+            <span aria-hidden="true">🛰</span> Satellite <span class="radar-sub">live · observed</span>
           </button>
           <button type="button" class="radar" [class.active]="gibsActive()" [attr.aria-pressed]="gibsActive()" (click)="toggleGibs()" title="High-detail true-colour picture at 250 m, one per day (NASA GIBS)">
             <span aria-hidden="true">🌍</span> HD satellite <span class="radar-sub">250 m · daily</span>
@@ -190,6 +192,7 @@ export class LayerMenuComponent {
   protected readonly catalog = inject(ForecastCatalogService);
   protected readonly panels = inject(PanelService);
   private readonly mapLayers = inject(MapLayerService);
+  private readonly satellite = inject(SatelliteService);
 
   protected readonly models = FORECAST_MODELS;
   protected readonly allLevels = computed<Level[]>(() => ['surface', 925, 850, 700, 500, 300, 200]);
@@ -214,7 +217,7 @@ export class LayerMenuComponent {
   });
   protected readonly triggerSub = computed(() => {
     if (this.radarActive()) return 'Observed now';
-    if (this.satelliteActive()) return 'Meteosat-9';
+    if (this.satelliteActive()) return SATELLITE_SOURCES[this.satellite.source()].label;
     if (this.gibsActive()) return '250 m · daily';
     if (!this.state.forecastActive()) return 'Tap to choose';
     const level = this.state.level();

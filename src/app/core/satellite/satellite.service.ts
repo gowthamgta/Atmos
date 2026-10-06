@@ -1,9 +1,15 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
+import { isPhone } from '../ui/device-profile';
 import {
+  FY4B_BASE,
   SATELLITE_NATURAL_LAYER,
   SatelliteProduct,
+  SatelliteSource,
   SatelliteView,
+  fy4PictureUrl,
+  fy4ProductFor,
+  parseFy4State,
   frameTimes,
   latestFrameTime,
   parseNewestTime,
@@ -11,6 +17,13 @@ import {
   satelliteCapabilitiesUrl,
   satelliteFrameUrl,
 } from './satellite.config';
+
+/** One picture of the loop to fetch. */
+interface PlanItem {
+  timeMs: number;
+  product: SatelliteProduct;
+  fetch: () => Promise<{ blob: Blob; natural?: Blob } | null>;
+}
 
 export interface SatelliteFrame {
   timeMs: number;
@@ -44,6 +57,7 @@ export class SatelliteService {
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
   readonly view = signal<SatelliteView>('picture');
+  readonly source = signal<SatelliteSource>('meteosat');
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -94,29 +108,65 @@ export class SatelliteService {
     }
   }
 
+  /**
+   * What to show: the frames of the last hour, oldest first, each with a way to fetch it. Meteosat: the times come from the
+   * service's newest time and the picture from EUMETView (by day also the true-colour one, to sharpen). FY-4B: the frames are
+   * those the pipeline listed in its latest.json.
+   */
+  private async plan(nowMs: number, source: SatelliteSource): Promise<PlanItem[]> {
+    if (source === 'fy4b') {
+      try {
+        const res = await fetch(`${FY4B_BASE}/latest.json?t=${Math.floor(nowMs / 60_000)}`);
+        if (!res.ok) return [];
+        const phone = isPhone();
+        return parseFy4State(await res.json()).map(frame => ({
+          timeMs: Date.parse(frame.time),
+          product: fy4ProductFor(frame),
+          fetch: async () => {
+            const blob = await this.downloadUrl(fy4PictureUrl(frame, phone));
+            return blob ? { blob } : null;
+          },
+        }));
+      } catch {
+        return [];
+      }
+    }
+    const newest = await this.newestTime(nowMs);
+    return frameTimes(newest).map(t => {
+      const product = productForTime(t);
+      return {
+        timeMs: t,
+        product,
+        fetch: async () => {
+          const blob = await this.download(product, t);
+          // by day the true-colour picture is fetched too, to be sharpened with the HRV one (the frame still works without it)
+          const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
+          return blob ? { blob, natural: natural ?? undefined } : null;
+        },
+      };
+    });
+  }
+
   async load(): Promise<void> {
     const token = ++this.loadToken;
     const nowMs = Date.now();
     this.now.set(nowMs);
-    const newest = await this.newestTime(nowMs);
+    const plan = await this.plan(nowMs, this.source());
     if (token !== this.loadToken) return;
-    const times = frameTimes(newest);
+    const times = plan.map(p => p.timeMs);
 
     const following = this.position() >= this.frames().length - 1; // watching the newest picture, so keep following it
     if (!times.every(t => this.raws.has(t))) this.loading.set(true);
     this.failed.set(false);
 
     // download what is missing, newest first, a few at a time
-    const queue = times.filter(t => !this.raws.has(t)).reverse();
+    const queue = plan.filter(p => !this.raws.has(p.timeMs)).reverse();
     const worker = async () => {
-      for (let t = queue.shift(); t !== undefined; t = queue.shift()) {
-        const product = productForTime(t);
-        const blob = await this.download(product, t);
-        // by day the true-colour picture is fetched too, to be sharpened with the HRV one (the frame still works without it)
-        const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
+      for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+        const got = await item.fetch();
         if (token !== this.loadToken) return;
-        if (blob) {
-          this.raws.set(t, { product, blob, natural: natural ?? undefined });
+        if (got) {
+          this.raws.set(item.timeMs, { product: item.product, blob: got.blob, natural: got.natural });
           await this.publish(times, token, following);
         }
       }
@@ -124,12 +174,37 @@ export class SatelliteService {
     await Promise.all(Array.from({ length: LOAD_CONCURRENCY }, worker));
     if (token !== this.loadToken) return;
 
-    for (const t of [...this.raws.keys()]) if (!times.includes(t)) this.raws.delete(t); // older than an hour
+    for (const t of [...this.raws.keys()]) if (!times.includes(t)) this.raws.delete(t); // older than the loop
     await this.publish(times, token, following);
     if (token !== this.loadToken) return;
     this.prune(times);
     this.failed.set(this.frames().length === 0);
     this.loading.set(false);
+  }
+
+  /** Switch satellite: the other one's pictures are dropped and the new one's last hour is loaded. */
+  async setSource(source: SatelliteSource): Promise<void> {
+    if (source === this.source()) return;
+    this.pause();
+    this.loadToken++; // abandon a load in progress
+    this.source.set(source);
+    const old = [...this.built.values()];
+    this.built.clear();
+    this.raws.clear();
+    this.frames.set([]);
+    this.position.set(0);
+    for (const pending of old) void pending.then(f => f && URL.revokeObjectURL(f.url));
+    await this.load();
+  }
+
+  private async downloadUrl(url: string): Promise<Blob | null> {
+    try {
+      const res = await fetch(url);
+      if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/')) return null;
+      return await res.blob();
+    } catch {
+      return null;
+    }
   }
 
   private async download(product: SatelliteProduct, timeMs: number, layer?: string): Promise<Blob | null> {

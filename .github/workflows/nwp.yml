@@ -3,11 +3,16 @@ name: nwp
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data, cut out South India,
 # encode them, add the ECMWF-ensemble rain chances (ens.py) and an all-model blend (blend.py), and deploy the result to
 # GitHub Pages (free, CORS-open). No external storage, no billing.
-# Runs hourly: each model exits early when its newest run is not ready, is not one it uses, or is already live.
+# Runs every 30 minutes (the FY-4B satellite pictures are new every 15): each model exits early when its newest run is not ready, is not one it uses, or is already live.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
-    - cron: "30 * * * *"
+    - cron: "15,45 * * * *"
+  # a change to the FY-4B step rebuilds and deploys at once
+  push:
+    paths:
+      - "pipeline/fy4.py"
+      - "pipeline/data/**"
   workflow_dispatch:
     inputs:
       force:
@@ -53,6 +58,9 @@ jobs:
           # the ECMWF ensemble: chance of heavy rain in the next 24 h (attached to every model below)
           python ens.py --out site --live-url "$base/ens/latest.json" $force \
             || echo "::warning::ens failed; the live copy stays in place"
+          # FY-4B pictures of South India (a new slot every 15 minutes); the live ones are kept when there is nothing new
+          python fy4.py --out site --live-url "$base/fy4/latest.json" $force \
+            || echo "::warning::fy4 failed; the live pictures stay in place"
           if ls site/*/latest.json >/dev/null 2>&1; then
             # models that were not rebuilt (and the previous ensemble and blend) come over from the live site
             python mirror.py --site site --base-url "$base" --models $models ens blend
