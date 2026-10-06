@@ -428,21 +428,26 @@ export class RadarService implements OnDestroy {
           // big and the Chennai S-band radar covers the same ground.
           const now = Date.now();
           const wantExtras = productKey === 'caz' && station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
-          if (wantExtras) this.extrasFetchedAt.set(station.id, now);
           const extras = wantExtras
             ? await Promise.all(
                 MERGED_PRODUCTS.filter(p => p !== productKey).map(async p => [p, await this.processStationSweep(station, p, isTransparent, false).catch(() => null)] as const)
               )
             : [];
           if (wantExtras && requestId === this.currentRequestId) {
+            // only a fully successful fetch starts the wait; a failed one is tried again on the next minute's refresh
+            if (extras.every(([, r]) => r)) this.extrasFetchedAt.set(station.id, now);
             this.extraResults.update(map => {
               const next = new Map(map);
               for (const [p, r] of extras) {
-                if (r) next.set(`${station.id}:${p}`, r);
-                else next.delete(`${station.id}:${p}`);
+                const key = `${station.id}:${p}`;
+                const previous = next.get(key);
+                // a failed fetch keeps the last scan for up to an hour instead of making the layer vanish
+                if (r) next.set(key, r);
+                else if (!previous || now - (previous.timing?.epochMs ?? 0) > 60 * 60_000) next.delete(key);
               }
               return next;
             });
+            this.scheduleMosaic();
           }
           const res = await this.processStationSweep(station, productKey, isTransparent);
           if (res && requestId === this.currentRequestId) {
