@@ -72,7 +72,7 @@ def test_derive_uses_the_models_own_relative_humidity_when_there_is_no_dew_point
            "total_column_integrated_water_vapour": z + 50}
     out = derive(raw)
     assert np.allclose(out["rh"], 70) and np.allclose(out["msl"], 1010) and np.allclose(out["t2m"], 30)
-    assert set(out) == set(C.VARS) - {"rain24", "px2", "px16", "px65", "px115"}   # every published variable has a value (NaN where the model lacks it); rain24 is derived across steps
+    assert set(out) == set(C.VARS) - {"rain24", "tmin24", "tmax24", "px2", "px16", "px65", "px115"}   # every published variable has a value (NaN where the model lacks it); rain24 is derived across steps
     assert np.isnan(out["u850"]).all()   # a model without pressure-level winds gives empty fields (never published)
     raw["relative_humidity_2m"] = z + 140            # nonsense is clipped to the physical range
     assert np.allclose(derive(raw)["rh"], 100)

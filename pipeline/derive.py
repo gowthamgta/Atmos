@@ -109,6 +109,26 @@ def forward_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int], 
     return out
 
 
+def forward_extreme(fields: dict[int, np.ndarray], reduce, hours: int = 24) -> dict[int, np.ndarray]:
+    """Lowest or highest (`reduce` = np.fmin / np.fmax) of a field over the next `hours` hours from each forecast step.
+
+    The window is the step itself and every step up to `hours` later, so it is as fine as the model's own step (hourly or 3-hourly).
+    NaN where the run ends before the window does, so a partial window never passes for a day's extreme.
+    """
+    steps = sorted(fields)
+    out: dict[int, np.ndarray] = {}
+    for s in steps:
+        window = [h for h in steps if s <= h <= s + hours]
+        if window[-1] == s + hours:
+            acc = fields[window[0]]
+            for h in window[1:]:
+                acc = reduce(acc, fields[h])
+            out[s] = acc.astype(np.float32)
+        else:
+            out[s] = np.full_like(fields[s], np.nan)
+    return out
+
+
 # --- which raw fields each published variable needs --------------------------------------------------------------
 _UV10 = {"wind_u_component_10m", "wind_v_component_10m"}
 
@@ -134,6 +154,8 @@ def _needs() -> dict[str, list[set[str]]]:
         "solar": [{"shortwave_radiation"}],
         "cape": [{"cape"}],
         "tcwv": [{"total_column_integrated_water_vapour"}],
+        "tmin24": [{"temperature_2m"}],
+        "tmax24": [{"temperature_2m"}],
         "li": [{"lifted_index"}],
         "cin": [{"convective_inhibition"}],
         # the ensemble chances are not part of any single model run: attach.py adds them to every model afterwards

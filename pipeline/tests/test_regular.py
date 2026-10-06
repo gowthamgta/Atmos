@@ -251,3 +251,13 @@ def test_forward_accumulation_needs_the_whole_24_hours():
     assert np.isnan(D.forward_accumulation(odd, {h: 5 for h in odd})[0]).all()
     partial = {h: _field(1.0) for h in (0, 3)}
     assert all(np.isnan(f).all() for f in D.forward_accumulation(partial, {0: 1, 3: 1}).values())
+
+
+def test_forward_extreme_takes_the_lowest_and_highest_of_the_next_24_hours():
+    temps = {h: np.full((2, 2), float(t), np.float32) for h, t in zip(range(0, 49, 6), [20, 18, 30, 25, 22, 31, 24, 19, 21])}
+    low = D.forward_extreme(temps, np.fmin)
+    high = D.forward_extreme(temps, np.fmax)
+    assert low[0][0, 0] == 18 and high[0][0, 0] == 30          # steps 0..24
+    assert low[12][0, 0] == 22 and high[12][0, 0] == 31        # steps 12..36
+    assert low[24][0, 0] == 19 and high[24][0, 0] == 31        # steps 24..48
+    assert np.isnan(low[30]).all() and np.isnan(high[48]).all()  # the run ends before the window does

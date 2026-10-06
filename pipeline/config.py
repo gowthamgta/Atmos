@@ -70,6 +70,8 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("px16", "%", 0, 100, 12),         # >= 15.6 mm (moderate)
     Var("px65", "%", 0, 100, 12),         # >= 64.5 mm (heavy)
     Var("px115", "%", 0, 100, 12),        # >= 115.6 mm (very heavy)
+    Var("tmin24", "°C", -10, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
+    Var("tmax24", "°C", -10, 50),        # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
     *_level_vars(),
 ]}

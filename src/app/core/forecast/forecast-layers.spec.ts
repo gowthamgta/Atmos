@@ -20,7 +20,7 @@ import {
 const vars = (...ids: string[]): Record<string, object> => Object.fromEntries(ids.map(id => [id, {}]));
 const levelVars = (levels: readonly number[], kinds = ['u', 'v', 't', 'rh', 'gh']) => levels.flatMap(l => kinds.map(k => `${k}${l}`));
 const SURFACE = ['t2m', 'rh', 'feels', 'dew', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'solar', 'cape', 'tcwv',
-  'li', 'cin', 'rain24', 'px2', 'px16', 'px65', 'px115'];
+  'li', 'cin', 'rain24', 'tmin24', 'tmax24', 'px2', 'px16', 'px65', 'px115'];
 
 describe('forecast layer registry', () => {
   it('has unique ids, sane ranges, and every layer in a known group', () => {

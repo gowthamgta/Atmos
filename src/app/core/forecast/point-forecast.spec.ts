@@ -199,3 +199,15 @@ describe('point forecast helpers', () => {
     expect(parseFloat(find(windward, 'cloudlayers').text)).toBeGreaterThan(40); // low cloud thickens too
   });
 });
+
+describe('lowest and highest temperature rows', () => {
+  it('appear under the temperature row only when the model has them, and the layer picks them', () => {
+    const base = { t2m: 28 };
+    const plain = buildPointRows(base, null);
+    expect(plain.some(r => r.id === 'tmin24' || r.id === 'tmax24')).toBe(false);
+    const rows = buildPointRows({ ...base, tmin24: 24.26, tmax24: 33.04 }, null);
+    expect(rows.map(r => r.id).slice(0, 3)).toEqual(['temp', 'tmin24', 'tmax24']);
+    expect(rowsForLayer(rows, 'tmax24').map(r => r.text)).toEqual(['33.0 °C']);
+    expect(rowsForLayer(rows, 'tmin24').map(r => r.text)).toEqual(['24.3 °C']);
+  });
+});

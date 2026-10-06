@@ -9,7 +9,7 @@ describe('1 km downscaling registry', () => {
   it('gives every near-surface layer that the terrain affects a downscaling mode the shader knows', () => {
     const modes = Object.fromEntries(FORECAST_LAYERS.map(l => [l.id, l.terrain]));
     expect(modes).toMatchObject({
-      temp: 'temperature', feels: 'temperature', dew: 'dewpoint', humidity: 'humidity', wind: 'wind', gust: 'wind',
+      temp: 'temperature', tmin24: 'temperature', tmax24: 'temperature', feels: 'temperature', dew: 'dewpoint', humidity: 'humidity', wind: 'wind', gust: 'wind',
       rain: 'rain', rain24: 'rain', tcwv: 'column',
     });
     for (const l of FORECAST_LAYERS) if (l.terrain) expect(TERRAIN_MODE_CODE[l.terrain]).toBeGreaterThan(0);

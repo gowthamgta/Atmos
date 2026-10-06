@@ -117,6 +117,8 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
     clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature',
     atLevel: l => ({ varId: `t${l}`, min: TEMP_RANGE[l][0], max: TEMP_RANGE[l][1], ticks: TEMP_RANGE[l][2] }),
   },
+  { id: 'tmin24', label: 'Lowest, next 24 h', icon: '🥶', group: 'Temperature', varId: 'tmin24', unit: '°C', min: 18, max: 42, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature' },
+  { id: 'tmax24', label: 'Highest, next 24 h', icon: '🔥', group: 'Temperature', varId: 'tmax24', unit: '°C', min: 18, max: 42, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature' },
   { id: 'feels', label: 'Feels like', icon: '🥵', group: 'Temperature', varId: 'feels', unit: '°C', min: 18, max: 48, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40, 45], opacity: 0.85, terrain: 'temperature' },
   { id: 'dew', label: 'Dew point', icon: '💦', group: 'Temperature', varId: 'dew', unit: '°C', min: 10, max: 28, stops: DEW, gamma: 1, clearBelow: 0, ticks: [12, 16, 20, 24, 28], opacity: 0.85, terrain: 'dewpoint' },
   {

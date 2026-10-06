@@ -5,7 +5,7 @@ import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terra
 /** Fields read for the click card at the ground. */
 export const SURFACE_INSPECT_VARS = [
   't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
-  'rain24', 'li', 'cin', 'tcwv', 'px2', 'px16', 'px65', 'px115',
+  'rain24', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv', 'px2', 'px16', 'px65', 'px115',
 ] as const;
 
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
@@ -98,6 +98,10 @@ export function buildPointRows(
     { id: 'rain', label: 'Rain', text: rainText(adjust('rain', v('precip'))), terrainAdjusted: adjusted && ctx?.liftWind !== null },
     { id: 'clouds', label: 'Clouds', text: withUnit(v('cloud'), 0, '%'), terrainAdjusted: false },
   ];
+  // the lowest and highest temperature of the next 24 h, right under the temperature row
+  const extremes: [string, string, number][] = [['tmin24', 'Lowest, next 24 h', v('tmin24')], ['tmax24', 'Highest, next 24 h', v('tmax24')]];
+  rows.splice(1, 0, ...extremes.filter(([, , x]) => !Number.isNaN(x)).map(([id, label, x]) => (
+    { id, label, text: withUnit(adjust('temperature', x), 1, '°C'), terrainAdjusted: adjusted })));
   if (!Number.isNaN(v('rain24'))) {
     // rows after the rain one: the 24 h total, and the ensemble's chance of heavy rain (shown only where the data exists)
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
@@ -144,7 +148,7 @@ export function buildPointRows(
 
 /** The click-card row that shows each layer's value at the ground. */
 const LAYER_ROW: Record<string, string> = {
-  temp: 'temp', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24',
+  temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24',
   tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin', px2: 'px2', px16: 'px16', px65: 'px65', px115: 'px115',
 };
 /** ...and at a pressure level (only some layers can be shown there). */

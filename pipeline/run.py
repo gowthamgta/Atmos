@@ -11,13 +11,14 @@ from __future__ import annotations
 import argparse, json, os, shutil, sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+import numpy as np
 import requests
 import config as C
 import fetch_aifs
 import fetch_gfs
 import fetch_ifs
 import models_regular
-from derive import derive, forward_accumulation
+from derive import derive, forward_accumulation, forward_extreme
 from encode import encode_field
 
 # modules and RegularModel instances share one interface (MODEL_ID, RUN_HOURS, latest_run(), read_step(), ...)
@@ -43,14 +44,14 @@ def build_manifest(fetcher, run, steps):
     }
 
 
-DERIVED_ACROSS_STEPS = {"rain24"}   # needs several steps, so it is computed after all of them (see main)
+DERIVED_ACROSS_STEPS = {"rain24", "tmin24", "tmax24"}   # needs several steps, so it is computed after all of them (see main)
 
 
 def process_step(fetcher, run, h):
     """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from."""
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h))
     pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS}
-    return h, pngs, fields["precip"]
+    return h, pngs, fields["precip"], fields["t2m"]
 
 
 def live_run(url: str) -> str | None:
@@ -101,13 +102,15 @@ def main() -> int:
 
     done = []
     rates: dict[int, object] = {}
+    temps: dict[int, object] = {}
     run_dir = os.path.join(args.out, fetcher.MODEL_ID, run_id)
     try:
         with ThreadPoolExecutor(args.workers) as pool:
-            for h, pngs, rate in pool.map(lambda h: process_step(fetcher, run, h), steps):
+            for h, pngs, rate, temp in pool.map(lambda h: process_step(fetcher, run, h), steps):
                 for vid, png in pngs.items():
                     write(os.path.join(run_dir, vid, f"{h:03d}.png"), png)
                 rates[h] = rate
+                temps[h] = temp
                 done.append(h)
                 print(f"  +{h:03d}h done ({len(done)}/{len(steps)})", flush=True)
         # rain over the next 24 h from each step (no data where the run ends before that)
@@ -115,6 +118,12 @@ def main() -> int:
         accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
         for h, field in accumulated.items():
             write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(field, rain24.lo, rain24.hi, rain24.bits))
+        # lowest and highest temperature over the next 24 h from each step, for the models that publish them
+        for vid, reduce in (("tmin24", np.fmin), ("tmax24", np.fmax)):
+            if vid in {v.id for v in published_vars(fetcher)}:
+                var = C.VARS[vid]
+                for h, field in forward_extreme(temps, reduce).items():
+                    write(os.path.join(run_dir, vid, f"{h:03d}.png"), encode_field(field, var.lo, var.hi, var.bits))
     except BaseException:
         shutil.rmtree(run_dir, ignore_errors=True)  # never deploy a half-written run
         raise
