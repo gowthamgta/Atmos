@@ -38,7 +38,7 @@ describe('forecast layer registry', () => {
   it('keeps only visibility in the clouds group, and adds accumulation, stability and extreme-rain layers', () => {
     const inGroup = (g: string) => FORECAST_LAYERS.filter(l => l.group === g).map(l => l.id);
     expect(inGroup('Visibility')).toEqual(['vis']);
-    for (const gone of ['clouds', 'cloud_low', 'cloud_mid', 'cloud_high', 'solar']) expect(forecastLayerById(gone)).toBeUndefined();
+    for (const gone of ['clouds', 'cloud_low', 'cloud_mid', 'cloud_high', 'solar']) expect(forecastLayerById(gone)).toBeNull();
     expect(inGroup('Rain and humidity')).toEqual(expect.arrayContaining(['rain', 'rain24']));
     expect(inGroup('Extreme rain')).toEqual(['px65', 'px115', 'px204']);
     expect(inGroup('Pressure and storms')).toEqual(expect.arrayContaining(['li', 'cin', 'cape']));
