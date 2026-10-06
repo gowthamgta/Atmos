@@ -13,6 +13,9 @@ import { quantizeRadarField } from './radar-field';
  *  Where both see rain the strongest value wins. PPI is available as a separate scan menu. */
 export const MERGED_PRODUCTS: readonly RadarProductKey[] = ['caz', 'ppz'];
 
+/** PPZ is merged with CAZ only when the two scans of a station are less than this many minutes apart. */
+export const MAX_MERGE_GAP_MIN = 20;
+
 /** Resolution of the composite: 0.5 km per pixel. */
 export const MOSAIC_KM_PER_PX = 0.5;
 
@@ -73,6 +76,18 @@ export function composeRadarMosaic(
     if (res.timing && (!latestTiming || (res.timing.epochMs && (!latestTiming.epochMs || res.timing.epochMs > latestTiming.epochMs)))) {
       latestTiming = res.timing;
     }
+  }
+
+  // PPZ is only merged where it is as fresh as the CAZ scan of the same station (closer than MAX_MERGE_GAP_MIN); an older
+  // or newer PPZ, or one with no CAZ to compare with, is left out and CAZ stands alone.
+  const cazTime = new Map<number, number | null>();
+  for (const a of activeStations) if (a.productOrder === 0) cazTime.set(a.stationIndex, a.res.timing?.epochMs ?? null);
+  for (let i = activeStations.length - 1; i >= 0; i--) {
+    const a = activeStations[i];
+    if (a.productOrder === 0) continue;
+    const caz = cazTime.get(a.stationIndex);
+    const own = a.res.timing?.epochMs;
+    if (caz == null || own == null || Math.abs(own - caz) >= MAX_MERGE_GAP_MIN * 60_000) activeStations.splice(i, 1);
   }
 
   if (activeStations.length === 0) return null;

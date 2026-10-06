@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult, RadarProductKey } from '../domain/models/radar.model';
-import { MERGED_PRODUCTS, composeRadarMosaic } from './radar-mosaic';
+import { MAX_MERGE_GAP_MIN, MERGED_PRODUCTS, composeRadarMosaic } from './radar-mosaic';
 import { dequantizeRadar } from './radar-field';
 
 const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
@@ -8,13 +8,16 @@ const kochi = IMD_RADAR_STATIONS.find(s => s.id === 'kochi')!;
 const N = 120;
 
 /** A scan of one station and product that has the same intensity everywhere on its square. */
-function scan(station: (typeof IMD_RADAR_STATIONS)[number], product: RadarProductKey, value: number): ProcessedRadarResult {
+const T0 = Date.UTC(2026, 9, 5, 12, 0, 0);
+const at = (minutes: number) => ({ ist: '', utc: '', date: '', epochMs: T0 + minutes * 60_000 });
+
+function scan(station: (typeof IMD_RADAR_STATIONS)[number], product: RadarProductKey, value: number, minutes = 0): ProcessedRadarResult {
   const config = station.products[product];
   return {
     stationId: station.id,
     dataUrl: '',
     fieldData: { field: new Float32Array(N * N).fill(value), cropW: N, cropH: N, cx: N / 2, cy: N / 2, radius: N / 2, bounds: config.bounds },
-    timing: null,
+    timing: at(minutes),
     coordinates: config.maplibreCoordinates,
     isDisplayed: true,
   };
@@ -119,5 +122,56 @@ describe('composeRadarMosaic', () => {
     const { cropW, cropH } = result.fieldData;
     const centre = Math.floor(cropH / 2) * cropW + Math.floor(cropW / 2);
     expect(dequantizeRadar(result.displayField![centre])).toBeCloseTo(3, 1); // the 8-bit picture matches the intensity
+  });
+});
+
+describe('merging only when the scans are close in time', () => {
+  const east = (km: number) => eastOf(karaikal, km);
+  const merged = (ppzMinutes: number) =>
+    composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 2.0, 0)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 4.0, ppzMinutes)],
+    ])!;
+
+  it('uses PPZ when it is within the limit of CAZ, before or after', () => {
+    for (const gap of [0, 10, 19, -19]) {
+      const m = merged(gap);
+      const [lat, lng] = east(60);
+      expect(valueAt(m, lat, lng)).toBeCloseTo(4.0, 1); // PPZ is stronger here: it took part
+      const far = east(400);
+      expect(valueAt(m, far[0], far[1])).toBeCloseTo(4.0, 1); // and its longer range is shown
+    }
+  });
+
+  it('keeps CAZ alone when PPZ is 20 minutes or more apart', () => {
+    expect(MAX_MERGE_GAP_MIN).toBe(20);
+    for (const gap of [20, 35, -20, -90]) {
+      const m = merged(gap);
+      const [lat, lng] = east(60);
+      expect(valueAt(m, lat, lng)).toBeCloseTo(2.0, 1); // CAZ's value, PPZ ignored
+      const [[south], [north]] = m.fieldData.bounds;
+      expect((north - south) * 111.32).toBeLessThan(2 * 260); // the picture is only as big as CAZ's range, not PPZ's
+    }
+  });
+
+  it('decides per station: a stale PPZ at one radar does not affect another radar', () => {
+    const m = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 2.0, 0)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 4.0, 45)], // too old for Karaikal
+      ['kochi', scan(kochi, 'caz', 1.5, 0)],
+      ['kochi:ppz', scan(kochi, 'ppz', 3.5, 5)], // fresh for Kochi
+    ])!;
+    const k = east(60);
+    expect(valueAt(m, k[0], k[1])).toBeCloseTo(2.0, 1);
+    const [lat, lng] = eastOf(kochi, 30);
+    expect(valueAt(m, lat, lng)).toBeCloseTo(3.5, 1);
+  });
+
+  it('leaves PPZ out when its time or the CAZ scan is unknown', () => {
+    const noTime = { ...scan(karaikal, 'ppz', 4.0), timing: null };
+    const m = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan(karaikal, 'caz', 2.0)], ['karaikal:ppz', noTime]])!;
+    const [lat, lng] = east(60);
+    expect(valueAt(m, lat, lng)).toBeCloseTo(2.0, 1);
+    expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal:ppz', scan(karaikal, 'ppz', 4.0)]])).toBeNull();
   });
 });

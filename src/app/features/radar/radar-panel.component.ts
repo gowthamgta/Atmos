@@ -12,7 +12,7 @@ interface ProductOption {
 }
 
 const PRODUCTS: readonly ProductOption[] = [
-  { key: 'caz', name: 'Merged', hint: 'CAZ + PPZ', title: 'Column maximum (CAZ, reaches furthest) and reflectivity sweep (PPZ) merged into one picture' },
+  { key: 'caz', name: 'Merged', hint: 'CAZ + PPZ', title: 'Column maximum (CAZ) and reflectivity sweep (PPZ) merged into one picture. PPZ is used only when its scan is less than 20 minutes from CAZ; otherwise CAZ is shown alone' },
   { key: 'ppi', name: 'PPI', hint: 'Base scan', title: 'Plan Position Indicator (lowest base reflectivity sweep), shown on its own' },
 ];
 
