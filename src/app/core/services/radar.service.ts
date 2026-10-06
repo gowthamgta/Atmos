@@ -997,9 +997,9 @@ export class RadarService implements OnDestroy {
           this.stations.map(async station => {
             if (this.unavailableStations().has(station.id)) return null;
             const file = animationFile(station.code, product);
-            // The Pallikaranai X-band animation is over 20 MB, and the Chennai S-band radar covers the same area,
-            // so the loop leaves out its animation (its live still is still used).
-            const bytes = file && station.band !== 'X-Band' ? await this.fetchRadarFile(file) : null;
+            // The Pallikaranai X-band and Sriharikota animations are over 20 MB each, so the loop leaves them out (their live
+            // stills are still used).
+            const bytes = file && station.band !== 'X-Band' && !station.skipAnimation ? await this.fetchRadarFile(file) : null;
             if (token !== this.historyToken) return null;
             let reader: GifReader | null = null;
             let frames: Scan[] = [];

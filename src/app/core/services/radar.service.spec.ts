@@ -21,10 +21,10 @@ describe('Radar Domain & Config', () => {
     expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.63, 1);
   });
 
-  it('should have all six South India IMD Doppler Weather Radar stations properly configured', () => {
-    expect(IMD_RADAR_STATIONS.length).toBe(6);
+  it('should have all seven South India IMD Doppler Weather Radar stations properly configured', () => {
+    expect(IMD_RADAR_STATIONS.length).toBe(7);
 
-    const requiredStations = ['karaikal', 'chennai', 'pallikaranai', 'kochi', 'thiruvananthapuram', 'mangaluru'];
+    const requiredStations = ['karaikal', 'chennai', 'pallikaranai', 'sriharikota', 'kochi', 'thiruvananthapuram', 'mangaluru'];
     for (const id of requiredStations) {
       const st = IMD_RADAR_STATIONS.find(s => s.id === id);
       expect(st).toBeDefined();
@@ -106,6 +106,20 @@ describe('Radar Domain & Config', () => {
     expect(plk.products.pac.crop?.w).toBe(2430);
     expect(plk.products.ppz.crop?.w).toBe(2430);
     expect(plk.products.ppz.crop?.h).toBe(2485);
+
+    // Sriharikota: S-band, 240 km, no animation GIF; ranges and palettes read from its own pictures
+    const shr = IMD_RADAR_STATIONS.find(s => s.id === 'sriharikota')!;
+    expect(shr.code).toBe('shr');
+    expect(shr.band).toBe('S-Band');
+    expect(shr.skipAnimation).toBe(true);
+    expect(shr.lat).toBeCloseTo(13.66, 1);
+    expect(shr.lng).toBeCloseTo(80.23, 1);
+    expect(shr.products.caz.rangeKm).toBe(240);
+    expect(shr.products.ppz.rangeKm).toBe(490);
+    expect(shr.products.caz.crop).toEqual({ x: 59, y: 632, w: 1797, h: 1797 });
+    expect(shr.products.caz.palette!.length).toBeGreaterThan(5);
+    expect(shr.products.ppz.palette!.length).toBeGreaterThan(5);
+    expect(shr.products.ppi.palette!.length).toBeGreaterThan(5);
   });
 
   it('should correctly extract ISO timestamp from synthetic binary GIF comment', () => {

@@ -49,6 +49,8 @@ export interface RadarStationConfig {
   operationalRangeKm: number;
   rings: number[];
   animationFile?: string; // 3-Hour Animation GIF path (e.g. animation/Converted/KKL_MAXZ.gif)
+  /** True when its animation is too big to download for the one-hour loop (the live picture is still used in it). */
+  skipAnimation?: boolean;
   products: Record<RadarProductKey, RadarProductConfig>;
 }
 
@@ -178,6 +180,141 @@ const MLR_PAC_PALETTE = paletteFromBins(
   rainRateToDbz
 );
 
+// Sriharikota (SDWR SHAR, S-Band) draws its pictures with matplotlib on a terrain map, so the rain is told apart from the
+// terrain by the exact colours of each picture's colour bar (read off the bar: band colour and the dBZ at its middle).
+// CAZ and PPZ share one scale (20 to 60 dBZ), PPI's bar runs 0 to 70. White bands are left out (the map draws white labels).
+const SHR_CAZ_BANDS: [[number, number, number], number][] = [
+  [[0, 7, 143], 20.5],
+  [[0, 22, 152], 21.5],
+  [[0, 40, 162], 22.5],
+  [[0, 54, 171], 23.5],
+  [[0, 71, 182], 24.5],
+  [[0, 90, 193], 25.5],
+  [[0, 104, 202], 26.5],
+  [[0, 121, 212], 27.5],
+  [[0, 136, 221], 28.5],
+  [[0, 154, 232], 29.5],
+  [[0, 169, 241], 30.5],
+  [[0, 186, 252], 31.5],
+  [[27, 197, 254], 32.5],
+  [[57, 204, 254], 33.5],
+  [[93, 213, 254], 34.5],
+  [[122, 221, 254], 35.5],
+  [[157, 230, 254], 36.5],
+  [[186, 237, 254], 37.5],
+  [[222, 246, 254], 38.5],
+  [[254, 249, 222], 40.5],
+  [[255, 244, 188], 41.5],
+  [[255, 240, 158], 42.5],
+  [[255, 234, 122], 43.5],
+  [[254, 229, 93], 44.5],
+  [[255, 224, 57], 45.5],
+  [[254, 215, 13], 47.0],
+  [[254, 198, 0], 48.5],
+  [[254, 186, 0], 49.5],
+  [[254, 172, 0], 50.5],
+  [[254, 158, 0], 51.5],
+  [[254, 135, 0], 52.5],
+  [[254, 116, 0], 53.5],
+  [[254, 93, 0], 54.5],
+  [[254, 70, 0], 55.5],
+  [[254, 51, 0], 56.5],
+  [[254, 28, 0], 57.5],
+  [[254, 5, 0], 59.0]
+];
+
+const SHR_PPZ_BANDS: [[number, number, number], number][] = [
+  [[0, 7, 143], 20.6],
+  [[1, 23, 151], 21.6],
+  [[0, 40, 163], 22.7],
+  [[0, 55, 172], 23.6],
+  [[0, 71, 181], 24.6],
+  [[0, 82, 189], 25.3],
+  [[0, 91, 194], 25.8],
+  [[0, 103, 202], 26.6],
+  [[0, 119, 211], 27.6],
+  [[0, 133, 219], 28.5],
+  [[0, 141, 224], 28.9],
+  [[0, 151, 230], 29.5],
+  [[0, 167, 240], 30.6],
+  [[0, 183, 250], 31.6],
+  [[15, 194, 255], 32.5],
+  [[47, 202, 255], 33.5],
+  [[80, 210, 255], 34.5],
+  [[110, 218, 255], 35.5],
+  [[145, 227, 255], 36.6],
+  [[175, 234, 255], 37.5],
+  [[210, 243, 255], 38.6],
+  [[255, 247, 207], 41.5],
+  [[255, 242, 175], 42.5],
+  [[255, 236, 139], 43.6],
+  [[255, 232, 110], 44.5],
+  [[255, 227, 80], 45.5],
+  [[255, 224, 60], 46.1],
+  [[255, 221, 42], 46.7],
+  [[255, 214, 8], 47.8],
+  [[255, 198, 0], 49.2],
+  [[255, 183, 0], 50.5],
+  [[255, 168, 0], 51.6],
+  [[255, 152, 0], 52.6],
+  [[255, 135, 0], 53.4],
+  [[255, 119, 0], 54.1],
+  [[255, 103, 0], 54.9],
+  [[255, 87, 0], 55.7],
+  [[255, 71, 0], 56.5],
+  [[255, 55, 0], 57.3],
+  [[255, 38, 0], 58.0],
+  [[255, 22, 0], 58.8],
+  [[254, 2, 0], 59.6]
+];
+
+const SHR_PPI_BANDS: [[number, number, number], number][] = [
+  [[1, 8, 142], 1.0],
+  [[3, 23, 149], 2.8],
+  [[0, 41, 163], 4.7],
+  [[2, 56, 171], 6.3],
+  [[3, 71, 178], 7.9],
+  [[4, 84, 185], 9.2],
+  [[0, 90, 194], 10.1],
+  [[1, 103, 201], 11.5],
+  [[0, 119, 210], 13.3],
+  [[0, 133, 218], 14.8],
+  [[0, 140, 224], 15.6],
+  [[0, 151, 230], 16.7],
+  [[0, 167, 240], 18.5],
+  [[0, 183, 250], 20.2],
+  [[15, 194, 255], 21.9],
+  [[48, 202, 254], 23.7],
+  [[80, 211, 254], 25.4],
+  [[110, 218, 254], 27.1],
+  [[145, 227, 254], 29.0],
+  [[175, 234, 254], 30.6],
+  [[210, 243, 254], 32.6],
+  [[254, 247, 208], 37.6],
+  [[255, 242, 175], 39.4],
+  [[254, 237, 140], 41.3],
+  [[255, 232, 110], 42.9],
+  [[255, 227, 80], 44.6],
+  [[255, 224, 59], 45.7],
+  [[254, 221, 42], 46.6],
+  [[255, 214, 9], 48.7],
+  [[254, 199, 0], 51.1],
+  [[254, 183, 0], 53.3],
+  [[254, 168, 0], 55.4],
+  [[254, 152, 0], 57.0],
+  [[254, 135, 0], 58.4],
+  [[254, 119, 0], 59.7],
+  [[254, 103, 0], 61.1],
+  [[254, 87, 0], 62.5],
+  [[254, 71, 0], 63.8],
+  [[254, 55, 0], 65.2],
+  [[254, 38, 0], 66.6],
+  [[254, 22, 0], 67.9],
+  [[254, 2, 0], 70.9]
+];
+
+const shrPalette = (bands: [[number, number, number], number][]): RadarPaletteEntry[] => [...bands].reverse().map(([rgb, dbz]) => ({ rgb, dbz }));
+
 /**
  * Factory helper to construct complete RadarStationConfig with all IMD products.
  */
@@ -196,6 +333,7 @@ function createImdStation(params: {
   productRanges?: Partial<Record<RadarProductKey, number>>;
   palettes?: Partial<Record<RadarProductKey, RadarPaletteEntry[]>>;
   animationFile?: string;
+  skipAnimation?: boolean;
 }): RadarStationConfig {
   const band = params.band || 'S-Band';
   const defaultRangeKm = params.rangeKm || (band === 'X-Band' ? 85 : 250);
@@ -249,6 +387,7 @@ function createImdStation(params: {
     operationalRangeKm: defaultRangeKm,
     rings: getRings(defaultRangeKm),
     animationFile: params.animationFile,
+    skipAnimation: params.skipAnimation,
     products: {
       caz: createProdConfig('caz', 'CAZ', 'Column Maximum Reflectivity (MAX_Z)', '🌩️', defaultRangeKm),
       ppi: createProdConfig('ppi', 'PPI', 'Plan Position Indicator (Base Sweep)', '⚡', band === 'X-Band' ? 85 : 150),
@@ -337,6 +476,38 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       sri: { x: 28, y: 0, w: 2430, h: 2485 },
       pac: { x: 28, y: 0, w: 2430, h: 2485 },
       ppz: { x: 28, y: 0, w: 2430, h: 2485 }
+    }
+  }),
+  createImdStation({
+    id: 'sriharikota',
+    name: 'Sriharikota DWR',
+    fullName: 'Sriharikota S-Band Doppler Weather Radar, SDWR SHAR (240km)',
+    code: 'shr',
+    lat: 13.6645,
+    lng: 80.2274,
+    state: 'Andhra Pradesh',
+    band: 'S-Band',
+    rangeKm: 240,
+    skipAnimation: true,   // its animations are over 20 MB each
+    // Ranges and layouts read off the pictures: each map panel is square and spans exactly its range in every direction
+    productRanges: {
+      caz: 240,   // "Range: 240.0 km"
+      ppi: 240,   // "Range: 240.0 km"
+      sri: 200,   // "Range: 200 km"
+      pac: 200,
+      ppz: 490    // "Range: 490.0 km"
+    },
+    crops: {
+      caz: { x: 59, y: 632, w: 1797, h: 1797 },
+      ppi: { x: 57, y: 50, w: 2397, h: 2397 },
+      sri: { x: 32, y: 33, w: 2397, h: 2397 },
+      pac: { x: 32, y: 33, w: 2397, h: 2397 },
+      ppz: { x: 30, y: 41, w: 2400, h: 2398 }
+    },
+    palettes: {
+      caz: shrPalette(SHR_CAZ_BANDS),
+      ppi: shrPalette(SHR_PPI_BANDS),
+      ppz: shrPalette(SHR_PPZ_BANDS)
     }
   }),
   createImdStation({
