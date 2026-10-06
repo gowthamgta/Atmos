@@ -3,3 +3,5 @@ Pillow>=11
 omfiles>=1.2
 requests>=2.32
 pytest>=8
+ecmwf-opendata>=0.3
+eccodes>=2.38

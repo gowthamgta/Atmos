@@ -45,8 +45,9 @@ export class ForecastLegendComponent {
   protected readonly catalog = inject(ForecastCatalogService);
 
   protected readonly runLabel = computed(() => {
-    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})Z$/.exec(this.catalog.runLabel());
-    return m ? `${m[3]}/${m[2]} ${m[4]}Z` : this.catalog.runLabel();
+    // a model run is YYYYMMDDTHHZ; the blend's run is when it was assembled, YYYYMMDDTHHMMZ
+    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})?Z$/.exec(this.catalog.runLabel());
+    return m ? `${m[3]}/${m[2]} ${m[4]}${m[5] ? ':' + m[5] : ''}Z` : this.catalog.runLabel();
   });
   protected readonly gradient = computed(() => {
     const layer = this.state.activeLayer();

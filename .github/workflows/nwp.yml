@@ -1,7 +1,8 @@
 name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data, cut out South India,
-# encode them, and deploy the result to GitHub Pages (free, CORS-open). No external storage, no billing.
+# encode them, add the ECMWF-ensemble rain chances (ens.py) and an all-model blend (blend.py), and deploy the result to
+# GitHub Pages (free, CORS-open). No external storage, no billing.
 # Runs hourly: each model exits early when its newest run is not ready, is not one it uses, or is already live.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
@@ -49,8 +50,16 @@ jobs:
             python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force \
               || echo "::warning::$model failed; the live copy stays in place"
           done
+          # the ECMWF ensemble: chance of heavy rain in the next 24 h (attached to every model below)
+          python ens.py --out site --live-url "$base/ens/latest.json" $force \
+            || echo "::warning::ens failed; the live copy stays in place"
           if ls site/*/latest.json >/dev/null 2>&1; then
-            python mirror.py --site site --base-url "$base" --models $models
+            # models that were not rebuilt (and the previous ensemble and blend) come over from the live site
+            python mirror.py --site site --base-url "$base" --models $models ens blend
+            # one forecast from all the models, then the ensemble chances on every model's timeline (the blend included)
+            python blend.py --site site --live-url "$base/blend/latest.json" $force \
+              || echo "::warning::blend failed; the live copy stays in place"
+            python attach.py --site site
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"

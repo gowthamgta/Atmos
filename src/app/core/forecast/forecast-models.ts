@@ -20,6 +20,7 @@ const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'ecmwf_ifs', label: 'ECMWF IFS', resolution: '9 km', gridKm: 9, baseUrl: `${PAGES}/ecmwf_ifs` },
+  { id: 'blend', label: 'All models (blend)', resolution: '7 models', gridKm: 13, baseUrl: `${PAGES}/blend` },
   { id: 'ecmwf_aifs', label: 'ECMWF AIFS (AI)', resolution: '28 km', gridKm: 28, baseUrl: `${PAGES}/ecmwf_aifs` },
   { id: 'gfs', label: 'NOAA GFS', resolution: '13–28 km', gridKm: 13, baseUrl: `${PAGES}/gfs` },
   { id: 'ukmo', label: 'UK Met Office', resolution: '10 km', gridKm: 10, baseUrl: `${PAGES}/ukmo` },

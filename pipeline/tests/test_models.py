@@ -17,6 +17,9 @@ from regular import regrid_regular, window_indices
 
 RUN = datetime(2026, 10, 5, 6, tzinfo=timezone.utc)
 
+# the ensemble rain chances are attached to every model afterwards (attach.py), so no single model run supplies them
+ENSEMBLE_VARS = frozenset({"px65", "px115", "px204"})
+
 
 def test_window_indices_cover_the_requested_range_with_padding():
     i0, i1 = window_indices(-90.0, 0.25, 721, 4.0, 22.0)
@@ -69,7 +72,7 @@ def test_derive_uses_the_models_own_relative_humidity_when_there_is_no_dew_point
            "total_column_integrated_water_vapour": z + 50}
     out = derive(raw)
     assert np.allclose(out["rh"], 70) and np.allclose(out["msl"], 1010) and np.allclose(out["t2m"], 30)
-    assert set(out) == set(C.VARS) - {"rain24"}   # every published variable has a value (NaN where the model lacks it); rain24 is derived across steps
+    assert set(out) == set(C.VARS) - {"rain24", "px65", "px115", "px204"}   # every published variable has a value (NaN where the model lacks it); rain24 is derived across steps
     assert np.isnan(out["u850"]).all()   # a model without pressure-level winds gives empty fields (never published)
     raw["relative_humidity_2m"] = z + 140            # nonsense is clipped to the physical range
     assert np.allclose(derive(raw)["rh"], 100)
@@ -125,9 +128,9 @@ def test_each_model_declares_its_rain_accumulation_window():
 def test_aifs_urls_steps_and_unavailable_variables():
     assert fetch_aifs.file_url(RUN, 6).endswith("/ecmwf_aifs025_single/2026/10/05/0600Z/2026-10-05T1200.om")
     assert fetch_aifs.STEP_HOURS == list(range(0, 145, 6))
-    assert fetch_aifs.UNAVAILABLE_VARS == {"gust", "cape", "tcwv", "vis", "li", "cin"}
-    assert fetch_gfs.UNAVAILABLE_VARS == frozenset()
-    assert fetch_ifs.UNAVAILABLE_VARS == {"li"}      # winds aloft come from the 0.25 degree IFS dataset; IFS has no lifted index
+    assert fetch_aifs.UNAVAILABLE_VARS - ENSEMBLE_VARS == {"gust", "cape", "tcwv", "vis", "li", "cin"}
+    assert fetch_gfs.UNAVAILABLE_VARS == ENSEMBLE_VARS
+    assert fetch_ifs.UNAVAILABLE_VARS == ENSEMBLE_VARS | {"li"}      # winds aloft come from the 0.25 degree IFS dataset; IFS has no lifted index
 
 
 def test_manifest_lists_only_variables_the_model_provides():

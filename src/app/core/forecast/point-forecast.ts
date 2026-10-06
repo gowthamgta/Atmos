@@ -5,6 +5,7 @@ import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terra
 /** Fields read for the click card at the ground. */
 export const SURFACE_INSPECT_VARS = [
   't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
+  'rain24', 'li', 'cin', 'px65', 'px115', 'px204',
 ] as const;
 
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
@@ -97,6 +98,16 @@ export function buildPointRows(
     { id: 'rain', label: 'Rain', text: rainText(adjust('rain', v('precip'))), terrainAdjusted: adjusted && ctx?.liftWind !== null },
     { id: 'clouds', label: 'Clouds', text: withUnit(v('cloud'), 0, '%'), terrainAdjusted: false },
   ];
+  if (!Number.isNaN(v('rain24'))) {
+    // rows after the rain one: the 24 h total, and the ensemble's chance of heavy rain (shown only where the data exists)
+    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
+      id: 'rain24', label: 'Rain, next 24 h', text: withUnit(adjust('rain', v('rain24')), v('rain24') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+    });
+  }
+  const chance = [['65', v('px65')], ['115', v('px115')], ['204', v('px204')]].filter(([, p]) => !Number.isNaN(p as number));
+  if (chance.length > 0) {
+    rows.push({ id: 'rainchance', label: 'Chance of ≥ 65 / 115 / 204 mm in 24 h', text: chance.map(([, p]) => `${fmt(p as number)}`).join(' / ') + ' %', terrainAdjusted: false });
+  }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {
     rows.push({ id: 'cloudlayers', label: 'Low / mid / high', text: `${layers.map(x => fmt(x)).join(' / ')} %`, terrainAdjusted: false });
@@ -108,6 +119,8 @@ export function buildPointRows(
     { id: 'pressure', label: 'Pressure', text: withUnit(v('msl'), 0, 'hPa'), terrainAdjusted: false },
     { id: 'cape', label: 'Thunderstorm energy', text: withUnit(v('cape'), 0, 'J/kg'), terrainAdjusted: false },
   );
+  if (!Number.isNaN(v('cin'))) rows.push({ id: 'cin', label: 'Convective inhibition', text: withUnit(v('cin'), 0, 'J/kg'), terrainAdjusted: false });
+  if (!Number.isNaN(v('li'))) rows.push({ id: 'li', label: 'Lifted index', text: withUnit(v('li'), 1, '°C'), terrainAdjusted: false });
 
   if (level !== 'surface') {
     const alt = `${level} hPa · about ${LEVEL_KM[level]} km`;

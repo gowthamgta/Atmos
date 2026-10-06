@@ -27,7 +27,8 @@ python run.py --out site --force                 # full run into ./site
 ```
 Variables (see `config.py`):
 - surface: `t2m`, `rh`, `feels`, `dew` (dew point), `u10`/`v10`, `gust`, `msl`, `precip`, `cloud`, `cloud_low`/`cloud_mid`/`cloud_high`,
-  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`
+  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`, `li` (lifted index, GFS and GRAPES only), `cin` (convective inhibition, magnitude;
+  IFS, GFS, UKMO and GRAPES), `rain24` (mm over the next 24 h from each step, see below)
 - pressure levels 925, 850, 700, 500, 300 and 200 hPa (about 0.8, 1.5, 3, 5.6, 9.2 and 12 km up), five fields each:
   `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height). These are stored with 12 significant bits (error far below
   anything visible: 0.003 degC, 0.02 m/s), which makes them about 25% smaller.
@@ -45,12 +46,30 @@ Each deploy replaces the previous one, so only the newest run exists. A client t
 The repo must stay public for free Pages. GitHub disables scheduled workflows after 60 days without
 repository activity; re-enable under the Actions tab if that happens.
 
+## Rain over the next 24 hours (`rain24`)
+Built across steps in `derive.forward_accumulation`: the rain of each gap between two steps is rate x spacing when the model's
+rain window covers the gap (exact), otherwise it is estimated from the mean of the rates at both ends (models that are only
+sampled, e.g. one hour in three). No data where the run ends before 24 h more. Checked on a real GFS run against Open-Meteo's
+hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can differ by tens of mm).
+
+## Chance of extreme rain (`px65`, `px115`, `px204`)
+`ens.py` reads ECMWF's own ensemble (50 members, open data, CC BY 4.0) and publishes the share of members whose rain over the
+next 24 h reaches 64.5, 115.6 and 204.5 mm (IMD's heavy, very heavy and extremely heavy classes), for starts every 6 h to +72 h.
+`attach.py` copies these onto every model's own timeline (linear in time between starts), so the layer works with any model.
+Open-Meteo's ensemble datasets only have an "any rain" probability, which is why ECMWF's files are used.
+
+## All models in one (`blend`)
+`blend.py` writes one more model: the weighted mean of every model's published fields, lined up by valid time (a time between
+two steps is interpolated only when both exist; wind is averaged as u and v). Weights in `blend.WEIGHTS` (IFS 3, GFS 2, UKMO 2,
+AIFS 1.5, ICON 1.5, GDPS 1, GRAPES 1); a model that ends early drops out. Its run id is the assembly time, so a changed input
+always gets new URLs. The workflow order is: models, `ens.py`, `mirror.py` (unchanged models, ens, blend), `blend.py`, `attach.py`.
+
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
 3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.
 
 ## Models
-Seven models, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.
+Seven models plus the blend, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.
 Sources are Open-Meteo's public `data_spatial` datasets.
 
 | id | model | grid / range | runs | rain value covers | not provided |

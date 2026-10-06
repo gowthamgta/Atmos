@@ -116,6 +116,26 @@ describe('point forecast helpers', () => {
     expect(rows.some(r => r.id === 'vis' || r.id === 'cloudlayers')).toBe(false);
   });
 
+  it('adds the 24 h rain, the heavy-rain chances and the stability rows only where the model has them', () => {
+    const plain = buildPointRows(values, null);
+    for (const id of ['rain24', 'rainchance', 'cin', 'li']) expect(plain.some(r => r.id === id)).toBe(false);
+
+    const rich = buildPointRows({ ...values, rain24: 42.6, px65: 30, px115: 8.4, px204: 0, cin: 85, li: -3.4 }, null);
+    expect(find(rich, 'rain24').text).toBe('43 mm');
+    expect(rich.findIndex(r => r.id === 'rain24')).toBe(rich.findIndex(r => r.id === 'rain') + 1);     // right under the rain row
+    expect(find(rich, 'rainchance').text).toBe('30 / 8 / 0 %');
+    expect(find(rich, 'cin').text).toBe('85 J/kg');
+    expect(find(rich, 'li').text).toBe('-3.4 °C');
+    // a small total keeps a decimal, and a chance the model lacks is left out of the list
+    expect(find(buildPointRows({ ...values, rain24: 4.26 }, null), 'rain24').text).toBe('4.3 mm');
+    expect(find(buildPointRows({ ...values, px65: 12, px115: NaN, px204: NaN }, null), 'rainchance').text).toBe('12 %');
+  });
+
+  it('rain over the next 24 h gets the same hill correction as the rain rate', () => {
+    const rows = buildPointRows({ ...values, rain24: 40, u850: 10, v850: 0 }, ground(0, { tpi: 0 }));
+    expect(find(rows, 'rain24').terrainAdjusted).toBe(find(rows, 'rain').terrainAdjusted);
+  });
+
   it('adds a block for the chosen altitude, and none at the ground', () => {
     const aloft = { ...values, t850: 19.2, rh850: 62, u850: 10, v850: 0, gh850: 1532 };
     const rows = buildPointRows(aloft, ground(0), 850);
