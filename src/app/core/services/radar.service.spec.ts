@@ -77,12 +77,15 @@ describe('Radar Domain & Config', () => {
     expect(koc.code).toBe('koc');
     expect(koc.lat).toBeCloseTo(9.93, 1);
     expect(koc.lng).toBeCloseTo(76.27, 1);
-    expect(koc.products.caz.crop?.w).toBe(572);
-    expect(koc.products.caz.crop?.h).toBe(572);
-    expect(koc.products.ppi.crop?.w).toBe(572);
-    expect(koc.products.sri.crop?.w).toBe(572);
-    expect(koc.products.pac.crop?.w).toBe(572);
-    expect(koc.products.ppz.crop?.w).toBe(572);
+    // Kochi's real images are bigger than 572 px: when IMD serves its 572x572 "radar under maintenance" photo the crop
+    // does not fit, which is how the station is detected as offline (never decode the photo as rain)
+    expect(koc.products.caz.crop).toEqual({ x: 100, y: 300, w: 600, h: 600 });
+    expect(koc.products.ppi.crop).toEqual({ x: 100, y: 300, w: 600, h: 600 });
+    expect(koc.products.ppz.crop).toEqual({ x: 100, y: 300, w: 600, h: 600 });
+    for (const key of ['caz', 'ppi', 'ppz'] as const) {
+      const c = koc.products[key].crop!;
+      expect(c.x + c.w).toBeGreaterThan(572 + 2);
+    }
 
     const plk = IMD_RADAR_STATIONS.find(s => s.id === 'pallikaranai')!;
     expect(plk.band).toBe('X-Band');

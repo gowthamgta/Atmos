@@ -423,11 +423,11 @@ export class RadarService implements OnDestroy {
         const station = queue.shift();
         if (!station) break;
         try {
-          // When active product is 'caz' (merged mode), PPZ is fetched alongside; a missing one is simply left out of the merge.
-          // IMD updates about every 10 minutes, so extras are refreshed every few minutes,
-          // and the X-band radar's are skipped: its images are big and the Chennai S-band radar covers the same ground.
+          // In merged mode (CAZ) the PPZ scan is fetched alongside; a missing one is simply left out of the merge. IMD updates
+          // about every 10 minutes, so it is refreshed every few minutes, and the X-band radar's is skipped: its images are
+          // big and the Chennai S-band radar covers the same ground.
           const now = Date.now();
-          const wantExtras = productKey === 'caz' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
+          const wantExtras = productKey === 'caz' && station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
           if (wantExtras) this.extrasFetchedAt.set(station.id, now);
           const extras = wantExtras
             ? await Promise.all(
@@ -948,7 +948,7 @@ export class RadarService implements OnDestroy {
 
   /** Rebuilds the live composite from the latest still of every radar. */
   private generateMergedMosaic(): void {
-    // In merged mode ('caz'), combine CAZ with PPZ extras; in standalone modes ('ppz', 'ppi'), compose that product's scans
+    // In merged mode ('caz'), combine CAZ with PPZ extras; in PPI mode, compose the PPI scans on their own
     const sources = this.activeProduct() === 'caz'
       ? [...this.allRadarResults(), ...this.extraResults()]
       : [...this.allRadarResults()];

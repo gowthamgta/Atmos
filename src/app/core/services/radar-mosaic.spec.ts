@@ -80,14 +80,6 @@ describe('composeRadarMosaic', () => {
     expect(valueAt(ppiMosaic, lat, lng)).toBeCloseTo(3.8, 1);
   });
 
-  it('supports PPZ scan composed alone', () => {
-    const ppzMosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
-      ['karaikal', scan(karaikal, 'ppz', 3.6)],
-    ], undefined, undefined, 'ppz')!;
-    const [lat, lng] = eastOf(karaikal, 40);
-    expect(valueAt(ppzMosaic, lat, lng)).toBeCloseTo(3.6, 1);
-  });
-
   it('still blends different stations where they overlap, keeping the storm core', () => {
     // Karaikal and Kochi are about 270 km apart in longitude, so a point between them is seen by both
     const lat = (karaikal.lat + kochi.lat) / 2;
