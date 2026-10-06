@@ -1,11 +1,11 @@
-"""ECMWF ensemble (50 members): the chance that the next 24 hours bring extreme rain.
+"""ECMWF ensemble (50 members): the chance of rain, and of heavy rain, in the next 24 hours.
 
 Open-Meteo's bucket only has "any rain" probabilities for the ensembles, so this reads ECMWF's own open data
 (CC BY 4.0, https://data.ecmwf.int): total precipitation of the 50 perturbed members at 0.25 degrees
 (the control member is not in the open index).
 `tp` is the rain accumulated since the start of the run, so the rain of the 24 hours after step s is tp(s+24) - tp(s).
 The share of members at or above each threshold is the chance, in percent. The thresholds are IMD's daily rain classes:
-heavy 64.5 mm, very heavy 115.6 mm, extremely heavy 204.5 mm.
+rain 2.5 mm, moderate 15.6 mm, heavy 64.5 mm, very heavy 115.6 mm.
 
 The result is stored as the product `ens` (one image per variable and start time, every 6 h to +72 h). attach.py then
 copies it, aligned in time, onto every model's own timeline, so the layer works whichever model is selected.
@@ -30,8 +30,9 @@ RUN_HOURS = (0, 6, 12, 18)
 START_HOURS = list(range(0, 73, 6))                 # forecast hours the 24 h windows start at
 WINDOW_HOURS = 24
 STEP_HOURS = sorted({s for s in START_HOURS} | {s + WINDOW_HOURS for s in START_HOURS})   # accumulation is read at these steps
-# IMD's daily rain classes (mm in 24 h) and the variables they publish
-THRESHOLDS_MM: dict[str, float] = {"px65": 64.5, "px115": 115.6, "px204": 204.5}
+# IMD's daily rain classes (mm in 24 h) and the variables they publish: rain (2.5 mm, below that IMD counts it as a trace),
+# moderate, heavy and very heavy
+THRESHOLDS_MM: dict[str, float] = {"px2": 2.5, "px16": 15.6, "px65": 64.5, "px115": 115.6}
 MIN_MEMBERS = 40                                    # a read with fewer members than this is treated as a failed download
 
 LATS = C.LAT_MAX - C.STEP_DEG * np.arange(C.NY)

@@ -18,12 +18,12 @@ def _field(v):
 def _write_ens(site, starts):
     """An ensemble product whose px65 equals the start hour (so it is easy to tell which start a value came from)."""
     root = os.path.join(site, "ens", "20261005T18Z")
-    for name in ("px65", "px115", "px204"):
+    for name in ("px2", "px16", "px65", "px115"):
         for h in starts:
             path = os.path.join(root, name, f"{h:03d}.png")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             open(path, "wb").write(encode_field(_field(float(h)) if name == "px65" else _field(5.0), 0, 100, 12))
-    vars_ = {n: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"} for n in ("px65", "px115", "px204")}
+    vars_ = {n: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"} for n in ("px2", "px16", "px65", "px115")}
     steps = [{"h": h, "valid": f"{RUN + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in starts]
     json.dump({"model": "ens", "run": "20261005T18Z", "steps": steps, "vars": vars_}, open(os.path.join(root, "manifest.json"), "w"))
     json.dump({"model": "ens", "run": "20261005T18Z"}, open(os.path.join(site, "ens", "latest.json"), "w"))
@@ -67,7 +67,7 @@ def test_attach_aligns_the_ensemble_to_each_models_valid_times(tmp_path):
     assert abs(float(_px65(root, 12)[5, 5]) - 6) < tol                           # +6 h start
     assert abs(float(_px65(root, 15)[5, 5]) - 9) < tol
     manifest = json.load(open(os.path.join(root, "manifest.json")))
-    assert {"px65", "px115", "px204"} <= set(manifest["vars"]) and "t2m" in manifest["vars"]
+    assert {"px2", "px16", "px65", "px115"} <= set(manifest["vars"]) and "t2m" in manifest["vars"]
 
 
 def test_steps_beyond_the_last_start_get_a_no_data_image(tmp_path):
@@ -90,3 +90,21 @@ def test_attach_is_repeatable_and_skips_a_site_without_the_ensemble(tmp_path):
         assert attach.attach_model(site, "gfs", run, fields)
     assert abs(float(_px65(root, 6)[0, 0]) - 6) < 0.1
     assert attach.attach_model(site, "missing_model", run, fields) is False
+
+
+def test_an_older_ensemble_product_with_a_retired_variable_does_not_break_attach(tmp_path):
+    site = str(tmp_path)
+    _write_ens(site, [0, 6])
+    # the live site may still carry the previous thresholds until the ensemble job runs again
+    old = os.path.join(site, "ens", "20261005T18Z")
+    for h in (0, 6):
+        os.makedirs(os.path.join(old, "px204"), exist_ok=True)
+        open(os.path.join(old, "px204", f"{h:03d}.png"), "wb").write(encode_field(_field(1.0), 0, 100, 12))
+    manifest = json.load(open(os.path.join(old, "manifest.json")))
+    manifest["vars"]["px204"] = {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"}
+    json.dump(manifest, open(os.path.join(old, "manifest.json"), "w"))
+    root = _write_model(site, "gfs", RUN, [0, 3, 6])
+    run, fields = attach.load_ens(site)
+    assert "px204" in fields and attach.attach_model(site, "gfs", run, fields)
+    out = json.load(open(os.path.join(root, "manifest.json")))
+    assert "px204" not in out["vars"] and "px65" in out["vars"]

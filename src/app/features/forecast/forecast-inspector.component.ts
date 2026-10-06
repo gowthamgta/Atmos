@@ -1,10 +1,12 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject } from '@angular/core';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
+import { ForecastStateService } from '../../core/forecast/forecast-state.service';
+import { rowsForLayer } from '../../core/forecast/point-forecast';
 
 const IST = 'Asia/Kolkata';
 
-/** Card with every forecast value at the clicked point, for the selected time. */
+/** Card with the value of the selected layer at the clicked point, for the selected time. */
 @Component({
   selector: 'app-forecast-inspector',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -28,7 +30,7 @@ const IST = 'Asia/Kolkata';
             · {{ timeLabel() }}
           </div>
           <dl>
-            @for (row of p.rows; track row.id) {
+            @for (row of rows(); track row.id) {
               @if (row.heading) {
                 <div class="heading">{{ row.label }}</div>
               } @else {
@@ -38,8 +40,14 @@ const IST = 'Asia/Kolkata';
                 </div>
               }
             }
+            @if (rows().length === 0) {
+              <div class="row"><dt>{{ layerLabel() }}</dt><dd>–</dd></div>
+            }
           </dl>
-          <footer>▲ adjusted to 1 km terrain; other values are {{ catalog.model().label }} at {{ catalog.model().resolution }}.</footer>
+          <footer>
+            @if (adjusted()) { ▲ adjusted to 1 km terrain. }
+            Model: {{ catalog.model().label }}, {{ catalog.model().resolution }}.
+          </footer>
         } @else if (inspector.busy()) {
           <div class="meta">Loading…</div>
         } @else {
@@ -74,6 +82,15 @@ const IST = 'Asia/Kolkata';
 export class ForecastInspectorComponent {
   protected readonly inspector = inject(ForecastInspectorService);
   protected readonly catalog = inject(ForecastCatalogService);
+  private readonly state = inject(ForecastStateService);
+
+  /** Only the selected layer's value (every row when no layer is on, e.g. only the wind animation). */
+  protected readonly rows = computed(() => {
+    const p = this.inspector.point();
+    return p ? rowsForLayer(p.rows, this.state.activeLayerId(), this.state.level()) : [];
+  });
+  protected readonly adjusted = computed(() => this.rows().some(r => r.terrainAdjusted));
+  protected readonly layerLabel = computed(() => this.state.activeLayer()?.label ?? 'Value');
 
   protected readonly placeTitle = computed(() => {
     const p = this.inspector.point();

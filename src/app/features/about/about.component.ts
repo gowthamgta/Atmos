@@ -19,7 +19,7 @@ const CREDITS: readonly Credit[] = [
   { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView' },
   { name: 'Terrain', what: 'AWS Terrain Tiles (SRTM and other public DEMs)' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
-  { name: 'Base map', what: '© Esri' },
+  { name: 'Base map', what: '© OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors; hillshade © Esri' },
 ];
 
 @Component({

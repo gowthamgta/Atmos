@@ -66,9 +66,10 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("tcwv", "kg/m²", 0, 80),
     Var("li", "°C", -15, 25, 12),         # lifted index: negative means unstable air
     Var("cin", "J/kg", 0, 1000, 12),      # convective inhibition (magnitude)
-    Var("px65", "%", 0, 100, 12),         # chance (%) of >= 64.5 mm in the next 24 h; from the ECMWF ensemble (ens.py), attached to every model by attach.py
-    Var("px115", "%", 0, 100, 12),        # >= 115.6 mm
-    Var("px204", "%", 0, 100, 12),        # >= 204.5 mm
+    Var("px2", "%", 0, 100, 12),          # chance (%) of >= 2.5 mm in the next 24 h (rain); from the ECMWF ensemble (ens.py), attached to every model by attach.py
+    Var("px16", "%", 0, 100, 12),         # >= 15.6 mm (moderate)
+    Var("px65", "%", 0, 100, 12),         # >= 64.5 mm (heavy)
+    Var("px115", "%", 0, 100, 12),        # >= 115.6 mm (very heavy)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
     *_level_vars(),
 ]}

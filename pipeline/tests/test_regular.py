@@ -9,7 +9,7 @@ import fetch_regular as FR
 import models_regular
 from derive import derive
 
-ENSEMBLE = frozenset({"px65", "px115", "px204"})   # supplied by attach.py, never by a single model
+ENSEMBLE = frozenset({"px2", "px16", "px65", "px115"})   # supplied by attach.py, never by a single model
 
 
 def test_parse_bbox_reads_south_west_north_east():
@@ -150,7 +150,7 @@ def test_unavailable_for_follows_the_raw_fields_a_model_has():
         "wind_gusts_10m", "pressure_msl", "precipitation", "cloud_cover", "cape", "total_column_integrated_water_vapour",
         "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility", "shortwave_radiation",
             "convective_inhibition", "lifted_index"}
-    assert D.unavailable_for(everything) == {"px65", "px115", "px204"}   # only attach.py supplies those
+    assert D.unavailable_for(everything) == {"px2", "px16", "px65", "px115"}   # only attach.py supplies those
     no_humidity = everything - {"relative_humidity_2m"}
     assert D.unavailable_for(no_humidity) - ENSEMBLE == {"rh", "feels", "dew"}                        # none of the three can be made
     assert D.unavailable_for(no_humidity | {"dew_point_2m"}) == ENSEMBLE                 # a dew point restores all three
@@ -169,7 +169,7 @@ def test_the_three_hand_written_models_provide_all_levels():
 def test_regular_models_publish_what_their_datasets_have():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
     assert {"cloud_low", "cloud_mid", "cloud_high"} <= by_id["gdps"].UNAVAILABLE_VARS     # the Canadian surface set has none
-    assert by_id["ukmo"].UNAVAILABLE_VARS - {"px65", "px115", "px204"} == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
+    assert by_id["ukmo"].UNAVAILABLE_VARS - {"px2", "px16", "px65", "px115"} == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
     assert "vis" not in by_id["cma_grapes"].UNAVAILABLE_VARS and "solar" not in by_id["cma_grapes"].UNAVAILABLE_VARS
     for m in models_regular.ALL:
         assert not (set(D.LEVEL_RAW_KEYS) - m.PROVIDES - {"relative_humidity_200hPa"}), m.MODEL_ID    # every model has all six levels

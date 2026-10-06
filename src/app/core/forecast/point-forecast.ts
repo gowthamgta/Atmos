@@ -5,7 +5,7 @@ import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terra
 /** Fields read for the click card at the ground. */
 export const SURFACE_INSPECT_VARS = [
   't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
-  'rain24', 'li', 'cin', 'px65', 'px115', 'px204',
+  'rain24', 'li', 'cin', 'tcwv', 'px2', 'px16', 'px65', 'px115',
 ] as const;
 
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
@@ -104,9 +104,14 @@ export function buildPointRows(
       id: 'rain24', label: 'Rain, next 24 h', text: withUnit(adjust('rain', v('rain24')), v('rain24') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
-  const chance = [['65', v('px65')], ['115', v('px115')], ['204', v('px204')]].filter(([, p]) => !Number.isNaN(p as number));
-  if (chance.length > 0) {
-    rows.push({ id: 'rainchance', label: 'Chance of ≥ 65 / 115 / 204 mm in 24 h', text: chance.map(([, p]) => `${fmt(p as number)}`).join(' / ') + ' %', terrainAdjusted: false });
+  const chances: [string, string, number][] = [
+    ['px2', 'Chance of rain, next 24 h', v('px2')],
+    ['px16', 'Chance of 16+ mm, next 24 h', v('px16')],
+    ['px65', 'Chance of 65+ mm, next 24 h', v('px65')],
+    ['px115', 'Chance of 115+ mm, next 24 h', v('px115')],
+  ];
+  for (const [id, label, p] of chances) {
+    if (!Number.isNaN(p)) rows.push({ id, label, text: `${fmt(p)} %`, terrainAdjusted: false });
   }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {
@@ -119,6 +124,7 @@ export function buildPointRows(
     { id: 'pressure', label: 'Pressure', text: withUnit(v('msl'), 0, 'hPa'), terrainAdjusted: false },
     { id: 'cape', label: 'Thunderstorm energy', text: withUnit(v('cape'), 0, 'J/kg'), terrainAdjusted: false },
   );
+  if (!Number.isNaN(v('tcwv'))) rows.push({ id: 'tcwv', label: 'Atmospheric moisture', text: withUnit(adjust('column', v('tcwv')), 0, 'kg/m²'), terrainAdjusted: adjusted });
   if (!Number.isNaN(v('cin'))) rows.push({ id: 'cin', label: 'Convective inhibition', text: withUnit(v('cin'), 0, 'J/kg'), terrainAdjusted: false });
   if (!Number.isNaN(v('li'))) rows.push({ id: 'li', label: 'Lifted index', text: withUnit(v('li'), 1, '°C'), terrainAdjusted: false });
 
@@ -133,4 +139,26 @@ export function buildPointRows(
     );
   }
   return rows;
+}
+
+
+/** The click-card row that shows each layer's value at the ground. */
+const LAYER_ROW: Record<string, string> = {
+  temp: 'temp', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24',
+  tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin', px2: 'px2', px16: 'px16', px65: 'px65', px115: 'px115',
+};
+/** ...and at a pressure level (only some layers can be shown there). */
+const LAYER_LEVEL_ROW: Record<string, string> = { temp: 'lvl-temp', humidity: 'lvl-humidity', wind: 'lvl-wind', pressure: 'lvl-height' };
+
+/**
+ * Only the value of the layer that is on the map: one row, or none when the model has no value for it. At a pressure level the
+ * row is the level's value (labelled with the level). With no layer selected every row is kept.
+ */
+export function rowsForLayer(rows: PointRow[], layerId: string | null, level: Level = 'surface'): PointRow[] {
+  if (!layerId) return rows;
+  const aloft = level !== 'surface' ? LAYER_LEVEL_ROW[layerId] : undefined;
+  const id = aloft ?? LAYER_ROW[layerId];
+  const row = id ? rows.find(r => r.id === id && !r.heading) : undefined;
+  if (!row) return [];
+  return [aloft ? { ...row, label: `${row.label} · ${level} hPa` } : row];
 }

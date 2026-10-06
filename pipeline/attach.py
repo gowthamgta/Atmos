@@ -3,7 +3,7 @@
 The chance of extreme rain in the next 24 hours does not depend on which model is shown, so the app's layer should work
 with any of them. For each published model run, every forecast step gets the chance for *its* valid time: the ensemble
 product has an image every 6 h (starts), and a step in between is the linear mix of the two around it. Steps before the
-ensemble run began or after its last start get a "no data" image. The model's manifest then lists px65/px115/px204.
+ensemble run began or after its last start get a "no data" image. The model's manifest then lists the chance variables (px2, px16, px65, px115).
 
 Running it again replaces the images and the manifest entries, so it is safe to run on every deploy.
 
@@ -70,6 +70,8 @@ def attach_model(site: str, model: str, ens_run: datetime, ens_fields: dict[str,
     except (OSError, ValueError, KeyError):
         return False
     for name, starts in ens_fields.items():
+        if name not in C.VARS:      # an older ensemble product (live site) may carry a variable that no longer exists
+            continue
         var = C.VARS[name]
         for step in manifest["steps"]:
             hours = (parse_valid(step["valid"]) - ens_run).total_seconds() / 3600.0

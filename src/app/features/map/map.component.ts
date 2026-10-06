@@ -28,6 +28,7 @@ const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [[52, -10], [108, 3
 // The lines are drawn above every raster overlay (radar, forecast) so boundaries stay readable on top of them.
 const BOUNDARY_SOURCE_ID = 'boundaries';
 const BOUNDARY_FIRST_LAYER_ID = 'district-casing';
+const BORDER_TOP_LAYER_ID = 'border-top';
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
@@ -370,27 +371,17 @@ export class MapComponent implements OnInit, OnDestroy {
         version: 8,
         glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
-          'esri-dark-base': {
-            type: 'raster',
-            tiles: [
-              'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-            ],
-            tileSize: 256,
-            maxzoom: 16,
-            attribution: '&copy; Esri'
+          // Land, sea and national borders only, drawn from OpenFreeMap's vector tiles (free, no key). No label layers are
+          // added, so the map has no place names (raster base maps have country and sea names baked into their tiles).
+          'base-vector': {
+            type: 'vector',
+            url: 'https://tiles.openfreemap.org/planet',
+            attribution: '&copy; OpenFreeMap, OpenMapTiles data &copy; OpenStreetMap contributors'
           },
           'esri-dark-hillshade': {
             type: 'raster',
             tiles: [
               'https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}'
-            ],
-            tileSize: 256,
-            maxzoom: 16
-          },
-          'esri-dark-ref': {
-            type: 'raster',
-            tiles: [
-              'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'
             ],
             tileSize: 256,
             maxzoom: 16
@@ -405,17 +396,6 @@ export class MapComponent implements OnInit, OnDestroy {
             }
           },
           {
-            id: 'dark-base-layer',
-            type: 'raster',
-            source: 'esri-dark-base',
-            minzoom: 0,
-            maxzoom: 19,
-            paint: {
-              'raster-brightness-min': 0.18,
-              'raster-contrast': -0.05
-            }
-          },
-          {
             id: 'dark-hillshade-layer',
             type: 'raster',
             source: 'esri-dark-hillshade',
@@ -427,14 +407,19 @@ export class MapComponent implements OnInit, OnDestroy {
             }
           },
           {
-            id: 'dark-ref-layer',
-            type: 'raster',
-            source: 'esri-dark-ref',
-            minzoom: 0,
-            maxzoom: 19,
-            paint: {
-              'raster-opacity': 0.95
-            }
+            id: 'base-water',
+            type: 'fill',
+            source: 'base-vector',
+            'source-layer': 'water',
+            paint: { 'fill-color': '#171b22' }
+          },
+          {
+            id: 'base-border',
+            type: 'line',
+            source: 'base-vector',
+            'source-layer': 'boundary',
+            filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
+            paint: { 'line-color': 'rgba(255, 255, 255, 0.22)', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.5, 8, 1.1] }
           }
         ]
       },
@@ -529,7 +514,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.radarLayer = new RadarFieldLayer();
       this.radarLayer.setOpacity(this.radarService.radarOpacity());
       // above the boundary lines (the echoes stay readable) but under the storm cones and place names
-      this.map.addLayer(this.radarLayer, this.map.getLayer(STORM_FIRST_LAYER_ID) ? STORM_FIRST_LAYER_ID : this.observationAnchorId());
+      this.map.addLayer(this.radarLayer, this.observationAnchorId());
     }
     this.radarLayer.setFrame(mosaic);
   }
@@ -574,7 +559,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private initStormLayers(): void {
     if (!this.map || this.map.getSource(STORM_SOURCE_ID)) return;
     this.map.addSource(STORM_SOURCE_ID, { type: 'geojson', data: this.storms.geojson() as unknown as maplibregl.GeoJSONSourceSpecification["data"] });
-    const before = this.observationAnchorId();
+    const before = undefined; // above everything, including the top outline
     const color: maplibregl.ExpressionSpecification = ['case', ['get', 'severe'], '#f87171', '#fbbf24'];
     const kind = (k: string): maplibregl.ExpressionSpecification => ['==', ['get', 'kind'], k];
     const visibility = this.storms.visible() ? 'visible' : 'none';
@@ -607,20 +592,21 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   });
 
-  /** Observed imagery (radar, satellite) and storm cones go above the boundary lines but under the place names. */
+  /**
+   * Observed imagery (radar, satellite) goes above the boundary lines but under the thin top outline (and so under the storm
+   * cones, which are added after it). There are no place names on the map, so nothing else has to stay above the imagery.
+   */
   private observationAnchorId(): string | undefined {
     if (!this.map) return undefined;
-    if (this.map.getLayer('district-labels-1')) return 'district-labels-1';
-    return this.overlayAnchorId();
+    return this.map.getLayer(BORDER_TOP_LAYER_ID) ? BORDER_TOP_LAYER_ID : undefined;
   }
 
   // --- Tamil Nadu boundary lines (state + 38 districts) ---
 
-  /** Layer id that the forecast layers are inserted before, so boundaries and labels stay on top. */
+  /** Layer id that the forecast layers are inserted before, so the boundary lines stay on top of them. */
   private overlayAnchorId(): string | undefined {
     if (!this.map) return undefined;
-    if (this.map.getLayer(BOUNDARY_FIRST_LAYER_ID)) return BOUNDARY_FIRST_LAYER_ID;
-    return this.map.getLayer('dark-ref-layer') ? 'dark-ref-layer' : undefined;
+    return this.map.getLayer(BOUNDARY_FIRST_LAYER_ID) ? BOUNDARY_FIRST_LAYER_ID : undefined;
   }
 
   private initBoundaries(): void {
@@ -631,7 +617,6 @@ export class MapComponent implements OnInit, OnDestroy {
       data: '/data/south-india-districts.geojson'
     });
 
-    const before = this.map.getLayer('dark-ref-layer') ? 'dark-ref-layer' : undefined;
     const widths = (z5: number, z10: number): maplibregl.ExpressionSpecification =>
       ['interpolate', ['linear'], ['zoom'], 5, z5, 10, z10];
     const isDistrict: maplibregl.ExpressionSpecification = ['==', ['get', 'kind'], 'district'];
@@ -648,7 +633,7 @@ export class MapComponent implements OnInit, OnDestroy {
       filter,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': color, 'line-width': width }
-    }, before);
+    });
 
     // A dark casing under a light core keeps every line readable on both the pale humidity palette
     // and the dark teal / navy ends of the other palettes.
@@ -656,32 +641,9 @@ export class MapComponent implements OnInit, OnDestroy {
     line('district-lines', isDistrict, 'rgba(255, 255, 255, 0.66)', widths(0.6, 1.2));
     line('state-casing', isState, 'rgba(8, 12, 22, 0.72)', widths(3.4, 6.0));
     line('state-line', isState, 'rgba(255, 255, 255, 0.96)', widths(1.5, 2.6));
-
-    // District names. Bigger districts appear first as you zoom in, so low zoom stays readable.
-    const labelMinZoom: Record<number, number> = { 1: 6.2, 2: 7.2, 3: 8.2 };
-    for (const rank of [1, 2, 3]) {
-      this.map.addLayer({
-        id: `district-labels-${rank}`,
-        type: 'symbol',
-        source: BOUNDARY_SOURCE_ID,
-        minzoom: labelMinZoom[rank],
-        filter: ['all',
-          ['==', ['get', 'kind'], 'label'],
-          ['==', ['get', 'rank'], rank]
-        ],
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 10, 13],
-          'text-max-width': 8
-        },
-        paint: {
-          'text-color': 'rgba(255, 255, 255, 0.9)',
-          'text-halo-color': 'rgba(8, 12, 22, 0.92)',
-          'text-halo-width': 1.4
-        }
-      }, before);
-    }
+    // A thin copy of the country and state outlines above the radar and satellite pictures, so the borders (Sri Lanka's
+    // included) stay visible whatever imagery is on. The imagery is inserted just below this layer.
+    line(BORDER_TOP_LAYER_ID, isState, 'rgba(255, 255, 255, 0.85)', widths(0.9, 1.6));
   }
 
   // --- 2. Concentric Radar Range Rings & Station Pins ---
@@ -786,14 +748,11 @@ export class MapComponent implements OnInit, OnDestroy {
 
   private syncBasemap(type: string = 'dark'): void {
     if (!this.map || !this.isMapLoaded()) return;
-    if (this.map.getLayer('dark-base-layer')) {
-      this.map.setLayoutProperty('dark-base-layer', 'visibility', 'visible');
+    for (const id of ['base-water', 'base-border']) {
+      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
     if (this.map.getLayer('dark-hillshade-layer')) {
       this.map.setLayoutProperty('dark-hillshade-layer', 'visibility', 'visible');
-    }
-    if (this.map.getLayer('dark-ref-layer')) {
-      this.map.setLayoutProperty('dark-ref-layer', 'visibility', 'visible');
     }
   }
 

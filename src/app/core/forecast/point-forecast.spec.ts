@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blendTime, buildPointRows, inspectVars, liftWindAt, windFromUV } from './point-forecast';
+import { blendTime, buildPointRows, inspectVars, liftWindAt, rowsForLayer, windFromUV } from './point-forecast';
 import {
   LAPSE_RATE_C_PER_M,
   MAX_TERRAIN_DELTA_M,
@@ -116,19 +116,53 @@ describe('point forecast helpers', () => {
     expect(rows.some(r => r.id === 'vis' || r.id === 'cloudlayers')).toBe(false);
   });
 
-  it('adds the 24 h rain, the heavy-rain chances and the stability rows only where the model has them', () => {
+  it('adds the 24 h rain, the rain chances, moisture and the stability rows only where the model has them', () => {
     const plain = buildPointRows(values, null);
-    for (const id of ['rain24', 'rainchance', 'cin', 'li']) expect(plain.some(r => r.id === id)).toBe(false);
+    for (const id of ['rain24', 'px2', 'px16', 'px65', 'px115', 'tcwv', 'cin', 'li']) expect(plain.some(r => r.id === id)).toBe(false);
 
-    const rich = buildPointRows({ ...values, rain24: 42.6, px65: 30, px115: 8.4, px204: 0, cin: 85, li: -3.4 }, null);
+    const rich = buildPointRows({ ...values, rain24: 42.6, px2: 71.4, px16: 30, px65: 8.4, px115: 0, tcwv: 55.2, cin: 85, li: -3.4 }, null);
     expect(find(rich, 'rain24').text).toBe('43 mm');
     expect(rich.findIndex(r => r.id === 'rain24')).toBe(rich.findIndex(r => r.id === 'rain') + 1);     // right under the rain row
-    expect(find(rich, 'rainchance').text).toBe('30 / 8 / 0 %');
+    expect(find(rich, 'px2').text).toBe('71 %');
+    expect(find(rich, 'px16').text).toBe('30 %');
+    expect(find(rich, 'px65').text).toBe('8 %');
+    expect(find(rich, 'px115').text).toBe('0 %');
+    expect(find(rich, 'tcwv').text).toBe('55 kg/m²');
     expect(find(rich, 'cin').text).toBe('85 J/kg');
     expect(find(rich, 'li').text).toBe('-3.4 °C');
-    // a small total keeps a decimal, and a chance the model lacks is left out of the list
+    // a small total keeps a decimal, and a chance the model lacks is simply not a row
     expect(find(buildPointRows({ ...values, rain24: 4.26 }, null), 'rain24').text).toBe('4.3 mm');
-    expect(find(buildPointRows({ ...values, px65: 12, px115: NaN, px204: NaN }, null), 'rainchance').text).toBe('12 %');
+    const partial = buildPointRows({ ...values, px2: 12, px16: NaN }, null);
+    expect(partial.some(r => r.id === 'px2')).toBe(true);
+    expect(partial.some(r => r.id === 'px16')).toBe(false);
+  });
+
+  describe('only the selected layer', () => {
+    const rows = () => buildPointRows({ ...values, rain24: 20, px2: 55, tcwv: 50, cin: 10, li: -2, t850: 19.2, rh850: 62, u850: 10, v850: 0, gh850: 1532 }, ground(0), 850);
+
+    it('keeps the one row that matches the layer on the map', () => {
+      for (const [layer, row] of [['temp', 'temp'], ['feels', 'feels'], ['dew', 'dew'], ['wind', 'wind'], ['gust', 'gust'], ['humidity', 'humidity'],
+        ['rain', 'rain'], ['rain24', 'rain24'], ['tcwv', 'tcwv'], ['vis', 'vis'], ['pressure', 'pressure'], ['cape', 'cape'], ['li', 'li'],
+        ['cin', 'cin'], ['px2', 'px2']]) {
+        const kept = rowsForLayer(rows(), layer, 'surface');
+        expect(kept.map(r => r.id), layer).toEqual([row]);
+      }
+    });
+
+    it('shows the pressure level value, labelled with the level, when an altitude is chosen', () => {
+      expect(rowsForLayer(rows(), 'temp', 850).map(r => [r.id, r.label, r.text])).toEqual([['lvl-temp', 'Temperature · 850 hPa', '19.2 °C']]);
+      expect(rowsForLayer(rows(), 'pressure', 850)[0].text).toBe('1532 m');
+      expect(rowsForLayer(rows(), 'wind', 850)[0].id).toBe('lvl-wind');
+      // a layer that has no level version still shows its ground value
+      expect(rowsForLayer(rows(), 'cape', 850).map(r => r.id)).toEqual(['cape']);
+    });
+
+    it('is empty when the model has no value, and shows everything when no layer is selected', () => {
+      expect(rowsForLayer(buildPointRows(values, null), 'px2', 'surface')).toEqual([]);
+      expect(rowsForLayer(buildPointRows(values, null), 'nonsense', 'surface')).toEqual([]);
+      const all = rows();
+      expect(rowsForLayer(all, null, 850)).toBe(all);
+    });
   });
 
   it('rain over the next 24 h gets the same hill correction as the rain rate', () => {

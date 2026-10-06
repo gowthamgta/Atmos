@@ -18,7 +18,7 @@ from regular import regrid_regular, window_indices
 RUN = datetime(2026, 10, 5, 6, tzinfo=timezone.utc)
 
 # the ensemble rain chances are attached to every model afterwards (attach.py), so no single model run supplies them
-ENSEMBLE_VARS = frozenset({"px65", "px115", "px204"})
+ENSEMBLE_VARS = frozenset({"px2", "px16", "px65", "px115"})
 
 
 def test_window_indices_cover_the_requested_range_with_padding():
@@ -72,7 +72,7 @@ def test_derive_uses_the_models_own_relative_humidity_when_there_is_no_dew_point
            "total_column_integrated_water_vapour": z + 50}
     out = derive(raw)
     assert np.allclose(out["rh"], 70) and np.allclose(out["msl"], 1010) and np.allclose(out["t2m"], 30)
-    assert set(out) == set(C.VARS) - {"rain24", "px65", "px115", "px204"}   # every published variable has a value (NaN where the model lacks it); rain24 is derived across steps
+    assert set(out) == set(C.VARS) - {"rain24", "px2", "px16", "px65", "px115"}   # every published variable has a value (NaN where the model lacks it); rain24 is derived across steps
     assert np.isnan(out["u850"]).all()   # a model without pressure-level winds gives empty fields (never published)
     raw["relative_humidity_2m"] = z + 140            # nonsense is clipped to the physical range
     assert np.allclose(derive(raw)["rh"], 100)

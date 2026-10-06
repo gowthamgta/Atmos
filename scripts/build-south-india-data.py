@@ -6,7 +6,7 @@ Builds the static South India data files used by the forecast layer:
   public/data/sa-model-elevation-<K>km.png  the ground as a K km model sees it (box mean over K km), on the 0.1 deg
                                           forecast grid: metres in R,G, land fraction in B. One file per model resolution.
   public/data/sa-terrain.json             grid geometry, value ranges and the list of model resolutions
-  public/data/south-india-districts.geojson   state outlines, district polygons and district label points
+  public/data/south-india-districts.geojson   state outlines and district polygons (no label points: the map shows no place names)
 
 Why these grids: every model is published on the 0.1 deg grid, but a model sees its own (coarser) cells as flat
 ground at their mean height. The shader corrects the near-surface fields per 1 km pixel by the difference between
@@ -255,12 +255,9 @@ def build_districts(cache, out_path):
     lka_shape = unary_union([shape(f['geometry']) for f in lka['features']])
     features.append({'type': 'Feature', 'properties': {'kind': 'state', 'name': 'Sri Lanka'},
                      'geometry': simplified(lka_shape, 0.003)})
-    lka_point = lka_shape.representative_point()
-    features.append({'type': 'Feature', 'properties': {'kind': 'label', 'name': 'Sri Lanka', 'state': 'Sri Lanka', 'rank': 1},
-                     'geometry': {'type': 'Point', 'coordinates': round_coords([lka_point.x, lka_point.y])}})
 
     districts = []
-    # Sri Lanka's 25 districts (its internal borders), named and ranked like the Indian ones
+    # Sri Lanka's 25 districts (its internal borders), named like the Indian ones
     lka2_url = 'https://github.com/wmgeolab/geoBoundaries/raw/main/releaseData/gbOpen/LKA/ADM2/geoBoundaries-LKA-ADM2_simplified.geojson'
     lka2 = json.load(open(fetch(lka2_url, os.path.join(cache, 'lka-adm2.geojson')), encoding='utf-8'))
     for f in lka2['features']:
@@ -281,17 +278,10 @@ def build_districts(cache, out_path):
         districts.append((owner, ascii_name(f['properties']['shapeName']).strip(), g, point))
         counts[owner] += 1
 
-    # Label priority (1 = shown first when zooming in) from district size, ranked within each country
-    areas = {'Sri Lanka': sorted(g.area for o, _, g, _ in districts if o == 'Sri Lanka'),
-             'India': sorted(g.area for o, _, g, _ in districts if o != 'Sri Lanka')}
-    for owner, name, g, point in districts:
-        pool = areas['Sri Lanka' if owner == 'Sri Lanka' else 'India']
-        rank = 1 if g.area >= pool[int(len(pool) * 0.66)] else 2 if g.area >= pool[int(len(pool) * 0.25)] else 3
+    # Boundaries and names for the click inspector only: the map itself shows no place names
+    for owner, name, g, _ in districts:
         features.append({'type': 'Feature', 'properties': {'kind': 'district', 'name': name, 'state': owner},
                          'geometry': simplified(g, 0.0012)})
-        features.append({'type': 'Feature',
-                         'properties': {'kind': 'label', 'name': name, 'state': owner, 'rank': rank},
-                         'geometry': {'type': 'Point', 'coordinates': round_coords([point.x, point.y])}})
 
     with open(out_path, 'w', encoding='utf-8') as f:
         json.dump({'type': 'FeatureCollection', 'features': features}, f, separators=(',', ':'), ensure_ascii=False)

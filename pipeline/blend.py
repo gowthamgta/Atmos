@@ -32,7 +32,7 @@ STEP_HOURS = 3
 WEIGHTS: dict[str, float] = {
     "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5, "gdps": 1.0, "cma_grapes": 1.0,
 }
-NOT_BLENDED = {"px65", "px115", "px204"}     # added to every model by attach.py
+NOT_BLENDED = {"px2", "px16", "px65", "px115"}     # added to every model by attach.py
 NOT_MODELS = {BLEND_ID, "ens"}                # folders in the site that are products, not forecast models
 
 
