@@ -15,7 +15,7 @@ import { blurSeparable, dequantizeRadar, gaussianKernel, quantizeRadarField, res
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
-import { MERGED_PRODUCTS, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, MERGED_PRODUCTS, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
@@ -175,7 +175,9 @@ export class RadarService implements OnDestroy {
     const frame = i === null ? null : this.history()[i];
     if (frame) return frame;
     const live = this.compositeMosaic();
-    return live && live.displayField && live.isDisplayed !== false
+    // the whole picture goes when even its newest scan is older than MAX_SCAN_AGE_MIN (the clock ticks between refreshes)
+    const stale = !!live?.timing?.epochMs && this.liveClock() - live.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000;
+    return live && live.displayField && live.isDisplayed !== false && !stale
       ? {
           field: live.displayField,
           width: live.fieldData.cropW,
@@ -951,8 +953,8 @@ export class RadarService implements OnDestroy {
   /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
 
-  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>): ProcessedRadarResult | null {
-    return composeRadarMosaic(this.stations, sources, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, this.activeProduct());
+  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number): ProcessedRadarResult | null {
+    return composeRadarMosaic(this.stations, sources, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, this.activeProduct(), nowMs);
   }
 
   /** Rebuilds the live composite from the latest still of every radar. */
@@ -961,7 +963,7 @@ export class RadarService implements OnDestroy {
     const sources = this.activeProduct() === 'caz'
       ? [...this.allRadarResults(), ...this.extraResults()]
       : [...this.allRadarResults()];
-    this.compositeMosaic.set(this.composeMosaic(sources));
+    this.compositeMosaic.set(this.composeMosaic(sources, Date.now()));
   }
 
   /** The live composite on the storm-tracking grid. */

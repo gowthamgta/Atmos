@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult, RadarProductKey } from '../domain/models/radar.model';
-import { MAX_MERGE_GAP_MIN, MERGED_PRODUCTS, composeRadarMosaic } from './radar-mosaic';
+import { MAX_MERGE_GAP_MIN, MAX_SCAN_AGE_MIN, MERGED_PRODUCTS, composeRadarMosaic } from './radar-mosaic';
 import { dequantizeRadar } from './radar-field';
 
 const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
@@ -173,5 +173,17 @@ describe('merging only when the scans are close in time', () => {
     const [lat, lng] = east(60);
     expect(valueAt(m, lat, lng)).toBeCloseTo(2.0, 1);
     expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal:ppz', scan(karaikal, 'ppz', 4.0)]])).toBeNull();
+  });
+
+  it('does not draw a live scan older than 45 minutes, and keeps the fresh stations', () => {
+    const now = T0 + 60 * 60_000;
+    const stale = scan(karaikal, 'caz', 2.0, 0);       // 60 min old
+    const fresh = scan(kochi, 'caz', 3.0, 30);       // 30 min old
+    expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale]], 0.5, 2800, 'caz', now)).toBeNull();
+    const m = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale], ['kochi', fresh]], 0.5, 2800, 'caz', now)!;
+    expect(m.fieldData.bounds[0][0]).toBeLessThan(karaikal.lat - 1);   // the picture is Kochi's square only, not Karaikal's
+    // without a clock (history frames) nothing is dropped
+    expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale]])).not.toBeNull();
+    expect(MAX_SCAN_AGE_MIN).toBe(45);
   });
 });

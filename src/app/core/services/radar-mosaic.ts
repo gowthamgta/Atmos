@@ -16,6 +16,9 @@ export const MERGED_PRODUCTS: readonly RadarProductKey[] = ['caz', 'ppz'];
 /** PPZ is merged with CAZ only when the two scans of a station are less than this many minutes apart. */
 export const MAX_MERGE_GAP_MIN = 20;
 
+/** A live scan older than this many minutes is not drawn (the radar is stale or stuck, the picture would mislead). */
+export const MAX_SCAN_AGE_MIN = 45;
+
 /** Resolution of the composite: 0.5 km per pixel. */
 export const MOSAIC_KM_PER_PX = 0.5;
 
@@ -28,6 +31,8 @@ export function composeRadarMosaic(
   kmPerPixel = MOSAIC_KM_PER_PX,
   maxPixels = 2800,
   defaultProduct: RadarProductKey = 'caz',
+  /** When set, scans whose timestamp is more than MAX_SCAN_AGE_MIN before this time are left out (live view only). */
+  nowMs?: number,
 ): ProcessedRadarResult | null {
 
   const activeStations: {
@@ -50,6 +55,7 @@ export function composeRadarMosaic(
 
   for (const [key, res] of allResults) {
     if (res.isDisplayed === false || !res.fieldData) continue;
+    if (nowMs != null && res.timing?.epochMs && nowMs - res.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000) continue;
     const [stId, prodSuffix] = key.split(':') as [string, RadarProductKey | undefined];
     const productKey = prodSuffix || defaultProduct;
     const stationIndex = stations.findIndex(s => s.id === stId);
