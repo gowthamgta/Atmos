@@ -109,7 +109,7 @@ export class SatellitePanelComponent {
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   protected readonly productLabel = computed(() => {
     const p = this.sat.current()?.product;
-    return p ? (p.id === 'hrv' ? 'daylight, true colour' : 'night, infrared') : 'loading';
+    return p ? (p.id === 'hrv' || p.id === 'rgb' ? 'daylight, true colour' : 'night, infrared') : 'loading';
   });
   protected readonly sourceLabel = computed(() => SATELLITE_SOURCES[this.sat.source()].label);
   protected readonly note = computed(() => {
