@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, untracked } from '@angular/core';
 import { MapLayerService } from '../../core/services/map-layer.service';
+import { SATELLITE_SOURCES } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
@@ -10,7 +11,7 @@ function istClock(ms: number): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} IST`;
 }
 
-/** Controls for the Meteosat picture: which frame, play as a loop, opacity. Shown only while the satellite layer is on. */
+/** Controls for the live satellite picture (Meteosat-9 or Himawari-9): which frame, play as a loop, opacity. Shown only while the satellite layer is on. */
 @Component({
   selector: 'app-satellite-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -20,13 +21,18 @@ function istClock(ms: number): string {
         <header>
           <span class="live" [class.off]="failed()" aria-hidden="true"></span>
           <div class="heading">
-            <strong>Meteosat-9</strong>
+            <strong>{{ sourceLabel() }}</strong>
             <span class="sub">Observed, {{ productLabel() }}</span>
           </div>
           <button type="button" class="play" (click)="sat.togglePlay()" [disabled]="count() < 2" [attr.aria-label]="sat.playing() ? 'Pause loop' : 'Play loop'">
             {{ sat.playing() ? '❚❚' : '▶' }}
           </button>
         </header>
+
+        <div class="views sources" role="group" aria-label="Satellite">
+          <button type="button" class="view" [class.active]="sat.source() === 'meteosat'" [attr.aria-pressed]="sat.source() === 'meteosat'" (click)="sat.setSource('meteosat')" title="Meteosat-9: a picture every 15 minutes, about 3 km (1 km visible by day)">Meteosat-9</button>
+          <button type="button" class="view" [class.active]="sat.source() === 'himawari'" [attr.aria-pressed]="sat.source() === 'himawari'" (click)="sat.setSource('himawari')" title="Himawari-9: a picture every 10 minutes, about 2 km, 40 to 60 minutes behind">Himawari-9</button>
+        </div>
 
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
@@ -49,7 +55,7 @@ function istClock(ms: number): string {
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="sat.opacity()" (input)="onOpacity($event)" aria-label="Satellite opacity" />
         </label>
-        <p class="note">Last hour, every 15 minutes. HRV by day, infrared at night. © EUMETSAT</p>
+        <p class="note">{{ note() }}</p>
       </section>
     }
   `,
@@ -73,6 +79,7 @@ function istClock(ms: number): string {
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
     .views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .sources { margin-top: 8px; }
     .view { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; }
     .view:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
     .view.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
@@ -102,7 +109,13 @@ export class SatellitePanelComponent {
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   protected readonly productLabel = computed(() => {
     const p = this.sat.current()?.product;
-    return p ? (p.id === 'hrv' ? 'daylight, HRV' : 'night, infrared') : 'loading';
+    return p ? (p.id === 'hrv' ? 'daylight, HRV' : p.id === 'vis' ? 'daylight, visible' : 'night, infrared') : 'loading';
+  });
+  protected readonly sourceLabel = computed(() => SATELLITE_SOURCES[this.sat.source()].label);
+  protected readonly note = computed(() => {
+    const info = SATELLITE_SOURCES[this.sat.source()];
+    const detail = this.sat.source() === 'meteosat' ? 'HRV by day' : 'Visible by day';
+    return `Last hour, every ${info.stepMin} minutes. ${detail}, infrared at night. ${info.credit}`;
   });
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();

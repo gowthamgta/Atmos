@@ -17,6 +17,10 @@ import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite
 import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
+import { GibsHdService } from '../../core/satellite/gibs-hd.service';
+import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
+import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
+import { SATELLITE_BOUNDS } from '../../core/satellite/satellite.config';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
 /** [[west, south], [east, north]]: the whole forecast area (South India, Sri Lanka and the seas around them). */
@@ -272,6 +276,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private radarService = inject(RadarService);
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
+  private gibs = inject(GibsHdService);
   private storms = inject(StormTracksService);
   private forecastState = inject(ForecastStateService);
 
@@ -305,6 +310,15 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!this.map || !this.isMapLoaded()) return;
     this.updateSatelliteOverlay(on, frames, position, opacity);
     this.satelliteLayer?.setLook(view);
+  });
+
+  // Reactive Effect: high-detail (250 m) true-colour satellite tiles from NASA GIBS
+  private gibsEffect = effect(() => {
+    const on = this.layerService.layers().some(l => l.id === 'gibs' && l.active);
+    const template = this.gibs.template();
+    const opacity = this.gibs.opacity();
+    if (!this.map || !this.isMapLoaded()) return;
+    this.updateGibsLayer(on, template, opacity);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)
@@ -366,6 +380,7 @@ export class MapComponent implements OnInit, OnDestroy {
     this.removeRadarLayer();
 
     this.removeSatelliteLayers();
+    this.removeGibsLayer();
     this.forecastMap.detach();
     this.map?.remove();
     this.map = null;
@@ -380,6 +395,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
     const pixelRatio = maxPixelRatio(isMobile, dpr);
 
+    registerGibsProtocol();
     const map = new maplibregl.Map({
       container: 'map-container',
       pixelRatio,
@@ -568,6 +584,40 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url })));
     }
     this.satelliteLayer.setPosition(position, opacity);
+  }
+
+  // --- High-detail satellite: raster tiles of the day's true-colour picture (the protocol clears the no-data black) ---
+
+  private gibsTemplate = '';
+
+  private removeGibsLayer(): void {
+    if (!this.map) return;
+    if (this.map.getLayer('gibs-hd')) this.map.removeLayer('gibs-hd');
+    if (this.map.getSource('gibs-hd')) this.map.removeSource('gibs-hd');
+    this.gibsTemplate = '';
+  }
+
+  private updateGibsLayer(on: boolean, template: string, opacity: number): void {
+    if (!this.map) return;
+    if (!on) {
+      this.removeGibsLayer();
+      return;
+    }
+    if (template !== this.gibsTemplate || !this.map.getLayer('gibs-hd')) {
+      this.removeGibsLayer();
+      const b = SATELLITE_BOUNDS;
+      this.map.addSource('gibs-hd', {
+        type: 'raster',
+        tiles: [template],
+        tileSize: GIBS_TILE_SIZE,
+        maxzoom: GIBS_MAX_ZOOM,
+        bounds: [b.west, b.south, b.east, b.north],
+        attribution: 'NASA GIBS / EOSDIS',
+      });
+      this.map.addLayer({ id: 'gibs-hd', type: 'raster', source: 'gibs-hd', paint: { 'raster-opacity': opacity, 'raster-fade-duration': 200 } }, this.observationAnchorId());
+      this.gibsTemplate = template;
+    }
+    this.map.setPaintProperty('gibs-hd', 'raster-opacity', opacity);
   }
 
   // --- Storm cells and cones ---
