@@ -96,6 +96,9 @@ function ladderKm(level: Level): string {
               <button type="button" class="layer" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
                 <span class="l-icon" aria-hidden="true">≋</span><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
               </button>
+              <button type="button" class="layer" [class.active]="state.districtLines()" [attr.aria-pressed]="state.districtLines()" (click)="state.toggleDistrictLines()" title="Show or hide the district boundaries (state and country outlines stay)">
+                <span class="l-icon" aria-hidden="true">▦</span><span class="l-name">District boundaries</span>
+              </button>
               <button type="button" class="layer" [class.active]="state.relief()" [attr.aria-pressed]="state.relief()" (click)="state.toggleRelief()" title="Shade the 1 km terrain into the colour layer">
                 <span class="l-icon" aria-hidden="true">⛰</span><span class="l-name">Terrain relief</span>
               </button>

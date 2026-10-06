@@ -47,6 +47,8 @@ export class ForecastStateService {
   readonly windParticles = signal(false);
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
   readonly isobars = signal(false);
+  /** The thin district lines on the map (the state and country outlines always stay). */
+  readonly districtLines = signal(true);
   /** 1 km hill shading blended into the forecast colours (on by default on desktop, off on phones to keep the map smooth). */
   readonly relief = signal(!isPhone());
   /**
@@ -146,6 +148,10 @@ export class ForecastStateService {
 
   toggleDetail(): void {
     this.detail.update(on => !on);
+  }
+
+  toggleDistrictLines(): void {
+    this.districtLines.update(on => !on);
   }
 
   /** Turn the 1 km relief shading of the colour layers on or off. */

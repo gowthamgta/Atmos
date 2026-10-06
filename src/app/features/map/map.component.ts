@@ -33,6 +33,7 @@ const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
 import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
+import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 
 @Component({
   selector: 'app-map',
@@ -272,6 +273,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
   private storms = inject(StormTracksService);
+  private forecastState = inject(ForecastStateService);
 
   readonly hoverInfo = this.radarService.hoverInfo;
   private map: MapLibreMap | null = null;
@@ -311,6 +313,20 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!this.map || !this.isMapLoaded()) return;
     this.syncBasemap(basemap);
   });
+
+  // Show or hide the district lines (the state and country outlines stay either way)
+  private districtLinesEffect = effect(() => {
+    const visible = this.forecastState.districtLines();
+    if (!this.map || !this.isMapLoaded()) return;
+    this.setDistrictLinesVisible(visible);
+  });
+
+  private setDistrictLinesVisible(visible: boolean): void {
+    if (!this.map) return;
+    for (const id of [BOUNDARY_FIRST_LAYER_ID, 'district-lines']) {
+      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+    }
+  }
 
   // Reactive Effect: Radar Opacity Slider
   private radarOpacityEffect = effect(() => {
@@ -644,6 +660,7 @@ export class MapComponent implements OnInit, OnDestroy {
     // A thin copy of the country and state outlines above the radar and satellite pictures, so the borders (Sri Lanka's
     // included) stay visible whatever imagery is on. The imagery is inserted just below this layer.
     line(BORDER_TOP_LAYER_ID, isState, 'rgba(255, 255, 255, 0.85)', widths(0.9, 1.6));
+    this.setDistrictLinesVisible(this.forecastState.districtLines()); // the effect may have run before the layers existed
   }
 
   // --- 2. Concentric Radar Range Rings & Station Pins ---
