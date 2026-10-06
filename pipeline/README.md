@@ -56,13 +56,24 @@ hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can dif
 `ens.py` reads ECMWF's own ensemble (50 members, open data, CC BY 4.0) and publishes the share of members whose rain over the
 next 24 h reaches 64.5, 115.6 and 204.5 mm (IMD's heavy, very heavy and extremely heavy classes), for starts every 6 h to +72 h.
 `attach.py` copies these onto every model's own timeline (linear in time between starts), so the layer works with any model.
-Open-Meteo's ensemble datasets only have an "any rain" probability, which is why ECMWF's files are used.
+Open-Meteo's ensemble datasets only have an "any rain" probability, which is why ECMWF's files are used. ECMWF's global grids
+start at 180 E (not 0), which `ens.read_members` handles; a test builds a GRIB in that layout. The chances are on the ensemble's
+own 0.25 degree grid (about 25 km), resampled to 0.1 degree.
 
 ## All models in one (`blend`)
 `blend.py` writes one more model: the weighted mean of every model's published fields, lined up by valid time (a time between
 two steps is interpolated only when both exist; wind is averaged as u and v). Weights in `blend.WEIGHTS` (IFS 3, GFS 2, UKMO 2,
 AIFS 1.5, ICON 1.5, GDPS 1, GRAPES 1); a model that ends early drops out. Its run id is the assembly time, so a changed input
-always gets new URLs. The workflow order is: models, `ens.py`, `mirror.py` (unchanged models, ens, blend), `blend.py`, `attach.py`.
+always gets new URLs.
+
+A plain average is blurrier than every one of its members (measured on a real run: mean gradient of temperature 0.19 against
+0.29 for IFS; rain 0.018 against 0.029), because it carries the resolution of its coarsest models. So the blend (a) uses
+probability matching for rain and the 24 h total (the position comes from the mean, the intensities are the weighted mean of
+the models' own sorted values, so peaks and wet area stay realistic), (b) adds back the fine structure of the best-resolved model
+(`blend.RESOLUTION_ORDER`: that model minus a ~28 km smoothed copy of itself, at gain 0.5), and (c) is clipped to the range of
+the models at each cell. Result on the same run: 88-99% of IFS's sharpness, the same domain-mean rain, a rain peak of 5.8 mm/h
+against 3.1 for the plain mean. `blend.VERSION` and `ens.VERSION` are bumped when a method changes, which makes a run that is
+already live under the old method rebuild. The workflow order is: models, `ens.py`, `mirror.py` (unchanged models, ens, blend), `blend.py`, `attach.py`.
 
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding

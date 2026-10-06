@@ -108,3 +108,107 @@ def test_the_ensemble_product_is_not_a_model_to_blend(tmp_path):
     _write_model(site, "ecmwf_ifs", T0, [0, 3], {"t2m": lambda h: 20})
     _write_model(site, "ens", T0, [0, 3], {"t2m": lambda h: 99})          # same layout as a model, but it is not one
     assert sorted(c.model for c in blend.components_of(site)) == ["ecmwf_ifs", "gfs"]
+
+
+def _spike(value, row, col):
+    f = np.zeros((C.NY, C.NX), np.float32)
+    f[row, col] = value
+    return f
+
+
+def test_gaussian_blur_keeps_constants_ignores_missing_cells_and_spreads_a_spike():
+    flat = _field(7.0)
+    assert np.allclose(blend.gaussian_blur(flat, 2.5), 7.0, atol=1e-4)               # no darkening at the edges of the domain
+    holey = _field(7.0)
+    holey[10:14, 10:14] = np.nan
+    out = blend.gaussian_blur(holey, 2.5)
+    assert np.isnan(out[11, 11]) and np.allclose(out[np.isfinite(out)], 7.0, atol=1e-3)   # NaN stays NaN and does not leak into neighbours
+    blurred = blend.gaussian_blur(_spike(100, 50, 50), 2.5)
+    assert blurred[50, 50] < 100 and blurred[50, 53] > 0 and abs(float(blurred.sum()) - 100) < 0.5   # spread out, nothing lost
+
+
+def _block(value, row, col, size=20):
+    f = np.zeros((C.NY, C.NX), np.float32)
+    f[row:row + size, col:col + size] = value
+    return f
+
+
+def test_probability_matching_keeps_realistic_intensity_when_models_place_the_rain_differently():
+    # two models each have a 10 mm area, in different places: a plain mean shows two weak 5 mm areas covering twice the ground
+    a, b = _block(10, 40, 40), _block(10, 100, 150)
+    mean = blend.weighted_mean([(1.0, a), (1.0, b)])
+    assert float(mean.max()) == 5.0 and int((mean > 0).sum()) == 800
+    matched = blend.probability_matched(mean, [(1.0, a), (1.0, b)])
+    assert float(matched.max()) == 10.0                                              # the models' own intensity
+    assert int((matched > 0.01).sum()) == 400                                        # and the wet area of one model, not two
+    assert int((matched[matched > 0] == 10.0).sum()) == 400
+
+
+def test_probability_matching_weights_the_models_and_leaves_missing_cells_missing():
+    wet, dry = _field(4.0), _field(0.0)
+    pattern = blend.weighted_mean([(3.0, wet), (1.0, dry)])
+    assert np.allclose(blend.probability_matched(pattern, [(3.0, wet), (1.0, dry)]), 3.0)    # weighted mean of the two intensities
+    partial = pattern.copy()
+    partial[:5] = np.nan
+    assert np.isnan(blend.probability_matched(partial, [(1.0, wet)])[:5]).all()
+
+
+def test_sharpen_adds_the_fine_structure_of_the_reference_but_not_to_a_smooth_field():
+    smooth = _field(20.0)
+    assert np.allclose(blend.sharpen(smooth, smooth), 20.0, atol=1e-4)               # nothing to add
+    fine = _field(20.0)
+    fine[60:63, 60:63] = 26.0                                                        # a small feature only the fine model has
+    consensus = _field(20.0)
+    out = blend.sharpen(consensus, fine)
+    assert out[61, 61] > 22.0 and out[10, 10] == 20.0 or abs(out[10, 10] - 20.0) < 0.05
+    assert blend.sharpen(consensus, None) is consensus                               # no fine model: unchanged
+
+
+def _write_precip_model(site, model, field):
+    run_id = f"{T0:%Y%m%dT%H}Z"
+    root = os.path.join(site, model, run_id)
+    v = C.VARS["precip"]
+    os.makedirs(os.path.join(root, "precip"), exist_ok=True)
+    open(os.path.join(root, "precip", "003.png"), "wb").write(encode_field(field, v.lo, v.hi, v.bits))
+    json.dump({"model": model, "run": run_id, "vars": {"precip": {"unit": "mm", "min": v.lo, "max": v.hi, "encoding": "rg16"}},
+               "steps": [{"h": 3, "valid": f"{T0 + timedelta(hours=3):%Y-%m-%dT%H:%M:%SZ}"}]}, open(os.path.join(root, "manifest.json"), "w"))
+    json.dump({"model": model, "run": run_id}, open(os.path.join(site, model, "latest.json"), "w"))
+
+
+def test_blend_step_keeps_rain_intense_when_models_disagree_on_where_it_falls(tmp_path):
+    site = str(tmp_path)
+    _write_precip_model(site, "ecmwf_ifs", _block(12, 40, 40))
+    _write_precip_model(site, "ukmo", _block(12, 100, 150))
+    comps = blend.components_of(site)
+    valid = T0 + timedelta(hours=3)
+    plain = blend.weighted_mean([(c.weight, blend.field_at_valid(c, "precip", valid)) for c in comps])
+    out = blend.blend_step(comps, ["precip"], valid)["precip"]
+    assert float(plain.max()) < 8.0                                                   # plain mean: about 12 x 3/5.5 = 6.5 mm/h, over twice the area
+    assert float(out.max()) > 10.0                                                    # blend: close to the models' own intensity
+    assert int((out > 1.0).sum()) < int((plain > 1.0).sum())                          # and not spread over the sum of the two areas
+    assert np.isfinite(out).all() and float(out.min()) >= 0.0                         # never negative
+
+
+def test_blend_step_with_one_model_is_that_model_unchanged(tmp_path):
+    site = str(tmp_path)
+    _write_precip_model(site, "ecmwf_ifs", _block(5, 60, 60))
+    out = blend.blend_step(blend.components_of(site), ["precip"], T0 + timedelta(hours=3))["precip"]
+    assert abs(float(out.max()) - 5.0) < 0.01 and int((out > 0.5).sum()) == 400
+
+
+def test_the_blend_never_leaves_the_range_of_the_models(tmp_path):
+    site = str(tmp_path)
+    v = C.VARS["t2m"]
+    fine = _field(25.0)
+    fine[60:63, 60:63] = 40.0                       # a hot pixel group only the fine model has: the detail step must not push past it
+    for model, field in (("ecmwf_ifs", fine), ("gfs", _field(25.0)), ("ecmwf_aifs", _field(24.0))):
+        run_id = f"{T0:%Y%m%dT%H}Z"
+        root = os.path.join(site, model, run_id)
+        os.makedirs(os.path.join(root, "t2m"), exist_ok=True)
+        open(os.path.join(root, "t2m", "003.png"), "wb").write(encode_field(field, v.lo, v.hi, v.bits))
+        json.dump({"model": model, "run": run_id, "vars": {"t2m": {"unit": "C", "min": v.lo, "max": v.hi, "encoding": "rg16"}},
+                   "steps": [{"h": 3, "valid": f"{T0 + timedelta(hours=3):%Y-%m-%dT%H:%M:%SZ}"}]}, open(os.path.join(root, "manifest.json"), "w"))
+        json.dump({"model": model, "run": run_id}, open(os.path.join(site, model, "latest.json"), "w"))
+    out = blend.blend_step(blend.components_of(site), ["t2m"], T0 + timedelta(hours=3))["t2m"]
+    assert float(out.max()) <= 40.01 and float(out.min()) >= 23.99                       # inside [lowest model, highest model]
+    assert float(out[61, 61]) > float(out[10, 10]) + 3                                   # but the fine feature is kept

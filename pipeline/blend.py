@@ -15,7 +15,7 @@ in the same format, so the app treats it like any other.
   python blend.py --site site              # writes site/blend (reads every model folder in site)
 """
 from __future__ import annotations
-import argparse, json, os, shutil, sys
+import argparse, json, os, shutil, sys, warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -28,11 +28,24 @@ from encode import decode_field, encode_field
 BLEND_ID = "blend"
 LABEL = "All models (blend)"
 STEP_HOURS = 3
+VERSION = 2        # bump when the method changes: v2 added probability-matched rain and high-resolution detail
 # Relative weights. IFS is the best global model for this region; AIFS, ICON and the UKMO model are close behind.
 WEIGHTS: dict[str, float] = {
     "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5, "gdps": 1.0, "cma_grapes": 1.0,
 }
 NOT_BLENDED = {"px2", "px16", "px65", "px115"}     # added to every model by attach.py
+
+# --- keeping the blend sharp --------------------------------------------------------------------------------------
+# A plain average of models smears everything to the resolution of its coarsest members (AIFS 28 km, GRAPES and GDPS
+# 15 km): rain cells get diluted into wide weak patches and ridges, coasts and fronts blur. Two fixes:
+#  1. Rain (and the 24 h total) uses probability matching: the *position* of the rain comes from the weighted mean, but
+#     the *intensities* are the weighted mean of the models' own sorted values, so peaks stay realistic.
+#  2. Fine detail comes back from the highest-resolution model that has the variable: its field minus a smoothed copy
+#     of itself (the structure the coarse models cannot know) is added to the consensus.
+RESOLUTION_ORDER = ["ecmwf_ifs", "ukmo", "dwd_icon", "gfs", "gdps", "cma_grapes", "ecmwf_aifs"]   # finest first (native grid 9 to 28 km)
+PROBABILITY_MATCHED = {"precip", "rain24"}
+DETAIL_SIGMA_PX = 2.5     # about 28 km at 0.1 degrees: below this scale only the high-resolution models have real information
+DETAIL_GAIN = 0.5    # measured on real runs: lands the blend at about the sharpness of the best model, not beyond it
 NOT_MODELS = {BLEND_ID, "ens"}                # folders in the site that are products, not forecast models
 
 
@@ -105,6 +118,64 @@ def weighted_mean(parts: list[tuple[float, np.ndarray]]) -> np.ndarray:
     return out.astype(np.float32)
 
 
+def gaussian_blur(field: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian blur that ignores NaN cells (they stay NaN) and does not darken the edges of the domain."""
+    radius = max(1, int(np.ceil(3 * sigma)))
+    k = np.exp(-0.5 * (np.arange(-radius, radius + 1) / sigma) ** 2)
+    k /= k.sum()
+    valid = np.isfinite(field)
+    values = np.where(valid, field, 0.0).astype(np.float64)
+    weights = valid.astype(np.float64)
+
+    def smooth(a: np.ndarray) -> np.ndarray:
+        for axis in (0, 1):
+            pad = [(0, 0), (0, 0)]
+            pad[axis] = (radius, radius)
+            padded = np.pad(a, pad, mode="edge")
+            a = sum(k[i] * np.take(padded, np.arange(i, i + a.shape[axis]), axis=axis) for i in range(len(k)))
+        return a
+
+    num, den = smooth(values), smooth(weights)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = np.where(valid & (den > 1e-9), num / den, np.nan)
+    return out.astype(np.float32)
+
+
+def probability_matched(pattern: np.ndarray, parts: list[tuple[float, np.ndarray]]) -> np.ndarray:
+    """Give `pattern` (the weighted-mean field) the intensity distribution of the models: the wettest cell of the pattern
+    gets the weighted mean of the models' wettest values, and so on down the ranking. Where the pattern is NaN it stays NaN."""
+    cells = np.isfinite(pattern)
+    n = int(cells.sum())
+    if n == 0:
+        return pattern
+    q = np.linspace(0.0, 1.0, n)
+    target = np.zeros(n, np.float64)
+    total = 0.0
+    for w, field in parts:
+        v = np.sort(field[np.isfinite(field)])
+        if v.size == 0:
+            continue
+        target += w * np.interp(q * (v.size - 1), np.arange(v.size), v)
+        total += w
+    if total == 0:
+        return pattern
+    target /= total
+    out = np.full(pattern.shape, np.nan, np.float32)
+    ranked = np.argsort(pattern[cells], kind="stable")
+    matched = np.empty(n, np.float32)
+    matched[ranked] = target
+    out[cells] = matched
+    return out
+
+
+def sharpen(consensus: np.ndarray, reference: np.ndarray | None, gain: float = DETAIL_GAIN, sigma: float = DETAIL_SIGMA_PX) -> np.ndarray:
+    """The consensus plus the fine structure of the best-resolved model (that model minus a smoothed copy of itself)."""
+    if reference is None or gain == 0:
+        return consensus
+    detail = reference - gaussian_blur(reference, sigma)
+    return np.where(np.isfinite(detail), consensus + gain * detail, consensus).astype(np.float32)
+
+
 def blend_axis(components: list[Component], step_hours: int = STEP_HOURS) -> tuple[datetime, list[datetime]]:
     """Reference time (the newest model run) and the valid times to publish: every `step_hours` from it to the last any model has."""
     ref = max(c.run for c in components)
@@ -116,12 +187,30 @@ def blend_axis(components: list[Component], step_hours: int = STEP_HOURS) -> tup
 def blend_step(components: list[Component], variables: list[str], valid: datetime) -> dict[str, np.ndarray]:
     out: dict[str, np.ndarray] = {}
     for var in variables:
-        parts = []
+        parts: list[tuple[float, np.ndarray]] = []
+        by_model: dict[str, np.ndarray] = {}
         for c in components:
             field = field_at_valid(c, var, valid)
             if field is not None:
                 parts.append((c.weight, field))
-        out[var] = weighted_mean(parts) if parts else np.full((C.NY, C.NX), np.nan, np.float32)
+                by_model[c.model] = field
+        if not parts:
+            out[var] = np.full((C.NY, C.NX), np.nan, np.float32)
+            continue
+        mean = weighted_mean(parts)
+        if len(parts) < 2:
+            out[var] = mean            # one model: nothing to blend, and it is already at its own resolution
+            continue
+        reference = next((by_model[m] for m in RESOLUTION_ORDER if m in by_model), None)
+        pattern = sharpen(mean, reference)
+        # the blend never leaves the range of the models themselves (fine detail must not overshoot at coasts or ridges)
+        stack = np.stack([f for _, f in parts])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)          # cells where every model is missing
+            pattern = np.clip(pattern, np.nanmin(stack, axis=0), np.nanmax(stack, axis=0))
+        if var in PROBABILITY_MATCHED:
+            pattern = probability_matched(np.maximum(pattern, 0.0), parts)
+        out[var] = pattern
     return out
 
 
@@ -186,7 +275,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     for old in os.listdir(os.path.join(site, BLEND_ID)):   # only the newest assembly is kept (a mirrored older one, say)
         if old != run_id and os.path.isdir(os.path.join(site, BLEND_ID, old)):
             shutil.rmtree(os.path.join(site, BLEND_ID, old), ignore_errors=True)
-    write(os.path.join(site, BLEND_ID, "latest.json"), json.dumps({"model": BLEND_ID, "run": run_id, "components": runs}).encode())
+    write(os.path.join(site, BLEND_ID, "latest.json"), json.dumps({"model": BLEND_ID, "run": run_id, "components": runs, "version": VERSION}).encode())
     return run_id
 
 
@@ -203,7 +292,7 @@ def main() -> int:
         try:
             import requests
             live = requests.get(args.live_url, timeout=30).json()
-            if live.get("components") == {c.model: c.run_id for c in comps}:
+            if live.get("components") == {c.model: c.run_id for c in comps} and live.get("version") == VERSION:
                 print("blend: inputs unchanged since the live blend; nothing to do")
                 return 0
         except Exception:

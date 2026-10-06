@@ -33,6 +33,9 @@ STEP_HOURS = sorted({s for s in START_HOURS} | {s + WINDOW_HOURS for s in START_
 # IMD's daily rain classes (mm in 24 h) and the variables they publish: rain (2.5 mm, below that IMD counts it as a trace),
 # moderate, heavy and very heavy
 THRESHOLDS_MM: dict[str, float] = {"px2": 2.5, "px16": 15.6, "px65": 64.5, "px115": 115.6}
+# Bump when the method changes, so a run that is already live under the old method is rebuilt (v2: fixed the longitude
+# of ECMWF's 180-east-first grids, which had produced fields that only varied by latitude)
+VERSION = 2
 MIN_MEMBERS = 40                                    # a read with fewer members than this is treated as a failed download
 
 LATS = C.LAT_MAX - C.STEP_DEG * np.arange(C.NY)
@@ -79,7 +82,7 @@ def read_members(path: str) -> np.ndarray:
                 if north_first:                    # regrid_regular wants rows going south to north
                     grid = grid[::-1]
                     lat0 = lat0 - dlat * (nj - 1)
-                if lon0 > 180:
+                if lon0 >= 180:      # ECMWF's global grids start at 180 E and run east through 0: that is -180 on a -180..180 axis
                     lon0 -= 360.0
                 r0, r1 = window_indices(lat0, dlat, nj, C.LAT_MIN, C.LAT_MAX)
                 c0, c1 = window_indices(lon0, dlon, ni, C.LON_MIN, C.LON_MAX)
@@ -134,10 +137,12 @@ def write(path: str, data: bytes) -> None:
 
 
 def live_run(url: str) -> str | None:
+    """Run id live at `url` (a latest.json), or None if it is unreachable or was built by an older version of the method."""
     import requests
     try:
         r = requests.get(url, timeout=30)
-        return r.json()["run"] if r.ok else None
+        j = r.json() if r.ok else {}
+        return j["run"] if j.get("version") == VERSION else None
     except Exception:
         return None
 
@@ -179,7 +184,7 @@ def main() -> int:
         shutil.rmtree(run_dir, ignore_errors=True)
         raise
     write(os.path.join(run_dir, "manifest.json"), json.dumps(build_manifest(run, done)).encode())
-    write(os.path.join(args.out, PRODUCT_ID, "latest.json"), json.dumps({"model": PRODUCT_ID, "run": run_id}).encode())
+    write(os.path.join(args.out, PRODUCT_ID, "latest.json"), json.dumps({"model": PRODUCT_ID, "run": run_id, "version": VERSION}).encode())
     write(os.path.join(args.out, ".nojekyll"), b"")
     print("done")
     return 0
