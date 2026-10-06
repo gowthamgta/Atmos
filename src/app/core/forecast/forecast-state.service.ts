@@ -172,7 +172,7 @@ export class ForecastStateService {
     this.mapLayers.selectSingleLayer('radar');
   }
 
-  /** The live satellite picture (Meteosat or Himawari) is another observed layer; like the radar it replaces any forecast layer. */
+  /** The Meteosat satellite picture is another observed layer; like the radar it replaces any forecast layer. */
   selectSatellite(): void {
     this.activeLayerId.set(null);
     this.windParticles.set(false);

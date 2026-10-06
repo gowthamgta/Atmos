@@ -1,10 +1,6 @@
 /**
- * Two live satellites over the region, both from public map services that need no key or login and allow cross-origin requests:
- *  - Meteosat-9 (EUMETSAT's Indian Ocean Data Coverage service, 45.5 E) from EUMETView: a new image every 15 minutes.
- *  - Himawari-9 (JMA, 140.7 E) from NASA GIBS: a new image every 10 minutes, about 40 to 60 minutes behind real time. India is
- *    near the edge of its view, so its pictures are coarser (about 2 km) than Meteosat-9's here, but they come more often.
- *
- * The Meteosat overlay
+ * Meteosat-9 imagery (EUMETSAT's Indian Ocean Data Coverage service, 45.5 E) from EUMETView, EUMETSAT's public map
+ * service. It needs no key or login, allows cross-origin requests, and has a new image every 15 minutes.
  *
  * The overlay shows the European HRV RGB (high-resolution visible) by day and the infrared channel by night,
  * when the visible picture goes dark.
@@ -29,50 +25,30 @@ export const SATELLITE_BOUNDS = { west: 68, east: 90, south: 4, north: 22 } as c
  */
 export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
+/**
+ * EUMETSAT's "enhanced natural colour" picture: true colour (green land, blue sea, white cloud), but built from 3 km channels,
+ * so it is soft. By day it is sharpened with the 1 km detail of the HRV picture (see `panSharpen`).
+ */
+export const SATELLITE_NATURAL_LAYER = 'rgb_naturalenhncd';
+
 export const SATELLITE_STEP_MIN = 15;
 /** Fallback only: how old a frame must be to be safe when the service's own newest time is not known. */
 export const SATELLITE_LAG_MIN = 25;
 /** Frames in the loop: 5 x 15 min = the last hour (the first frame is exactly 60 minutes before the newest). */
 export const SATELLITE_FRAME_COUNT = 5;
 
-/** The pictures shown: Meteosat's HRV by day, Himawari's red visible (`vis`) by day, infrared (`ir`) at night. */
-export type SatelliteChannel = 'hrv' | 'vis' | 'ir';
-
-export type SatelliteSource = 'meteosat' | 'himawari';
+/** The two pictures shown: HRV by day, infrared at night. */
+export type SatelliteChannel = 'hrv' | 'ir';
 
 export interface SatelliteProduct {
   id: SatelliteChannel;
   label: string;
-  /** Layer name on the service (EUMETView workspace msg_iodc, or a NASA GIBS layer). */
+  /** Layer name on EUMETView (workspace msg_iodc). */
   layer: string;
-  source: SatelliteSource;
 }
 
-export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview', source: 'meteosat' };
-export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108', source: 'meteosat' };
-export const HIMAWARI_VIS: SatelliteProduct = { id: 'vis', label: 'Red visible', layer: 'Himawari_AHI_Band3_Red_Visible_1km', source: 'himawari' };
-export const HIMAWARI_IR: SatelliteProduct = { id: 'ir', label: 'Clean infrared', layer: 'Himawari_AHI_Band13_Clean_Infrared', source: 'himawari' };
-
-export interface SatelliteSourceInfo {
-  id: SatelliteSource;
-  label: string;
-  /** Minutes between pictures, and how many make the loop (the last hour). */
-  stepMin: number;
-  frameCount: number;
-  credit: string;
-}
-
-export const SATELLITE_SOURCES: Record<SatelliteSource, SatelliteSourceInfo> = {
-  meteosat: { id: 'meteosat', label: 'Meteosat-9', stepMin: SATELLITE_STEP_MIN, frameCount: SATELLITE_FRAME_COUNT, credit: '© EUMETSAT' },
-  himawari: { id: 'himawari', label: 'Himawari-9', stepMin: 10, frameCount: 7, credit: 'JMA Himawari-9 via NASA GIBS' },
-};
-
-export const GIBS_WMS = 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi';
-/** Himawari pictures are about 2 km per pixel over India, so there is no use asking for more than about 1.5 km. */
-export const HIMAWARI_SIZE = isPhone() ? { width: 1100, height: 900 } : { width: 1650, height: 1350 };
-/** Most steps back the newest available Himawari picture is looked for (GIBS is 40 to 60 minutes behind). */
-export const HIMAWARI_PROBE_STEPS = 12;
-export const HIMAWARI_PROBE_START_LAG_MIN = 20;
+export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview' };
+export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108' };
 
 /**
  * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
@@ -107,10 +83,8 @@ export function sunElevationDeg(timeMs: number, latDeg: number, lonDeg: number):
 }
 
 /** The picture for a frame: HRV while the sun is up over South India, infrared otherwise. */
-export function productForTime(timeMs: number, source: SatelliteSource = 'meteosat'): SatelliteProduct {
-  const day = sunElevationDeg(timeMs, CENTRE.lat, CENTRE.lon) >= DAYLIGHT_MIN_ELEVATION_DEG;
-  if (source === 'himawari') return day ? HIMAWARI_VIS : HIMAWARI_IR;
-  return day ? SATELLITE_HRV : SATELLITE_IR;
+export function productForTime(timeMs: number): SatelliteProduct {
+  return sunElevationDeg(timeMs, CENTRE.lat, CENTRE.lon) >= DAYLIGHT_MIN_ELEVATION_DEG ? SATELLITE_HRV : SATELLITE_IR;
 }
 
 /** Capabilities document of a layer: tiny, and it lists the newest time the service really has. */
@@ -147,14 +121,13 @@ export function frameTimes(latestMs: number, count = SATELLITE_FRAME_COUNT, step
 }
 
 /** GetMap URL for one frame. JPEG keeps a frame to 20-400 KB; transparency is done afterwards, in the browser. */
-export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number): string {
-  if (product.source === 'himawari') return himawariUrl(product, timeMs, 'image/jpeg', HIMAWARI_SIZE.width, HIMAWARI_SIZE.height, false);
+export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, layer: string = product.layer): string {
   const b = SATELLITE_BOUNDS;
   const params = new URLSearchParams({
     service: 'WMS',
     version: '1.3.0',
     request: 'GetMap',
-    layers: `msg_iodc:${product.layer}`,
+    layers: `msg_iodc:${layer}`,
     styles: '',
     crs: 'EPSG:4326',
     // WMS 1.3.0 with EPSG:4326 orders the box as south, west, north, east
@@ -165,39 +138,4 @@ export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number): st
     time: new Date(timeMs).toISOString().replace('.000Z', 'Z'),
   });
   return `${EUMETVIEW_WMS}?${params.toString()}`;
-}
-
-/** GIBS GetMap URL of a Himawari picture of the region. */
-export function himawariUrl(product: SatelliteProduct, timeMs: number, format: string, width: number, height: number, transparent: boolean): string {
-  const b = SATELLITE_BOUNDS;
-  const params = new URLSearchParams({
-    SERVICE: 'WMS',
-    REQUEST: 'GetMap',
-    VERSION: '1.3.0',
-    LAYERS: product.layer,
-    STYLES: '',
-    CRS: 'EPSG:4326',
-    BBOX: `${b.south},${b.west},${b.north},${b.east}`,
-    WIDTH: String(width),
-    HEIGHT: String(height),
-    FORMAT: format,
-    TIME: new Date(timeMs).toISOString().replace('.000Z', 'Z'),
-  });
-  if (transparent) params.set('TRANSPARENT', 'true');
-  return `${GIBS_WMS}?${params.toString()}`;
-}
-
-/** A tiny transparent-PNG request for a Himawari time: GIBS answers a time it does not have yet with a fully empty picture of a few hundred bytes. */
-export function himawariProbeUrl(product: SatelliteProduct, timeMs: number): string {
-  return himawariUrl(product, timeMs, 'image/png', 44, 36, true);
-}
-
-/** A probe answer this small (bytes) is the empty picture: the time is not available yet. */
-export const HIMAWARI_EMPTY_BYTES = 400;
-
-/** Candidate times for the newest Himawari picture, newest first: on the 10-minute grid, from `HIMAWARI_PROBE_START_LAG_MIN` back. */
-export function himawariCandidates(nowMs: number): number[] {
-  const step = SATELLITE_SOURCES.himawari.stepMin * 60_000;
-  const first = Math.floor((nowMs - HIMAWARI_PROBE_START_LAG_MIN * 60_000) / step) * step;
-  return Array.from({ length: HIMAWARI_PROBE_STEPS }, (_, i) => first - i * step);
 }

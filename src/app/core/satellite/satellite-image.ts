@@ -81,20 +81,6 @@ export function deblockJpeg(px: Uint8ClampedArray, width: number, height: number
  * The typical brightness of land and sea in the blue channel of an HRV picture: its median. Cloud covers well under
  * half of the area, so the median is the background, whatever the sun's height (it is low at dawn and dusk).
  */
-/**
- * Himawari's visible band is a dark grey picture (raw reflectance): lift it with a gamma so land, sea and cloud have
- * the usual contrast (in place; alpha is not touched).
- */
-export function brightenVisible(px: Uint8ClampedArray): void {
-  const lut = new Uint8ClampedArray(256);
-  for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.min(1, Math.pow(v / 255, 0.5) * 1.08));
-  for (let i = 0; i < px.length; i += 4) {
-    px[i] = lut[px[i]];
-    px[i + 1] = lut[px[i + 1]];
-    px[i + 2] = lut[px[i + 2]];
-  }
-}
-
 export function hrvBackground(src: Uint8ClampedArray): number {
   const hist = new Uint32Array(256);
   let n = 0;
@@ -129,7 +115,7 @@ export function shadePixel(
   out: Uint8ClampedArray,
   o: number,
 ): void {
-  if (kind === 'hrv' || kind === 'vis') {
+  if (kind === 'hrv') {
     if (view === 'picture') {
       out[o] = r; out[o + 1] = g; out[o + 2] = b;
       out[o + 3] = Math.round(255 * smoothstep(3, 14, Math.max(r, g, b)));
@@ -159,14 +145,47 @@ export function cloudCover(src: Uint8ClampedArray, width: number, height: number
     const r = src[p];
     const g = src[p + 1];
     const b = src[p + 2];
-    if (kind === 'vis') {
-      out[i] = smoothstep(background + 25, background + 95, b); // grey picture: cloud is simply brighter than land and sea
-    } else if (kind === 'hrv') {
+    if (kind === 'hrv') {
       const ratio = b / Math.max(1, (r + g) / 2); // about 0.4 on yellow land, 0.8 and more in cloud
       out[i] = smoothstep(background + 15, background + 100, b) * smoothstep(0.55, 0.78, ratio);
     } else {
       out[i] = smoothstep(0.2, 0.55, (r + g + b) / 3 / 255);
     }
+  }
+  return out;
+}
+
+/** Pan-sharpening: the blur that hides the 3 km colour blocks, the blur that stands for the 3 km scale, and the lift's limits and strength. */
+export const PAN_COLOUR_SIGMA = 1.6;
+export const PAN_SIGMA = 2.2;
+export const PAN_RATIO_MIN = 0.5;
+export const PAN_RATIO_MAX = 2.2;
+export const PAN_GAIN = 1.35;
+
+/**
+ * Pan-sharpening: the colour picture (3 km pixels, true colour) gets the fine detail of the HRV picture (1 km). The colour
+ * is first smoothed, so its 3 km blocks do not show. The HRV picture's brightness (red and green channels, which both carry
+ * the HRV) is divided by a blurred copy of itself, which is how much brighter or darker each pixel is than its 3 km
+ * surroundings, and the colour is scaled by that (raised to `PAN_GAIN`, which makes cloud texture stand out a little).
+ * Returns a new RGBA picture; both inputs are `width` x `height` and alpha is set opaque.
+ */
+export function panSharpen(colour: Uint8ClampedArray, hrv: Uint8ClampedArray, width: number, height: number, sigma = PAN_SIGMA): Uint8ClampedArray<ArrayBuffer> {
+  const n = width * height;
+  const luma = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) luma[i] = (hrv[p] + hrv[p + 1]) / 2;
+  const low = blurField(luma, width, height, sigma);
+  const channels = [0, 1, 2].map(c => {
+    const plane = new Float32Array(n);
+    for (let i = 0, p = c; i < n; i++, p += 4) plane[i] = colour[p];
+    return blurField(plane, width, height, PAN_COLOUR_SIGMA);
+  });
+  const out = new Uint8ClampedArray(n * 4);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const ratio = Math.pow(Math.min(PAN_RATIO_MAX, Math.max(PAN_RATIO_MIN, (luma[i] + 10) / (low[i] + 10))), PAN_GAIN);
+    out[p] = channels[0][i] * ratio;
+    out[p + 1] = channels[1][i] * ratio;
+    out[p + 2] = channels[2][i] * ratio;
+    out[p + 3] = 255;
   }
   return out;
 }
@@ -275,7 +294,7 @@ export function toOverlayPixels(
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight);
-  const background = kind === 'hrv' || kind === 'vis' ? hrvBackground(src) : 0;
+  const background = kind === 'hrv' ? hrvBackground(src) : 0;
   // Clouds only: shade the clouds at the picture's own resolution first, then re-space the rows (premultiplied, so
   // the soft cloud edges blend without fringes). Other views shade each re-spaced pixel.
   const clouds = view === 'clouds' ? shadeCloudLayer(src, width, srcHeight, kind, background) : null;

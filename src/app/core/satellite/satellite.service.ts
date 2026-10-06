@@ -1,14 +1,10 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import {
-  HIMAWARI_EMPTY_BYTES,
-  SATELLITE_SOURCES,
+  SATELLITE_NATURAL_LAYER,
   SatelliteProduct,
-  SatelliteSource,
   SatelliteView,
   frameTimes,
-  himawariCandidates,
-  himawariProbeUrl,
   latestFrameTime,
   parseNewestTime,
   productForTime,
@@ -31,10 +27,9 @@ const CHECK_MS = 2 * 60_000;
 const LOAD_CONCURRENCY = 3;
 
 /**
- * Loads the last hour of satellite pictures (Meteosat-9 every 15 minutes or Himawari-9 every 10; visible by day,
- * infrared at night, chosen per frame) and plays them as a loop that fades smoothly from one picture to the next. It finds
- * the service's newest picture time, so the loop is as recent as the service allows, and checks again every couple of
- * minutes. Nothing here needs a key.
+ * Loads the last hour of Meteosat-9 pictures (HRV by day, infrared at night, chosen per frame) and plays them as a
+ * loop that fades smoothly from one picture to the next. It asks the service for its newest picture time, so the
+ * loop is as recent as the service allows, and checks again every couple of minutes. Nothing here needs a key.
  */
 @Injectable({ providedIn: 'root' })
 export class SatelliteService {
@@ -49,7 +44,6 @@ export class SatelliteService {
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
   readonly view = signal<SatelliteView>('picture');
-  readonly source = signal<SatelliteSource>('meteosat');
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -64,7 +58,7 @@ export class SatelliteService {
   private nextRequest = 1;
   private readonly pending = new Map<number, (r: SatelliteWorkerResponse) => void>();
   /** The downloaded pictures as served, kept so the view can change without downloading again. */
-  private readonly raws = new Map<number, { product: SatelliteProduct; blob: Blob }>();
+  private readonly raws = new Map<number, { product: SatelliteProduct; blob: Blob; natural?: Blob }>();
   /** Overlay pictures being built or built, by "view|time". */
   private readonly built = new Map<string, Promise<SatelliteFrame | null>>();
   private checkTimer: ReturnType<typeof setInterval> | null = null;
@@ -86,8 +80,7 @@ export class SatelliteService {
   }
 
   /** Newest picture time the service has, or a guess from the clock when it cannot be asked. */
-  private async newestTime(nowMs: number, source: SatelliteSource): Promise<number> {
-    if (source === 'himawari') return this.newestHimawari(nowMs);
+  private async newestTime(nowMs: number): Promise<number> {
     const fallback = latestFrameTime(nowMs);
     try {
       // both layers are updated together, so either one says how recent the data is
@@ -101,36 +94,13 @@ export class SatelliteService {
     }
   }
 
-  /**
-   * GIBS lists its times in a very large document, so the newest Himawari picture is found by asking for a tiny
-   * picture at each candidate time (newest first, all at once): a time it does not have yet comes back empty.
-   */
-  private async newestHimawari(nowMs: number): Promise<number> {
-    const candidates = himawariCandidates(nowMs);
-    const available = await Promise.all(candidates.map(t => this.himawariAvailable(t)));
-    const i = available.findIndex(Boolean);
-    // nothing answered (offline, or the service is down): the usual 50-minute delay
-    return i >= 0 ? candidates[i] : latestFrameTime(nowMs, 50, SATELLITE_SOURCES.himawari.stepMin);
-  }
-
-  private async himawariAvailable(timeMs: number): Promise<boolean> {
-    try {
-      const res = await fetch(himawariProbeUrl(productForTime(timeMs, 'himawari'), timeMs));
-      return res.ok && (await res.arrayBuffer()).byteLength > HIMAWARI_EMPTY_BYTES;
-    } catch {
-      return false;
-    }
-  }
-
   async load(): Promise<void> {
     const token = ++this.loadToken;
-    const source = this.source();
-    const info = SATELLITE_SOURCES[source];
     const nowMs = Date.now();
     this.now.set(nowMs);
-    const newest = await this.newestTime(nowMs, source);
+    const newest = await this.newestTime(nowMs);
     if (token !== this.loadToken) return;
-    const times = frameTimes(newest, info.frameCount, info.stepMin);
+    const times = frameTimes(newest);
 
     const following = this.position() >= this.frames().length - 1; // watching the newest picture, so keep following it
     if (!times.every(t => this.raws.has(t))) this.loading.set(true);
@@ -140,11 +110,13 @@ export class SatelliteService {
     const queue = times.filter(t => !this.raws.has(t)).reverse();
     const worker = async () => {
       for (let t = queue.shift(); t !== undefined; t = queue.shift()) {
-        const product = productForTime(t, source);
+        const product = productForTime(t);
         const blob = await this.download(product, t);
+        // by day the true-colour picture is fetched too, to be sharpened with the HRV one (the frame still works without it)
+        const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
         if (token !== this.loadToken) return;
         if (blob) {
-          this.raws.set(t, { product, blob });
+          this.raws.set(t, { product, blob, natural: natural ?? undefined });
           await this.publish(times, token, following);
         }
       }
@@ -160,11 +132,9 @@ export class SatelliteService {
     this.loading.set(false);
   }
 
-  private async download(product: SatelliteProduct, timeMs: number): Promise<Blob | null> {
+  private async download(product: SatelliteProduct, timeMs: number, layer?: string): Promise<Blob | null> {
     try {
-      // a Himawari time that is not there yet would come back as a black picture: ask first
-      if (product.source === 'himawari' && !(await this.himawariAvailable(timeMs))) return null;
-      const res = await fetch(satelliteFrameUrl(product, timeMs));
+      const res = await fetch(satelliteFrameUrl(product, timeMs, layer));
       if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/')) return null;
       return await res.blob();
     } catch {
@@ -181,7 +151,7 @@ export class SatelliteService {
     let pending = this.built.get(key);
     if (!pending) {
       const raw = this.raws.get(timeMs)!;
-      pending = this.process(raw.blob, raw.product, view).then(url => {
+      pending = this.process(raw.blob, raw.product, view, view === 'picture' ? raw.natural : undefined).then(url => {
         if (!url) this.built.delete(key); // try again on the next refresh
         return url ? { timeMs, product: raw.product, url } : null;
       });
@@ -211,21 +181,6 @@ export class SatelliteService {
     this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));
   }
 
-  /** Switch satellite: the pictures of the other one are dropped and the new one's last hour is loaded. */
-  async setSource(source: SatelliteSource): Promise<void> {
-    if (source === this.source()) return;
-    this.pause();
-    this.loadToken++; // abandon a load in progress
-    this.source.set(source);
-    const old = [...this.built.values()];
-    this.built.clear();
-    this.raws.clear();
-    this.frames.set([]);
-    this.position.set(0);
-    for (const pending of old) void pending.then(f => f && URL.revokeObjectURL(f.url));
-    await this.load();
-  }
-
   /** Switch between cloud-only and the full picture; the pictures are rebuilt from what is already downloaded. */
   async setView(view: SatelliteView): Promise<void> {
     if (view === this.view()) return;
@@ -240,13 +195,13 @@ export class SatelliteService {
   }
 
   /** Overlay picture (object URL) for a downloaded frame, built in a web worker so the map stays smooth. */
-  private process(jpeg: Blob, product: SatelliteProduct, view: SatelliteView): Promise<string | null> {
+  private process(jpeg: Blob, product: SatelliteProduct, view: SatelliteView, natural?: Blob): Promise<string | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     this.worker ??= this.createWorker();
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? URL.createObjectURL(r.png) : null));
-      this.worker!.postMessage({ id, jpeg, kind: product.id, view } satisfies SatelliteWorkerRequest);
+      this.worker!.postMessage({ id, jpeg, kind: product.id, view, natural } satisfies SatelliteWorkerRequest);
     });
   }
 

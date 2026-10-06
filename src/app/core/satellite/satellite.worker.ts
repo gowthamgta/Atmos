@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { brightenVisible, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
+import { deblockJpeg, mercatorHeight, panSharpen, toOverlayPixels } from './satellite-image';
 import { SatelliteChannel, SatelliteView } from './satellite.config';
 
 export interface SatelliteWorkerRequest {
@@ -7,13 +7,15 @@ export interface SatelliteWorkerRequest {
   jpeg: Blob;
   kind: SatelliteChannel;
   view: SatelliteView;
+  /** The true-colour picture to sharpen with the HRV one (daytime Meteosat, full-picture view). */
+  natural?: Blob;
 }
 
 export type SatelliteWorkerResponse = { id: number; png: Blob } | { id: number; error: string };
 
 /** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
 addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) => {
-  const { id, jpeg, kind, view } = event.data;
+  const { id, jpeg, kind, view, natural } = event.data;
   try {
     const bitmap = await createImageBitmap(jpeg);
     const { width, height } = bitmap;
@@ -21,9 +23,17 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     const sctx = scratch.getContext('2d', { willReadFrequently: true })!;
     sctx.drawImage(bitmap, 0, 0);
     bitmap.close();
-    const src = sctx.getImageData(0, 0, width, height).data;
+    let src = sctx.getImageData(0, 0, width, height).data;
     deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
-    if (kind === 'vis') brightenVisible(src);
+    if (natural && kind === 'hrv' && view === 'picture') {
+      const colourBitmap = await createImageBitmap(natural);
+      sctx.clearRect(0, 0, width, height);
+      sctx.drawImage(colourBitmap, 0, 0, width, height);
+      colourBitmap.close();
+      const colour = sctx.getImageData(0, 0, width, height).data;
+      deblockJpeg(colour, width, height);
+      src = panSharpen(colour, src, width, height);
+    }
     const outHeight = mercatorHeight(width);
     const pixels = toOverlayPixels(src, width, height, kind, view, outHeight);
     const out = new OffscreenCanvas(width, outHeight);
