@@ -13,19 +13,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: list xml reachable
-        continue-on-error: true
         run: curl -fsS --max-time 60 -A "Mozilla/5.0" "http://img.nsmc.org.cn/PORTAL/NSMC/XML/FY4B/FY4B_AGRI_IMG_REGI_GRA_GLL_C02.xml" -o c02.xml && grep -q "imagelist" c02.xml
       - name: C02 0.5 km picture reachable
-        continue-on-error: true
+        if: always()
         run: |
           url=$(grep -o 'url="[^"]*"' c02.xml | grep -v thumb | head -1 | sed 's/url="//; s/"$//')
           curl -fsS --max-time 180 -A "Mozilla/5.0" "http:$url" -o c02.jpg
           test $(stat -c %s c02.jpg) -gt 1000000
       - name: true colour picture reachable
-        continue-on-error: true
+        if: always()
         run: |
           curl -fsS --max-time 60 -A "Mozilla/5.0" "http://img.nsmc.org.cn/CLOUDIMAGE/FY4B/AGRI/GCLR/SEC/xml/FY4B-china-72h.xml" -o gclr.xml
           grep -q "imagelist" gclr.xml
       - name: ntsomz ftp reachable
-        continue-on-error: true
+        if: always()
         run: curl -fsS --max-time 60 --list-only "ftp://electro:electro@ntsomz.gptl.ru:2121/" | grep -q ELECTRO_L_2
