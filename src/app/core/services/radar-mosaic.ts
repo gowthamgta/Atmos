@@ -149,23 +149,27 @@ export function composeRadarMosaic(
         const lng = minLng + (x / (outW - 1)) * lngSpan;
         if (lng < s.west || lng > s.east) continue;
 
+        // Normalised coordinates in the station crop, and the four source pixels around this point. Most of the picture
+        // has no rain, so empty ones are skipped before any distance maths.
+        const fx = ((lng - s.west) / (s.east - s.west)) * (s.cropW - 1);
+        const xA = Math.floor(fx);
+        const xB = Math.min(xA + 1, s.cropW - 1);
+        const f00 = f[yA * s.cropW + xA];
+        const f10 = f[yA * s.cropW + xB];
+        const f01 = f[yB * s.cropW + xA];
+        const f11 = f[yB * s.cropW + xB];
+        if (f00 === 0 && f10 === 0 && f01 === 0 && f11 === 0) continue;
+
         // Distance to the station centre (the radar's operational range)
         const dLng = (lng - s.station.lng) * 111.32 * s.cosLat;
-        const distKm = Math.hypot(dLat, dLng);
+        const distKm = Math.sqrt(dLat * dLat + dLng * dLng);
         if (distKm > range) continue;
-
-        // Normalised coordinates in the station crop
-        const u = (lng - s.west) / (s.east - s.west);
-        const fx = u * (s.cropW - 1);
-        const cDist = Math.hypot(fx - cx, fy - cy);
+        const cDist = Math.sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
         if (cDist > cx - 2) continue;
 
         // Bilinear sample from the station field
-        const xA = Math.floor(fx);
-        const xB = Math.min(xA + 1, s.cropW - 1);
         const wx = fx - xA;
-        let val = (f[yA * s.cropW + xA] * (1 - wx) + f[yA * s.cropW + xB] * wx) * (1 - wy) +
-          (f[yB * s.cropW + xA] * (1 - wx) + f[yB * s.cropW + xB] * wx) * wy;
+        let val = (f00 * (1 - wx) + f10 * wx) * (1 - wy) + (f01 * (1 - wx) + f11 * wx) * wy;
 
         // Smooth dish edge feathering so range boundaries never show seams
         const dishEdgeDist = (cx - 2) - cDist;

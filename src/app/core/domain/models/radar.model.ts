@@ -274,10 +274,10 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     animationFile: 'animation/Converted/KKL_MAXZ.gif',
     productRanges: {
       caz: 255,
-      ppi: 158,
+      ppi: 150,
       sri: 158,
       pac: 158,
-      ppz: 158
+      ppz: 500
     },
     crops: {
       caz: { x: 0, y: 201, w: 519, h: 519 },
@@ -300,10 +300,10 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     animationFile: 'animation/Converted/CNI_MAXZ.gif',
     productRanges: {
       caz: 255,
-      ppi: 158,
+      ppi: 150,
       sri: 158,
       pac: 158,
-      ppz: 158
+      ppz: 600
     },
     crops: {
       caz: { x: 0, y: 201, w: 500, h: 499 },
@@ -355,7 +355,7 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       ppi: 158,
       sri: 158,
       pac: 158,
-      ppz: 158
+      ppz: 500
     },
     crops: {
       caz: { x: 100, y: 300, w: 600, h: 600 },
@@ -381,7 +381,7 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       ppi: 240,
       sri: 124,
       pac: 76,
-      ppz: 240
+      ppz: 365
     },
     crops: {
       caz: { x: 43, y: 181, w: 514, h: 514 },
@@ -422,7 +422,7 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       ppi: 250,
       sri: 250,
       pac: 250,
-      ppz: 250
+      ppz: 450
     },
     palettes: {
       caz: MLR_REFLECTIVITY_PALETTE,

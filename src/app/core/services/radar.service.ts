@@ -189,9 +189,13 @@ export class RadarService implements OnDestroy {
   readonly trackGrid = computed<TrackingGrid>(() => {
     const product = this.activeProduct();
     let s = 90, w = 180, n = -90, e = -180;
+    // in merged mode the picture covers the PPZ scans too, which reach further than CAZ
+    const products: readonly RadarProductKey[] = product === 'caz' ? MERGED_PRODUCTS : [product];
     for (const st of this.stations) {
-      const [[bs, bw], [bn, be]] = st.products[product].bounds;
-      s = Math.min(s, bs); w = Math.min(w, bw); n = Math.max(n, bn); e = Math.max(e, be);
+      for (const p of products) {
+        const [[bs, bw], [bn, be]] = st.products[p].bounds;
+        s = Math.min(s, bs); w = Math.min(w, bw); n = Math.max(n, bn); e = Math.max(e, be);
+      }
     }
     return trackingGrid(s, w, n, e);
   });

@@ -47,7 +47,7 @@ describe('Radar Domain & Config', () => {
     const tvm = IMD_RADAR_STATIONS.find(s => s.id === 'thiruvananthapuram')!;
     expect(tvm.products.caz.file).toBe('caz_tvm.gif');
     expect(tvm.products.sri.rangeKm).toBe(124);
-    expect(tvm.products.ppz.rangeKm).toBe(240);
+    expect(tvm.products.ppz.rangeKm).toBe(365);
     expect(tvm.products.caz.palette?.length).toBe(15);
     expect(tvm.products.ppz.file).toBe('ppz_tvm.gif');
 
@@ -70,6 +70,14 @@ describe('Radar Domain & Config', () => {
     expect(cni.products.sri.crop?.w).toBe(600);
     expect(cni.products.pac.crop?.w).toBe(599);
     expect(cni.products.ppz.crop?.w).toBe(800);
+
+    // Ranges read from the IMD pictures themselves ("Range" / "Max Range" / "Display Range" printed on each one). The
+    // picture is placed on the map by this number, so a wrong one stretches every echo away from the radar.
+    expect(IMD_RADAR_STATIONS.find(x => x.id === 'karaikal')!.products.ppz.rangeKm).toBe(500);
+    expect(IMD_RADAR_STATIONS.find(x => x.id === 'chennai')!.products.ppz.rangeKm).toBe(600);
+    expect(IMD_RADAR_STATIONS.find(x => x.id === 'mangaluru')!.products.ppz.rangeKm).toBe(450);
+    expect(IMD_RADAR_STATIONS.find(x => x.id === 'karaikal')!.products.ppi.rangeKm).toBe(150);
+    expect(IMD_RADAR_STATIONS.find(x => x.id === 'chennai')!.products.ppi.rangeKm).toBe(150);
 
     const koc = IMD_RADAR_STATIONS.find(s => s.id === 'kochi')!;
     expect(koc.band).toBe('S-Band');

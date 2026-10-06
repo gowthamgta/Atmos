@@ -50,18 +50,32 @@ describe('composeRadarMosaic', () => {
     expect(valueAt(mosaic, lat, lng)).toBeCloseTo(3.5, 1);
   });
 
-  it('keeps the wider scan where the narrower one does not reach', () => {
+  it('shows each scan out to its own range: PPZ reaches much further than CAZ', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 2.0)],
       ['karaikal:ppz', scan(karaikal, 'ppz', 4.0)],
     ])!;
-    const near = eastOf(karaikal, 60);
-    const far = eastOf(karaikal, 200); // beyond PPZ (158 km), inside CAZ (255 km)
+    const near = eastOf(karaikal, 60); // both see it: the stronger wins
+    const far = eastOf(karaikal, 400); // beyond CAZ (255 km), inside PPZ (500 km)
+    // the square's corner: inside the picture's box but 640 km away, beyond the circle the radar can see
+    const beyond: [number, number] = [karaikal.lat + 450 / 111.32, eastOf(karaikal, 450)[1]];
     expect(valueAt(mosaic, near[0], near[1])).toBeCloseTo(4.0, 1);
-    expect(valueAt(mosaic, far[0], far[1])).toBeCloseTo(2.0, 1);
+    expect(valueAt(mosaic, far[0], far[1])).toBeCloseTo(4.0, 1);
+    expect(valueAt(mosaic, beyond[0], beyond[1])).toBe(0);
   });
 
-  it('lets a strong CAZ show over a weaker PPZ too, and works with CAZ alone', () => {
+  it('keeps CAZ where PPZ is weaker, and CAZ alone covers only its own range', () => {
+    const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 3.0)],
+      ['karaikal:ppz', scan(karaikal, 'ppz', 1.0)],
+    ])!;
+    const mid = eastOf(karaikal, 200);
+    expect(valueAt(mosaic, mid[0], mid[1])).toBeCloseTo(3.0, 1);
+    const far = eastOf(karaikal, 400);
+    expect(valueAt(mosaic, far[0], far[1])).toBeCloseTo(1.0, 1);
+  });
+
+  it('lets a strong CAZ show over a weaker PPZ at close range too, and works with CAZ alone', () => {
     const both = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.2)],
       ['karaikal:ppz', scan(karaikal, 'ppz', 1.5)],
