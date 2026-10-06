@@ -32,7 +32,7 @@ Variables (see `config.py`):
   `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height). These are stored with 12 significant bits (error far below
   anything visible: 0.003 degC, 0.02 m/s), which makes them about 25% smaller.
 A model only publishes what it can supply; the manifest lists exactly those variables and the app greys out the rest.
-A full run is about 1 MB per forecast step per model, around 300 MB for all ten models.
+A full run is about 1 MB per forecast step per model, around 200 MB for all seven models.
 Step 0 is the analysis hour, so gust, precip and CAPE are no-data there.
 Each deploy replaces the previous one, so only the newest run exists. A client that still holds the old
 `latest.json` gets a 404; it should re-fetch `latest.json` and retry.
@@ -50,7 +50,7 @@ repository activity; re-enable under the Actions tab if that happens.
 3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.
 
 ## Models
-Ten models, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.
+Seven models, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.
 Sources are Open-Meteo's public `data_spatial` datasets.
 
 | id | model | grid / range | runs | rain value covers | not provided |
@@ -60,11 +60,8 @@ Sources are Open-Meteo's public `data_spatial` datasets.
 | `gfs` | NOAA GFS (0.117° surface + 0.25° pressure/gusts/CAPE) | +144 h, 3-hourly | 4 a day | 1 h to +120 h, then 3 h | - |
 | `ukmo` | UK Met Office global 10 km | ~10 km, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
 | `dwd_icon` | DWD ICON global | regular grid, +144 h, 3-hourly | 00Z 12Z | 1 h to +78 h, then 3 h | sunshine, visibility, moisture |
-| `arpege` | Météo-France ARPEGE | 0.25°, +102 h, 3-hourly | 4 a day | 1 h to +48 h, then 3 h | visibility, moisture |
 | `gdps` | Environment Canada GDPS (surface + upper-level datasets) | ~15 km, +144 h, 3-hourly | 00Z 12Z | 1 h, then 3 h | low/mid/high cloud, CAPE, visibility, moisture |
 | `cma_grapes` | CMA GRAPES global | ~15 km, +120 h, 6-hourly sampled | 00Z 12Z | 3 h | moisture |
-| `jma_gsm` | JMA GSM | 0.5°, +132 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, sunshine, visibility, moisture, humidity at 200 hPa |
-| `aigfs` | NCEP AI-GFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | humidity, dew point, feels-like, gusts, CAPE, sunshine, visibility, moisture |
 
 How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
 accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);

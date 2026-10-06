@@ -9,13 +9,11 @@ interface Credit {
 /** Credits for every data source, which the open-data providers ask to be shown. */
 const CREDITS: readonly Credit[] = [
   { name: 'ECMWF IFS and AIFS', what: 'ECMWF open data (CC BY 4.0)' },
-  { name: 'NOAA GFS and AI-GFS', what: 'NOAA / NCEP (US public domain)' },
+  { name: 'NOAA GFS', what: 'NOAA / NCEP (US public domain)' },
   { name: 'DWD ICON', what: 'Deutscher Wetterdienst open data' },
   { name: 'UK Met Office', what: 'Contains Met Office data' },
-  { name: 'Météo-France ARPEGE', what: 'Météo-France open data' },
   { name: 'Canada GDPS', what: 'Environment and Climate Change Canada' },
   { name: 'CMA GRAPES', what: 'China Meteorological Administration' },
-  { name: 'JMA GSM', what: 'Japan Meteorological Agency' },
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
   { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView' },

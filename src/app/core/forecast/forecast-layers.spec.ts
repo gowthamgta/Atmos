@@ -135,10 +135,10 @@ describe('altitude', () => {
     expect(layerAvailableAt(temp, 850, full)).toBe(true);
     expect(layerAvailableAt(forecastLayerById('rain')!, 850, full)).toBe(false); // rain has no pressure-level version
     expect(layerAvailableAt(forecastLayerById('rain')!, 'surface', full)).toBe(true);
-    // a model whose humidity stops short of 200 hPa (like JMA) still has the other levels
-    const jma = vars(...SURFACE, ...levelVars(PRESSURE_LEVELS).filter(v => v !== 'rh200'));
-    expect(layerAvailableAt(forecastLayerById('humidity')!, 200, jma)).toBe(false);
-    expect(layerAvailableAt(forecastLayerById('humidity')!, 300, jma)).toBe(true);
+    // a model whose humidity stops short of 200 hPa (a model with a short humidity profile) still has the other levels
+    const shortHumidity = vars(...SURFACE, ...levelVars(PRESSURE_LEVELS).filter(v => v !== 'rh200'));
+    expect(layerAvailableAt(forecastLayerById('humidity')!, 200, shortHumidity)).toBe(false);
+    expect(layerAvailableAt(forecastLayerById('humidity')!, 300, shortHumidity)).toBe(true);
   });
 
   it('keeps the plain availability check for surface variables', () => {

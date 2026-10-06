@@ -16,7 +16,7 @@ describe('forecast model registry', () => {
     expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('ecmwf_ifs');
     expect(forecastModelById('gfs').label).toBe('NOAA GFS');
     expect(FORECAST_MODELS.map(m => m.id).sort()).toEqual(
-      ['aigfs', 'arpege', 'cma_grapes', 'dwd_icon', 'ecmwf_aifs', 'ecmwf_ifs', 'gdps', 'gfs', 'jma_gsm', 'ukmo']
+      ['cma_grapes', 'dwd_icon', 'ecmwf_aifs', 'ecmwf_ifs', 'gdps', 'gfs', 'ukmo']
     );
   });
 

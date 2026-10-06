@@ -52,12 +52,6 @@ UKMO = RegularModel(
     )],
 )
 
-# Meteo-France ARPEGE world 0.25 degrees.
-ARPEGE = RegularModel(
-    model_id="arpege", label="Meteo-France ARPEGE", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 103, 3)),
-    sources=[Source("meteofrance_arpege_world025",
-                    _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CLOUD_LAYERS + ["shortwave_radiation"] + level_uv() + level_scalars()))],
-)
 
 # Environment Canada GDPS ~15 km: surface fields and the pressure levels are separate datasets, winds as speed + direction.
 GDPS = RegularModel(
@@ -69,12 +63,6 @@ GDPS = RegularModel(
     ],
 )
 
-# JMA GSM (about 55 km), 6-hourly. Small files, no gusts or CAPE, and no humidity at 200 hPa.
-JMA = RegularModel(
-    model_id="jma_gsm", label="JMA GSM", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 133, 6)),
-    sources=[Source("jma_gsm", _SAME(SURFACE_CORE + SURFACE_UV + CLOUD_LAYERS + level_uv()
-                                     + level_scalars(skip=("relative_humidity_200hPa",))))],
-)
 
 # China Meteorological Administration GRAPES global (~15 km). Large files, so every other output step and two runs a day.
 GRAPES = RegularModel(
@@ -84,12 +72,5 @@ GRAPES = RegularModel(
                           + level_uv() + level_scalars()))],
 )
 
-# NCEP AI-GFS (AI model, 0.25 degrees), 6-hourly. No surface humidity, gusts or CAPE.
-AIGFS = RegularModel(
-    model_id="aigfs", label="NCEP AI-GFS", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 145, 6)),
-    sources=[Source("ncep_aigfs025",
-                    _SAME(["temperature_2m", "pressure_msl", "precipitation", "cloud_cover"] + SURFACE_UV + CLOUD_LAYERS
-                          + level_uv() + level_scalars()))],
-)
 
-ALL: tuple[RegularModel, ...] = (ICON, UKMO, ARPEGE, GDPS, JMA, GRAPES, AIGFS)
+ALL: tuple[RegularModel, ...] = (ICON, UKMO, GDPS, GRAPES)

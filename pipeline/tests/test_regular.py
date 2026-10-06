@@ -165,9 +165,7 @@ def test_the_three_hand_written_models_provide_all_levels():
 
 def test_regular_models_publish_what_their_datasets_have():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
-    assert "rh200" in by_id["jma_gsm"].UNAVAILABLE_VARS and "rh500" not in by_id["jma_gsm"].UNAVAILABLE_VARS
     assert {"cloud_low", "cloud_mid", "cloud_high"} <= by_id["gdps"].UNAVAILABLE_VARS     # the Canadian surface set has none
-    assert {"rh", "feels", "dew"} <= by_id["aigfs"].UNAVAILABLE_VARS                      # AI-GFS has no surface humidity
     assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv"}                            # UKMO: everything else, winds via speed + direction
     assert "vis" not in by_id["cma_grapes"].UNAVAILABLE_VARS and "solar" not in by_id["cma_grapes"].UNAVAILABLE_VARS
     for m in models_regular.ALL:

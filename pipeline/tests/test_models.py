@@ -141,7 +141,7 @@ def test_manifest_lists_only_variables_the_model_provides():
 
 
 def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
-    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "gfs", "ecmwf_aifs", "dwd_icon", "ukmo", "arpege", "gdps", "jma_gsm", "cma_grapes", "aigfs"])
+    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "gfs", "ecmwf_aifs", "dwd_icon", "ukmo", "gdps", "cma_grapes"])
     for m in pipeline_run.MODELS.values():
         assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)
 
