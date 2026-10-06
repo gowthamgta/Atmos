@@ -67,6 +67,9 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
         "solar": raw.get("shortwave_radiation", missing),
         "cape": raw["cape"],
         "tcwv": raw["total_column_integrated_water_vapour"],
+        "li": raw.get("lifted_index", missing),
+        # sources disagree on the sign (the UK Met Office stores CIN as a negative number): publish the magnitude
+        "cin": np.abs(raw["convective_inhibition"]) if "convective_inhibition" in raw else missing,
     }
     for lvl in LEVELS:
         out[f"u{lvl}"] = raw.get(f"wind_u_component_{lvl}hPa", missing)
@@ -74,6 +77,35 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
         out[f"t{lvl}"] = raw.get(f"temperature_{lvl}hPa", missing)
         out[f"rh{lvl}"] = raw.get(f"relative_humidity_{lvl}hPa", missing)
         out[f"gh{lvl}"] = raw.get(f"geopotential_height_{lvl}hPa", missing)
+    return out
+
+
+def forward_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int], hours: int = 24) -> dict[int, np.ndarray]:
+    """Rain over the next `hours` hours from each forecast step, in mm (NaN where the run does not reach that far).
+
+    `rates[h]` is the published rain rate (mm/h) at step h and `windows[h]` the hours that rate averages over. Between two
+    steps the rain is rate x spacing when the rate covers the whole gap (window >= spacing: exact), otherwise it is
+    estimated from the mean of the rates at both ends of the gap (the model was only sampled, e.g. one hour in three).
+    """
+    steps = sorted(rates)
+    gap_rain: dict[int, np.ndarray] = {}   # mm that fell in the gap ending at this step
+    for prev, h in zip(steps, steps[1:]):
+        spacing = h - prev
+        rate = rates[h]
+        if windows[h] < spacing and prev in rates:
+            before = rates[prev]
+            rate = np.where(np.isfinite(before), 0.5 * (before + rate), rate)  # step 0 has no rain field: use the later rate
+        gap_rain[h] = np.nan_to_num(rate, nan=0.0) * spacing
+    out: dict[int, np.ndarray] = {}
+    for s in steps:
+        end = s + hours
+        needed = [h for h in steps if s < h <= end]
+        covered = (needed[-1] == end) if needed else False
+        # every gap from s to end must exist, i.e. the run has a step at `end` and none is missing in between
+        if covered and sum(h - p for p, h in zip([s] + needed, needed)) == hours:
+            out[s] = sum(gap_rain[h] for h in needed).astype(np.float32)
+        else:
+            out[s] = np.full_like(rates[s], np.nan)
     return out
 
 
@@ -102,6 +134,8 @@ def _needs() -> dict[str, list[set[str]]]:
         "solar": [{"shortwave_radiation"}],
         "cape": [{"cape"}],
         "tcwv": [{"total_column_integrated_water_vapour"}],
+        "li": [{"lifted_index"}],
+        "cin": [{"convective_inhibition"}],
     }
     for lvl in LEVELS:
         needs[f"u{lvl}"] = [{f"wind_u_component_{lvl}hPa"}]

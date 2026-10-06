@@ -146,7 +146,8 @@ def test_dew_point_prefers_the_models_own_value():
 def test_unavailable_for_follows_the_raw_fields_a_model_has():
     everything = set(D.LEVEL_RAW_KEYS) | {"temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
         "wind_gusts_10m", "pressure_msl", "precipitation", "cloud_cover", "cape", "total_column_integrated_water_vapour",
-        "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility", "shortwave_radiation"}
+        "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility", "shortwave_radiation",
+            "convective_inhibition", "lifted_index"}
     assert D.unavailable_for(everything) == frozenset()
     no_humidity = everything - {"relative_humidity_2m"}
     assert D.unavailable_for(no_humidity) == {"rh", "feels", "dew"}                        # none of the three can be made
@@ -166,7 +167,7 @@ def test_the_three_hand_written_models_provide_all_levels():
 def test_regular_models_publish_what_their_datasets_have():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
     assert {"cloud_low", "cloud_mid", "cloud_high"} <= by_id["gdps"].UNAVAILABLE_VARS     # the Canadian surface set has none
-    assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv"}                            # UKMO: everything else, winds via speed + direction
+    assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
     assert "vis" not in by_id["cma_grapes"].UNAVAILABLE_VARS and "solar" not in by_id["cma_grapes"].UNAVAILABLE_VARS
     for m in models_regular.ALL:
         assert not (set(D.LEVEL_RAW_KEYS) - m.PROVIDES - {"relative_humidity_200hPa"}), m.MODEL_ID    # every model has all six levels
@@ -182,3 +183,69 @@ def test_reduced_precision_encoding_stays_within_its_error_bound_and_compresses_
     assert np.abs(back - field).max() <= (60 / 65535) * 8 + 1e-3          # half a 12-bit step, 16 codes wide
     assert len(coarse) < len(full)
     assert np.isnan(E.decode_field(E.encode_field(np.array([[np.nan, 1.0]], np.float32), -30, 30, bits=12), -30, 30)[0, 0])
+
+
+def test_stability_variables_come_from_the_models_that_have_them():
+    by_id = {m.MODEL_ID: m for m in models_regular.ALL}
+    assert "cin" not in by_id["ukmo"].UNAVAILABLE_VARS and "li" in by_id["ukmo"].UNAVAILABLE_VARS      # UKMO: CIN only
+    assert not ({"cin", "li"} & by_id["cma_grapes"].UNAVAILABLE_VARS)                                    # GRAPES: both
+    assert {"cin", "li"} <= by_id["dwd_icon"].UNAVAILABLE_VARS and {"cin", "li"} <= by_id["gdps"].UNAVAILABLE_VARS
+    assert not ({"cin", "li"} & fetch_gfs.UNAVAILABLE_VARS)                                              # GFS: both
+    assert "cin" not in fetch_ifs.UNAVAILABLE_VARS and "li" in fetch_ifs.UNAVAILABLE_VARS                # IFS: CIN only
+
+
+def test_cin_is_published_as_a_magnitude_whatever_the_sign_of_the_source():
+    z = np.zeros((2, 3), np.float32)
+    base = {"temperature_2m": z + 30, "relative_humidity_2m": z + 70, "wind_u_component_10m": z, "wind_v_component_10m": z,
+            "wind_gusts_10m": z, "pressure_msl": z + 101000, "precipitation": z, "cloud_cover": z, "cape": z,
+            "total_column_integrated_water_vapour": z + 50}
+    assert np.allclose(D.derive({**base, "convective_inhibition": z - 248})["cin"], 248)   # UK Met Office: negative
+    assert np.allclose(D.derive({**base, "convective_inhibition": z + 216})["cin"], 216)   # GFS, IFS, GRAPES: positive
+    assert np.isnan(D.derive(base)["cin"]).all() and np.isnan(D.derive(base)["li"]).all()
+    assert np.allclose(D.derive({**base, "lifted_index": z - 5})["li"], -5)
+
+
+def _field(v):
+    return np.full((2, 2), v, np.float32)
+
+
+def test_forward_accumulation_sums_exact_windows():
+    # IFS late in the run: 3-hourly steps, each rate is the mean over the 3 h before it
+    rates = {h: _field(2.0) for h in range(0, 49, 3)}
+    rates[0] = _field(np.nan)
+    acc = D.forward_accumulation(rates, {h: 3 for h in rates})
+    assert np.allclose(acc[0], 2.0 * 24)
+    assert np.allclose(acc[24], 2.0 * 24)
+    assert np.isnan(acc[27]).all() and np.isnan(acc[48]).all()      # the run ends before 24 h more
+
+
+def test_forward_accumulation_follows_the_rate_in_each_gap():
+    rates = {h: _field(0.0) for h in range(0, 43, 6)}
+    rates[12] = _field(5.0)         # the 6 h before +12 h rained 5 mm/h
+    acc = D.forward_accumulation(rates, {h: 6 for h in rates})
+    assert np.allclose(acc[0], 30.0)                  # 5 mm/h x 6 h
+    assert np.allclose(acc[6], 30.0)
+    assert np.allclose(acc[12], 0.0)                  # that rain is in the past by then
+
+
+def test_forward_accumulation_estimates_sampled_models_from_neighbouring_rates():
+    # hourly rate sampled every 3 h (window 1 < spacing 3): the gap uses the mean of the rates at both ends
+    rates = {0: _field(np.nan), 3: _field(4.0), 6: _field(0.0), 9: _field(0.0), 12: _field(0.0), 15: _field(0.0),
+             18: _field(0.0), 21: _field(0.0), 24: _field(0.0), 27: _field(0.0)}
+    acc = D.forward_accumulation(rates, {h: 1 for h in rates})
+    # gaps: (0,3] has no earlier rate so uses 4.0 -> 12 mm; (3,6] uses (4+0)/2 -> 6 mm; the rest dry
+    assert np.allclose(acc[0], 12.0 + 6.0)
+    assert np.allclose(acc[3], 6.0)
+
+
+def test_forward_accumulation_needs_the_whole_24_hours():
+    rates = {h: _field(1.0) for h in (0, 3, 6, 9, 12, 15, 18, 21, 24)}
+    assert np.allclose(D.forward_accumulation(rates, {h: 3 for h in rates})[0], 24.0)
+    # a step that is missing just makes a longer gap, which is estimated like any sampled gap: still a value
+    gappy = {h: _field(1.0) for h in (0, 3, 6, 12, 15, 18, 21, 24)}
+    assert np.allclose(D.forward_accumulation(gappy, {h: 3 for h in gappy})[0], 24.0)
+    # no step lands exactly 24 h on, or the run is a short local test: no accumulation
+    odd = {h: _field(1.0) for h in (0, 5, 10, 15, 20, 25)}
+    assert np.isnan(D.forward_accumulation(odd, {h: 5 for h in odd})[0]).all()
+    partial = {h: _field(1.0) for h in (0, 3)}
+    assert all(np.isnan(f).all() for f in D.forward_accumulation(partial, {0: 1, 3: 1}).values())

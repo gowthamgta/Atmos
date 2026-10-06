@@ -18,7 +18,7 @@ export function levelHeightLabel(level: Level): string {
   return level === 'surface' ? 'at the ground' : `about ${LEVEL_KM[level]} km up`;
 }
 
-export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Clouds and sky' | 'Pressure and storms';
+export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Extreme rain' | 'Visibility' | 'Pressure and storms';
 
 /** The part of a layer that changes with altitude. */
 export interface LevelSpec {
@@ -72,13 +72,15 @@ const TEMP = ['#2b3a8f', '#256d9b', '#1f9a8a', '#86a936', '#e0a526', '#e0651f', 
 const HUMIDITY = ['#6b4423', '#9a7b3a', '#5d8a5b', '#2f8a9a', '#2a5bb0', '#4b2d9a'];
 const RAIN = ['#1e4fa0', '#1f8fb8', '#27ae75', '#c8b11f', '#e07a1f', '#d62f3a', '#b030c8'];
 const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
-const CLOUD = ['#1c2330', '#3a4558', '#6b778c', '#a3adbd', '#e8edf5'];
 const WIND = ['#1b3a6b', '#1f7a9a', '#2aa876', '#b5c22a', '#e0902a', '#d9422a', '#a82f9a'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
 const DEW = ['#3a2f5c', '#2a5aa0', '#1f8a8f', '#5aa84a', '#d4b02a', '#d9622a'];
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
-const SUN = ['#1c2330', '#4a3a6a', '#a0457a', '#e0782f', '#f5d142'];
+const PROB = ['#1c2330', '#2a4a8a', '#2a9d8f', '#e0b02a', '#e0652a', '#b3262f', '#8a1f9a'];
+// lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
+const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
+const INHIBITION = ['#1c2330', '#2a4a8a', '#1f8fa8', '#4fae6a', '#e0b02a', '#e0652a'];
 
 // --- what changes with altitude -------------------------------------------------------------------------------
 // Display ranges are chosen for the tropics (this domain), wide enough to cover every season.
@@ -129,22 +131,23 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
     atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100] }),
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
+  { id: 'rain24', label: 'Rain, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
-  { id: 'clouds', label: 'Clouds (total)', icon: '☁', group: 'Clouds and sky', varId: 'cloud', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
-  { id: 'cloud_low', label: 'Low clouds', icon: '🌥', group: 'Clouds and sky', varId: 'cloud_low', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: 'lowcloud' },
-  { id: 'cloud_mid', label: 'Mid clouds', icon: '⛅', group: 'Clouds and sky', varId: 'cloud_mid', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
-  { id: 'cloud_high', label: 'High clouds', icon: '🌤', group: 'Clouds and sky', varId: 'cloud_high', unit: '%', min: 0, max: 100, stops: CLOUD, gamma: 1, clearBelow: 5, ticks: [25, 50, 75, 100], opacity: 0.8, terrain: null },
-  { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Clouds and sky', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
-  { id: 'solar', label: 'Sunshine', icon: '☀', group: 'Clouds and sky', varId: 'solar', unit: 'W/m²', min: 0, max: 1000, stops: SUN, gamma: 1, clearBelow: 15, ticks: [200, 400, 600, 800, 1000], opacity: 0.8, terrain: 'solar' },
+  { id: 'px65', label: 'Heavy rain ≥ 65 mm', icon: '⚠', group: 'Extreme rain', varId: 'px65', unit: '% chance in 24 h', min: 0, max: 100, stops: PROB, gamma: 0.8, clearBelow: 3, ticks: [10, 25, 50, 75, 100], opacity: 0.88, terrain: null },
+  { id: 'px115', label: 'Very heavy ≥ 115 mm', icon: '🚨', group: 'Extreme rain', varId: 'px115', unit: '% chance in 24 h', min: 0, max: 100, stops: PROB, gamma: 0.8, clearBelow: 3, ticks: [10, 25, 50, 75, 100], opacity: 0.88, terrain: null },
+  { id: 'px204', label: 'Extreme ≥ 204 mm', icon: '🌀', group: 'Extreme rain', varId: 'px204', unit: '% chance in 24 h', min: 0, max: 100, stops: PROB, gamma: 0.8, clearBelow: 3, ticks: [5, 10, 25, 50, 100], opacity: 0.88, terrain: null },
+  { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {
     id: 'pressure', label: 'Pressure', icon: '⏲', group: 'Pressure and storms', varId: 'msl', unit: 'hPa', min: 1000, max: 1020, stops: PRESSURE, gamma: 1,
     clearBelow: 0, ticks: [1000, 1005, 1010, 1015, 1020], opacity: 0.8, terrain: null,
     atLevel: l => ({ varId: `gh${l}`, unit: 'm', min: HEIGHT_RANGE[l][0], max: HEIGHT_RANGE[l][1], ticks: HEIGHT_RANGE[l][2], label: 'Height of the surface' }),
   },
+  { id: 'li', label: 'Lifted index', icon: '🎈', group: 'Pressure and storms', varId: 'li', unit: '°C', min: -8, max: 8, stops: STABILITY, gamma: 1, clearBelow: 0, ticks: [-6, -3, 0, 3, 6], opacity: 0.85, terrain: null },
+  { id: 'cin', label: 'Convective inhibition', icon: '🧊', group: 'Pressure and storms', varId: 'cin', unit: 'J/kg', min: 0, max: 300, stops: INHIBITION, gamma: 0.7, clearBelow: 5, ticks: [25, 50, 100, 200, 300], opacity: 0.85, terrain: null },
   { id: 'cape', label: 'Thunderstorm energy', icon: '⚡', group: 'Pressure and storms', varId: 'cape', unit: 'J/kg', min: 0, max: 4000, stops: CAPE, gamma: 0.7, clearBelow: 100, ticks: [500, 1000, 2000, 3000, 4000], opacity: 0.85, terrain: null },
 ];
 
-export const LAYER_GROUPS: readonly LayerGroup[] = ['Temperature', 'Wind', 'Rain and humidity', 'Clouds and sky', 'Pressure and storms'];
+export const LAYER_GROUPS: readonly LayerGroup[] = ['Temperature', 'Wind', 'Rain and humidity', 'Extreme rain', 'Visibility', 'Pressure and storms'];
 
 /** True when the layer can be shown at pressure levels. */
 export function supportsLevels(def: ForecastLayerDef | null): boolean {

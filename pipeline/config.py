@@ -64,6 +64,9 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("solar", "W/m²", 0, 1400, 12),
     Var("cape", "J/kg", 0, 6000),
     Var("tcwv", "kg/m²", 0, 80),
+    Var("li", "°C", -15, 25, 12),         # lifted index: negative means unstable air
+    Var("cin", "J/kg", 0, 1000, 12),      # convective inhibition (magnitude)
+    Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
     *_level_vars(),
 ]}
 
@@ -73,4 +76,5 @@ SOURCE_VARS = [
     "wind_gusts_10m", "pressure_msl", "precipitation", "cloud_cover", "cape",
     "total_column_integrated_water_vapour",
     "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility", "shortwave_radiation",
+    "convective_inhibition",
 ]

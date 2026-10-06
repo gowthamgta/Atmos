@@ -37,7 +37,7 @@ COARSE = "ncep_gfs025"  # 0.25 degree: pressure, gusts, CAPE
 FINE_VARS = ["temperature_2m", "relative_humidity_2m", "wind_u_component_10m", "wind_v_component_10m",
              "cloud_cover", "precipitation", "total_column_integrated_water_vapour",
              "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "shortwave_radiation"]
-COARSE_VARS = ["pressure_msl", "wind_gusts_10m", "cape", "visibility", *LEVEL_RAW_KEYS]
+COARSE_VARS = ["pressure_msl", "wind_gusts_10m", "cape", "visibility", "convective_inhibition", "lifted_index", *LEVEL_RAW_KEYS]
 
 PROVIDES = frozenset(FINE_VARS) | frozenset(COARSE_VARS)
 UNAVAILABLE_VARS: frozenset[str] = unavailable_for(PROVIDES)  # published variables GFS cannot supply

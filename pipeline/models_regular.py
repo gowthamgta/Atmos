@@ -12,6 +12,8 @@ _SAME = lambda names: {n: n for n in names}  # noqa: E731 - raw key and dataset 
 SURFACE_CORE = ["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover"]
 SURFACE_UV = ["wind_u_component_10m", "wind_v_component_10m"]
 GUST_CAPE = ["wind_gusts_10m", "cape"]
+CIN = ["convective_inhibition"]                 # published as its magnitude (the UK Met Office stores it as a negative number)
+CIN_LI = ["convective_inhibition", "lifted_index"]
 CLOUD_LAYERS = ["cloud_cover_low", "cloud_cover_mid", "cloud_cover_high"]
 
 
@@ -47,7 +49,7 @@ UKMO = RegularModel(
     model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 61, 3)),
     sources=[Source(
         "ukmo_global_deterministic_10km",
-        _SAME(SURFACE_CORE + GUST_CAPE + CLOUD_LAYERS + ["visibility"] + level_scalars()),
+        _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars()),
         winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"), *level_speed_dir()),
     )],
 )
@@ -68,7 +70,7 @@ GDPS = RegularModel(
 GRAPES = RegularModel(
     model_id="cma_grapes", label="CMA GRAPES", run_hours=(0, 12), step_hours=list(range(0, 121, 6)),
     sources=[Source("cma_grapes_global",
-                    _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CLOUD_LAYERS + ["visibility", "shortwave_radiation"]
+                    _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CIN_LI + CLOUD_LAYERS + ["visibility", "shortwave_radiation"]
                           + level_uv() + level_scalars()))],
 )
 

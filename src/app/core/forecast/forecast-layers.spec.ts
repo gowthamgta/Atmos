@@ -19,7 +19,8 @@ import {
 // the variables a model publishes, as they appear in a manifest
 const vars = (...ids: string[]): Record<string, object> => Object.fromEntries(ids.map(id => [id, {}]));
 const levelVars = (levels: readonly number[], kinds = ['u', 'v', 't', 'rh', 'gh']) => levels.flatMap(l => kinds.map(k => `${k}${l}`));
-const SURFACE = ['t2m', 'rh', 'feels', 'dew', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'solar', 'cape', 'tcwv'];
+const SURFACE = ['t2m', 'rh', 'feels', 'dew', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'solar', 'cape', 'tcwv',
+  'li', 'cin', 'rain24', 'px65', 'px115', 'px204'];
 
 describe('forecast layer registry', () => {
   it('has unique ids, sane ranges, and every layer in a known group', () => {
@@ -32,6 +33,19 @@ describe('forecast layer registry', () => {
       const scale = l.displayScale ?? 1; // ticks are in the displayed unit, the range in the field's own unit
       expect(l.ticks.every(t => t / scale >= l.min && t / scale <= l.max)).toBe(true);
     }
+  });
+
+  it('keeps only visibility in the clouds group, and adds accumulation, stability and extreme-rain layers', () => {
+    const inGroup = (g: string) => FORECAST_LAYERS.filter(l => l.group === g).map(l => l.id);
+    expect(inGroup('Visibility')).toEqual(['vis']);
+    for (const gone of ['clouds', 'cloud_low', 'cloud_mid', 'cloud_high', 'solar']) expect(forecastLayerById(gone)).toBeUndefined();
+    expect(inGroup('Rain and humidity')).toEqual(expect.arrayContaining(['rain', 'rain24']));
+    expect(inGroup('Extreme rain')).toEqual(['px65', 'px115', 'px204']);
+    expect(inGroup('Pressure and storms')).toEqual(expect.arrayContaining(['li', 'cin', 'cape']));
+    // chances are percentages, the unstable end of the lifted index is the warm colour
+    expect(forecastLayerById('px65')!.max).toBe(100);
+    expect(forecastLayerById('li')!.min).toBeLessThan(0);
+    expect(forecastLayerById('li')!.stops[0]).toBe('#b3262f');
   });
 
   it('only references variables the pipeline publishes', () => {

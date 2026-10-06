@@ -17,7 +17,7 @@ import fetch_aifs
 import fetch_gfs
 import fetch_ifs
 import models_regular
-from derive import derive
+from derive import derive, forward_accumulation
 from encode import encode_field
 
 # modules and RegularModel instances share one interface (MODEL_ID, RUN_HOURS, latest_run(), read_step(), ...)
@@ -43,9 +43,14 @@ def build_manifest(fetcher, run, steps):
     }
 
 
+DERIVED_ACROSS_STEPS = {"rain24"}   # needs several steps, so it is computed after all of them (see main)
+
+
 def process_step(fetcher, run, h):
+    """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from."""
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h))
-    return h, {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher)}
+    pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS}
+    return h, pngs, fields["precip"]
 
 
 def live_run(url: str) -> str | None:
@@ -95,14 +100,21 @@ def main() -> int:
     print(f"{args.model}: run {run_id}, {len(steps)} steps", flush=True)
 
     done = []
+    rates: dict[int, object] = {}
     run_dir = os.path.join(args.out, fetcher.MODEL_ID, run_id)
     try:
         with ThreadPoolExecutor(args.workers) as pool:
-            for h, pngs in pool.map(lambda h: process_step(fetcher, run, h), steps):
+            for h, pngs, rate in pool.map(lambda h: process_step(fetcher, run, h), steps):
                 for vid, png in pngs.items():
                     write(os.path.join(run_dir, vid, f"{h:03d}.png"), png)
+                rates[h] = rate
                 done.append(h)
                 print(f"  +{h:03d}h done ({len(done)}/{len(steps)})", flush=True)
+        # rain over the next 24 h from each step (no data where the run ends before that)
+        rain24 = C.VARS["rain24"]
+        accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
+        for h, field in accumulated.items():
+            write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(field, rain24.lo, rain24.hi, rain24.bits))
     except BaseException:
         shutil.rmtree(run_dir, ignore_errors=True)  # never deploy a half-written run
         raise
