@@ -25,6 +25,8 @@ export interface RadarProductConfig {
   bounds: [[number, number], [number, number]]; // [[south, west], [north, east]]
   maplibreCoordinates: [[number, number], [number, number], [number, number], [number, number]]; // [NW, NE, SE, SW]
   crop?: RadarCropConfig;
+  /** Where the picture prints its scan time ("HH:MM:SS UTC / date"), for pictures that carry no timestamp in the GIF itself. */
+  stampBox?: RadarCropConfig;
   /**
    * Exact legend colours of this product's image. When set, pixels are classified by matching
    * these colours instead of the generic colour heuristics (needed where the basemap uses
@@ -332,6 +334,8 @@ function createImdStation(params: {
   crops?: Partial<Record<RadarProductKey, RadarCropConfig>>;
   productRanges?: Partial<Record<RadarProductKey, number>>;
   palettes?: Partial<Record<RadarProductKey, RadarPaletteEntry[]>>;
+  /** Box around the printed scan time of each product's picture (see RadarProductConfig.stampBox). */
+  stamps?: Partial<Record<RadarProductKey, RadarCropConfig>>;
   animationFile?: string;
   skipAnimation?: boolean;
 }): RadarStationConfig {
@@ -367,6 +371,7 @@ function createImdStation(params: {
       bounds,
       maplibreCoordinates,
       crop: params.crops?.[key] ?? (key === 'ppz' ? params.crops?.ppi : undefined),
+      stampBox: params.stamps?.[key],
       palette: params.palettes?.[key] ?? (key === 'ppz' ? params.palettes?.ppi : undefined)
     };
   };
@@ -489,6 +494,12 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     band: 'S-Band',
     rangeKm: 240,
     skipAnimation: true,   // its animations are over 20 MB each
+    // The pictures carry no timestamp of their own: the scan time is read from the printed "HH:MM:SS UTC" line (last text line of the side panel)
+    stamps: {
+      caz: { x: 2470, y: 380, w: 595, h: 230 },
+      ppi: { x: 2470, y: 380, w: 661, h: 250 },
+      ppz: { x: 2440, y: 380, w: 666, h: 240 }
+    },
     // Ranges and layouts read off the pictures: each map panel is square and spans exactly its range in every direction
     productRanges: {
       caz: 240,   // "Range: 240.0 km"
@@ -581,6 +592,12 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     band: 'C-Band',
     rangeKm: 250,
     // Each product's map panel is a square whose half-width is the 250 km range
+    // The pictures carry no timestamp of their own: the scan time is read from the printed "HH:MM:SS UTC" line (last text line of the side panel)
+    stamps: {
+      caz: { x: 1082, y: 60, w: 228, h: 80 },
+      ppi: { x: 824, y: 100, w: 228, h: 100 },
+      ppz: { x: 882, y: 100, w: 228, h: 100 }
+    },
     crops: {
       caz: { x: 0, y: 200, w: 880, h: 880 },
       ppi: { x: 0, y: 0, w: 822, h: 822 },

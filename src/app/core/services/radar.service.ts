@@ -13,6 +13,7 @@ import {
 
 import { blurSeparable, dequantizeRadar, gaussianKernel, quantizeRadarField, resampleBilinear } from './radar-field';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
+import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MERGED_PRODUCTS, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
@@ -244,6 +245,8 @@ export class RadarService implements OnDestroy {
   // Last processed sweep per station, keyed by a hash of the GIF bytes. IMD publishes new images
   // roughly every 10 minutes, so most 1-minute refreshes can reuse the previous result.
   private sweepCache = new Map<string, { key: string; result: ProcessedRadarResult | null }>();
+  /** The scan time read off each picture that prints it (see radar-stamp.ts), kept per picture so an unchanged one is not decoded again. */
+  private stampCache = new Map<string, { hash: string; time: StampTime | null }>();
   private readonly extrasFetchedAt = new Map<string, number>();
   private static readonly EXTRAS_REFRESH_MS = 4 * 60_000;
 
@@ -566,37 +569,26 @@ export class RadarService implements OnDestroy {
 
     // ── Observation Timestamp Extraction & Per-Station Freshness Calculation ──
     let timing: RadarObservationTiming | null = binaryTiming;
+    // No timestamp in the GIF: some pictures print the scan time in their side panel. The server's "last modified" only says
+    // when the file was copied, so the printed time wins where there is one (decoded once per new picture).
+    let decoded: { rgba: Uint8ClampedArray | Uint8Array; w: number; h: number } | null = null;
+    if (!timing && productConfig.stampBox) {
+      const stampId = `${station.id}:${productKey}`;
+      const hash = this.hashBytes(new Uint8Array(rawArrayBuf));
+      let entry = this.stampCache.get(stampId);
+      if (!entry || entry.hash !== hash) {
+        decoded = await this.decodeImage(rawArrayBuf);
+        entry = { hash, time: decoded ? readStampTime(decoded.rgba, decoded.w, decoded.h, productConfig.stampBox) : null };
+        this.stampCache.set(stampId, entry);
+      }
+      if (entry.time) {
+        const served = sweepHeaderDate && !isNaN(sweepHeaderDate.getTime()) ? sweepHeaderDate.getTime() : Date.now();
+        timing = this.timingFromDate(new Date(stampEpoch(entry.time, served)), 'printed_stamp', false);
+      }
+    }
     if (!timing && sweepHeaderDate && !isNaN(sweepHeaderDate.getTime())) {
-      const istTime = sweepHeaderDate.toLocaleTimeString('en-IN', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Kolkata'
-      }) + ' IST';
-      const utcTime = sweepHeaderDate.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZone: 'UTC'
-      }) + ' UTC';
-      const istDate = sweepHeaderDate.toLocaleDateString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        timeZone: 'Asia/Kolkata'
-      }).replace(/\//g, '-');
-      timing = {
-        ist: istTime,
-        utc: utcTime,
-        date: istDate,
-        raw: sweepHeaderDate.toISOString(),
-        epochMs: sweepHeaderDate.getTime(),
-        source: 'http_header'
-      };
-      // Upload time, not the scan time printed on the image: mark it as approximate
-      timing.ist = `~${timing.ist}`;
-      timing.utc = `~${timing.utc}`;
+      // Upload time, not the scan time printed on the image: marked as approximate
+      timing = this.timingFromDate(sweepHeaderDate, 'http_header', true);
     }
 
     const now = Date.now();
@@ -639,21 +631,13 @@ export class RadarService implements OnDestroy {
       this.sweepCache.set(cacheId, { key: cacheKey, result: updated });
       return updated;
     }
-    const processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, rawArrayBuf, timing, isDisplayed, primary);
+    const processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, rawArrayBuf, timing, isDisplayed, primary, decoded);
     this.sweepCache.set(cacheId, { key: cacheKey, result: processed });
     return processed;
   }
 
-  private async decodeAndProcessSweep(
-    station: RadarStationConfig,
-    productKey: RadarProductKey,
-    productConfig: RadarStationConfig['products'][RadarProductKey],
-    isTransparent: boolean,
-    rawArrayBuf: ArrayBuffer,
-    timing: RadarObservationTiming | null,
-    isDisplayed: boolean,
-    primary = true
-  ): Promise<ProcessedRadarResult | null> {
+  /** The last frame of a GIF as RGBA, or null when it cannot be decoded. */
+  private async decodeImage(rawArrayBuf: ArrayBuffer): Promise<{ rgba: Uint8ClampedArray | Uint8Array; w: number; h: number } | null> {
     let w = 0;
     let h = 0;
     let rgba: Uint8ClampedArray | Uint8Array | null = null;
@@ -701,9 +685,23 @@ export class RadarService implements OnDestroy {
       }
     }
 
-    if (!rgba || w < 50 || h < 50) {
-      return null;
-    }
+    return rgba ? { rgba, w, h } : null;
+  }
+
+  private async decodeAndProcessSweep(
+    station: RadarStationConfig,
+    productKey: RadarProductKey,
+    productConfig: RadarStationConfig['products'][RadarProductKey],
+    isTransparent: boolean,
+    rawArrayBuf: ArrayBuffer,
+    timing: RadarObservationTiming | null,
+    isDisplayed: boolean,
+    primary = true,
+    predecoded: { rgba: Uint8ClampedArray | Uint8Array; w: number; h: number } | null = null
+  ): Promise<ProcessedRadarResult | null> {
+    const image = predecoded ?? await this.decodeImage(rawArrayBuf);
+    if (!image || image.w < 50 || image.h < 50) return null;
+    const { rgba, w, h } = image;
     return this.processRgba(station, productKey, productConfig, isTransparent, rgba, w, h, timing, isDisplayed, primary);
   }
 
@@ -1386,6 +1384,14 @@ export class RadarService implements OnDestroy {
 
   clearHover(): void {
     this.hoverInfo.set(null);
+  }
+
+  private timingFromDate(date: Date, source: string, approximate: boolean): RadarObservationTiming {
+    const tilde = approximate ? '~' : '';
+    const ist = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST';
+    const utc = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' }) + ' UTC';
+    const day = date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
+    return { ist: tilde + ist, utc: tilde + utc, date: day, raw: date.toISOString(), epochMs: date.getTime(), source };
   }
 
   private extractRadarIsoTimestamp(arrayBuffer: ArrayBuffer): RadarObservationTiming | null {
