@@ -12,7 +12,6 @@ import {
   hrvBackground,
   mercatorY,
   shadePixel,
-  shadeSoftClouds,
   satelliteCoordinates,
   toOverlayPixels,
 } from './satellite-image';
@@ -220,17 +219,16 @@ describe('cloud extraction', () => {
   });
 });
 
-describe('shadeCloudLayer', () => {
-  /** A bright oval cloud (strongest in the middle) on sea, `size` x `size`. */
-  function oval(size: number): Uint8ClampedArray {
+describe('shadeCloudLayer (cloud-only veil)', () => {
+  /** A bright oval cloud (strongest in the middle) on sea, `size` x `size`; HRV colours: cream (low blue). */
+  function oval(size: number, blue = -8): Uint8ClampedArray {
     const px = new Uint8ClampedArray(size * size * 4);
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const d = Math.hypot((x - size / 2) / (size * 0.28), (y - size / 2) / (size * 0.2));
         const cloud = Math.max(0, 1 - d * d);
         const v = cloud > 0 ? 120 + cloud * 130 : 0;
-        px.set(cloud > 0.02 ? [v, v, Math.min(255, v - 8)] : [57, 57, 58], 0);
-        px.set(cloud > 0.02 ? [v, v, Math.min(255, v - 8), 255] : [57, 57, 58, 255], (y * size + x) * 4);
+        px.set(cloud > 0.02 ? [v, v, Math.min(255, v + blue), 255] : [57, 57, 58, 255], (y * size + x) * 4);
       }
     }
     return px;
@@ -239,24 +237,32 @@ describe('shadeCloudLayer', () => {
   const out = shadeCloudLayer(oval(size), size, size, 'hrv', 58);
   const at = (x: number, y: number) => out.slice((y * size + x) * 4, (y * size + x) * 4 + 4);
 
-  it('leaves the open sea fully transparent and the cloud opaque, with a soft edge between', () => {
+  it('leaves the open sea clear and the cloud see-through, with a smooth edge', () => {
     expect(at(2, 2)[3]).toBe(0);
-    expect(at(32, 32)[3]).toBeGreaterThan(230);
-    const alphas = Array.from({ length: size }, (_, x) => at(x, 32)[3]);
-    expect(alphas.some(a => a > 10 && a < 245)).toBe(true); // a ramp, not a hard step
+    expect(at(32, 32)[3]).toBeGreaterThan(150);
+    expect(at(32, 32)[3]).toBeLessThanOrEqual(Math.round(255 * 0.72));   // the map always shows through
+    let step = 0;
+    for (let x = 1; x < size; x++) step = Math.max(step, Math.abs(at(x, 32)[3] - at(x - 1, 32)[3]));
+    expect(step).toBeLessThan(40);
   });
 
-  it('shades thin cloud cool and thick cloud white, so the cloud has depth', () => {
-    const centre = at(32, 32);
-    const rim = Array.from({ length: size }, (_, x) => at(x, 32)).find(p => p[3] > 120 && p[3] < 200)!;
-    expect(centre[0]).toBeGreaterThan(rim[0]); // brighter in the thick middle than on the thin rim
-    expect(rim[2]).toBeGreaterThanOrEqual(rim[0]); // and the rim leans blue-grey, not warm
+  it('keeps the cloud colour of the picture (muted), and blends in the natural colour when given', () => {
+    const c = at(32, 32);
+    expect(c[0]).toBeGreaterThan(c[2]);                                      // cream, as in the HRV picture
+    const white = new Uint8ClampedArray(size * size * 4).fill(255);
+    const blended = shadeCloudLayer(oval(size), size, size, 'hrv', 58, white);
+    const b = blended.slice((32 * size + 32) * 4, (32 * size + 32) * 4 + 4);
+    expect(b[2]).toBeGreaterThan(c[2]);                                      // whiter with the natural colour in
   });
 
-  it('lights the north-west facing side more than the south-east facing side', () => {
-    const lit = at(32 - 12, 32 - 5); // up-left of the middle: slopes up towards the middle, facing the light
-    const dark = at(32 + 12, 32 + 5);
-    expect(lit[0]).toBeGreaterThan(dark[0]);
+  it('shades night cloud from grey-blue (thin) to white (cold, thick)', () => {
+    const ir = new Uint8ClampedArray(size * 4 * 4);
+    for (let x = 0; x < size; x++) for (let y = 0; y < 4; y++) { const v = x < size / 2 ? 140 : 250; ir.set([v, v, v, 255], (y * size + x) * 4); }
+    const night = shadeCloudLayer(ir, size, 4, 'ir', 0);
+    const thin = night.slice((2 * size + 8) * 4, (2 * size + 8) * 4 + 3);
+    const cold = night.slice((2 * size + 56) * 4, (2 * size + 56) * 4 + 3);
+    expect(cold[0]).toBeGreaterThan(thin[0]);
+    expect(thin[2]).toBeGreaterThan(thin[0]);
   });
 });
 
@@ -282,40 +288,5 @@ describe('true-colour (FY-4B) pictures', () => {
     expect(out[3]).toBe(0);
     shadePixel('ir', 'picture', 40, 40, 40, 0, out, 0);
     expect(out[3]).toBeGreaterThan(200);
-  });
-});
-
-describe('soft cloud look', () => {
-  const picture = (w: number, h: number, cloud: (x: number, y: number) => number) => {
-    const px = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const t = cloud(x, y);                         // 0 land .. 1 thick cloud
-      const i = (y * w + x) * 4;
-      px[i] = 60 + 150 * t; px[i + 1] = 70 + 145 * t; px[i + 2] = 40 + 185 * t; px[i + 3] = 255;
-    }
-    return px;
-  };
-
-  it('veils only the cloud, smoothly: no pixel edges, nothing over clear land', () => {
-    const w = 60, h = 40;
-    const src = picture(w, h, (x, y) => (x >= 25 && x < 35 && y >= 15 && y < 25 ? 1 : 0));
-    const out = shadeSoftClouds(src, w, h, 'hrv', 40);
-    const alpha = (x: number, y: number) => out[(y * w + x) * 4 + 3];
-    expect(alpha(2, 2)).toBe(0);                    // clear land is see-through
-    expect(alpha(30, 20)).toBeGreaterThan(150);     // the cloud is a veil
-    expect(alpha(30, 20)).toBeLessThanOrEqual(Math.round(255 * 0.9));
-    let biggestStep = 0;
-    for (let x = 1; x < w; x++) biggestStep = Math.max(biggestStep, Math.abs(alpha(x, 20) - alpha(x - 1, 20)));
-    expect(biggestStep).toBeLessThan(70);           // the 10-pixel block's edge is blurred over several pixels
-  });
-
-  it('is warm white where the cloud is thick and cool where it is thin', () => {
-    const w = 80, h = 30;
-    const src = picture(w, h, x => (x < 40 ? 0.9 : 0.45) * (x % 40 > 4 && x % 40 < 36 ? 1 : 0));
-    const out = shadeSoftClouds(src, w, h, 'hrv', 40);
-    const at = (x: number) => Array.from(out.slice((15 * w + x) * 4, (15 * w + x) * 4 + 3));
-    const thick = at(20), thin = at(60);
-    expect(thick[0]).toBeGreaterThan(thin[0]);
-    expect(thick[2] - thick[0]).toBeLessThan(thin[2] - thin[0]);   // thin cloud leans blue
   });
 });

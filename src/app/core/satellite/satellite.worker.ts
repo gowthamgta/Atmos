@@ -7,7 +7,7 @@ export interface SatelliteWorkerRequest {
   jpeg: Blob;
   kind: SatelliteChannel;
   view: SatelliteView;
-  /** The natural-colour picture, shown instead of the HRV one in the `natural` view (daytime Meteosat). */
+  /** The natural-colour picture, blended into the HRV colours of the cloud-only view (daytime Meteosat). */
   natural?: Blob;
 }
 
@@ -23,18 +23,18 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     const sctx = scratch.getContext('2d', { willReadFrequently: true })!;
     sctx.drawImage(bitmap, 0, 0);
     bitmap.close();
-    let src = sctx.getImageData(0, 0, width, height).data;
+    const src = sctx.getImageData(0, 0, width, height).data;
     deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
-    if (natural && kind === 'hrv' && view === 'natural') {
+    let colour: Uint8ClampedArray | undefined;
+    if (natural && kind === 'hrv' && view === 'clouds') {
       const colourBitmap = await createImageBitmap(natural);
       sctx.clearRect(0, 0, width, height);
       sctx.drawImage(colourBitmap, 0, 0, width, height);
       colourBitmap.close();
-      src = sctx.getImageData(0, 0, width, height).data;
-      deblockJpeg(src, width, height);
+      colour = sctx.getImageData(0, 0, width, height).data;
     }
     const outHeight = mercatorHeight(width);
-    const pixels = toOverlayPixels(src, width, height, kind, view === 'natural' ? 'picture' : view, outHeight);
+    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight, colour);
     const out = new OffscreenCanvas(width, outHeight);
     out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
     const png = await out.convertToBlob({ type: 'image/png' });

@@ -309,7 +309,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const view = this.satellite.view();
     if (!this.map || !this.isMapLoaded()) return;
     this.updateSatelliteOverlay(on, frames, position, opacity);
-    this.satelliteLayer?.setLook(view === 'clouds' || view === 'soft' ? view : 'picture');
+    this.satelliteLayer?.setLook(view);
   });
 
   // Reactive Effect: high-detail (250 m) true-colour satellite tiles from NASA GIBS

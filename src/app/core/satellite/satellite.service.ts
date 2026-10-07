@@ -56,7 +56,7 @@ export class SatelliteService {
   readonly loading = signal(false);
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
-  readonly view = signal<SatelliteView>('soft');
+  readonly view = signal<SatelliteView>('clouds');
   readonly source = signal<SatelliteSource>('meteosat');
 
   /** The picture the loop is nearest to. */
@@ -139,7 +139,7 @@ export class SatelliteService {
         product,
         fetch: async () => {
           const blob = await this.download(product, t);
-          // by day the natural-colour picture is fetched too, for the `natural` view (the frame still works without it)
+          // by day the natural-colour picture is fetched too, to blend into the cloud colours (the frame still works without it)
           const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
           return blob ? { blob, natural: natural ?? undefined } : null;
         },
@@ -226,7 +226,7 @@ export class SatelliteService {
     let pending = this.built.get(key);
     if (!pending) {
       const raw = this.raws.get(timeMs)!;
-      pending = this.process(raw.blob, raw.product, view, view === 'natural' ? raw.natural : undefined).then(url => {
+      pending = this.process(raw.blob, raw.product, view, view === 'clouds' ? raw.natural : undefined).then(url => {
         if (!url) this.built.delete(key); // try again on the next refresh
         return url ? { timeMs, product: raw.product, url } : null;
       });

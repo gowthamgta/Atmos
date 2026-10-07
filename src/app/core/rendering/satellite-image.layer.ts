@@ -139,7 +139,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private frames: SatelliteLayerFrame[] = [];
   private position = 0;
   private opacity = 0.9;
-  private look: 'picture' | 'clouds' | 'soft' = 'soft';
+  private look: 'picture' | 'clouds' = 'clouds';
   private lite = false;
 
   /** The pictures of the loop, oldest first. Pictures no longer listed are released. */
@@ -158,9 +158,10 @@ export class SatelliteImageLayer implements CustomLayerInterface {
 
   /**
    * What is being shown. The full picture is the satellite's own image, so it only gets a gentle lift (smooth bicubic
-   * magnification and mild sharpening); the cloud-only picture is a rendering of our own and takes stronger sharpening.
+   * magnification and mild sharpening); the cloud-only veil is smooth by design, so it gets no sharpening and an even
+   * smoother magnification.
    */
-  setLook(look: 'picture' | 'clouds' | 'soft'): void {
+  setLook(look: 'picture' | 'clouds'): void {
     this.look = look;
     this.map?.triggerRepaint();
   }
@@ -300,10 +301,10 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
-    gl.uniform1f(u['u_sharpen'], this.look === 'soft' ? 0 : this.look === 'clouds' ? 1.2 : 0.45);
-    gl.uniform1f(u['u_soft'], this.look === 'soft' ? 0.55 : 0);
+    gl.uniform1f(u['u_sharpen'], this.look === 'clouds' ? 0 : 0.45);
+    gl.uniform1f(u['u_soft'], this.look === 'clouds' ? 0.55 : 0);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
-    gl.uniform1f(u['u_wide'], this.lite || this.look !== 'clouds' ? 0 : 0.5);
+    gl.uniform1f(u['u_wide'], 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
