@@ -203,8 +203,19 @@ export function blurField(field: Float32Array, width: number, height: number, si
 
 /** Cloud-only view: the blur (picture pixels) of the cloud outline when picking, the smoothing of the picked cloud, and its opacity. */
 export const CLOUD_EDGE_SIGMA = 0.7;
-export const CLOUD_SMOOTH_SIGMA = 0;   // 0: the picked cloud keeps the picture's own pixels (raise it, about 2, for a softer look)
+export const CLOUD_SMOOTH_SIGMA = 2.5;   // 0: the picked cloud keeps the picture's own pixels; about 2.5 hides the satellite's pixels
 export const CLOUD_ALPHA = 0.95;
+/**
+ * After the smoothing the cloud's texture is put back (the brightness minus a wider blur of itself, so the bright cores and
+ * darker folds return while the pixel blocks stay gone), the colour gets a little more saturation, and the cloud a little
+ * more brightness and opacity. 0 turns the texture off.
+ */
+export const CLOUD_TEXTURE = 1.0;
+export const CLOUD_TEXTURE_SCALE = 2.2;     // the texture's blur is this many times the smoothing's
+export const CLOUD_TEXTURE_GAIN = 1.1;
+export const CLOUD_SATURATION = 0.25;
+export const CLOUD_GAIN = 1.06;
+export const CLOUD_OPACITY_BOOST = 1.1;
 /** How the natural-colour picture's whiteness is read (0..1 of its darkest channel) and smoothed (its pixels are 3 km). */
 export const NATURAL_WHITE: readonly [number, number] = [0.3, 0.58];
 export const NATURAL_SIGMA = 1.5;
@@ -212,8 +223,8 @@ export const NATURAL_SIGMA = 1.5;
 /**
  * Cloud only: first the cloud is picked out of the picture, pixel by pixel (the picture's own colours, the land and sea
  * cleared); then only the picked cloud is smoothed, colour and opacity together (premultiplied, so no dark fringe), which
- * hides the satellite's pixels the way Windy's layer does. The colour code stays (HRV: yellow low cloud, white and
- * blue-white middle and high cloud). `natural`, when given, is the natural-colour picture of the same size; it is used
+ * hides the satellite's pixels the way Windy's layer does, and its texture is put back (see CLOUD_TEXTURE). The colour
+ * code stays (HRV: yellow low cloud, white and blue-white middle and high cloud). `natural`, when given, is the natural-colour picture of the same size; it is used
  * only to find low cloud. Returns straight RGBA of the same size.
  */
 export function shadeCloudLayer(
@@ -249,13 +260,37 @@ export function shadeCloudLayer(
   const smooth = (f: Float32Array) => (CLOUD_SMOOTH_SIGMA > 0 ? blurField(f, width, height, CLOUD_SMOOTH_SIGMA) : f);
   const softAlpha = smooth(alpha);
   const soft = planes.map(smooth);
-  const out = new Uint8ClampedArray(n * 4);
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
+  // the cloud's own colour (not weighted by its opacity) and brightness, then the texture, saturation and gain
+  const lum = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
     const a = softAlpha[i];
     if (a < 0.01) continue;
-    out[p] = soft[0][i] / a;
-    out[p + 1] = soft[1][i] / a;
-    out[p + 2] = soft[2][i] / a;
+    soft[0][i] /= a;
+    soft[1][i] /= a;
+    soft[2][i] /= a;
+    lum[i] = (soft[0][i] + soft[1][i] + soft[2][i]) / 3;
+  }
+  const enhance = CLOUD_TEXTURE > 0 && CLOUD_SMOOTH_SIGMA > 0;
+  const wide = enhance ? blurField(lum, width, height, CLOUD_SMOOTH_SIGMA * CLOUD_TEXTURE_SCALE) : lum;
+  const out = new Uint8ClampedArray(n * 4);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    let a = softAlpha[i];
+    if (a < 0.01) continue;
+    let r = soft[0][i];
+    let g = soft[1][i];
+    let b = soft[2][i];
+    if (enhance) {
+      const local = CLOUD_TEXTURE * CLOUD_TEXTURE_GAIN * (lum[i] - wide[i]);
+      r += local; g += local; b += local;
+      const grey = (r + g + b) / 3;
+      r = (grey + (r - grey) * (1 + CLOUD_SATURATION)) * CLOUD_GAIN;
+      g = (grey + (g - grey) * (1 + CLOUD_SATURATION)) * CLOUD_GAIN;
+      b = (grey + (b - grey) * (1 + CLOUD_SATURATION)) * CLOUD_GAIN;
+      a *= CLOUD_OPACITY_BOOST;
+    }
+    out[p] = r;
+    out[p + 1] = g;
+    out[p + 2] = b;
     out[p + 3] = 255 * Math.min(1, a) * CLOUD_ALPHA;
   }
   return out;

@@ -253,15 +253,15 @@ describe('shadeCloudLayer (cloud only)', () => {
     expect(at(out, 3)[3]).toBe(0);                      // sea
     expect(at(out, 9)[3]).toBeLessThan(25);             // land (a little of the smoothing reaches it at the cloud's edge)
     const high = at(out, 28);                           // high cloud: its own colour
-    expect(Math.abs(high[0] - 246)).toBeLessThan(8);
-    expect(Math.abs(high[2] - 236)).toBeLessThan(12);
+    expect(Math.abs(high[0] - 246)).toBeLessThan(25);
+    expect(Math.abs(high[2] - 236)).toBeLessThan(40);
     expect(high[3]).toBeGreaterThan(220);
   });
 
   it('shows low (yellow) cloud, found with the natural-colour picture', () => {
     const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
     const low = at(out, 20);                                    // still yellow, so it reads as low cloud
-    expect(Math.abs(low[0] - 214)).toBeLessThan(10);
+    expect(Math.abs(low[0] - 214)).toBeLessThan(35);
     expect(low[2]).toBeLessThan(120);
     expect(low[3]).toBeGreaterThan(200);
     const without = shadeCloudLayer(scene(), W, H, 'hrv', 58);  // no natural colour: very bright yellow still counts
@@ -269,14 +269,27 @@ describe('shadeCloudLayer (cloud only)', () => {
     expect(at(without, 9)[3]).toBeLessThan(25);
   });
 
-  it('keeps the picked cloud as the picture has it: only the outline is softened, the colour code stays', () => {
+  it('smooths the picked cloud and puts its texture back: no hard edge, no dark fringe, the colour code kept', () => {
     const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
-    const edge = at(out, 24);                                      // where yellow low cloud meets white high cloud
-    expect(edge[0]).toBeGreaterThan(200);                          // not darkened towards the cleared neighbours
+    const alphas = Array.from({ length: W }, (_, x) => at(out, x)[3]);
+    let step = 0;
+    for (let x = 1; x < W; x++) step = Math.max(step, Math.abs(alphas[x] - alphas[x - 1]));
+    expect(step).toBeLessThan(110);                                // the 8-pixel cloud blocks fade over several pixels
+    expect(at(out, 24)[0]).toBeGreaterThan(200);                   // where yellow meets white: not darkened towards the cleared neighbours
     expect(at(out, 20)[2]).toBeLessThan(at(out, 28)[2]);          // low cloud still yellower than high cloud
-    // the cloud's outline is under a pixel of blur: an 8-pixel block of cloud has a ramp at its edge, not a ragged step
-    const alphas = Array.from({ length: 8 }, (_, i) => at(out, 14 + i)[3]);
-    expect(alphas.some(a => a > 20 && a < 235)).toBe(true);
+  });
+
+  it('restores texture: a bright core in a wide cloud stays brighter than its surroundings', () => {
+    const w = 60, h = 40;
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const core = Math.hypot(x - 30, y - 20) < 4;
+      px.set(core ? [250, 250, 225, 255] : x > 8 && x < 52 && y > 6 && y < 34 ? [200, 200, 170, 255] : [57, 57, 58, 255], (y * w + x) * 4);
+    }
+    const out = shadeCloudLayer(px, w, h, 'hrv', 58);
+    const at2 = (x: number, y: number) => out[(y * w + x) * 4];
+    expect(at2(30, 20)).toBeGreaterThan(at2(18, 20) + 10);
+    expect(out[(20 * w + 30) * 4 + 3]).toBeGreaterThan(200);
   });
 });
 

@@ -158,8 +158,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
 
   /**
    * What is being shown. The full picture is the satellite's own image, so it only gets a gentle lift (smooth bicubic
-   * magnification and mild sharpening). The cloud-only view is the same pixels with the land and sea cleared, so it gets
-   * the same treatment.
+   * magnification and mild sharpening). The cloud-only view is smoothed (and its texture restored) when the cloud is picked,
+   * so it gets no sharpening on top.
    */
   setLook(look: 'picture' | 'clouds'): void {
     this.look = look;
@@ -301,7 +301,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
-    gl.uniform1f(u['u_sharpen'], 0.45);
+    gl.uniform1f(u['u_sharpen'], this.look === 'clouds' ? 0 : 0.45);
     gl.uniform1f(u['u_soft'], 0);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
     gl.uniform1f(u['u_wide'], 0);
