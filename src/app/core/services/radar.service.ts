@@ -43,7 +43,7 @@ export { MERGED_PRODUCTS } from './radar-mosaic';
  * Blur applied to the reconstructed intensity, in pixels of the 1024 grid (about 0.5 km each). Light: the GPU layer
  * smooths the intensity itself when it draws, so contours stay crisp at any zoom.
  */
-const RADAR_BLUR_SIGMA_PX = 1.5;
+const RADAR_BLUR_SIGMA_PX = 2.6;
 
 // ── Radial interference (spoke) removal ──
 // Sun strikes and RF interference paint long, thin wedges that point straight at the radar.
@@ -872,9 +872,19 @@ export class RadarService implements OnDestroy {
     }
 
     if (isTransparent && hasAnyEcho) {
-      // 4. Natural blending: the smoothly resampled intensity is blurred with a Gaussian (about 1 km), which rounds
-      // every contour and blends the colour classes into each other without growing the echoes.
-      const blurredGrid = blurSeparable(rawGrid, outSize, gaussianKernel(RADAR_BLUR_SIGMA_PX));
+      // 4. Natural continuous-field smoothing: Gaussian blur gives organic curved contours.
+      const baseBlur = blurSeparable(rawGrid, outSize, gaussianKernel(RADAR_BLUR_SIGMA_PX));
+
+      // Preserve authentic convective peak intensities (torrential rain and storm cores)
+      // by reconstructing the peak excess through a smooth diffusion filter rather than
+      // copying stair-stepped raw pixels.
+      const peakDiff = new Float32Array(outSize * outSize);
+      for (let i = 0; i < rawGrid.length; i++) {
+        if (rawGrid[i] > baseBlur[i]) {
+          peakDiff[i] = rawGrid[i] - baseBlur[i];
+        }
+      }
+      const smoothPeakDiff = blurSeparable(peakDiff, outSize, gaussianKernel(1.8));
 
       // - Color mapping with smooth Hermite border feathering (blends seamlessly into terrain)
       for (let y = 0; y < outSize; y++) {
@@ -886,13 +896,8 @@ export class RadarService implements OnDestroy {
           const dishEdgeDist = maxRadius - dist;
           if (dishEdgeDist <= 0) continue;
 
-          let val = blurredGrid[rowOffset + x];
-
-          // Preserve authentic peak core intensity (Red, Orange, Yellow, Purple)
-          const rawVal = rawGrid[rowOffset + x];
-          if (rawVal >= 2.0 && rawVal > val) {
-            val = rawVal * 0.85 + val * 0.15;
-          }
+          let val = baseBlur[rowOffset + x] + smoothPeakDiff[rowOffset + x] * 1.25;
+          if (val > 5.5) val = 5.5;
 
           if (dishEdgeDist < 8) {
             val *= Math.max(0, dishEdgeDist / 8);

@@ -23,7 +23,6 @@ function rampGlsl(): string {
       const s1 = stops[i + 1];
       return `  if (v >= ${f(s0.val)} && v < ${f(s1.val)}) {
     float t = (v - ${f(s0.val)}) / ${f(s1.val - s0.val)};
-    t = t * t * (3.0 - 2.0 * t);
     return mix(${col(s0)}, ${col(s1)}, t);
   }`;
     })
@@ -58,11 +57,15 @@ ${rampGlsl()}
 vec4 weights(float t) {
   float t2 = t * t;
   float t3 = t2 * t;
-  return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
+  return vec4(
+    (1.0 - 3.0 * t + 3.0 * t2 - t3) / 6.0,
+    (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0,
+    (1.0 + 3.0 * t + 3.0 * t2 - 3.0 * t3) / 6.0,
+    t3 / 6.0
+  );
 }
 
-// Bicubic intensity. Not clamped to the neighbouring texels: that would flatten the colour classes into stepped
-// plateaus with jagged diagonals. The small overshoot of the filter only moves a contour a fraction of a pixel.
+// Bicubic intensity with uniform cubic B-spline filter for C2 continuity and silky smooth contours.
 float bicubic(vec2 px) {
   vec2 p = px - 0.5;
   ivec2 i1 = ivec2(floor(p));
@@ -89,7 +92,7 @@ void main() {
   vec2 px = uv * (vec2(u_size) - 1.0) + 0.5;
   vec2 gx = dFdx(uv);
   vec2 gy = dFdy(uv);
-  bool magnifying = max(length(gx * vec2(u_size)), length(gy * vec2(u_size))) < 1.0;
+  bool magnifying = max(length(gx * vec2(u_size)), length(gy * vec2(u_size))) < 1.6;
 
   vec2 tc = px / vec2(u_size); // texture coordinates of the same point
   float v;
@@ -140,7 +143,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
   private box: [number, number, number, number] = [0, 0, 1, 1];
   private lat: [number, number] = [1, 0];
   private opacity = 1;
-  private sharpen = 0.12;
+  private sharpen = 0.0;
 
   /** The mosaic to draw (null hides the layer). */
   setFrame(frame: RadarLayerFrame | null): void {

@@ -113,11 +113,10 @@ export function sampleRadarColorRamp(v: number): [number, number, number, number
     const s1 = RADAR_COLOR_STOPS[i + 1];
     if (v >= s0.val && v <= s1.val) {
       const t = (v - s0.val) / (s1.val - s0.val);
-      const smoothT = t * t * (3 - 2 * t);
-      const cr = Math.round(s0.r + (s1.r - s0.r) * smoothT);
-      const cg = Math.round(s0.g + (s1.g - s0.g) * smoothT);
-      const cb = Math.round(s0.b + (s1.b - s0.b) * smoothT);
-      const ca = Math.round((s0.a + (s1.a - s0.a) * smoothT) * 255);
+      const cr = Math.round(s0.r + (s1.r - s0.r) * t);
+      const cg = Math.round(s0.g + (s1.g - s0.g) * t);
+      const cb = Math.round(s0.b + (s1.b - s0.b) * t);
+      const ca = Math.round((s0.a + (s1.a - s0.a) * t) * 255);
       return [cr, cg, cb, ca];
     }
   }
