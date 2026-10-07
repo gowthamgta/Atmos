@@ -55,7 +55,7 @@ export class SatelliteService {
   readonly playing = signal(false);
   readonly loading = signal(false);
   readonly failed = signal(false);
-  readonly opacity = signal(1);
+  readonly opacity = signal(0.9);
   readonly view = signal<SatelliteView>('clouds');
   readonly source = signal<SatelliteSource>('meteosat');
 

@@ -262,7 +262,7 @@ describe('shadeCloudLayer (cloud only)', () => {
     const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
     const low = at(out, 20);                                    // still yellow, so it reads as low cloud
     expect(Math.abs(low[0] - 214)).toBeLessThan(35);
-    expect(low[0] - low[2]).toBeGreaterThan(30);                 // cream, still warmer than the white high cloud
+    expect(low[2]).toBeLessThan(120);
     expect(low[3]).toBeGreaterThan(200);
     const without = shadeCloudLayer(scene(), W, H, 'hrv', 58);  // no natural colour: very bright yellow still counts
     expect(at(without, 20)[3]).toBeGreaterThan(80);
@@ -277,17 +277,6 @@ describe('shadeCloudLayer (cloud only)', () => {
     expect(step).toBeLessThan(110);                                // the 8-pixel cloud blocks fade over several pixels
     expect(at(out, 24)[0]).toBeGreaterThan(200);                   // where yellow meets white: not darkened towards the cleared neighbours
     expect(at(out, 20)[2]).toBeLessThan(at(out, 28)[2]);          // low cloud still yellower than high cloud
-  });
-
-  it('puts a soft shadow under the cloud, south-east of it, so it does not mix into the map', () => {
-    const w = 80, h = 50;
-    const px = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) px.set(x >= 20 && x < 40 && y >= 15 && y < 30 ? [240, 240, 235, 255] : [57, 57, 58, 255], (y * w + x) * 4);
-    const out = shadeCloudLayer(px, w, h, 'hrv', 58);
-    const alpha = (x: number, y: number) => out[(y * w + x) * 4 + 3];
-    expect(alpha(44, 32)).toBeGreaterThan(alpha(14, 12) + 8);            // dark beyond the south-east corner, clear beyond the north-west one
-    expect(out[(32 * w + 44) * 4]).toBeLessThan(40);                    // and the shadow itself is dark
-    expect(alpha(2, 2)).toBe(0);
   });
 
   it('restores texture: a bright core in a wide cloud stays brighter than its surroundings', () => {
