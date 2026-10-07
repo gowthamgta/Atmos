@@ -23,6 +23,8 @@ import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
 import { SATELLITE_BOUNDS } from '../../core/satellite/satellite.config';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
+/** [[west, south], [east, north]]: Tamil Nadu focus view by default. */
+const TAMIL_NADU_VIEW: [[number, number], [number, number]] = [[76.0, 8.0], [80.6, 13.8]];
 /** [[west, south], [east, north]]: the whole forecast area (South India, Sri Lanka and the seas around them). */
 const SOUTH_INDIA_VIEW: [[number, number], [number, number]] = [[67.5, 3.5], [90.5, 22.5]];
 /** How far the map can be panned and zoomed out: wide enough to roam freely beyond the forecast area. */
@@ -526,9 +528,9 @@ export class MapComponent implements OnInit, OnDestroy {
           }
         ]
       },
-      // Open on the whole forecast area; the map can be panned and zoomed out freely beyond it
-      bounds: SOUTH_INDIA_VIEW,
-      fitBoundsOptions: { padding: 12 },
+      // Open centered on Tamil Nadu by default; users can zoom out freely beyond it
+      bounds: TAMIL_NADU_VIEW,
+      fitBoundsOptions: { padding: 16 },
       minZoom: 3.2,
       maxZoom: 15,
       maxBounds: MAP_MAX_BOUNDS,
@@ -905,7 +907,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
   public flyToMosaicCenter(): void {
     if (!this.map) return;
-    this.map.fitBounds(SOUTH_INDIA_VIEW, { padding: 12, essential: true });
+    this.map.fitBounds(TAMIL_NADU_VIEW, { padding: 16, essential: true });
   }
 
   public zoomIn(): void {
