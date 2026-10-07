@@ -30,6 +30,7 @@ uniform ivec2 u_size;
 uniform float u_mixB;     // 0..1: how much of picture B is faded in over A
 uniform float u_opacity;
 uniform float u_sharpen;
+uniform float u_soft;      // 0..1: how much of a smoother (half-resolution) read is mixed in, to hide the satellite's pixels
 uniform int u_hasB;
 uniform float u_wide;      // weight of the wider (4 picture pixel) blur scale in the sharpening; 0 = one scale only
 in vec2 v_merc;
@@ -78,6 +79,7 @@ vec4 bicubicLod(sampler2D tex, vec2 px, int lod) {
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
   if (!magnifying) return textureGrad(tex, uv, gx, gy); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
+  if (u_soft > 0.0) c = mix(c, bicubicLod(tex, px, 1), u_soft);
   if (u_sharpen > 0.0) {
     // Unsharp mask: add back the difference between the picture and a smooth blur of itself (two and four picture
     // pixels wide), so cloud edges and the fine texture of the visible picture stand out. Applied to the colour only;
@@ -156,8 +158,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
 
   /**
    * What is being shown. The full picture is the satellite's own image, so it only gets a gentle lift (smooth bicubic
-   * magnification and mild sharpening). The cloud-only view is the same pixels with the land and sea cleared, so it gets
-   * the same treatment.
+   * magnification and mild sharpening). The cloud-only view is already smoothed when the cloud is picked, so it gets no
+   * sharpening and a slightly smoother magnification.
    */
   setLook(look: 'picture' | 'clouds'): void {
     this.look = look;
@@ -211,7 +213,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_hasB', 'u_wide']) {
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_soft', 'u_hasB', 'u_wide']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.vao = gl.createVertexArray();
@@ -299,7 +301,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
-    gl.uniform1f(u['u_sharpen'], 0.45);
+    gl.uniform1f(u['u_sharpen'], this.look === 'clouds' ? 0 : 0.45);
+    gl.uniform1f(u['u_soft'], this.look === 'clouds' ? 0.4 : 0);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
     gl.uniform1f(u['u_wide'], 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

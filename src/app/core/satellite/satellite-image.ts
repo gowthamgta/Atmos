@@ -201,18 +201,20 @@ export function blurField(field: Float32Array, width: number, height: number, si
   return out;
 }
 
-/** Cloud-only view: the slight blur of the cloud's outline (picture pixels, against jagged edges) and its opacity limits. */
+/** Cloud-only view: the blur (picture pixels) of the cloud outline when picking, the smoothing of the picked cloud, and its opacity. */
 export const CLOUD_EDGE_SIGMA = 0.7;
+export const CLOUD_SMOOTH_SIGMA = 1.8;
 export const CLOUD_ALPHA = 0.95;
 /** How the natural-colour picture's whiteness is read (0..1 of its darkest channel) and smoothed (its pixels are 3 km). */
 export const NATURAL_WHITE: readonly [number, number] = [0.3, 0.58];
 export const NATURAL_SIGMA = 1.5;
 
 /**
- * Cloud only: the satellite picture's own pixels and colours where there is cloud, the land and sea cleared so the map
- * shows. Nothing is smoothed but the cloud's outline, so the detail and the colour code of the picture stay (HRV: yellow
- * low cloud, white and blue-white middle and high cloud). `natural`, when given, is the natural-colour picture of the
- * same size; it is used only to find low cloud. Returns straight RGBA of the same size.
+ * Cloud only: first the cloud is picked out of the picture, pixel by pixel (the picture's own colours, the land and sea
+ * cleared); then only the picked cloud is smoothed, colour and opacity together (premultiplied, so no dark fringe), which
+ * hides the satellite's pixels the way Windy's layer does. The colour code stays (HRV: yellow low cloud, white and
+ * blue-white middle and high cloud). `natural`, when given, is the natural-colour picture of the same size; it is used
+ * only to find low cloud. Returns straight RGBA of the same size.
  */
 export function shadeCloudLayer(
   src: Uint8ClampedArray,
@@ -231,14 +233,29 @@ export function shadeCloudLayer(
     white = blurField(white, width, height, NATURAL_SIGMA);
   }
   const cover = blurField(cloudCover(src, width, height, kind, background, white), width, height, CLOUD_EDGE_SIGMA);
-  const out = new Uint8ClampedArray(width * height * 4);
-  for (let i = 0, p = 0; i < cover.length; i++, p += 4) {
+  // pick: the cloud's own colour, weighted by how sure it is cloud
+  const n = cover.length;
+  const alpha = new Float32Array(n);
+  const planes = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
     const a = smoothstep(0.08, 0.7, cover[i]);
     if (a <= 0) continue;
-    out[p] = src[p];
-    out[p + 1] = src[p + 1];
-    out[p + 2] = src[p + 2];
-    out[p + 3] = 255 * a * CLOUD_ALPHA;
+    alpha[i] = a;
+    planes[0][i] = src[p] * a;
+    planes[1][i] = src[p + 1] * a;
+    planes[2][i] = src[p + 2] * a;
+  }
+  // smooth: the picked cloud only, colour and opacity together
+  const softAlpha = blurField(alpha, width, height, CLOUD_SMOOTH_SIGMA);
+  const soft = planes.map(pl => blurField(pl, width, height, CLOUD_SMOOTH_SIGMA));
+  const out = new Uint8ClampedArray(n * 4);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const a = softAlpha[i];
+    if (a < 0.01) continue;
+    out[p] = soft[0][i] / a;
+    out[p + 1] = soft[1][i] / a;
+    out[p + 2] = soft[2][i] / a;
+    out[p + 3] = 255 * Math.min(1, a) * CLOUD_ALPHA;
   }
   return out;
 }
