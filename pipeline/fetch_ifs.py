@@ -23,6 +23,13 @@ PRECIP_NOTE = "mm/h: rain in the hour before the valid time (<= +90 h) or the me
 PROVIDES = frozenset(SOURCE_VARS) | frozenset(LEVEL_RAW_KEYS)
 UNAVAILABLE_VARS: frozenset[str] = unavailable_for(PROVIDES)
 _ifs025_bbox: tuple[float, float, float, float] | None = None
+# Bump when the way a run is built changes so that a run already live under the old way is rebuilt: v2 = the pressure levels
+# are published only with the 0.25 degree data (a run that went out with empty levels is rebuilt).
+LIVE_FORMAT = 2
+# Steps whose pressure levels could not be read in this process. A run with any of them is published as incomplete, so the
+# next scheduled run builds it again (see run.py) instead of the empty levels staying live for twelve hours.
+_level_gaps: set[int] = set()
+_level_error = ""       # the first reason a step's levels could not be read (published in latest.json, for diagnosis)
 
 
 def precip_window_hours(step_h: int) -> int:
@@ -41,7 +48,29 @@ def latest_run() -> datetime:
     j = requests.get(LATEST_URL, timeout=30).json()
     if not j.get("completed"):
         raise RuntimeError("latest run is still in progress")
-    return datetime.strptime(j["reference_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    run = datetime.strptime(j["reference_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    if not _levels_published(run):
+        raise RuntimeError(f"the 0.25 degree pressure-level data of run {run:%Y%m%dT%HZ} is not published yet")
+    return run
+
+
+def _levels_published(run: datetime) -> bool:
+    """Whether Open-Meteo already has the last step of this run in the 0.25 degree dataset (where the pressure levels are).
+    The 9 km surface dataset is published earlier than that one, and a run built before it would have empty levels."""
+    try:
+        url = fetch_regular.RegularModel.file_url("ecmwf_ifs025", run, STEP_HOURS[-1])
+        return requests.head(url, timeout=30).status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def incomplete_reason() -> str:
+    return _level_error
+
+
+def incomplete_steps() -> list[int]:
+    """Steps of the run just built whose pressure levels are empty (none when everything was read)."""
+    return sorted(_level_gaps)
 
 
 def file_url(run: datetime, step_h: int) -> str:
@@ -52,8 +81,8 @@ def file_url(run: datetime, step_h: int) -> str:
 def _levels_aloft(run: datetime, step_h: int, tmp: str) -> dict[str, np.ndarray]:
     """Pressure-level fields from the 0.25 degree IFS dataset (the 9 km one has surface fields only).
 
-    Best effort: if that dataset has not published this step yet the fields are empty (no data), which the app shows
-    as such, rather than failing the whole run.
+    Best effort: if a step cannot be read the fields are empty (no data), which the app shows as such, rather than failing
+    the whole run; the step is noted in `_level_gaps` and the run is then published as incomplete and built again later.
     """
     global _ifs025_bbox
     empty = {name: np.full((NY, NX), np.nan, np.float32) for name in LEVEL_RAW_KEYS}
@@ -65,6 +94,9 @@ def _levels_aloft(run: datetime, step_h: int, tmp: str) -> dict[str, np.ndarray]
         return fetch_regular.read_dataset_vars(path, list(LEVEL_RAW_KEYS), _ifs025_bbox)
     except Exception as e:  # noqa: BLE001 - a missing optional dataset must not stop the run
         print(f"  pressure levels unavailable for +{step_h} h: {e}")
+        global _level_error
+        _level_gaps.add(step_h)
+        _level_error = _level_error or f"+{step_h} h: {type(e).__name__}: {e}"[:300]
         return empty
 
 

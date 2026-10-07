@@ -54,11 +54,17 @@ def process_step(fetcher, run, h):
     return h, pngs, fields["precip"], fields["t2m"]
 
 
-def live_run(url: str) -> str | None:
-    """Run id currently served at `url` (a latest.json), or None if unreachable or not there yet."""
+def live_run(url: str, fmt: int | None = None) -> str | None:
+    """Run id currently served at `url` (a latest.json), or None if unreachable, not there yet, published incomplete
+    (some data was missing, so it should be built again), or built the old way (`fmt` is the model's current LIVE_FORMAT)."""
     try:
         r = requests.get(url, timeout=30)
-        return r.json()["run"] if r.ok else None
+        if not r.ok:
+            return None
+        j = r.json()
+        if j.get("complete") is False or (fmt is not None and j.get("format") != fmt):
+            return None
+        return j["run"]
     except (requests.RequestException, ValueError, KeyError):
         return None
 
@@ -93,7 +99,7 @@ def main() -> int:
         if run.hour not in fetcher.RUN_HOURS:
             print(f"{args.model}: latest run {run_id} is not one of {fetcher.RUN_HOURS}Z; nothing to do")
             return 0
-        if args.live_url and live_run(args.live_url) == run_id:
+        if args.live_url and live_run(args.live_url, getattr(fetcher, "LIVE_FORMAT", None)) == run_id:
             print(f"{args.model}: run {run_id} is already live; nothing to do")
             return 0
     all_steps = fetcher.steps_for(run) if hasattr(fetcher, "steps_for") else fetcher.STEP_HOURS  # shorter runs publish fewer steps
@@ -131,8 +137,15 @@ def main() -> int:
     # latest.json is written last so a half-finished folder never advertises a run
     write(os.path.join(args.out, fetcher.MODEL_ID, run_id, "manifest.json"),
           json.dumps(build_manifest(fetcher, run, sorted(done))).encode())
-    write(os.path.join(args.out, fetcher.MODEL_ID, "latest.json"),
-          json.dumps({"model": fetcher.MODEL_ID, "run": run_id}).encode())
+    gaps = fetcher.incomplete_steps() if hasattr(fetcher, "incomplete_steps") else []
+    latest = {"model": fetcher.MODEL_ID, "run": run_id}
+    if hasattr(fetcher, "LIVE_FORMAT"):
+        latest["format"] = fetcher.LIVE_FORMAT
+    if gaps:
+        latest["complete"] = False          # published as it is, and built again by the next scheduled run
+        latest["problem"] = fetcher.incomplete_reason()
+        print(f"{args.model}: pressure levels missing at +{', +'.join(str(g) for g in gaps)} h; this run will be built again", flush=True)
+    write(os.path.join(args.out, fetcher.MODEL_ID, "latest.json"), json.dumps(latest).encode())
     write(os.path.join(args.out, ".nojekyll"), b"")
     print("done")
     return 0
