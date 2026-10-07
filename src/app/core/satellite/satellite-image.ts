@@ -159,56 +159,6 @@ export function cloudCover(src: Uint8ClampedArray, width: number, height: number
   return out;
 }
 
-/**
- * Pan-sharpening: the blur that hides the 3 km colour blocks, the blur that stands for the 3 km scale, the lift's limits and
- * strength, and a final unsharp mask on the brightness (how much of the difference to a slightly blurred copy is added back).
- */
-export const PAN_COLOUR_SIGMA = 1.3;
-export const PAN_SIGMA = 2.6;
-export const PAN_RATIO_MIN = 0.45;
-export const PAN_RATIO_MAX = 2.6;
-export const PAN_GAIN = 1.7;
-export const UNSHARP_AMOUNT = 0.9;
-export const UNSHARP_SIGMA = 1.1;
-
-/**
- * Pan-sharpening: the colour picture (3 km pixels, true colour) gets the fine detail of the HRV picture (1 km). The colour
- * is first smoothed, so its 3 km blocks do not show. The HRV picture's brightness (red and green channels, which both carry
- * the HRV) is divided by a blurred copy of itself, which is how much brighter or darker each pixel is than its 3 km
- * surroundings, and the colour is scaled by that (raised to `PAN_GAIN`, which makes cloud texture stand out). The HRV is
- * saturated in thick cloud, so a last unsharp mask on the brightness brings back the texture there. Returns a new RGBA
- * picture; both inputs are `width` x `height` and alpha is set opaque.
- */
-export function panSharpen(colour: Uint8ClampedArray, hrv: Uint8ClampedArray, width: number, height: number, sigma = PAN_SIGMA): Uint8ClampedArray<ArrayBuffer> {
-  const n = width * height;
-  const luma = new Float32Array(n);
-  for (let i = 0, p = 0; i < n; i++, p += 4) luma[i] = (hrv[p] + hrv[p + 1]) / 2;
-  const low = blurField(luma, width, height, sigma);
-  const planes = [0, 1, 2].map(c => {
-    const plane = new Float32Array(n);
-    for (let i = 0, p = c; i < n; i++, p += 4) plane[i] = colour[p];
-    return blurField(plane, width, height, PAN_COLOUR_SIGMA);
-  });
-  const bright = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const ratio = Math.pow(Math.min(PAN_RATIO_MAX, Math.max(PAN_RATIO_MIN, (luma[i] + 10) / (low[i] + 10))), PAN_GAIN);
-    planes[0][i] *= ratio;
-    planes[1][i] *= ratio;
-    planes[2][i] *= ratio;
-    bright[i] = (planes[0][i] + planes[1][i] + planes[2][i]) / 3;
-  }
-  const soft = blurField(bright, width, height, UNSHARP_SIGMA);
-  const out = new Uint8ClampedArray(n * 4);
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const edge = UNSHARP_AMOUNT * (bright[i] - soft[i]);
-    out[p] = planes[0][i] + edge;
-    out[p + 1] = planes[1][i] + edge;
-    out[p + 2] = planes[2][i] + edge;
-    out[p + 3] = 255;
-  }
-  return out;
-}
-
 /** Gaussian blur of a `width` x `height` field (separable, edges clamped), sigma in pixels. */
 export function blurField(field: Float32Array, width: number, height: number, sigma: number): Float32Array {
   const radius = Math.max(1, Math.ceil(sigma * 3));

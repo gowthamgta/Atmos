@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { deblockJpeg, mercatorHeight, panSharpen, toOverlayPixels } from './satellite-image';
+import { deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
 import { SatelliteChannel, SatelliteView } from './satellite.config';
 
 export interface SatelliteWorkerRequest {
@@ -7,7 +7,7 @@ export interface SatelliteWorkerRequest {
   jpeg: Blob;
   kind: SatelliteChannel;
   view: SatelliteView;
-  /** The true-colour picture to sharpen with the HRV one (daytime Meteosat, full-picture view). */
+  /** The natural-colour picture, shown instead of the HRV one in the `natural` view (daytime Meteosat). */
   natural?: Blob;
 }
 
@@ -25,17 +25,16 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     bitmap.close();
     let src = sctx.getImageData(0, 0, width, height).data;
     deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
-    if (natural && kind === 'hrv' && view === 'picture') {
+    if (natural && kind === 'hrv' && view === 'natural') {
       const colourBitmap = await createImageBitmap(natural);
       sctx.clearRect(0, 0, width, height);
       sctx.drawImage(colourBitmap, 0, 0, width, height);
       colourBitmap.close();
-      const colour = sctx.getImageData(0, 0, width, height).data;
-      deblockJpeg(colour, width, height);
-      src = panSharpen(colour, src, width, height);
+      src = sctx.getImageData(0, 0, width, height).data;
+      deblockJpeg(src, width, height);
     }
     const outHeight = mercatorHeight(width);
-    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight);
+    const pixels = toOverlayPixels(src, width, height, kind, view === 'natural' ? 'picture' : view, outHeight);
     const out = new OffscreenCanvas(width, outHeight);
     out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
     const png = await out.convertToBlob({ type: 'image/png' });

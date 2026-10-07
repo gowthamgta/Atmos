@@ -8,7 +8,6 @@ import {
   deblockJpeg,
   latFromMercatorY,
   mercatorHeight,
-  panSharpen,
   mercatorRowMap,
   hrvBackground,
   mercatorY,
@@ -257,35 +256,6 @@ describe('shadeCloudLayer', () => {
     const lit = at(32 - 12, 32 - 5); // up-left of the middle: slopes up towards the middle, facing the light
     const dark = at(32 + 12, 32 + 5);
     expect(lit[0]).toBeGreaterThan(dark[0]);
-  });
-});
-
-describe('panSharpen', () => {
-  const rgba = (w: number, h: number, f: (x: number, y: number) => [number, number, number]) => {
-    const px = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const [r, g, b] = f(x, y); const i = (y * w + x) * 4; px[i] = r; px[i + 1] = g; px[i + 2] = b; px[i + 3] = 255; }
-    return px;
-  };
-
-  it('puts the fine detail of the HRV picture onto flat colour, and leaves flat HRV alone', () => {
-    const w = 24, h = 8;
-    const colour = rgba(w, h, () => [100, 120, 90]);
-    const stripes = rgba(w, h, x => (x % 4 < 2 ? [200, 200, 0] : [80, 80, 0]));
-    const sharp = panSharpen(colour, stripes, w, h);
-    const bright = sharp[(4 * w + 8) * 4 + 1];
-    const dark = sharp[(4 * w + 10) * 4 + 1];
-    expect(bright).toBeGreaterThan(dark + 20);                // the stripes now show in the colour
-    const flat = panSharpen(colour, rgba(w, h, () => [150, 150, 0]), w, h);
-    expect(Math.abs(flat[(4 * w + 8) * 4 + 1] - 120)).toBeLessThan(3);
-    expect(flat[3]).toBe(255);
-  });
-
-  it('keeps the colour balance (ratio, not replacement)', () => {
-    const w = 16, h = 8;
-    const out = panSharpen(rgba(w, h, () => [40, 120, 200]), rgba(w, h, x => (x % 2 ? [140, 140, 0] : [110, 110, 0])), w, h);
-    const i = (4 * w + 8) * 4;
-    expect(out[i + 2]).toBeGreaterThan(out[i + 1]);
-    expect(out[i + 1]).toBeGreaterThan(out[i]);
   });
 });
 

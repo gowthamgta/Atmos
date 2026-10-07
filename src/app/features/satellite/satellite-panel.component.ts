@@ -46,9 +46,12 @@ function istClock(ms: number): string {
           @if (sat.loading()) { <div class="loading">Loading pictures…</div> }
         }
 
-        <div class="views" role="group" aria-label="What to show">
+        <div class="views" [class.three]="sat.source() === 'meteosat'" role="group" aria-label="What to show">
           <button type="button" class="view" [class.active]="sat.view() === 'clouds'" [attr.aria-pressed]="sat.view() === 'clouds'" (click)="sat.setView('clouds')" title="Only the clouds, bright over the map">Clouds only</button>
-          <button type="button" class="view" [class.active]="sat.view() === 'picture'" [attr.aria-pressed]="sat.view() === 'picture'" (click)="sat.setView('picture')" title="The whole satellite picture, land and sea included">Full picture</button>
+          <button type="button" class="view" [class.active]="sat.view() === 'picture'" [attr.aria-pressed]="sat.view() === 'picture'" (click)="sat.setView('picture')" title="The whole satellite picture, land and sea included">{{ sat.source() === 'fy4b' ? 'Full picture' : 'HRV RGB' }}</button>
+          @if (sat.source() === 'meteosat') {
+            <button type="button" class="view" [class.active]="sat.view() === 'natural'" [attr.aria-pressed]="sat.view() === 'natural'" (click)="sat.setView('natural')" title="Natural colour by day: green land, blue sea, white cloud (3 km, unprocessed)">Natural</button>
+          }
         </div>
 
         <label class="opacity">
@@ -80,6 +83,7 @@ function istClock(ms: number): string {
     .value { color: var(--text-primary); float: right; font-weight: 600; }
     .views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
     .sources { margin-top: 8px; }
+    .views.three { grid-template-columns: 1fr 1fr 1fr; }
     .view { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; }
     .view:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
     .view.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
@@ -109,14 +113,14 @@ export class SatellitePanelComponent {
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   protected readonly productLabel = computed(() => {
     const p = this.sat.current()?.product;
-    return p ? (p.id === 'hrv' || p.id === 'rgb' ? 'daylight, true colour' : 'night, infrared') : 'loading';
+    return p ? (p.id === 'hrv' || p.id === 'rgb' ? (this.sat.source() === 'fy4b' ? 'daylight, true colour' : this.sat.view() === 'natural' ? 'daylight, natural colour' : 'daylight, HRV') : 'night, infrared') : 'loading';
   });
   protected readonly sourceLabel = computed(() => SATELLITE_SOURCES[this.sat.source()].label);
   protected readonly note = computed(() => {
     const info = SATELLITE_SOURCES[this.sat.source()];
     const detail = this.sat.source() === 'fy4b'
       ? 'Last hour, every 15 minutes, 0.5 km. The red, blue and near-infrared channels merged into true colour by day, infrared at night.'
-      : 'Last hour, every 15 minutes. True colour sharpened with the 1 km HRV by day, infrared at night.';
+      : 'Last hour, every 15 minutes. HRV RGB (1 km) or natural colour (3 km) by day, infrared at night.';
     return `${detail} ${info.credit}`;
   });
   protected readonly timeLabel = computed(() => {

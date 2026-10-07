@@ -139,7 +139,7 @@ export class SatelliteService {
         product,
         fetch: async () => {
           const blob = await this.download(product, t);
-          // by day the true-colour picture is fetched too, to be sharpened with the HRV one (the frame still works without it)
+          // by day the natural-colour picture is fetched too, for the `natural` view (the frame still works without it)
           const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
           return blob ? { blob, natural: natural ?? undefined } : null;
         },
@@ -226,7 +226,7 @@ export class SatelliteService {
     let pending = this.built.get(key);
     if (!pending) {
       const raw = this.raws.get(timeMs)!;
-      pending = this.process(raw.blob, raw.product, view, view === 'picture' ? raw.natural : undefined).then(url => {
+      pending = this.process(raw.blob, raw.product, view, view === 'natural' ? raw.natural : undefined).then(url => {
         if (!url) this.built.delete(key); // try again on the next refresh
         return url ? { timeMs, product: raw.product, url } : null;
       });

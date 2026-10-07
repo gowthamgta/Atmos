@@ -26,8 +26,8 @@ export const SATELLITE_BOUNDS = { west: 68, east: 90, south: 4, north: 22 } as c
 export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
 /**
- * EUMETSAT's "enhanced natural colour" picture: true colour (green land, blue sea, white cloud), but built from 3 km channels,
- * so it is soft. By day it is sharpened with the 1 km detail of the HRV picture (see `panSharpen`).
+ * EUMETSAT's "enhanced natural colour" picture: true colour (green land, blue sea, white cloud), built from 3 km channels.
+ * Meteosat's `natural` view shows it as it is, by day (infrared at night).
  */
 export const SATELLITE_NATURAL_LAYER = 'rgb_naturalenhncd';
 
@@ -101,8 +101,9 @@ export function fy4ProductFor(frame: Fy4Frame): SatelliteProduct {
 /**
  * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
  * `picture`: the whole satellite picture (HRV keeps its land and sea colours).
+ * `natural`: Meteosat by day only, EUMETSAT's natural-colour picture, unprocessed.
  */
-export type SatelliteView = 'clouds' | 'picture';
+export type SatelliteView = 'clouds' | 'picture' | 'natural';
 
 /** Domain centre, used to decide whether it is day or night over the area. */
 const CENTRE = { lat: 13, lon: 79 };
