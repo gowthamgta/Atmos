@@ -100,10 +100,11 @@ export function fy4ProductFor(frame: Fy4Frame): SatelliteProduct {
 
 /**
  * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
+ * `soft`: only the cloud, as a smooth translucent veil over the map (the default).
  * `picture`: the whole satellite picture (HRV keeps its land and sea colours).
  * `natural`: Meteosat by day only, EUMETSAT's natural-colour picture, unprocessed.
  */
-export type SatelliteView = 'clouds' | 'picture' | 'natural';
+export type SatelliteView = 'soft' | 'clouds' | 'picture' | 'natural';
 
 /** Domain centre, used to decide whether it is day or night over the area. */
 const CENTRE = { lat: 13, lon: 79 };

@@ -12,6 +12,7 @@ import {
   hrvBackground,
   mercatorY,
   shadePixel,
+  shadeSoftClouds,
   satelliteCoordinates,
   toOverlayPixels,
 } from './satellite-image';
@@ -281,5 +282,40 @@ describe('true-colour (FY-4B) pictures', () => {
     expect(out[3]).toBe(0);
     shadePixel('ir', 'picture', 40, 40, 40, 0, out, 0);
     expect(out[3]).toBeGreaterThan(200);
+  });
+});
+
+describe('soft cloud look', () => {
+  const picture = (w: number, h: number, cloud: (x: number, y: number) => number) => {
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const t = cloud(x, y);                         // 0 land .. 1 thick cloud
+      const i = (y * w + x) * 4;
+      px[i] = 60 + 150 * t; px[i + 1] = 70 + 145 * t; px[i + 2] = 40 + 185 * t; px[i + 3] = 255;
+    }
+    return px;
+  };
+
+  it('veils only the cloud, smoothly: no pixel edges, nothing over clear land', () => {
+    const w = 60, h = 40;
+    const src = picture(w, h, (x, y) => (x >= 25 && x < 35 && y >= 15 && y < 25 ? 1 : 0));
+    const out = shadeSoftClouds(src, w, h, 'hrv', 40);
+    const alpha = (x: number, y: number) => out[(y * w + x) * 4 + 3];
+    expect(alpha(2, 2)).toBe(0);                    // clear land is see-through
+    expect(alpha(30, 20)).toBeGreaterThan(150);     // the cloud is a veil
+    expect(alpha(30, 20)).toBeLessThanOrEqual(Math.round(255 * 0.9));
+    let biggestStep = 0;
+    for (let x = 1; x < w; x++) biggestStep = Math.max(biggestStep, Math.abs(alpha(x, 20) - alpha(x - 1, 20)));
+    expect(biggestStep).toBeLessThan(70);           // the 10-pixel block's edge is blurred over several pixels
+  });
+
+  it('is warm white where the cloud is thick and cool where it is thin', () => {
+    const w = 80, h = 30;
+    const src = picture(w, h, x => (x < 40 ? 0.9 : 0.45) * (x % 40 > 4 && x % 40 < 36 ? 1 : 0));
+    const out = shadeSoftClouds(src, w, h, 'hrv', 40);
+    const at = (x: number) => Array.from(out.slice((15 * w + x) * 4, (15 * w + x) * 4 + 3));
+    const thick = at(20), thin = at(60);
+    expect(thick[0]).toBeGreaterThan(thin[0]);
+    expect(thick[2] - thick[0]).toBeLessThan(thin[2] - thin[0]);   // thin cloud leans blue
   });
 });

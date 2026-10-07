@@ -56,7 +56,7 @@ export class SatelliteService {
   readonly loading = signal(false);
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
-  readonly view = signal<SatelliteView>('picture');
+  readonly view = signal<SatelliteView>('soft');
   readonly source = signal<SatelliteSource>('meteosat');
 
   /** The picture the loop is nearest to. */

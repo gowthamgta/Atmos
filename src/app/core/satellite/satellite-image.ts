@@ -249,6 +249,44 @@ export function shadeCloudLayer(
   return out;
 }
 
+/** Soft cloud look: how far the cloud is smoothed (in picture pixels), how clear the veil is, and the tones of thin and thick cloud. */
+export const SOFT_SIGMA = 2.4;
+export const SOFT_ALPHA = 0.9;
+export const SOFT_THIN: readonly [number, number, number] = [150, 162, 190];
+export const SOFT_THICK: readonly [number, number, number] = [255, 248, 236];
+
+/**
+ * Cloud only, as a smooth translucent veil (no texture lighting, no hard edges): the cloud cover is blurred about as wide as
+ * a satellite pixel, so no pixel shows, and its opacity follows that blurred cover. Thin cloud is a cool grey-blue, thick
+ * (bright) cloud warm white, blended by the blurred thickness. Returns straight RGBA of the same size.
+ */
+export function shadeSoftClouds(
+  src: Uint8ClampedArray,
+  width: number,
+  height: number,
+  kind: SatelliteChannel,
+  background: number,
+): Uint8ClampedArray<ArrayBuffer> {
+  const cover = cloudCover(src, width, height, kind, background);
+  const n = cover.length;
+  const lit = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const lum = kind === 'ir' ? (src[p] + src[p + 1] + src[p + 2]) / 765 : (0.55 * src[p + 1] + 0.45 * src[p + 2]) / 255;
+    lit[i] = cover[i] * lum;
+  }
+  const mask = blurField(cover, width, height, SOFT_SIGMA);
+  const thick = blurField(lit, width, height, SOFT_SIGMA);
+  const out = new Uint8ClampedArray(n * 4);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const a = smoothstep(0.05, 0.85, mask[i]);
+    if (a <= 0) continue;
+    const t = smoothstep(0.3, 0.95, thick[i] / Math.max(mask[i], 0.05));
+    for (let c = 0; c < 3; c++) out[p + c] = SOFT_THIN[c] + (SOFT_THICK[c] - SOFT_THIN[c]) * t;
+    out[p + 3] = 255 * a * SOFT_ALPHA;
+  }
+  return out;
+}
+
 /**
  * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set colour and
  * opacity for the chosen view. `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
@@ -266,7 +304,8 @@ export function toOverlayPixels(
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
   // Clouds only: shade the clouds at the picture's own resolution first, then re-space the rows (premultiplied, so
   // the soft cloud edges blend without fringes). Other views shade each re-spaced pixel.
-  const clouds = view === 'clouds' ? shadeCloudLayer(src, width, srcHeight, kind, background) : null;
+  const clouds = view === 'clouds' ? shadeCloudLayer(src, width, srcHeight, kind, background)
+    : view === 'soft' ? shadeSoftClouds(src, width, srcHeight, kind, background) : null;
   for (let r = 0; r < outHeight; r++) {
     const f = rowMap[r];
     const y0 = Math.floor(f);
