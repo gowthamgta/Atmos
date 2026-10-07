@@ -19,7 +19,7 @@ export class MapLayerService {
 
   readonly layers = signal<LayerConfig[]>([
     { id: 'radar', name: 'IMD radar', active: true, opacity: 1.0 },
-    { id: 'satellite', name: 'Meteosat satellite', active: false, opacity: 0.9 },
+    { id: 'satellite', name: 'Meteosat satellite', active: false, opacity: 1 },
     { id: 'gibs', name: 'HD satellite', active: false, opacity: 1.0 },
   ]);
 
