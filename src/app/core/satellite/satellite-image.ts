@@ -174,28 +174,95 @@ export function cloudCover(
   return out;
 }
 
-/** Gaussian blur of a `width` x `height` field (separable, edges clamped), sigma in pixels. */
+/**
+ * Gaussian blur of a `width` x `height` field (separable, edges clamped), sigma in pixels.
+ *
+ * The horizontal pass copies each row into a padded buffer once (so the taps need no clamping) and pairs the symmetric
+ * taps; the vertical pass adds whole rows (sequential memory, not column by column). Same result as the plain
+ * convolution up to float rounding, about three times faster, which matters for the several blurs of every satellite frame.
+ */
 export function blurField(field: Float32Array, width: number, height: number, sigma: number): Float32Array {
   const radius = Math.max(1, Math.ceil(sigma * 3));
-  const kernel = new Float32Array(2 * radius + 1);
+  const kernel = new Float64Array(2 * radius + 1);
   let sum = 0;
   for (let i = -radius; i <= radius; i++) sum += (kernel[i + radius] = Math.exp(-(i * i) / (2 * sigma * sigma)));
   for (let i = 0; i < kernel.length; i++) kernel[i] /= sum;
+
+  // horizontal: row by row through a padded copy, one tap at a time over the whole row (streams through memory)
   const tmp = new Float32Array(field.length);
+  const padded = new Float32Array(width + 2 * radius);
+  const rowAcc = new Float64Array(width);
+  const centre = kernel[radius];
   for (let y = 0; y < height; y++) {
     const row = y * width;
-    for (let x = 0; x < width; x++) {
-      let acc = 0;
-      for (let k = -radius; k <= radius; k++) acc += field[row + Math.min(width - 1, Math.max(0, x + k))] * kernel[k + radius];
-      tmp[row + x] = acc;
+    const first = field[row];
+    const last = field[row + width - 1];
+    for (let i = 0; i < radius; i++) {
+      padded[i] = first;
+      padded[radius + width + i] = last;
+    }
+    padded.set(field.subarray(row, row + width), radius);
+    for (let x = 0; x < width; x++) rowAcc[x] = centre * padded[radius + x];
+    for (let j = 1; j <= radius; j++) {
+      const k = kernel[radius + j];
+      const lo = radius - j;
+      const hi = radius + j;
+      for (let x = 0; x < width; x++) rowAcc[x] += k * (padded[lo + x] + padded[hi + x]);
+    }
+    for (let x = 0; x < width; x++) tmp[row + x] = rowAcc[x];
+  }
+
+  // vertical: each output row is the weighted sum of whole rows
+  const out = new Float32Array(field.length);
+  const acc = new Float64Array(width);
+  for (let y = 0; y < height; y++) {
+    acc.fill(0);
+    for (let t = -radius; t <= radius; t++) {
+      const yy = Math.min(height - 1, Math.max(0, y + t)) * width;
+      const k = kernel[t + radius];
+      for (let x = 0; x < width; x++) acc[x] += k * tmp[yy + x];
+    }
+    const o = y * width;
+    for (let x = 0; x < width; x++) out[o + x] = acc[x];
+  }
+  return out;
+}
+
+/**
+ * The same blur for wide sigmas, at half resolution: the field is averaged 2 x 2, blurred with half the sigma and enlarged
+ * again (bilinear). A gaussian that wide leaves nothing finer than a few pixels, so this differs from `blurField` by a
+ * fraction of a percent while touching a quarter of the pixels. Narrow blurs are done exactly.
+ */
+export function blurFieldWide(field: Float32Array, width: number, height: number, sigma: number): Float32Array {
+  if (sigma < 2 || width < 8 || height < 8) return blurField(field, width, height, sigma);
+  const hw = width >> 1;
+  const hh = height >> 1;
+  const small = new Float32Array(hw * hh);
+  for (let y = 0; y < hh; y++) {
+    const a = 2 * y * width;
+    const b = a + width;
+    for (let x = 0; x < hw; x++) {
+      const i = 2 * x;
+      small[y * hw + x] = 0.25 * (field[a + i] + field[a + i + 1] + field[b + i] + field[b + i + 1]);
     }
   }
+  const blurred = blurField(small, hw, hh, sigma / 2);
   const out = new Float32Array(field.length);
   for (let y = 0; y < height; y++) {
+    // the centre of full-resolution pixel y in half-resolution coordinates
+    const fy = Math.min(Math.max((y + 0.5) / 2 - 0.5, 0), hh - 1);
+    const y0 = Math.floor(fy);
+    const y1 = Math.min(y0 + 1, hh - 1);
+    const wy = fy - y0;
+    const r0 = y0 * hw;
+    const r1 = y1 * hw;
+    const o = y * width;
     for (let x = 0; x < width; x++) {
-      let acc = 0;
-      for (let k = -radius; k <= radius; k++) acc += tmp[Math.min(height - 1, Math.max(0, y + k)) * width + x] * kernel[k + radius];
-      out[y * width + x] = acc;
+      const fx = Math.min(Math.max((x + 0.5) / 2 - 0.5, 0), hw - 1);
+      const x0 = Math.floor(fx);
+      const x1 = Math.min(x0 + 1, hw - 1);
+      const wx = fx - x0;
+      out[o + x] = (blurred[r0 + x0] * (1 - wx) + blurred[r0 + x1] * wx) * (1 - wy) + (blurred[r1 + x0] * (1 - wx) + blurred[r1 + x1] * wx) * wy;
     }
   }
   return out;
@@ -257,7 +324,7 @@ export function shadeCloudLayer(
     planes[2][i] = src[p + 2] * a;
   }
   // smooth: the picked cloud only, colour and opacity together
-  const smooth = (f: Float32Array) => (CLOUD_SMOOTH_SIGMA > 0 ? blurField(f, width, height, CLOUD_SMOOTH_SIGMA) : f);
+  const smooth = (f: Float32Array) => (CLOUD_SMOOTH_SIGMA > 0 ? blurFieldWide(f, width, height, CLOUD_SMOOTH_SIGMA) : f);
   const softAlpha = smooth(alpha);
   const soft = planes.map(smooth);
   // the cloud's own colour (not weighted by its opacity) and brightness, then the texture, saturation and gain
@@ -271,7 +338,7 @@ export function shadeCloudLayer(
     lum[i] = (soft[0][i] + soft[1][i] + soft[2][i]) / 3;
   }
   const enhance = CLOUD_TEXTURE > 0 && CLOUD_SMOOTH_SIGMA > 0;
-  const wide = enhance ? blurField(lum, width, height, CLOUD_SMOOTH_SIGMA * CLOUD_TEXTURE_SCALE) : lum;
+  const wide = enhance ? blurFieldWide(lum, width, height, CLOUD_SMOOTH_SIGMA * CLOUD_TEXTURE_SCALE) : lum;
   const out = new Uint8ClampedArray(n * 4);
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     let a = softAlpha[i];

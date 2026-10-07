@@ -68,7 +68,8 @@ export class SatelliteService {
   });
 
   private readonly now = signal(Date.now());
-  private worker: Worker | null = null;
+  private workers: Worker[] = [];
+  private turn = 0;
   private nextRequest = 1;
   private readonly pending = new Map<number, (r: SatelliteWorkerResponse) => void>();
   /** The downloaded pictures as served, kept so the view can change without downloading again. */
@@ -272,12 +273,22 @@ export class SatelliteService {
   /** Overlay picture (object URL) for a downloaded frame, built in a web worker so the map stays smooth. */
   private process(jpeg: Blob, product: SatelliteProduct, view: SatelliteView, natural?: Blob): Promise<string | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
-    this.worker ??= this.createWorker();
+    if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
+    const worker = this.workers[this.turn++ % this.workers.length];
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? URL.createObjectURL(r.png) : null));
-      this.worker!.postMessage({ id, jpeg, kind: product.id, view, natural } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, view, natural } satisfies SatelliteWorkerRequest);
     });
+  }
+
+  /**
+   * Frames are built one per worker at a time. A desktop with cores to spare builds two at once (about twice as fast, at
+   * the cost of a second frame's working memory); a phone builds them one by one.
+   */
+  private static poolSize(): number {
+    const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 2;
+    return !isPhone() && cores >= 6 ? 2 : 1;
   }
 
   private createWorker(): Worker {

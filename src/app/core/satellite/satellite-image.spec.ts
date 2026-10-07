@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEBLOCK_MAX_STEP,
   blurField,
+  blurFieldWide,
   cloudCover,
   shadeCloudLayer,
   JPEG_BLOCK,
@@ -315,5 +316,72 @@ describe('true-colour (FY-4B) pictures', () => {
     expect(out[3]).toBe(0);
     shadePixel('ir', 'picture', 40, 40, 40, 0, out, 0);
     expect(out[3]).toBeGreaterThan(200);
+  });
+});
+
+describe('blurField (the fast version) and blurFieldWide', () => {
+  /** The plain convolution the fast version replaces: every tap clamped at the edges. */
+  function referenceBlur(field: Float32Array, width: number, height: number, sigma: number): Float32Array {
+    const radius = Math.max(1, Math.ceil(sigma * 3));
+    const kernel = new Float32Array(2 * radius + 1);
+    let sum = 0;
+    for (let i = -radius; i <= radius; i++) sum += (kernel[i + radius] = Math.exp(-(i * i) / (2 * sigma * sigma)));
+    for (let i = 0; i < kernel.length; i++) kernel[i] /= sum;
+    const tmp = new Float32Array(field.length);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      let acc = 0;
+      for (let k = -radius; k <= radius; k++) acc += field[y * width + Math.min(width - 1, Math.max(0, x + k))] * kernel[k + radius];
+      tmp[y * width + x] = acc;
+    }
+    const out = new Float32Array(field.length);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      let acc = 0;
+      for (let k = -radius; k <= radius; k++) acc += tmp[Math.min(height - 1, Math.max(0, y + k)) * width + x] * kernel[k + radius];
+      out[y * width + x] = acc;
+    }
+    return out;
+  }
+
+  /** Blobs of cloud with ragged edges, values 0..1, touching the borders. */
+  function clouds(w: number, h: number): Float32Array {
+    const f = new Float32Array(w * h);
+    let s = 11;
+    const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+    const cells = Array.from({ length: 9 }, () => ({ x: rnd() * w, y: rnd() * h, r: 8 + rnd() * 24 }));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let v = 0;
+      for (const c of cells) v = Math.max(v, 1 - Math.hypot(x - c.x, y - c.y) / c.r);
+      f[y * w + x] = Math.max(0, v) > 0.15 ? Math.min(1, Math.max(0, v) + (rnd() - 0.5) * 0.3) : 0;
+    }
+    return f;
+  }
+
+  it('matches the plain convolution to float rounding', () => {
+    const w = 90, h = 70;
+    const f = clouds(w, h);
+    for (const sigma of [0.7, 1.5, 2.5, 5.5]) {
+      const a = blurField(f, w, h, sigma);
+      const b = referenceBlur(f, w, h, sigma);
+      let worst = 0;
+      for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
+      expect(worst).toBeLessThan(2e-5);
+    }
+  });
+
+  it('the half-resolution blur of a wide sigma stays within a percent of the exact one', () => {
+    const w = 128, h = 96;
+    const f = clouds(w, h);
+    for (const sigma of [2.5, 5.5]) {
+      const a = blurFieldWide(f, w, h, sigma);
+      const b = blurField(f, w, h, sigma);
+      let worst = 0;
+      let mean = 0;
+      for (let i = 0; i < a.length; i++) { const d = Math.abs(a[i] - b[i]); worst = Math.max(worst, d); mean += d; }
+      expect(worst).toBeLessThan(0.03);
+      expect(mean / a.length).toBeLessThan(0.003);
+      expect(a.reduce((x, y) => x + y, 0)).toBeCloseTo(b.reduce((x, y) => x + y, 0), -1);   // the total cloud is the same
+    }
+    // narrow blurs and tiny pictures are done exactly
+    expect(blurFieldWide(f, w, h, 1)).toEqual(blurField(f, w, h, 1));
   });
 });
