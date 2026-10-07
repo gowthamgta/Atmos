@@ -47,15 +47,15 @@ export class ForecastStateService {
   readonly windParticles = signal(false);
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
   readonly isobars = signal(false);
-  /** The thin district lines on the map (the state and country outlines always stay). */
-  readonly districtLines = signal(true);
-  /** 1 km hill shading blended into the forecast colours (on by default on desktop, off on phones to keep the map smooth). */
-  readonly relief = signal(!isPhone());
+  /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
+  readonly districtLines = signal(false);
+  /** 1 km hill shading blended into the forecast colours (off by default to keep the map light). */
+  readonly relief = signal(false);
   /**
-   * Full 1 km detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default on phones,
-   * where it would make the map lag; the colours, height corrections and relief stay either way.
+   * Full 1 km detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default to keep
+   * the map light and fast; can be enabled from the layer menu.
    */
-  readonly detail = signal(!isPhone());
+  readonly detail = signal(false);
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
   readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 

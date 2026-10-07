@@ -342,6 +342,20 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle)
+  private reliefEffect = effect(() => {
+    const visible = this.forecastState.relief();
+    if (!this.map || !this.isMapLoaded()) return;
+    this.setHillshadeVisible(visible);
+  });
+
+  private setHillshadeVisible(visible: boolean): void {
+    if (!this.map) return;
+    if (this.map.getLayer('dark-hillshade-layer')) {
+      this.map.setLayoutProperty('dark-hillshade-layer', 'visibility', visible ? 'visible' : 'none');
+    }
+  }
+
   // Reactive Effect: Radar Opacity Slider
   private radarOpacityEffect = effect(() => {
     const opacity = this.radarService.radarOpacity();
@@ -399,12 +413,13 @@ export class MapComponent implements OnInit, OnDestroy {
     const map = new maplibregl.Map({
       container: 'map-container',
       pixelRatio,
+      fadeDuration: 50,
+      maxTileCacheSize: 100,
       style: {
         version: 8,
         glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
         sources: {
-          // Land, sea and national borders only, drawn from OpenFreeMap's vector tiles (free, no key). No label layers are
-          // added, so the map has no place names (raster base maps have country and sea names baked into their tiles).
+          // Land, sea, borders, and roads drawn from OpenFreeMap's vector tiles (free, no key).
           'base-vector': {
             type: 'vector',
             url: 'https://tiles.openfreemap.org/planet',
@@ -433,6 +448,9 @@ export class MapComponent implements OnInit, OnDestroy {
             source: 'esri-dark-hillshade',
             minzoom: 0,
             maxzoom: 19,
+            layout: {
+              visibility: 'none'
+            },
             paint: {
               'raster-opacity': 0.65,
               'raster-brightness-min': 0.14
@@ -445,13 +463,66 @@ export class MapComponent implements OnInit, OnDestroy {
             'source-layer': 'water',
             paint: { 'fill-color': '#171b22' }
           },
+          // Roads: motorways, trunks, primary, secondary, and minor streets from OpenFreeMap
+          {
+            id: 'base-road-minor',
+            type: 'line',
+            source: 'base-vector',
+            'source-layer': 'transportation',
+            minzoom: 11,
+            filter: ['match', ['get', 'class'], ['minor', 'service'], true, false],
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': 'rgba(148, 163, 184, 0.14)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.4, 14, 0.9]
+            }
+          },
+          {
+            id: 'base-road-secondary',
+            type: 'line',
+            source: 'base-vector',
+            'source-layer': 'transportation',
+            minzoom: 8,
+            filter: ['match', ['get', 'class'], ['secondary', 'tertiary'], true, false],
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': 'rgba(203, 213, 225, 0.18)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 11, 0.9, 14, 1.6]
+            }
+          },
+          {
+            id: 'base-road-primary',
+            type: 'line',
+            source: 'base-vector',
+            'source-layer': 'transportation',
+            minzoom: 6,
+            filter: ['match', ['get', 'class'], ['primary'], true, false],
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': 'rgba(226, 232, 240, 0.25)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 9, 1.0, 13, 2.2]
+            }
+          },
+          {
+            id: 'base-road-motorway',
+            type: 'line',
+            source: 'base-vector',
+            'source-layer': 'transportation',
+            minzoom: 4.5,
+            filter: ['match', ['get', 'class'], ['motorway', 'trunk'], true, false],
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': 'rgba(241, 245, 249, 0.35)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 4.5, 0.6, 8, 1.2, 12, 2.4, 15, 3.5]
+            }
+          },
           {
             id: 'base-border',
             type: 'line',
             source: 'base-vector',
             'source-layer': 'boundary',
             filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
-            paint: { 'line-color': 'rgba(255, 255, 255, 0.22)', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.5, 8, 1.1] }
+            paint: { 'line-color': 'rgba(255, 255, 255, 0.28)', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.5, 8, 1.1] }
           }
         ]
       },
@@ -680,7 +751,8 @@ export class MapComponent implements OnInit, OnDestroy {
 
     this.map.addSource(BOUNDARY_SOURCE_ID, {
       type: 'geojson',
-      data: '/data/south-india-districts.geojson'
+      data: '/data/south-india-districts.geojson',
+      tolerance: 0.5
     });
 
     const widths = (z5: number, z10: number): maplibregl.ExpressionSpecification =>
@@ -815,12 +887,10 @@ export class MapComponent implements OnInit, OnDestroy {
 
   private syncBasemap(type: string = 'dark'): void {
     if (!this.map || !this.isMapLoaded()) return;
-    for (const id of ['base-water', 'base-border']) {
+    for (const id of ['base-water', 'base-border', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
-    if (this.map.getLayer('dark-hillshade-layer')) {
-      this.map.setLayoutProperty('dark-hillshade-layer', 'visibility', 'visible');
-    }
+    this.setHillshadeVisible(this.forecastState.relief());
   }
 
   private syncZoomVisuals(): void {
