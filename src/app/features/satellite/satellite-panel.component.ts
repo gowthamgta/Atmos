@@ -47,7 +47,7 @@ function istClock(ms: number): string {
         }
 
         <div class="views" role="group" aria-label="What to show">
-          <button type="button" class="view" [class.active]="sat.view() === 'clouds'" [attr.aria-pressed]="sat.view() === 'clouds'" (click)="sat.setView('clouds')" title="Only the clouds, soft and see-through over the map">Clouds only</button>
+          <button type="button" class="view" [class.active]="sat.view() === 'clouds'" [attr.aria-pressed]="sat.view() === 'clouds'" (click)="sat.setView('clouds')" title="Only the clouds, with the land and sea cleared">Clouds only</button>
           <button type="button" class="view" [class.active]="sat.view() === 'picture'" [attr.aria-pressed]="sat.view() === 'picture'" (click)="sat.setView('picture')" title="The whole satellite picture, land and sea included">Full picture</button>
         </div>
 
@@ -116,7 +116,7 @@ export class SatellitePanelComponent {
     const info = SATELLITE_SOURCES[this.sat.source()];
     const detail = this.sat.source() === 'fy4b'
       ? 'Last hour, every 15 minutes, 0.5 km. The red, blue and near-infrared channels merged into true colour by day, infrared at night.'
-      : 'Last hour, every 15 minutes. HRV with a touch of natural colour by day, infrared at night.';
+      : 'Last hour, every 15 minutes. HRV by day (yellow: low cloud, white and blue: middle and high), infrared at night.';
     return `${detail} ${info.credit}`;
   });
   protected readonly timeLabel = computed(() => {

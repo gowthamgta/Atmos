@@ -7,7 +7,7 @@ export interface SatelliteWorkerRequest {
   jpeg: Blob;
   kind: SatelliteChannel;
   view: SatelliteView;
-  /** The natural-colour picture, blended into the HRV colours of the cloud-only view (daytime Meteosat). */
+  /** The natural-colour picture, used to find low cloud in the cloud-only view (daytime Meteosat). */
   natural?: Blob;
 }
 

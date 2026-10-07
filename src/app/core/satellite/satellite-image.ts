@@ -136,11 +136,23 @@ export function shadePixel(
 /**
  * How much cloud there is at each pixel (0 none .. 1 thick), from the satellite picture.
  *
+ * HRV picture: two kinds of cloud. Middle and high cloud is cold, so its blue channel (the inverted infrared) is high,
+ * well above the land and sea and close to its red and green. Low cloud is warm, so it is yellow like the land, only much
+ * brighter; where the natural-colour picture is given (`naturalWhite`: how white it is, 0..1, per pixel), low cloud is
+ * where that picture is white and the HRV is bright, otherwise only very bright yellow counts (sunlit land stays out).
+ *
  * HRV picture: cloud is white or lavender, so its blue channel is high compared with the typical land and sea (the
  * `background`), and unlike bright, sunlit land (yellow: blue far below red and green) its blue is close to its red and
  * green. Both must hold, which keeps the bright land speckle out. Infrared: cold, high cloud is bright.
  */
-export function cloudCover(src: Uint8ClampedArray, width: number, height: number, kind: SatelliteChannel, background: number): Float32Array {
+export function cloudCover(
+  src: Uint8ClampedArray,
+  width: number,
+  height: number,
+  kind: SatelliteChannel,
+  background: number,
+  naturalWhite?: Float32Array,
+): Float32Array {
   const out = new Float32Array(width * height);
   for (let i = 0, p = 0; i < out.length; i++, p += 4) {
     const r = src[p];
@@ -150,8 +162,11 @@ export function cloudCover(src: Uint8ClampedArray, width: number, height: number
       // true colour: cloud is bright in every channel, land and sea are not (red is low over both)
       out[i] = smoothstep(0.34, 0.68, Math.min(r, g, b) / 255);
     } else if (kind === 'hrv') {
-      const ratio = b / Math.max(1, (r + g) / 2); // about 0.4 on yellow land, 0.8 and more in cloud
-      out[i] = smoothstep(background + 15, background + 100, b) * smoothstep(0.55, 0.78, ratio);
+      const hrv = (r + g) / 2;
+      const ratio = b / Math.max(1, hrv); // about 0.4 on yellow land, 0.8 and more in cold cloud
+      const cold = smoothstep(background + 15, background + 100, b) * smoothstep(0.55, 0.78, ratio);
+      const low = naturalWhite ? naturalWhite[i] * smoothstep(70, 150, hrv) : smoothstep(175, 230, hrv);
+      out[i] = Math.max(cold, low);
     } else {
       out[i] = smoothstep(0.2, 0.55, (r + g + b) / 3 / 255);
     }
@@ -186,25 +201,18 @@ export function blurField(field: Float32Array, width: number, height: number, si
   return out;
 }
 
-/**
- * Cloud look: how far the cloud is smoothed (picture pixels), how see-through it stays, how much of the natural-colour
- * picture is blended into the HRV colours, and how much the colour is muted.
- */
-export const CLOUD_SIGMA = 4;
-export const CLOUD_ALPHA = 0.72;
-export const NATURAL_SHARE = 0.25;
-export const CLOUD_MUTE = 0.2;
-export const CLOUD_TONE = 0.95;
-/** Night (infrared) cloud tones, from thin and warm to thick and cold. */
-export const IR_THIN: readonly [number, number, number] = [120, 132, 160];
-export const IR_THICK: readonly [number, number, number] = [238, 242, 250];
+/** Cloud-only view: the slight blur of the cloud's outline (picture pixels, against jagged edges) and its opacity limits. */
+export const CLOUD_EDGE_SIGMA = 0.7;
+export const CLOUD_ALPHA = 0.95;
+/** How the natural-colour picture's whiteness is read (0..1 of its darkest channel) and smoothed (its pixels are 3 km). */
+export const NATURAL_WHITE: readonly [number, number] = [0.3, 0.58];
+export const NATURAL_SIGMA = 1.5;
 
 /**
- * Cloud only, as a smooth translucent veil over the map (the look of Windy's satellite layer). The cloud keeps its own
- * colours: by day the HRV picture's (cream low cloud, blue-white high cloud), blended with a share of the natural-colour
- * picture when there is one; at night grey-blue to white by how cold the cloud is. Colour and cover are blurred together
- * (premultiplied) about as wide as a satellite pixel, so no pixel or hard edge shows, and the veil never hides the map
- * completely. `natural`, when given, is the natural-colour picture of the same size. Returns straight RGBA.
+ * Cloud only: the satellite picture's own pixels and colours where there is cloud, the land and sea cleared so the map
+ * shows. Nothing is smoothed but the cloud's outline, so the detail and the colour code of the picture stay (HRV: yellow
+ * low cloud, white and blue-white middle and high cloud). `natural`, when given, is the natural-colour picture of the
+ * same size; it is used only to find low cloud. Returns straight RGBA of the same size.
  */
 export function shadeCloudLayer(
   src: Uint8ClampedArray,
@@ -214,36 +222,22 @@ export function shadeCloudLayer(
   background: number,
   natural?: Uint8ClampedArray,
 ): Uint8ClampedArray<ArrayBuffer> {
-  const cover = cloudCover(src, width, height, kind, background);
-  const n = cover.length;
-  const planes = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const c = cover[i];
-    if (c <= 0) continue;
-    if (kind === 'ir') {
-      const t = (src[p] + src[p + 1] + src[p + 2]) / 765;
-      for (let k = 0; k < 3; k++) planes[k][i] = c * (IR_THIN[k] + (IR_THICK[k] - IR_THIN[k]) * t);
-    } else {
-      for (let k = 0; k < 3; k++) {
-        const own = src[p + k];
-        planes[k][i] = c * (natural ? own * (1 - NATURAL_SHARE) + natural[p + k] * NATURAL_SHARE : own);
-      }
+  let white: Float32Array | undefined;
+  if (natural && kind === 'hrv') {
+    white = new Float32Array(width * height);
+    for (let i = 0, p = 0; i < white.length; i++, p += 4) {
+      white[i] = smoothstep(NATURAL_WHITE[0], NATURAL_WHITE[1], Math.min(natural[p], natural[p + 1], natural[p + 2]) / 255);
     }
+    white = blurField(white, width, height, NATURAL_SIGMA);
   }
-  const mask = blurField(cover, width, height, CLOUD_SIGMA);
-  const blurred = planes.map(pl => blurField(pl, width, height, CLOUD_SIGMA));
-  const out = new Uint8ClampedArray(n * 4);
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    const a = smoothstep(0.02, 0.95, mask[i]);
+  const cover = blurField(cloudCover(src, width, height, kind, background, white), width, height, CLOUD_EDGE_SIGMA);
+  const out = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0, p = 0; i < cover.length; i++, p += 4) {
+    const a = smoothstep(0.08, 0.7, cover[i]);
     if (a <= 0) continue;
-    const m = Math.max(mask[i], 1e-3);
-    const r = blurred[0][i] / m;
-    const g = blurred[1][i] / m;
-    const b = blurred[2][i] / m;
-    const grey = (r + g + b) / 3;
-    out[p] = (r + (grey - r) * CLOUD_MUTE) * CLOUD_TONE;
-    out[p + 1] = (g + (grey - g) * CLOUD_MUTE) * CLOUD_TONE;
-    out[p + 2] = (b + (grey - b) * CLOUD_MUTE) * CLOUD_TONE;
+    out[p] = src[p];
+    out[p + 1] = src[p + 1];
+    out[p + 2] = src[p + 2];
     out[p + 3] = 255 * a * CLOUD_ALPHA;
   }
   return out;

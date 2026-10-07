@@ -194,6 +194,13 @@ describe('cloud extraction', () => {
   const px = (r: number, g: number, b: number) => Uint8ClampedArray.from([r, g, b, 255]);
   const cover = (r: number, g: number, b: number, kind: 'hrv' | 'ir' = 'hrv') => cloudCover(px(r, g, b), 1, 1, kind, 58)[0];
 
+  it('finds very bright yellow (low) cloud without the natural-colour picture, and any yellow it calls white', () => {
+    expect(cover(222, 220, 95)).toBeGreaterThan(0.5);    // low cloud
+    const white = Float32Array.from([1]);
+    expect(cloudCover(px(160, 158, 70), 1, 1, 'hrv', 58, white)[0]).toBeGreaterThan(0.9);
+    expect(cloudCover(px(160, 158, 70), 1, 1, 'hrv', 58, Float32Array.from([0]))[0]).toBe(0);
+  });
+
   it('finds white and lavender cloud but not sea, yellow land or bright sunlit land', () => {
     expect(cover(244, 245, 203)).toBeGreaterThan(0.9); // thick cloud
     expect(cover(116, 113, 160)).toBeGreaterThan(0.5); // thin lavender cloud
@@ -219,50 +226,49 @@ describe('cloud extraction', () => {
   });
 });
 
-describe('shadeCloudLayer (cloud-only veil)', () => {
-  /** A bright oval cloud (strongest in the middle) on sea, `size` x `size`; HRV colours: cream (low blue). */
-  function oval(size: number, blue = -8): Uint8ClampedArray {
-    const px = new Uint8ClampedArray(size * size * 4);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const d = Math.hypot((x - size / 2) / (size * 0.28), (y - size / 2) / (size * 0.2));
-        const cloud = Math.max(0, 1 - d * d);
-        const v = cloud > 0 ? 120 + cloud * 130 : 0;
-        px.set(cloud > 0.02 ? [v, v, Math.min(255, v + blue), 255] : [57, 57, 58, 255], (y * size + x) * 4);
-      }
+describe('shadeCloudLayer (cloud only)', () => {
+  const W = 40, H = 10;
+  /** A row picture: sea, yellow land, yellow low cloud, white high cloud, and a 1-pixel bright line of cloud. */
+  function scene(): Uint8ClampedArray {
+    const px = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const c = x < 8 ? [57, 57, 58] : x < 16 ? [110, 108, 42] : x < 24 ? [214, 210, 92] : x < 32 ? [246, 246, 236] : x === 36 ? [246, 246, 236] : [110, 108, 42];
+      px.set([...c, 255], (y * W + x) * 4);
     }
     return px;
   }
-  const size = 64;
-  const out = shadeCloudLayer(oval(size), size, size, 'hrv', 58);
-  const at = (x: number, y: number) => out.slice((y * size + x) * 4, (y * size + x) * 4 + 4);
+  /** The natural-colour picture of the same scene: dark sea, green land, white low and high cloud. */
+  function naturalScene(): Uint8ClampedArray {
+    const px = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const c = x < 8 ? [20, 40, 90] : x < 16 ? [70, 120, 60] : x < 32 ? [225, 228, 230] : [70, 120, 60];
+      px.set([...c, 255], (y * W + x) * 4);
+    }
+    return px;
+  }
+  const at = (out: Uint8ClampedArray, x: number) => Array.from(out.slice((5 * W + x) * 4, (5 * W + x) * 4 + 4));
 
-  it('leaves the open sea clear and the cloud see-through, with a smooth edge', () => {
-    expect(at(2, 2)[3]).toBe(0);
-    expect(at(32, 32)[3]).toBeGreaterThan(150);
-    expect(at(32, 32)[3]).toBeLessThanOrEqual(Math.round(255 * 0.72));   // the map always shows through
-    let step = 0;
-    for (let x = 1; x < size; x++) step = Math.max(step, Math.abs(at(x, 32)[3] - at(x - 1, 32)[3]));
-    expect(step).toBeLessThan(40);
+  it('clears land and sea and keeps the cloud pixels as they are', () => {
+    const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
+    expect(at(out, 3)[3]).toBe(0);                      // sea
+    expect(at(out, 12)[3]).toBe(0);                     // land
+    expect(at(out, 28).slice(0, 3)).toEqual([246, 246, 236]);   // high cloud: its own colour
+    expect(at(out, 28)[3]).toBeGreaterThan(220);
   });
 
-  it('keeps the cloud colour of the picture (muted), and blends in the natural colour when given', () => {
-    const c = at(32, 32);
-    expect(c[0]).toBeGreaterThan(c[2]);                                      // cream, as in the HRV picture
-    const white = new Uint8ClampedArray(size * size * 4).fill(255);
-    const blended = shadeCloudLayer(oval(size), size, size, 'hrv', 58, white);
-    const b = blended.slice((32 * size + 32) * 4, (32 * size + 32) * 4 + 4);
-    expect(b[2]).toBeGreaterThan(c[2]);                                      // whiter with the natural colour in
+  it('shows low (yellow) cloud, found with the natural-colour picture', () => {
+    const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
+    expect(at(out, 20).slice(0, 3)).toEqual([214, 210, 92]);    // still yellow, so it reads as low cloud
+    expect(at(out, 20)[3]).toBeGreaterThan(200);
+    const without = shadeCloudLayer(scene(), W, H, 'hrv', 58);  // no natural colour: very bright yellow still counts
+    expect(at(without, 20)[3]).toBeGreaterThan(80);
+    expect(at(without, 12)[3]).toBe(0);
   });
 
-  it('shades night cloud from grey-blue (thin) to white (cold, thick)', () => {
-    const ir = new Uint8ClampedArray(size * 4 * 4);
-    for (let x = 0; x < size; x++) for (let y = 0; y < 4; y++) { const v = x < size / 2 ? 140 : 250; ir.set([v, v, v, 255], (y * size + x) * 4); }
-    const night = shadeCloudLayer(ir, size, 4, 'ir', 0);
-    const thin = night.slice((2 * size + 8) * 4, (2 * size + 8) * 4 + 3);
-    const cold = night.slice((2 * size + 56) * 4, (2 * size + 56) * 4 + 3);
-    expect(cold[0]).toBeGreaterThan(thin[0]);
-    expect(thin[2]).toBeGreaterThan(thin[0]);
+  it('keeps fine detail: a one-pixel cloud line stays narrow', () => {
+    const out = shadeCloudLayer(scene(), W, H, 'hrv', 58);
+    expect(at(out, 36)[3]).toBeGreaterThan(40);
+    expect(at(out, 39)[3]).toBe(0);
   });
 });
 

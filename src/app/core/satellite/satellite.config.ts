@@ -27,7 +27,7 @@ export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
 /**
  * EUMETSAT's "enhanced natural colour" picture: true colour (green land, blue sea, white cloud), built from 3 km channels.
- * By day a share of it is blended into the HRV colours of the cloud-only view.
+ * By day it helps the cloud-only view find low cloud (white in it, yellow like the land in the HRV picture).
  */
 export const SATELLITE_NATURAL_LAYER = 'rgb_naturalenhncd';
 

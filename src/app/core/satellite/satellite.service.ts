@@ -139,7 +139,7 @@ export class SatelliteService {
         product,
         fetch: async () => {
           const blob = await this.download(product, t);
-          // by day the natural-colour picture is fetched too, to blend into the cloud colours (the frame still works without it)
+          // by day the natural-colour picture is fetched too, to find low cloud in the cloud-only view (the frame works without it)
           const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
           return blob ? { blob, natural: natural ?? undefined } : null;
         },
