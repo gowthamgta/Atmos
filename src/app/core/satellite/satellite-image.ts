@@ -203,7 +203,7 @@ export function blurField(field: Float32Array, width: number, height: number, si
 
 /** Cloud-only view: the blur (picture pixels) of the cloud outline when picking, the smoothing of the picked cloud, and its opacity. */
 export const CLOUD_EDGE_SIGMA = 0.7;
-export const CLOUD_SMOOTH_SIGMA = 1.8;
+export const CLOUD_SMOOTH_SIGMA = 2.5;
 export const CLOUD_ALPHA = 0.95;
 /** How the natural-colour picture's whiteness is read (0..1 of its darkest channel) and smoothed (its pixels are 3 km). */
 export const NATURAL_WHITE: readonly [number, number] = [0.3, 0.58];

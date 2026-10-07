@@ -254,7 +254,7 @@ describe('shadeCloudLayer (cloud only)', () => {
     expect(at(out, 9)[3]).toBeLessThan(25);             // land (a little of the smoothing reaches it at the cloud's edge)
     const high = at(out, 28);                           // high cloud: its own colour
     expect(Math.abs(high[0] - 246)).toBeLessThan(8);
-    expect(Math.abs(high[2] - 236)).toBeLessThan(8);
+    expect(Math.abs(high[2] - 236)).toBeLessThan(12);
     expect(high[3]).toBeGreaterThan(220);
   });
 
