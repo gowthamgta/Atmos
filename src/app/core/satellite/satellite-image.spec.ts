@@ -282,7 +282,7 @@ describe('panSharpen', () => {
 
   it('keeps the colour balance (ratio, not replacement)', () => {
     const w = 16, h = 8;
-    const out = panSharpen(rgba(w, h, () => [40, 120, 200]), rgba(w, h, x => (x % 2 ? [220, 220, 0] : [60, 60, 0])), w, h);
+    const out = panSharpen(rgba(w, h, () => [40, 120, 200]), rgba(w, h, x => (x % 2 ? [140, 140, 0] : [110, 110, 0])), w, h);
     const i = (4 * w + 8) * 4;
     expect(out[i + 2]).toBeGreaterThan(out[i + 1]);
     expect(out[i + 1]).toBeGreaterThan(out[i]);
