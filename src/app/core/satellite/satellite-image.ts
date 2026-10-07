@@ -203,7 +203,7 @@ export function blurField(field: Float32Array, width: number, height: number, si
 
 /** Cloud-only view: the blur (picture pixels) of the cloud outline when picking, the smoothing of the picked cloud, and its opacity. */
 export const CLOUD_EDGE_SIGMA = 0.7;
-export const CLOUD_SMOOTH_SIGMA = 2.5;
+export const CLOUD_SMOOTH_SIGMA = 0;   // 0: the picked cloud keeps the picture's own pixels (raise it, about 2, for a softer look)
 export const CLOUD_ALPHA = 0.95;
 /** How the natural-colour picture's whiteness is read (0..1 of its darkest channel) and smoothed (its pixels are 3 km). */
 export const NATURAL_WHITE: readonly [number, number] = [0.3, 0.58];
@@ -246,8 +246,9 @@ export function shadeCloudLayer(
     planes[2][i] = src[p + 2] * a;
   }
   // smooth: the picked cloud only, colour and opacity together
-  const softAlpha = blurField(alpha, width, height, CLOUD_SMOOTH_SIGMA);
-  const soft = planes.map(pl => blurField(pl, width, height, CLOUD_SMOOTH_SIGMA));
+  const smooth = (f: Float32Array) => (CLOUD_SMOOTH_SIGMA > 0 ? blurField(f, width, height, CLOUD_SMOOTH_SIGMA) : f);
+  const softAlpha = smooth(alpha);
+  const soft = planes.map(smooth);
   const out = new Uint8ClampedArray(n * 4);
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     const a = softAlpha[i];
