@@ -66,10 +66,8 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("tcwv", "kg/m²", 0, 80),
     Var("li", "°C", -15, 25, 12),         # lifted index: negative means unstable air
     Var("cin", "J/kg", 0, 1000, 12),      # convective inhibition (magnitude)
-    Var("px2", "%", 0, 100, 12),          # chance (%) of >= 2.5 mm in the next 24 h (rain); from the ECMWF ensemble (ens.py), attached to every model by attach.py
-    Var("px16", "%", 0, 100, 12),         # >= 15.6 mm (moderate)
-    Var("px65", "%", 0, 100, 12),         # >= 64.5 mm (heavy)
-    Var("px115", "%", 0, 100, 12),        # >= 115.6 mm (very heavy)
+    Var("px0", "%", 0, 100, 12),          # chance (%) of >= 0.1 mm (measurable rain) in the next 24 h; from the ECMWF ensemble (ens.py), attached to every model by attach.py
+    Var("xr", "%", 0, 100, 12),           # extreme-rain probability (%): the next 24 h of rain of the model and of the blend, checked against px0 (extreme.py, attach.py)
     Var("tmin24", "°C", -10, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
     Var("tmax24", "°C", -10, 50),        # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)

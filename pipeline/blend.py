@@ -33,7 +33,7 @@ VERSION = 3        # bump when the method changes: v2 added probability-matched 
 WEIGHTS: dict[str, float] = {
     "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5, "gdps": 1.0, "cma_grapes": 1.0,
 }
-NOT_BLENDED = {"px2", "px16", "px65", "px115"}     # added to every model by attach.py
+NOT_BLENDED = {"px0", "xr"}     # added to every model by attach.py
 
 # --- keeping the blend sharp --------------------------------------------------------------------------------------
 # A plain average of models smears everything to the resolution of its coarsest members (AIFS 28 km, GRAPES and GDPS

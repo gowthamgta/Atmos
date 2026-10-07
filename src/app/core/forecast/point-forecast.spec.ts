@@ -118,32 +118,30 @@ describe('point forecast helpers', () => {
 
   it('adds the 24 h rain, the rain chances, moisture and the stability rows only where the model has them', () => {
     const plain = buildPointRows(values, null);
-    for (const id of ['rain24', 'px2', 'px16', 'px65', 'px115', 'tcwv', 'cin', 'li']) expect(plain.some(r => r.id === id)).toBe(false);
+    for (const id of ['rain24', 'px0', 'xr', 'tcwv', 'cin', 'li']) expect(plain.some(r => r.id === id)).toBe(false);
 
-    const rich = buildPointRows({ ...values, rain24: 42.6, px2: 71.4, px16: 30, px65: 8.4, px115: 0, tcwv: 55.2, cin: 85, li: -3.4 }, null);
+    const rich = buildPointRows({ ...values, rain24: 42.6, px0: 71.4, xr: 8.4, tcwv: 55.2, cin: 85, li: -3.4 }, null);
     expect(find(rich, 'rain24').text).toBe('43 mm');
     expect(rich.findIndex(r => r.id === 'rain24')).toBe(rich.findIndex(r => r.id === 'rain') + 1);     // right under the rain row
-    expect(find(rich, 'px2').text).toBe('71 %');
-    expect(find(rich, 'px16').text).toBe('30 %');
-    expect(find(rich, 'px65').text).toBe('8 %');
-    expect(find(rich, 'px115').text).toBe('0 %');
+    expect(find(rich, 'px0').text).toBe('71 %');
+    expect(find(rich, 'xr').text).toBe('8 %');
     expect(find(rich, 'tcwv').text).toBe('55 kg/m²');
     expect(find(rich, 'cin').text).toBe('85 J/kg');
     expect(find(rich, 'li').text).toBe('-3.4 °C');
     // a small total keeps a decimal, and a chance the model lacks is simply not a row
     expect(find(buildPointRows({ ...values, rain24: 4.26 }, null), 'rain24').text).toBe('4.3 mm');
-    const partial = buildPointRows({ ...values, px2: 12, px16: NaN }, null);
-    expect(partial.some(r => r.id === 'px2')).toBe(true);
-    expect(partial.some(r => r.id === 'px16')).toBe(false);
+    const partial = buildPointRows({ ...values, px0: 12, xr: NaN }, null);
+    expect(partial.some(r => r.id === 'px0')).toBe(true);
+    expect(partial.some(r => r.id === 'xr')).toBe(false);
   });
 
   describe('only the selected layer', () => {
-    const rows = () => buildPointRows({ ...values, rain24: 20, px2: 55, tcwv: 50, cin: 10, li: -2, t850: 19.2, rh850: 62, u850: 10, v850: 0, gh850: 1532 }, ground(0), 850);
+    const rows = () => buildPointRows({ ...values, rain24: 20, px0: 55, tcwv: 50, cin: 10, li: -2, t850: 19.2, rh850: 62, u850: 10, v850: 0, gh850: 1532 }, ground(0), 850);
 
     it('keeps the one row that matches the layer on the map', () => {
       for (const [layer, row] of [['temp', 'temp'], ['feels', 'feels'], ['dew', 'dew'], ['wind', 'wind'], ['gust', 'gust'], ['humidity', 'humidity'],
         ['rain', 'rain'], ['rain24', 'rain24'], ['tcwv', 'tcwv'], ['vis', 'vis'], ['pressure', 'pressure'], ['cape', 'cape'], ['li', 'li'],
-        ['cin', 'cin'], ['px2', 'px2']]) {
+        ['cin', 'cin'], ['px0', 'px0']]) {
         const kept = rowsForLayer(rows(), layer, 'surface');
         expect(kept.map(r => r.id), layer).toEqual([row]);
       }
@@ -158,7 +156,7 @@ describe('point forecast helpers', () => {
     });
 
     it('is empty when the model has no value, and shows everything when no layer is selected', () => {
-      expect(rowsForLayer(buildPointRows(values, null), 'px2', 'surface')).toEqual([]);
+      expect(rowsForLayer(buildPointRows(values, null), 'px0', 'surface')).toEqual([]);
       expect(rowsForLayer(buildPointRows(values, null), 'nonsense', 'surface')).toEqual([]);
       const all = rows();
       expect(rowsForLayer(all, null, 850)).toBe(all);

@@ -52,13 +52,19 @@ rain window covers the gap (exact), otherwise it is estimated from the mean of t
 sampled, e.g. one hour in three). No data where the run ends before 24 h more. Checked on a real GFS run against Open-Meteo's
 hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can differ by tens of mm).
 
-## Chance of extreme rain (`px65`, `px115`, `px204`)
+## Chance of rain (`px0`) and extreme-rain probability (`xr`)
 `ens.py` reads ECMWF's own ensemble (50 members, open data, CC BY 4.0) and publishes the share of members whose rain over the
-next 24 h reaches 64.5, 115.6 and 204.5 mm (IMD's heavy, very heavy and extremely heavy classes), for starts every 6 h to +72 h.
-`attach.py` copies these onto every model's own timeline (linear in time between starts), so the layer works with any model.
-Open-Meteo's ensemble datasets only have an "any rain" probability, which is why ECMWF's files are used. ECMWF's global grids
-start at 180 E (not 0), which `ens.read_members` handles; a test builds a GRIB in that layout. The chances are on the ensemble's
-own 0.25 degree grid (about 25 km), resampled to 0.1 degree.
+next 24 h reaches 0.1 mm (measurable rain), for starts every 6 h to +72 h: PoP = wet members / all members. `attach.py` copies it
+onto every model's own timeline (linear in time between starts), so the layer works with any model. Open-Meteo's ensemble
+datasets only have an "any rain" probability, which is why ECMWF's files are used. ECMWF's global grids start at 180 E (not 0),
+which `ens.read_members` handles; a test builds a GRIB in that layout. The chance is on the ensemble's own 0.25 degree grid
+(about 25 km), resampled to 0.1 degree.
+
+`xr` is made by `attach.py` per model, from `extreme.py`: the model's own `rain24`, the all-model blend's `rain24` at the same
+time (the blend is built first) and `px0`. The amount sets the probability along a curve (25 mm 25 %, 50 mm 70 %, 75 mm 82 %, 100 mm
+90 %, 150 mm and over 95 %, never higher); it is lowered when the model and the blend disagree (by up to 35 % when one has next to
+nothing) and falls to nothing when the chance of rain is under 20 % (full weight from 70 %). A model with no blend stands alone.
+The amounts are IMD's: heavy rain starts at 64.5 mm a day, very heavy at 115.6 mm.
 
 ## All models in one (`blend`)
 `blend.py` writes one more model: the weighted mean of every model's published fields, lined up by valid time (a time between

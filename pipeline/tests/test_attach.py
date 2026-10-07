@@ -16,14 +16,14 @@ def _field(v):
 
 
 def _write_ens(site, starts):
-    """An ensemble product whose px65 equals the start hour (so it is easy to tell which start a value came from)."""
+    """An ensemble product whose px0 equals the start hour (so it is easy to tell which start a value came from)."""
     root = os.path.join(site, "ens", "20261005T18Z")
-    for name in ("px2", "px16", "px65", "px115"):
+    for name in ("px0",):
         for h in starts:
             path = os.path.join(root, name, f"{h:03d}.png")
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            open(path, "wb").write(encode_field(_field(float(h)) if name == "px65" else _field(5.0), 0, 100, 12))
-    vars_ = {n: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"} for n in ("px2", "px16", "px65", "px115")}
+            open(path, "wb").write(encode_field(_field(float(h)), 0, 100, 12))
+    vars_ = {n: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"} for n in ("px0",)}
     steps = [{"h": h, "valid": f"{RUN + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in starts]
     json.dump({"model": "ens", "run": "20261005T18Z", "steps": steps, "vars": vars_}, open(os.path.join(root, "manifest.json"), "w"))
     json.dump({"model": "ens", "run": "20261005T18Z"}, open(os.path.join(site, "ens", "latest.json"), "w"))
@@ -39,9 +39,9 @@ def _write_model(site, model, run, step_hours):
     return root
 
 
-def _px65(root, h):
-    v = C.VARS["px65"]
-    return decode_field(open(os.path.join(root, "px65", f"{h:03d}.png"), "rb").read(), v.lo, v.hi)
+def _px0(root, h):
+    v = C.VARS["px0"]
+    return decode_field(open(os.path.join(root, "px0", f"{h:03d}.png"), "rb").read(), v.lo, v.hi)
 
 
 def test_field_at_uses_exact_starts_mixes_between_them_and_is_empty_outside():
@@ -61,13 +61,13 @@ def test_attach_aligns_the_ensemble_to_each_models_valid_times(tmp_path):
     assert run == RUN
     assert attach.attach_model(site, "ecmwf_ifs", run, fields)
     tol = 100 / 4095                                              # 12-bit quantisation of a 0-100 range
-    assert np.isnan(_px65(root, 0)).all() and np.isnan(_px65(root, 3)).all()     # before the ensemble began
-    assert abs(float(_px65(root, 6)[5, 5]) - 0) < tol                            # valid at the ensemble start (+0 h)
-    assert abs(float(_px65(root, 9)[5, 5]) - 3) < tol                            # +3 h: mix of the +0 h and +6 h starts
-    assert abs(float(_px65(root, 12)[5, 5]) - 6) < tol                           # +6 h start
-    assert abs(float(_px65(root, 15)[5, 5]) - 9) < tol
+    assert np.isnan(_px0(root, 0)).all() and np.isnan(_px0(root, 3)).all()     # before the ensemble began
+    assert abs(float(_px0(root, 6)[5, 5]) - 0) < tol                            # valid at the ensemble start (+0 h)
+    assert abs(float(_px0(root, 9)[5, 5]) - 3) < tol                            # +3 h: mix of the +0 h and +6 h starts
+    assert abs(float(_px0(root, 12)[5, 5]) - 6) < tol                           # +6 h start
+    assert abs(float(_px0(root, 15)[5, 5]) - 9) < tol
     manifest = json.load(open(os.path.join(root, "manifest.json")))
-    assert {"px2", "px16", "px65", "px115"} <= set(manifest["vars"]) and "t2m" in manifest["vars"]
+    assert {"px0"} <= set(manifest["vars"]) and "t2m" in manifest["vars"]
 
 
 def test_steps_beyond_the_last_start_get_a_no_data_image(tmp_path):
@@ -76,8 +76,8 @@ def test_steps_beyond_the_last_start_get_a_no_data_image(tmp_path):
     root = _write_model(site, "gfs", RUN, [0, 3, 6, 9, 12])
     run, fields = attach.load_ens(site)
     attach.attach_model(site, "gfs", run, fields)
-    assert abs(float(_px65(root, 3)[0, 0]) - 3) < 0.1
-    assert np.isnan(_px65(root, 9)).all() and np.isnan(_px65(root, 12)).all()
+    assert abs(float(_px0(root, 3)[0, 0]) - 3) < 0.1
+    assert np.isnan(_px0(root, 9)).all() and np.isnan(_px0(root, 12)).all()
 
 
 def test_attach_is_repeatable_and_skips_a_site_without_the_ensemble(tmp_path):
@@ -88,7 +88,7 @@ def test_attach_is_repeatable_and_skips_a_site_without_the_ensemble(tmp_path):
     run, fields = attach.load_ens(site)
     for _ in range(2):
         assert attach.attach_model(site, "gfs", run, fields)
-    assert abs(float(_px65(root, 6)[0, 0]) - 6) < 0.1
+    assert abs(float(_px0(root, 6)[0, 0]) - 6) < 0.1
     assert attach.attach_model(site, "missing_model", run, fields) is False
 
 
@@ -107,7 +107,7 @@ def test_an_older_ensemble_product_with_a_retired_variable_does_not_break_attach
     run, fields = attach.load_ens(site)
     assert "px204" in fields and attach.attach_model(site, "gfs", run, fields)
     out = json.load(open(os.path.join(root, "manifest.json")))
-    assert "px204" not in out["vars"] and "px65" in out["vars"]
+    assert "px204" not in out["vars"] and "px0" in out["vars"]
 
 
 def test_attach_gives_a_rebuilt_set_of_pictures_a_new_build_and_does_not_pile_suffixes_up(tmp_path):
@@ -126,3 +126,53 @@ def test_attach_gives_a_rebuilt_set_of_pictures_a_new_build_and_does_not_pile_su
     assert json.load(open(os.path.join(site, "ecmwf_ifs", "latest.json")))["build"] == first      # the app reads it from latest.json
     attach.attach_model(site, "ecmwf_ifs", run, fields)                                          # every deploy runs this again
     assert json.load(open(manifest_path))["build"] == first
+
+
+def _write_rain24(site, model, run_id, steps, mm):
+    """A 24 h rain picture of `mm` millimetres at every step, listed in the model's manifest."""
+    root = os.path.join(site, model, run_id)
+    v = C.VARS["rain24"]
+    for h in steps:
+        path = os.path.join(root, "rain24", f"{h:03d}.png")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "wb").write(encode_field(_field(mm), v.lo, v.hi, v.bits))
+    mp = os.path.join(root, "manifest.json")
+    m = json.load(open(mp))
+    m["vars"]["rain24"] = {"unit": "mm", "min": v.lo, "max": v.hi, "encoding": "rg16"}
+    json.dump(m, open(mp, "w"))
+
+
+def test_the_extreme_rain_probability_is_made_from_the_models_rain_the_blends_and_the_chance_of_rain(tmp_path):
+    site = str(tmp_path)
+    _write_ens(site, [0, 6, 12])                           # px0 = the start hour: 0 %, 6 %, 12 % (so use px0 high enough below)
+    # make the chance of rain high everywhere: 90 % at every start
+    for h in (0, 6, 12):
+        v = C.VARS["px0"]
+        open(os.path.join(site, "ens", "20261005T18Z", "px0", f"{h:03d}.png"), "wb").write(encode_field(_field(90.0), v.lo, v.hi, v.bits))
+    steps = [0, 3, 6]
+    gfs = _write_model(site, "gfs", RUN, steps)
+    blend_root = _write_model(site, "blend", RUN, steps)
+    _write_rain24(site, "gfs", f"{RUN:%Y%m%dT%H}Z", steps, 50.0)
+    _write_rain24(site, "blend", f"{RUN:%Y%m%dT%H}Z", steps, 50.0)
+    run, fields = attach.load_ens(site)
+    reader, blend_run = attach.blend_rain24_reader(site)
+    assert blend_run == f"{RUN:%Y%m%dT%H}Z"
+    for model in ("gfs", "blend"):
+        assert attach.attach_model(site, model, run, fields, reader, blend_run)
+    v = C.VARS["xr"]
+    got = decode_field(open(os.path.join(gfs, "xr", "006.png"), "rb").read(), v.lo, v.hi)
+    assert abs(float(got[3, 3]) - 70) < 0.5                  # 50 mm in the model and in the blend, rain expected
+    again = decode_field(open(os.path.join(blend_root, "xr", "000.png"), "rb").read(), v.lo, v.hi)
+    assert abs(float(again[3, 3]) - 70) < 0.5                # the blend against itself
+    manifest = json.load(open(os.path.join(gfs, "manifest.json")))
+    assert "xr" in manifest["vars"] and manifest["build"].endswith(f"20261005T18Z.{RUN:%Y%m%dT%H}Z")
+    # the blend says only 25 mm: a weaker case
+    _write_rain24(site, "blend", f"{RUN:%Y%m%dT%H}Z", steps, 25.0)
+    reader, blend_run = attach.blend_rain24_reader(site)
+    attach.attach_model(site, "gfs", run, fields, reader, blend_run)
+    weaker = decode_field(open(os.path.join(gfs, "xr", "006.png"), "rb").read(), v.lo, v.hi)
+    assert float(weaker[3, 3]) < 45
+    # no blend at all: the model stands alone
+    attach.attach_model(site, "gfs", run, fields)
+    alone = decode_field(open(os.path.join(gfs, "xr", "006.png"), "rb").read(), v.lo, v.hi)
+    assert abs(float(alone[3, 3]) - 70) < 0.5

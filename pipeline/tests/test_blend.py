@@ -88,7 +88,7 @@ def test_build_blends_models_from_different_runs_and_publishes_a_manifest(tmp_pa
     assert abs(float(_read(site, "precip", 0)[0, 0]) - (3 * 1 + 2 * 3) / 5) < 0.05
     # past GFS's last step (T0+15h) only IFS is left
     assert abs(float(_read(site, "t2m", 12)[0, 0]) - 38) < 0.02                          # T0+18h: 20 + 18
-    assert "px65" not in manifest["vars"] and {"t2m", "precip"} <= set(manifest["vars"])
+    assert "px0" not in manifest["vars"] and "xr" not in manifest["vars"] and {"t2m", "precip"} <= set(manifest["vars"])
     latest = json.load(open(os.path.join(site, "blend", "latest.json")))
     assert latest["run"] == run_id and latest["components"] == manifest["components"]
 

@@ -5,7 +5,7 @@ import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terra
 /** Fields read for the click card at the ground. */
 export const SURFACE_INSPECT_VARS = [
   't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
-  'rain24', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv', 'px2', 'px16', 'px65', 'px115',
+  'rain24', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv', 'px0', 'xr',
 ] as const;
 
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
@@ -103,16 +103,14 @@ export function buildPointRows(
   rows.splice(1, 0, ...extremes.filter(([, , x]) => !Number.isNaN(x)).map(([id, label, x]) => (
     { id, label, text: withUnit(adjust('temperature', x), 1, '°C'), terrainAdjusted: adjusted })));
   if (!Number.isNaN(v('rain24'))) {
-    // rows after the rain one: the 24 h total, and the ensemble's chance of heavy rain (shown only where the data exists)
+    // rows after the rain one: the 24 h total, and the chance of rain and the extreme-rain probability (shown only where the data exists)
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
       id: 'rain24', label: 'Rain, next 24 h', text: withUnit(adjust('rain', v('rain24')), v('rain24') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
   const chances: [string, string, number][] = [
-    ['px2', 'Chance of rain, next 24 h', v('px2')],
-    ['px16', 'Chance of 16+ mm, next 24 h', v('px16')],
-    ['px65', 'Chance of 65+ mm, next 24 h', v('px65')],
-    ['px115', 'Chance of 115+ mm, next 24 h', v('px115')],
+    ['px0', 'Chance of rain, next 24 h', v('px0')],
+    ['xr', 'Extreme rain probability, next 24 h', v('xr')],
   ];
   for (const [id, label, p] of chances) {
     if (!Number.isNaN(p)) rows.push({ id, label, text: `${fmt(p)} %`, terrainAdjusted: false });
@@ -149,7 +147,7 @@ export function buildPointRows(
 /** The click-card row that shows each layer's value at the ground. */
 const LAYER_ROW: Record<string, string> = {
   temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24',
-  tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin', px2: 'px2', px16: 'px16', px65: 'px65', px115: 'px115',
+  tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin', px0: 'px0', xr: 'xr',
 };
 /** ...and at a pressure level (only some layers can be shown there). */
 const LAYER_LEVEL_ROW: Record<string, string> = { temp: 'lvl-temp', humidity: 'lvl-humidity', wind: 'lvl-wind', pressure: 'lvl-height' };

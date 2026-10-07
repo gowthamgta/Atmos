@@ -4,8 +4,8 @@ Open-Meteo's bucket only has "any rain" probabilities for the ensembles, so this
 (CC BY 4.0, https://data.ecmwf.int): total precipitation of the 50 perturbed members at 0.25 degrees
 (the control member is not in the open index).
 `tp` is the rain accumulated since the start of the run, so the rain of the 24 hours after step s is tp(s+24) - tp(s).
-The share of members at or above each threshold is the chance, in percent. The thresholds are IMD's daily rain classes:
-rain 2.5 mm, moderate 15.6 mm, heavy 64.5 mm, very heavy 115.6 mm.
+The share of members at or above the threshold is the chance of rain, in percent: PoP = members with 24 h rain >= 0.1 mm (measurable
+rain) divided by all members, as meteorologists define it.
 
 The result is stored as the product `ens` (one image per variable and start time, every 6 h to +72 h). attach.py then
 copies it, aligned in time, onto every model's own timeline, so the layer works whichever model is selected.
@@ -30,12 +30,12 @@ RUN_HOURS = (0, 6, 12, 18)
 START_HOURS = list(range(0, 73, 6))                 # forecast hours the 24 h windows start at
 WINDOW_HOURS = 24
 STEP_HOURS = sorted({s for s in START_HOURS} | {s + WINDOW_HOURS for s in START_HOURS})   # accumulation is read at these steps
-# IMD's daily rain classes (mm in 24 h) and the variables they publish: rain (2.5 mm, below that IMD counts it as a trace),
-# moderate, heavy and very heavy
-THRESHOLDS_MM: dict[str, float] = {"px2": 2.5, "px16": 15.6, "px65": 64.5, "px115": 115.6}
+# The chance of rain: measurable rain is 0.1 mm or more in the 24 hours. (The heavier classes are not taken from the ensemble: the extreme-rain
+# probability is made from the 24 h rain of the model and of the blend, see extreme.py.)
+THRESHOLDS_MM: dict[str, float] = {"px0": 0.1}
 # Bump when the method changes, so a run that is already live under the old method is rebuilt (v2: fixed the longitude
-# of ECMWF's 180-east-first grids, which had produced fields that only varied by latitude)
-VERSION = 2
+# of ECMWF's 180-east-first grids, which had produced fields that only varied by latitude; v3: only the chance of any rain, 0.1 mm)
+VERSION = 3
 MIN_MEMBERS = 40                                    # a read with fewer members than this is treated as a failed download
 
 LATS = C.LAT_MAX - C.STEP_DEG * np.arange(C.NY)
