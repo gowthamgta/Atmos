@@ -10,16 +10,16 @@ export class FieldLoaderService {
   private readonly cache = new Map<string, ImageBitmap>();
   private readonly inflight = new Map<string, Promise<ImageBitmap>>();
 
-  /** Cache key; includes model and run so a new run or model never reuses old pixels. */
-  static key(model: string, run: string, varId: string, stepHour: number): string {
-    return `${model}/${run}/${varId}/${stepHour}`;
+  /** Cache key; includes model, run and build so a new run, a rebuilt run or another model never reuses old pixels. */
+  static key(model: string, run: string, varId: string, stepHour: number, build = ''): string {
+    return `${model}/${run}${build ? `.${build}` : ''}/${varId}/${stepHour}`;
   }
 
   get(varId: string, stepHour: number): Promise<ImageBitmap> {
     const manifest = this.catalog.manifest();
     if (!manifest) return Promise.reject(new Error('forecast manifest not loaded'));
     const run = manifest.run;
-    const key = FieldLoaderService.key(manifest.model, run, varId, stepHour);
+    const key = FieldLoaderService.key(manifest.model, run, varId, stepHour, manifest.build);
 
     const hit = this.cache.get(key);
     if (hit) {
@@ -29,7 +29,7 @@ export class FieldLoaderService {
     }
     let pending = this.inflight.get(key);
     if (!pending) {
-      pending = this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run)).then(bmp => {
+      pending = this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build)).then(bmp => {
         this.cache.set(key, bmp);
         this.evict();
         return bmp;

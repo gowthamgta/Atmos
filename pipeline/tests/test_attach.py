@@ -108,3 +108,21 @@ def test_an_older_ensemble_product_with_a_retired_variable_does_not_break_attach
     assert "px204" in fields and attach.attach_model(site, "gfs", run, fields)
     out = json.load(open(os.path.join(root, "manifest.json")))
     assert "px204" not in out["vars"] and "px65" in out["vars"]
+
+
+def test_attach_gives_a_rebuilt_set_of_pictures_a_new_build_and_does_not_pile_suffixes_up(tmp_path):
+    site = str(tmp_path)
+    _write_ens(site, [0, 6, 12, 18])
+    root = _write_model(site, "ecmwf_ifs", RUN, [0, 3, 6])
+    manifest_path = os.path.join(root, "manifest.json")
+    m = json.load(open(manifest_path))
+    m["build"] = "20261005T1830Z"
+    json.dump(m, open(manifest_path, "w"))
+    json.dump({"model": "ecmwf_ifs", "run": f"{RUN:%Y%m%dT%H}Z", "build": "20261005T1830Z"}, open(os.path.join(site, "ecmwf_ifs", "latest.json"), "w"))
+    run, fields = attach.load_ens(site)
+    attach.attach_model(site, "ecmwf_ifs", run, fields)
+    first = json.load(open(manifest_path))["build"]
+    assert first == "20261005T1830Z.20261005T18Z"
+    assert json.load(open(os.path.join(site, "ecmwf_ifs", "latest.json")))["build"] == first      # the app reads it from latest.json
+    attach.attach_model(site, "ecmwf_ifs", run, fields)                                          # every deploy runs this again
+    assert json.load(open(manifest_path))["build"] == first

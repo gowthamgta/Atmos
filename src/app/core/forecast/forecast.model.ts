@@ -31,6 +31,8 @@ export interface ForecastManifest {
   model: string;
   /** Run id such as 20261004T18Z. */
   run: string;
+  /** Which build of the run this is: it changes when the run is built again under the same id, so old pictures are never reused. */
+  build?: string;
   grid: ForecastGrid;
   steps: ForecastStep[];
   vars: Record<string, ForecastVarInfo>;

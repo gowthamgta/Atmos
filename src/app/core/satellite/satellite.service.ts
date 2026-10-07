@@ -4,6 +4,7 @@ import { isPhone } from '../ui/device-profile';
 import {
   FY4B_BASE,
   SATELLITE_NATURAL_LAYER,
+  SATELLITE_NATURAL_SIZE,
   SatelliteProduct,
   SatelliteSource,
   SatelliteView,
@@ -79,6 +80,9 @@ export class SatelliteService {
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
   private loadToken = 0;
+  private publishSeq = 0;
+  private publishApplied = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Start (or resume) fetching; looks for newer pictures every couple of minutes while on. */
   activate(): void {
@@ -90,6 +94,8 @@ export class SatelliteService {
     this.pause();
     if (this.checkTimer !== null) clearInterval(this.checkTimer);
     this.checkTimer = null;
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     this.loadToken++; // abandon a load in progress
     this.loading.set(false);
   }
@@ -139,9 +145,12 @@ export class SatelliteService {
         timeMs: t,
         product,
         fetch: async () => {
-          const blob = await this.download(product, t);
-          // by day the natural-colour picture is fetched too, to find low cloud in the cloud-only view (the frame works without it)
-          const natural = blob && product.id === 'hrv' ? await this.download(product, t, SATELLITE_NATURAL_LAYER) : null;
+          // by day the natural-colour picture is fetched too, at the same time, to find low cloud in the cloud-only view; the
+          // frame works without it
+          const [blob, natural] = await Promise.all([
+            this.download(product, t),
+            product.id === 'hrv' ? this.download(product, t, SATELLITE_NATURAL_LAYER, SATELLITE_NATURAL_SIZE) : Promise.resolve(null),
+          ]);
           return blob ? { blob, natural: natural ?? undefined } : null;
         },
       };
@@ -168,7 +177,7 @@ export class SatelliteService {
         if (token !== this.loadToken) return;
         if (got) {
           this.raws.set(item.timeMs, { product: item.product, blob: got.blob, natural: got.natural });
-          await this.publish(times, token, following);
+          void this.publish(times, token, following); // the next picture downloads while this one is built
         }
       }
     };
@@ -181,6 +190,13 @@ export class SatelliteService {
     this.prune(times);
     this.failed.set(this.frames().length === 0);
     this.loading.set(false);
+    // some pictures could not be fetched (the service was busy): ask again in a little while instead of at the next check
+    if (this.retryTimer === null && times.some(t => !this.raws.has(t))) {
+      this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
+        void this.load();
+      }, 20_000);
+    }
   }
 
   /** Switch satellite: the other one's pictures are dropped and the new one's last hour is loaded. */
@@ -198,24 +214,23 @@ export class SatelliteService {
     await this.load();
   }
 
+  /** A picture, or null. EUMETView sometimes answers a busy moment with a 500: that is tried once more after a short wait. */
   private async downloadUrl(url: string): Promise<Blob | null> {
-    try {
-      const res = await fetch(url);
-      if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/')) return null;
-      return await res.blob();
-    } catch {
-      return null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(url);
+        if (res.ok && (res.headers.get('content-type') ?? '').startsWith('image/')) return await res.blob();
+        if (res.status < 500) return null;
+      } catch {
+        // the network, not the service: try again too
+      }
+      if (attempt === 0) await new Promise(r => setTimeout(r, 900));
     }
+    return null;
   }
 
-  private async download(product: SatelliteProduct, timeMs: number, layer?: string): Promise<Blob | null> {
-    try {
-      const res = await fetch(satelliteFrameUrl(product, timeMs, layer));
-      if (!res.ok || !(res.headers.get('content-type') ?? '').startsWith('image/')) return null;
-      return await res.blob();
-    } catch {
-      return null;
-    }
+  private async download(product: SatelliteProduct, timeMs: number, layer?: string, size?: { width: number; height: number }): Promise<Blob | null> {
+    return this.downloadUrl(satelliteFrameUrl(product, timeMs, layer, size));
   }
 
   /**
@@ -250,8 +265,11 @@ export class SatelliteService {
   /** List the overlay pictures of every downloaded frame, oldest first. */
   private async publish(times: number[], token: number, following: boolean): Promise<void> {
     const view = this.view();
+    const seq = ++this.publishSeq;
     const built = await Promise.all(times.filter(t => this.raws.has(t)).map(t => this.frameFor(t, view)));
     if (token !== this.loadToken || view !== this.view()) return; // a newer refresh or view took over
+    if (seq < this.publishApplied) return;                         // a later publish (with more pictures) is already shown
+    this.publishApplied = seq;
     const list = built.filter((f): f is SatelliteFrame => f !== null);
     this.frames.set(list);
     this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));

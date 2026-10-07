@@ -30,6 +30,11 @@ export const SATELLITE_SIZE = satelliteImageSize(isPhone());
  * By day it helps the cloud-only view find low cloud (white in it, yellow like the land in the HRV picture).
  */
 export const SATELLITE_NATURAL_LAYER = 'rgb_naturalenhncd';
+/**
+ * Its size: half the width and height of the main picture. Its pixels are 3 km (4-5 km over India), so this is still finer than the
+ * data, and the server renders it much faster (the full-size request often failed with a 500 when several came at once).
+ */
+export const SATELLITE_NATURAL_SIZE = { width: Math.round(SATELLITE_SIZE.width / 2), height: Math.round(SATELLITE_SIZE.height / 2) };
 
 export const SATELLITE_STEP_MIN = 15;
 /** Fallback only: how old a frame must be to be safe when the service's own newest time is not known. */
@@ -169,7 +174,7 @@ export function frameTimes(latestMs: number, count = SATELLITE_FRAME_COUNT, step
 }
 
 /** GetMap URL for one frame. JPEG keeps a frame to 20-400 KB; transparency is done afterwards, in the browser. */
-export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, layer: string = product.layer): string {
+export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, layer: string = product.layer, size: { width: number; height: number } = SATELLITE_SIZE): string {
   const b = SATELLITE_BOUNDS;
   const params = new URLSearchParams({
     service: 'WMS',
@@ -180,8 +185,8 @@ export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, lay
     crs: 'EPSG:4326',
     // WMS 1.3.0 with EPSG:4326 orders the box as south, west, north, east
     bbox: `${b.south},${b.west},${b.north},${b.east}`,
-    width: String(SATELLITE_SIZE.width),
-    height: String(SATELLITE_SIZE.height),
+    width: String(size.width),
+    height: String(size.height),
     format: 'image/jpeg',
     time: new Date(timeMs).toISOString().replace('.000Z', 'Z'),
   });

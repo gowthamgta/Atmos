@@ -44,21 +44,22 @@ export class ForecastCatalogService implements OnDestroy {
     return this.inflight;
   }
 
-  fieldUrl(varId: string, stepHour: number, run = this.manifest()?.run): string {
-    return `${this.model().baseUrl}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png`;
+  /** Address of one picture. The build (when the manifest has one) is part of it, so a run built again is fetched afresh. */
+  fieldUrl(varId: string, stepHour: number, run = this.manifest()?.run, build = this.manifest()?.build): string {
+    return `${this.model().baseUrl}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png${build ? `?b=${encodeURIComponent(build)}` : ''}`;
   }
 
   private async load(): Promise<void> {
     if (!this.manifest()) this.status.set('loading');
     const { baseUrl, id } = this.model();
     try {
-      const latest = await this.getJson<{ run: string }>(`${baseUrl}/latest.json?t=${Math.floor(Date.now() / 60000)}`);
+      const latest = await this.getJson<{ run: string; build?: string }>(`${baseUrl}/latest.json?t=${Math.floor(Date.now() / 60000)}`);
       if (id !== this.activeModelId()) return; // the model was switched while this request was in flight
-      if (latest.run === this.manifest()?.run) {
+      if (latest.run === this.manifest()?.run && (latest.build ?? '') === (this.manifest()?.build ?? '')) {
         this.status.set('ready');
         return;
       }
-      const manifest = await this.getJson<ForecastManifest>(`${baseUrl}/${latest.run}/manifest.json`);
+      const manifest = await this.getJson<ForecastManifest>(`${baseUrl}/${latest.run}/manifest.json${latest.build ? `?b=${encodeURIComponent(latest.build)}` : ''}`);
       if (id !== this.activeModelId()) return;
       this.manifest.set(manifest);
       this.status.set('ready');

@@ -82,8 +82,21 @@ def attach_model(site: str, model: str, ens_run: datetime, ens_fields: dict[str,
                 f.write(png)
         manifest["vars"][name] = {"unit": var.unit, "min": var.lo, "max": var.hi, "encoding": "rg16"}
     manifest.setdefault("notes", {})["px"] = f"chance (%) of heavy rain in the next 24 h from the ECMWF ensemble run {ens_run:%Y%m%dT%HZ}"
+    # the chance pictures changed under the same addresses: the build says which ensemble run they are from (the model's own
+    # build is kept aside, so running this again does not pile suffixes up)
+    base = manifest.setdefault("baseBuild", manifest.get("build", ""))
+    manifest["build"] = f"{base}.{ens_run:%Y%m%dT%HZ}" if base else f"{ens_run:%Y%m%dT%HZ}"
     with open(manifest_path, "w") as f:
         json.dump(manifest, f)
+    latest_path = os.path.join(root, "latest.json")
+    try:
+        with open(latest_path) as f:
+            latest = json.load(f)
+        latest["build"] = manifest["build"]
+        with open(latest_path, "w") as f:
+            json.dump(latest, f)
+    except (OSError, ValueError):
+        pass
     return True
 
 

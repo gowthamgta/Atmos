@@ -10,7 +10,7 @@ The folder is deployed to GitHub Pages by .github/workflows/nwp.yml (free, CORS-
 from __future__ import annotations
 import argparse, json, os, shutil, sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 import requests
 import config as C
@@ -30,7 +30,7 @@ def published_vars(fetcher):
     return [v for v in C.VARS.values() if v.id not in fetcher.UNAVAILABLE_VARS]
 
 
-def build_manifest(fetcher, run, steps):
+def build_manifest(fetcher, run, steps, build=None):
     return {
         "model": fetcher.MODEL_ID,
         "run": f"{run:%Y%m%dT%H}Z",
@@ -41,6 +41,9 @@ def build_manifest(fetcher, run, steps):
         "levels": list(C.LEVELS),
         "path": "{var}/{h:03d}.png",
         "notes": {"precip": fetcher.PRECIP_NOTE},
+        # which build of the run this is: a run built again under the same id (levels that were missing, new ensemble chances) gets a
+        # new one, and the app puts it on every picture's address so no browser keeps the old pictures
+        "build": build or build_id(),
     }
 
 
@@ -52,6 +55,10 @@ def process_step(fetcher, run, h):
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h))
     pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS}
     return h, pngs, fields["precip"], fields["t2m"]
+
+
+def build_id() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def live_run(url: str, fmt: int | None = None) -> str | None:
@@ -135,10 +142,11 @@ def main() -> int:
         raise
 
     # latest.json is written last so a half-finished folder never advertises a run
+    build = build_id()
     write(os.path.join(args.out, fetcher.MODEL_ID, run_id, "manifest.json"),
-          json.dumps(build_manifest(fetcher, run, sorted(done))).encode())
+          json.dumps(build_manifest(fetcher, run, sorted(done), build)).encode())
     gaps = fetcher.incomplete_steps() if hasattr(fetcher, "incomplete_steps") else []
-    latest = {"model": fetcher.MODEL_ID, "run": run_id}
+    latest = {"model": fetcher.MODEL_ID, "run": run_id, "build": build}
     if hasattr(fetcher, "LIVE_FORMAT"):
         latest["format"] = fetcher.LIVE_FORMAT
     if gaps:

@@ -77,3 +77,20 @@ describe('sampleGrid', () => {
     expect(sampleGrid(v, GRID, 13, 80)).toBeNaN();
   });
 });
+
+describe('picture addresses and builds', () => {
+  it('puts the build on every picture address, so a run built again is fetched afresh', async () => {
+    const { ForecastCatalogService } = await import('./forecast-catalog.service');
+    const catalog = new ForecastCatalogService();
+    expect(catalog.fieldUrl('t850', 12, '20261007T00Z')).toBe('https://gowthamgta.github.io/Atmos/ecmwf_ifs/20261007T00Z/t850/012.png');
+    expect(catalog.fieldUrl('t850', 12, '20261007T00Z', '20261007T1027Z')).toBe('https://gowthamgta.github.io/Atmos/ecmwf_ifs/20261007T00Z/t850/012.png?b=20261007T1027Z');
+  });
+
+  it('keeps the loader cache apart for two builds of one run', async () => {
+    const { FieldLoaderService } = await import('./field-loader.service');
+    const a = FieldLoaderService.key('ecmwf_ifs', '20261007T00Z', 't850', 12, 'b1');
+    const b = FieldLoaderService.key('ecmwf_ifs', '20261007T00Z', 't850', 12, 'b2');
+    expect(a).not.toBe(b);
+    expect(FieldLoaderService.key('ecmwf_ifs', '20261007T00Z', 't850', 12)).toBe('ecmwf_ifs/20261007T00Z/t850/12');
+  });
+});

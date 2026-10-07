@@ -275,6 +275,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     manifest = {
         "model": BLEND_ID,
         "run": run_id,
+        "build": run_id,                      # the blend's run id is when it was assembled: already unique
         "reference": f"{ref:%Y%m%dT%HZ}",
         "components": runs,
         "weights": {c.model: c.weight for c in components},
@@ -291,7 +292,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     for old in os.listdir(os.path.join(site, BLEND_ID)):   # only the newest assembly is kept (a mirrored older one, say)
         if old != run_id and os.path.isdir(os.path.join(site, BLEND_ID, old)):
             shutil.rmtree(os.path.join(site, BLEND_ID, old), ignore_errors=True)
-    write(os.path.join(site, BLEND_ID, "latest.json"), json.dumps({"model": BLEND_ID, "run": run_id, "components": runs, "inputs": inputs_of(components), "version": VERSION}).encode())
+    write(os.path.join(site, BLEND_ID, "latest.json"), json.dumps({"model": BLEND_ID, "run": run_id, "build": run_id, "components": runs, "inputs": inputs_of(components), "version": VERSION}).encode())
     return run_id
 
 
