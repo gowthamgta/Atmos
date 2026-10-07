@@ -28,7 +28,7 @@ from encode import decode_field, encode_field
 BLEND_ID = "blend"
 LABEL = "All models (blend)"
 STEP_HOURS = 3
-VERSION = 2        # bump when the method changes: v2 added probability-matched rain and high-resolution detail
+VERSION = 3        # bump when the method changes: v2 added probability-matched rain and high-resolution detail; v3 rebuilds when a model is rebuilt under the same run
 # Relative weights. IFS is the best global model for this region; AIFS, ICON and the UKMO model are close behind.
 WEIGHTS: dict[str, float] = {
     "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5, "gdps": 1.0, "cma_grapes": 1.0,
@@ -66,18 +66,21 @@ class Component:
     steps: dict[datetime, int]     # valid time -> step hour of that model
     vars: dict[str, dict]
     weight: float
+    build: str = ""      # which build of the run this is (a model rebuilt under the same run id has another one)
 
 
 def load_component(site: str, model: str) -> Component | None:
     root = os.path.join(site, model)
     try:
-        run_id = json.load(open(os.path.join(root, "latest.json")))["run"]
+        latest = json.load(open(os.path.join(root, "latest.json")))
+        run_id = latest["run"]
         manifest = json.load(open(os.path.join(root, run_id, "manifest.json")))
         run = parse_run(run_id)
     except (OSError, ValueError, KeyError):
         return None
     steps = {parse_valid(s["valid"]): int(s["h"]) for s in manifest["steps"]}
-    return Component(model, run_id, run, os.path.join(root, run_id), steps, manifest["vars"], WEIGHTS.get(model, 1.0))
+    build = f"{latest.get('format', 0)}{'' if latest.get('complete', True) else 'i'}"
+    return Component(model, run_id, run, os.path.join(root, run_id), steps, manifest["vars"], WEIGHTS.get(model, 1.0), build)
 
 
 def read_field(c: Component, var: str, step: int) -> np.ndarray:
@@ -225,6 +228,17 @@ def run_id_now(now: datetime | None = None) -> str:
     return (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%MZ")
 
 
+def inputs_of(components: list[Component]) -> dict[str, str]:
+    """What the blend was built from: every model's run and build. The blend is rebuilt when any of it changes."""
+    return {c.model: f"{c.run_id}/{c.build}" for c in components}
+
+
+def missing_models(components: list[Component]) -> list[str]:
+    """Models the blend is meant to have (they have a weight) that are not in this build."""
+    have = {c.model for c in components}
+    return sorted(m for m in WEIGHTS if m not in have)
+
+
 def components_of(site: str) -> list[Component]:
     models = [d for d in sorted(os.listdir(site)) if d not in NOT_MODELS and os.path.isdir(os.path.join(site, d))]
     return [c for c in (load_component(site, m) for m in models) if c is not None]
@@ -244,6 +258,8 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     run_id = run_id_now()
     run_dir = os.path.join(site, BLEND_ID, run_id)
     print(f"blend: {len(components)} models ({', '.join(runs)}), {len(axis)} steps, {len(published)} variables", flush=True)
+    if missing_models(components):
+        print(f"blend: WARNING: no data for {', '.join(missing_models(components))}; they are not in this blend", flush=True)
 
     def one(i: int):
         fields = blend_step(components, published, axis[i])
@@ -275,7 +291,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     for old in os.listdir(os.path.join(site, BLEND_ID)):   # only the newest assembly is kept (a mirrored older one, say)
         if old != run_id and os.path.isdir(os.path.join(site, BLEND_ID, old)):
             shutil.rmtree(os.path.join(site, BLEND_ID, old), ignore_errors=True)
-    write(os.path.join(site, BLEND_ID, "latest.json"), json.dumps({"model": BLEND_ID, "run": run_id, "components": runs, "version": VERSION}).encode())
+    write(os.path.join(site, BLEND_ID, "latest.json"), json.dumps({"model": BLEND_ID, "run": run_id, "components": runs, "inputs": inputs_of(components), "version": VERSION}).encode())
     return run_id
 
 
@@ -292,7 +308,7 @@ def main() -> int:
         try:
             import requests
             live = requests.get(args.live_url, timeout=30).json()
-            if live.get("components") == {c.model: c.run_id for c in comps} and live.get("version") == VERSION:
+            if live.get("inputs") == inputs_of(comps) and live.get("version") == VERSION:
                 print("blend: inputs unchanged since the live blend; nothing to do")
                 return 0
         except Exception:

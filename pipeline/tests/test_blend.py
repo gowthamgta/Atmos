@@ -212,3 +212,32 @@ def test_the_blend_never_leaves_the_range_of_the_models(tmp_path):
     out = blend.blend_step(blend.components_of(site), ["t2m"], T0 + timedelta(hours=3))["t2m"]
     assert float(out.max()) <= 40.01 and float(out.min()) >= 23.99                       # inside [lowest model, highest model]
     assert float(out[61, 61]) > float(out[10, 10]) + 3                                   # but the fine feature is kept
+
+
+def test_every_model_the_pipeline_builds_is_in_the_blend_and_in_its_resolution_order():
+    import run
+    models = set(run.MODELS)
+    assert models == set(blend.WEIGHTS), "a model without a weight would be blended at the default weight, one without a model never"
+    assert set(blend.RESOLUTION_ORDER) == models                       # every model can lend its detail, none is missing from the order
+
+
+def test_the_blend_is_rebuilt_when_a_model_is_rebuilt_under_the_same_run(tmp_path):
+    site = str(tmp_path)
+    _write_model(site, "ecmwf_ifs", T0, [0, 3], {"t2m": lambda h: 20.0})
+    _write_model(site, "gfs", T0, [0, 3], {"t2m": lambda h: 24.0})
+    before = blend.inputs_of(blend.components_of(site))
+    # IFS is built again for the same run (its pressure levels were empty the first time)
+    json.dump({"model": "ecmwf_ifs", "run": f"{T0:%Y%m%dT%H}Z", "format": 2}, open(os.path.join(site, "ecmwf_ifs", "latest.json"), "w"))
+    after = blend.inputs_of(blend.components_of(site))
+    assert before != after and before["gfs"] == after["gfs"]
+    # a run published as incomplete counts as another build again, so the blend follows when it is completed
+    json.dump({"model": "ecmwf_ifs", "run": f"{T0:%Y%m%dT%H}Z", "format": 2, "complete": False}, open(os.path.join(site, "ecmwf_ifs", "latest.json"), "w"))
+    assert blend.inputs_of(blend.components_of(site)) not in (before, after)
+
+
+def test_missing_models_are_named(tmp_path):
+    site = str(tmp_path)
+    _write_model(site, "ecmwf_ifs", T0, [0], {"t2m": lambda h: 20.0})
+    _write_model(site, "gfs", T0, [0], {"t2m": lambda h: 24.0})
+    missing = blend.missing_models(blend.components_of(site))
+    assert "ukmo" in missing and "ecmwf_ifs" not in missing and "gfs" not in missing

@@ -8,11 +8,14 @@ name: nwp
 on:
   schedule:
     - cron: "15,45 * * * *"
-  # a change to the FY-4B step rebuilds and deploys at once
+  # a change to the FY-4B step or to how the IFS run and the blend are built rebuilds and deploys at once
   push:
     paths:
       - "pipeline/fy4.py"
       - "pipeline/data/**"
+      - "pipeline/run.py"
+      - "pipeline/fetch_ifs.py"
+      - "pipeline/blend.py"
   workflow_dispatch:
     inputs:
       force:
