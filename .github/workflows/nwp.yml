@@ -18,6 +18,7 @@ on:
       - "pipeline/config.py"
       - "pipeline/derive.py"
       - "pipeline/encode.py"
+      - "pipeline/requirements.txt"
       - "pipeline/cyclones.py"
   workflow_dispatch:
     inputs:
