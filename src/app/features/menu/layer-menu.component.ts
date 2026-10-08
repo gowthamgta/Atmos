@@ -14,7 +14,7 @@ import {
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { PanelService } from '../../core/ui/panel.service';
 import { MicroclimateService } from '../../core/microclimate/microclimate.service';
-import { MICRO_METRICS, metricById } from '../../core/microclimate/microclimate.model';
+import { METRIC_LAYER, MICRO_METRICS, MicroMetric } from '../../core/microclimate/microclimate.model';
 import { SATELLITE_SOURCES } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 
@@ -103,19 +103,15 @@ function ladderKm(level: Level): string {
               <button type="button" class="layer" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
                 <span class="l-icon" aria-hidden="true">≋</span><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
               </button>
-              <button type="button" class="layer" [class.active]="microOn()" [attr.aria-pressed]="microOn()" (click)="toggleMicroMap()" title="Colour the Tamil Nadu districts by the microclimate (heat, rain, wind) at the timeline's time; click a district for its details">
+              <button type="button" class="layer" [class.active]="microOn()" [attr.aria-pressed]="microOn()" (click)="toggleMicroMap()" title="Tamil Nadu microclimate: the 1 km terrain-adjusted fields (heat, temperature, rain, wind), with the district details card">
                 <span class="l-icon" aria-hidden="true">🗺</span><span class="l-name">Tamil Nadu microclimate</span>
               </button>
               @if (microOn()) {
-                <div class="micro-block" role="group" aria-label="Microclimate colours">
+                <div class="micro-block" role="group" aria-label="Microclimate field">
                   <div class="micro-metrics">
                     @for (m of microMetrics; track m.id) {
-                      <button type="button" class="chip" [class.active]="micro.metric() === m.id" [attr.aria-pressed]="micro.metric() === m.id" (click)="micro.metric.set(m.id)">{{ m.label }}</button>
+                      <button type="button" class="chip" [class.active]="micro.metric() === m.id" [attr.aria-pressed]="micro.metric() === m.id" (click)="selectMicroMetric(m.id)">{{ m.label }}</button>
                     }
-                  </div>
-                  <div class="micro-legend" aria-hidden="true">
-                    <span class="bar" [style.background]="microGradient()"></span>
-                    <span class="ticks"><span>{{ microDef().min }} {{ microDef().unit }}</span><span>{{ microDef().max }} {{ microDef().unit }}</span></span>
                   </div>
                   <button type="button" class="chip wide" (click)="panels.toggle('microclimate')">{{ panels.open() === 'microclimate' ? 'Hide' : 'Show' }} district details</button>
                 </div>
@@ -145,8 +141,6 @@ function ladderKm(level: Level): string {
     .micro-metrics { display: flex; flex-wrap: wrap; gap: 6px; }
     .micro-metrics .chip { min-height: 30px; padding: 0 9px; border-radius: 9px; border: 1px solid transparent; background: rgba(255,255,255,0.06); color: var(--text-secondary); font: 600 11px var(--font-body); cursor: pointer; }
     .micro-metrics .chip.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
-    .micro-legend .bar { display: block; height: 8px; border-radius: 4px; }
-    .micro-legend .ticks { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--text-muted); }
     .micro-block .wide { min-height: 32px; border-radius: 9px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.05); color: var(--text-primary); font: 600 12px var(--font-body); cursor: pointer; }
     .trigger {
       display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: min(300px, calc(100vw - 150px)); padding: 6px 12px;
@@ -232,11 +226,7 @@ export class LayerMenuComponent {
   protected readonly micro = inject(MicroclimateService);
   protected readonly microOn = computed(() => this.micro.onMap());
   protected readonly microMetrics = MICRO_METRICS;
-  protected readonly microDef = computed(() => metricById(this.micro.metric()));
-  protected readonly microGradient = computed(() => {
-    const stops = this.microDef().stops;
-    return `linear-gradient(90deg, ${stops.join(', ')})`;
-  });
+
 
   /** Layers grouped for display. */
   protected readonly groups = computed(() =>
@@ -311,9 +301,24 @@ export class LayerMenuComponent {
     else this.state.selectRadar();
   }
 
+  /** Shows the microclimate field on the map (its 1 km forecast layer, with the 1 km detail on) or hides it. */
   protected toggleMicroMap(): void {
-    this.micro.onMap.update(on => !on);
-    if (this.micro.onMap()) this.micro.load();
+    if (this.microOn()) {
+      this.micro.onMap.set(false);
+      if (this.state.activeLayerId() === METRIC_LAYER[this.micro.metric()]) this.state.toggleLayer(METRIC_LAYER[this.micro.metric()]);
+      return;
+    }
+    this.micro.onMap.set(true);
+    this.selectMicroMetric(this.micro.metric());
+  }
+
+  protected selectMicroMetric(metric: MicroMetric): void {
+    this.micro.onMap.set(true);
+    this.micro.metric.set(metric);
+    this.micro.load();
+    this.state.detail.set(true);
+    const layer = METRIC_LAYER[metric];
+    if (this.state.activeLayerId() !== layer) this.state.toggleLayer(layer);
   }
 
   protected toggleGibs(): void {

@@ -9,7 +9,7 @@ export const MICROCLIMATE_URL = `${PAGES}/microclimate/tn.json`;
 export class MicroclimateService {
   readonly data = signal<MicroclimateData | null>(null);
   readonly failed = signal(false);
-  /** Colour the Tamil Nadu districts on the map. */
+  /** Show the chosen microclimate field on the map (a 1 km terrain-adjusted layer). */
   readonly onMap = signal(false);
   readonly metric = signal<MicroMetric>('feels');
   /** The district shown in the card (set from the picker or a click on the map). */

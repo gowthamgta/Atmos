@@ -159,41 +159,31 @@ export function seaBreezeSentence(s: SeaBreezeIndicator | null, nowMs: number = 
   return `Sea breeze likely from ${istLabel(s.from, nowMs)}, up to ${s.peakOnshoreMs} m/s`;
 }
 
-/** What the map colours each district by. */
+/** The microclimate fields that can be shown on the map. */
 export type MicroMetric = 'feels' | 'temp' | 'rainNow' | 'rain24' | 'wind';
 
 export interface MicroMetricDef {
   id: MicroMetric;
   label: string;
   unit: string;
-  /** Display range mapped onto the palette (low to high). */
+  /** Display range (low to high), for the labels. */
   min: number;
   max: number;
-  /** Evenly spaced colour stops, low to high. */
-  stops: readonly string[];
   /** Value of this metric at one step. */
   value: (v: StepValues) => number | null;
 }
 
-const HEAT = ['#2b3a8f', '#256d9b', '#1f9a8a', '#86a936', '#e0a526', '#e0651f', '#b3202f', '#6e1038'];
-const RAIN = ['#1e4fa0', '#1f8fb8', '#27ae75', '#c8b11f', '#e07a1f', '#d62f3a', '#b030c8'];
-const WIND = ['#1b3a6b', '#1f7a9a', '#2aa876', '#b5c22a', '#e0902a', '#d9422a', '#a82f9a'];
-
 export const MICRO_METRICS: readonly MicroMetricDef[] = [
-  { id: 'feels', label: 'Feels like', unit: '°C', min: 24, max: 44, stops: HEAT, value: v => v.heatIndexC },
-  { id: 'temp', label: 'Temperature', unit: '°C', min: 20, max: 36, stops: HEAT, value: v => v.tempC },
-  { id: 'rainNow', label: 'Rain now', unit: 'mm/h', min: 0, max: 5, stops: RAIN, value: v => v.precipMmH },
-  { id: 'rain24', label: 'Rain, next 24 h', unit: 'mm', min: 0, max: 100, stops: RAIN, value: v => v.rain24Mm },
-  { id: 'wind', label: 'Wind', unit: 'km/h', min: 0, max: 40, stops: WIND, value: v => (v.windMs === null ? null : v.windMs * 3.6) },
+  { id: 'feels', label: 'Feels like', unit: '°C', min: 24, max: 44, value: v => v.heatIndexC },
+  { id: 'temp', label: 'Temperature', unit: '°C', min: 20, max: 36, value: v => v.tempC },
+  { id: 'rainNow', label: 'Rain now', unit: 'mm/h', min: 0, max: 5, value: v => v.precipMmH },
+  { id: 'rain24', label: 'Rain, next 24 h', unit: 'mm', min: 0, max: 100, value: v => v.rain24Mm },
+  { id: 'wind', label: 'Wind', unit: 'km/h', min: 0, max: 40, value: v => (v.windMs === null ? null : v.windMs * 3.6) },
 ];
 
 export function metricById(id: MicroMetric): MicroMetricDef {
   return MICRO_METRICS.find(m => m.id === id) ?? MICRO_METRICS[0];
 }
 
-/** Colour for a value of a metric (the nearest palette stop, clamped to the range), or null with no value. */
-export function metricColour(def: MicroMetricDef, value: number | null): string | null {
-  if (value === null || !Number.isFinite(value)) return null;
-  const t = Math.min(1, Math.max(0, (value - def.min) / (def.max - def.min)));
-  return def.stops[Math.min(def.stops.length - 1, Math.round(t * (def.stops.length - 1)))];
-}
+/** The forecast layer (1 km, terrain-adjusted) that shows each microclimate field. */
+export const METRIC_LAYER: Record<MicroMetric, string> = { feels: 'feels', temp: 'temp', rainNow: 'rain', rain24: 'rain24', wind: 'wind' };

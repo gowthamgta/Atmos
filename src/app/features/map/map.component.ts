@@ -39,7 +39,6 @@ const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
 import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
-import { MicroclimateMapController } from '../../core/microclimate/microclimate-map.controller';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 
 @Component({
@@ -278,7 +277,6 @@ export class MapComponent implements OnInit, OnDestroy {
   private layerService = inject(MapLayerService);
   private radarService = inject(RadarService);
   private forecastMap = inject(ForecastMapController);
-  private microclimateMap = inject(MicroclimateMapController);
   private satellite = inject(SatelliteService);
   private gibs = inject(GibsHdService);
   private storms = inject(StormTracksService);
@@ -400,7 +398,6 @@ export class MapComponent implements OnInit, OnDestroy {
     this.removeSatelliteLayers();
     this.removeGibsLayer();
     this.forecastMap.detach();
-    this.microclimateMap.detach();
     this.map?.remove();
     this.map = null;
   }
@@ -565,8 +562,6 @@ export class MapComponent implements OnInit, OnDestroy {
 
       // 7. ECMWF forecast layer (GPU), mounted below the boundary lines
       this.forecastMap.attach(map, this.overlayAnchorId());
-      // Tamil Nadu districts coloured by the microclimate (shown when switched on in the layer menu)
-      this.microclimateMap.attach(map, map.getLayer(BOUNDARY_FIRST_LAYER_ID) ? BOUNDARY_FIRST_LAYER_ID : this.overlayAnchorId());
     });
 
     // Clicking the radar shows the dBZ and rain rate at that point (forecast layers have their own inspector)

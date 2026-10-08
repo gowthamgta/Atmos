@@ -12,7 +12,7 @@ import {
   stepIndex,
   valuesAt,
   metricById,
-  metricColour,
+  METRIC_LAYER,
 } from './microclimate.model';
 
 const times = ['2026-10-08T00:00:00Z', '2026-10-08T03:00:00Z', '2026-10-08T06:00:00Z'];
@@ -87,12 +87,8 @@ describe('microclimate map colours', () => {
     expect(metricById('wind').value(v)).toBeNull();
     expect(metricById('wind').value(valuesAt(chennai, 0))).toBeCloseTo(3 * 3.6);
   });
-
-  it('colours a value along the palette, clamped, and leaves a missing value uncoloured', () => {
-    const feels = metricById('feels');
-    expect(metricColour(feels, feels.min - 10)).toBe(feels.stops[0]);
-    expect(metricColour(feels, feels.max + 10)).toBe(feels.stops[feels.stops.length - 1]);
-    expect(metricColour(feels, null)).toBeNull();
-    expect(metricColour(feels, NaN)).toBeNull();
+  it('points each field at its 1 km forecast layer', () => {
+    expect(METRIC_LAYER.feels).toBe('feels');
+    expect(METRIC_LAYER.rainNow).toBe('rain');
   });
 });
