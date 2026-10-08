@@ -65,11 +65,13 @@ jobs:
           # tropical-cyclone tracks near South India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
-          if ls site/*/latest.json >/dev/null 2>&1; then
-            # models that were not rebuilt come over from the live site
-            python mirror.py --site site --base-url "$base" --models $models
-            # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
-            cp -r data/terrain site/terrain
+          # models that were not rebuilt come over from the live site (always: a deploy replaces the whole site)
+          python mirror.py --site site --base-url "$base" --models $models
+          # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
+          cp -r data/terrain site/terrain
+          # deploy when a model was built, or when the terrain on the site differs from the repository's copy
+          curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
+          if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
