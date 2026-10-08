@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
-import { SatelliteChannel, SatelliteView } from './satellite.config';
+import { SatelliteBounds, SatelliteChannel, SatelliteView } from './satellite.config';
 
 export interface SatelliteWorkerRequest {
   id: number;
@@ -9,13 +9,15 @@ export interface SatelliteWorkerRequest {
   view: SatelliteView;
   /** The natural-colour picture, used to find low cloud in the cloud-only view (daytime Meteosat). */
   natural?: Blob;
+  /** The box the picture covers (lat/lon, re-spaced to Mercator here). */
+  bounds: SatelliteBounds;
 }
 
 export type SatelliteWorkerResponse = { id: number; png: Blob } | { id: number; error: string };
 
 /** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
 addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) => {
-  const { id, jpeg, kind, view, natural } = event.data;
+  const { id, jpeg, kind, view, natural, bounds } = event.data;
   try {
     const bitmap = await createImageBitmap(jpeg);
     const { width, height } = bitmap;
@@ -33,8 +35,8 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
       colourBitmap.close();
       colour = sctx.getImageData(0, 0, width, height).data;
     }
-    const outHeight = mercatorHeight(width);
-    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight, colour);
+    const outHeight = mercatorHeight(width, bounds);
+    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight, colour, bounds);
     const out = new OffscreenCanvas(width, outHeight);
     out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
     const png = await out.convertToBlob({ type: 'image/png' });

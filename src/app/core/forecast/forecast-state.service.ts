@@ -44,7 +44,7 @@ export class ForecastStateService {
   readonly timeMs = signal<number | null>(null);
   readonly playing = signal(false);
   /** Animated wind streaks over the map; independent of the colour layer. */
-  readonly windParticles = signal(false);
+  readonly windParticles = signal(true);   // on by default: the app opens on the forecast wind, not the radar
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
   readonly isobars = signal(false);
   /** Forecast tracks of tropical cyclones near the region (independent of the colour layer and the timeline). */
@@ -87,6 +87,8 @@ export class ForecastStateService {
         });
       }
     });
+    // the wind animation is on from the start, so the forecast clock is set up now (see initialiseTime)
+    if (this.windParticles()) this.start();
   }
 
   /** Turn a layer on (or off when it is already active). */

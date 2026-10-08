@@ -10,9 +10,9 @@ def test_india_grid_is_the_config_box():
 
 
 def test_world_grid_covers_the_globe():
-    assert WORLD.nx == 720 and WORLD.ny == 361
+    assert WORLD.nx == 360 and WORLD.ny == 181
     assert WORLD.lats()[0] == 90 and WORLD.lats()[-1] == -90
-    assert WORLD.lons()[0] == -180 and WORLD.lons()[-1] == 179.5
+    assert WORLD.lons()[0] == -180 and WORLD.lons()[-1] == 179
 
 
 def test_world_model_publishes_on_the_world_grid():
@@ -27,5 +27,5 @@ def test_global_regrid_keeps_latitude():
     window = np.repeat(lat[:, None], 1440, axis=1)
     lats, lons = WORLD.lats(), WORLD.lons()
     out = regrid_regular(window, -90.0, 0.25, -180.0, 0.25, lats, lons)
-    assert out.shape == (361, 720)
+    assert out.shape == (181, 360)
     assert np.allclose(out, lats[:, None], atol=1e-3)

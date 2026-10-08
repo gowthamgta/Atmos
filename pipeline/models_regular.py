@@ -59,8 +59,8 @@ UKMO = RegularModel(
 )
 
 
-# ECMWF IFS for the whole globe, on a 0.5 degree grid (the open 0.25 degree dataset, resampled). Surface fields only, so
-# the file set stays small enough for the free hosting (every 6 hours to +144 h, about 90 MB a run); it is the app's world view.
+# ECMWF IFS for the whole globe, on a 1 degree grid (the open 0.25 degree dataset, resampled; a quarter of the size of 0.5 degrees). Surface fields only, so
+# the file set stays small enough for the free hosting (every 6 hours to +144 h, about 25 MB a run); it is the app's world view.
 WORLD_IFS = RegularModel(
     model_id="world_ifs", label="ECMWF IFS (world)", run_hours=(0, 12), step_hours=list(range(0, 145, 6)), grid=WORLD,
     sources=[Source("ecmwf_ifs025", _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CLOUD_LAYERS))],

@@ -5,7 +5,7 @@
  * taller than the last one going north. So the picture's rows are re-spaced to Mercator before it is placed on the
  * map, and its dark or empty parts are made see-through.
  */
-import { SATELLITE_BOUNDS, SatelliteChannel, SatelliteView } from './satellite.config';
+import { SATELLITE_BOUNDS, SatelliteBounds, SatelliteChannel, SatelliteView } from './satellite.config';
 
 const RAD = Math.PI / 180;
 
@@ -375,9 +375,10 @@ export function toOverlayPixels(
   view: SatelliteView,
   outHeight = mercatorHeight(width),
   natural?: Uint8ClampedArray,
+  b: SatelliteBounds = SATELLITE_BOUNDS,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
-  const rowMap = mercatorRowMap(srcHeight, outHeight);
+  const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
   // Clouds only: shade the clouds at the picture's own resolution first, then re-space the rows (premultiplied, so
   // the soft cloud edges blend without fringes). Other views shade each re-spaced pixel.

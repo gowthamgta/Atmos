@@ -653,7 +653,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const keys = frames.map(f => f.url).join('|');
     if (keys !== this.satelliteKeys) {
       this.satelliteKeys = keys;
-      this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url })));
+      this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url, bounds: f.bounds })));
     }
     this.satelliteLayer.setPosition(position, opacity);
   }
