@@ -6,3 +6,5 @@ pytest>=8
 ecmwf-opendata>=0.3
 eccodes>=2.38
 scipy>=1.13
+tifffile>=2024.1
+imagecodecs>=2024.1
