@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { ForecastGrid, gridPosition } from './forecast.model';
-import { PointTerrain, terrainDelta } from './terrain-correction';
+import { PointTerrain, insetWeight, terrainDelta } from './terrain-correction';
 
 /** Contents of public/data/sa-terrain.json, written by scripts/build-south-india-data.py. */
 export interface TerrainMeta {
@@ -21,6 +21,8 @@ export interface TerrainData {
   smooth: ImageBitmap;
   /** Model ground images by native resolution (km). */
   models: Map<number, ImageBitmap>;
+  /** The 90 m Tamil Nadu inset (see scripts/build-tamil-nadu-dem.py), or null when the file is not there. */
+  inset: { meta: ForecastGrid & { min: number; max: number }; bitmap: ImageBitmap } | null;
 }
 
 const M_PER_DEG = 111_200;
@@ -112,9 +114,16 @@ export class TerrainService {
     const { fine: fg, smooth: sg, model: mg, min, max } = t.meta;
     if (lat > fg.latMax || lat < fg.latMin || lon < fg.lonMin || lon > fg.lonMax) return null;
     const model = this.modelGround(t, gridKm).bitmap;
-    const f = sampleTerrain(t.fine, fg, lat, lon, min, max);
+    const coarse = sampleTerrain(t.fine, fg, lat, lon, min, max);
     const m = sampleTerrain(model, mg, lat, lon, min, max);
     const sm = sampleTerrain(t.smooth, sg, lat, lon, min, max);
+    // the 90 m inset where it covers the point, faded into the 1 km ground at its edge
+    const inset = t.inset;
+    const w = inset ? insetWeight(lat, lon, inset.meta) : 0;
+    const fine = w > 0 && inset ? sampleTerrain(inset.bitmap, inset.meta, lat, lon, min, max) : coarse;
+    const f = w > 0 && inset
+      ? { z: coarse.z + (fine.z - coarse.z) * w, land: coarse.land + (fine.land - coarse.land) * w }
+      : coarse;
     return {
       fine: f.z,
       model: m.z,
@@ -124,7 +133,7 @@ export class TerrainService {
       landModel: m.land,
       slope: slopeOf(t.smooth, sg, lat, lon, min, max),
       modelSlope: slopeOf(model, mg, lat, lon, min, max),
-      fineSlope: slopeOf(t.fine, fg, lat, lon, min, max),
+      fineSlope: w > 0.5 && inset ? slopeOf(inset.bitmap, inset.meta, lat, lon, min, max) : slopeOf(t.fine, fg, lat, lon, min, max),
     };
   }
 
@@ -140,9 +149,25 @@ export class TerrainService {
       image('sa-elevation-smooth.png'),
       ...meta.modelKms.map(km => image(`sa-model-elevation-${km}km.png`)),
     ]);
-    const data: TerrainData = { meta, fine, smooth, models: new Map(meta.modelKms.map((km, i) => [km, models[i]])) };
+    const inset = await this.loadInset();
+    const data: TerrainData = { meta, fine, smooth, models: new Map(meta.modelKms.map((km, i) => [km, models[i]])), inset };
     this.data.set(data);
     return data;
+  }
+
+  /** The Tamil Nadu 90 m inset; a missing file leaves the 1 km terrain in place everywhere. */
+  private async loadInset(): Promise<TerrainData['inset']> {
+    try {
+      const meta = (await (await this.ok(fetch('/data/tn-terrain.json'))).json()) as ForecastGrid & { min: number; max: number };
+      const bitmap = await createImageBitmap(await (await this.ok(fetch('/data/tn-elevation-90m.png'))).blob(), {
+        premultiplyAlpha: 'none',
+        colorSpaceConversion: 'none',
+      });
+      return { meta, bitmap };
+    } catch (err) {
+      console.warn('[terrain] 90 m inset unavailable; using the 1 km terrain', err);
+      return null;
+    }
   }
 
   private async ok(pending: Promise<Response>): Promise<Response> {

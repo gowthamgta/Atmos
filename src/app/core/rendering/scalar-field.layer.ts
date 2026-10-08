@@ -2,6 +2,7 @@ import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap 
 import { ForecastGrid, mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import { ForecastLayerDef, buildPaletteLut } from '../forecast/forecast-layers';
 import {
+  INSET_RAMP_DEG,
   DEWPOINT_LAPSE_C_PER_M,
   DIFFUSE_FRACTION,
   EXPOSURE_MAX,
@@ -97,6 +98,11 @@ uniform vec3 u_sun;        // declination (rad), equation of time (min), UTC min
 uniform float u_relief;    // 0..1 strength of the relief shading
 uniform float u_levelHeight; // pressure-level layers: height of the level (m); 0 at the ground
 uniform int u_lite;        // 1: phone mode, about a fifth of the texture reads (bilinear fields, no slope-based corrections)
+uniform sampler2D u_inset;  // Tamil Nadu 90 m terrain + land fraction (same encoding as u_dem)
+uniform vec4 u_insetGrid;   // lonMin, latMax, step
+uniform ivec2 u_insetSize;
+uniform vec4 u_insetBounds; // lonMin, latMin, lonMax, latMax of the inset
+uniform int u_insetOn;      // 1 when the inset is bound
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -198,6 +204,27 @@ vec2 slopeAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
   return vec2((zE - zW) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (zN - zS) / (2.0 * s * M_PER_DEG));
 }
 
+// Weight of the 90 m inset: 0 at its edge (the 1 km terrain takes over, so the border is seamless), 1 once INSET_RAMP_DEG inside.
+float insetWeight(float lat, float lon) {
+  if (u_insetOn == 0) return 0.0;
+  float d = min(min(lon - u_insetBounds.x, u_insetBounds.z - lon), min(lat - u_insetBounds.y, u_insetBounds.w - lat));
+  return clamp(d / ${f(INSET_RAMP_DEG)}, 0.0, 1.0);
+}
+
+// Terrain (metres, land fraction) of the 1 km grid, faded into the 90 m inset where it covers the point.
+vec2 fineAt(float lat, float lon) {
+  vec2 coarse = terrainAt(u_dem, u_demGrid, u_demSize, lat, lon);
+  float w = insetWeight(lat, lon);
+  if (w <= 0.0) return coarse;
+  return mix(coarse, terrainAt(u_inset, u_insetGrid, u_insetSize, lat, lon), w);
+}
+
+// Slope of the terrain used by fineAt: the inset's own grid where it covers the point, else the 1 km grid.
+vec2 fineSlopeAt(float lat, float lon) {
+  if (insetWeight(lat, lon) > 0.5) return slopeAt(u_inset, u_insetGrid, u_insetSize, lat, lon);
+  return slopeAt(u_dem, u_demGrid, u_demSize, lat, lon);
+}
+
 vec3 sunVector(float lat, float lon) {
   float ha = radians((u_sun.z + u_sun.y + 4.0 * lon) / 4.0 - 180.0);
   float la = radians(lat);
@@ -228,9 +255,9 @@ void main() {
   vec2 fineSlope = vec2(0.0);
   bool needFineSlope = u_lite == 0 && u_terrainOn == 1 && (u_relief > 0.0 || u_terrainMode == 8);
   if (u_terrainOn == 1) {
-    fine = terrainAt(u_dem, u_demGrid, u_demSize, lat, lon);
+    fine = fineAt(lat, lon);
     if (needFineSlope) {
-      fineSlope = slopeAt(u_dem, u_demGrid, u_demSize, lat, lon);
+      fineSlope = fineSlopeAt(lat, lon);
     } else if (u_lite == 1 && u_relief > 0.0) {
       // the screen-space slope of the 1 km ground (one terrain read instead of sixteen), in metres per metre
       float mPerPx = max(length(dFdx(v_merc)) * 40075016.686 * cos(radians(lat)), 1.0);
@@ -322,6 +349,7 @@ const UNIFORMS = [
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_encWu', 'u_encWv', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
   'u_demGrid', 'u_demSize', 'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn',
   'u_magnitude', 'u_terrainMode', 'u_hasLift', 'u_sun', 'u_relief', 'u_levelHeight', 'u_lite',
+  'u_inset', 'u_insetGrid', 'u_insetSize', 'u_insetBounds', 'u_insetOn',
 ];
 
 /** MapLibre custom layer drawing one forecast variable at 1 km, blended between two time steps on the GPU. */
@@ -356,7 +384,9 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private demTex: WebGLTexture | null = null;
   private demModelTex: WebGLTexture | null = null;
   private demSmoothTex: WebGLTexture | null = null;
+  private insetTex: WebGLTexture | null = null;
   private demUploaded = false;
+  private insetUploaded = false;
   private modelUploaded: ImageBitmap | null = null;
   private sun: [number, number, number] = [0, 0, 0];
   private relief = 0;
@@ -442,7 +472,9 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.demTex = gl.createTexture();
     this.demModelTex = gl.createTexture();
     this.demSmoothTex = gl.createTexture();
+    this.insetTex = gl.createTexture();
     this.demUploaded = false;
+    this.insetUploaded = false;
     this.modelUploaded = null;
     this.uploadQuad();
   }
@@ -450,11 +482,11 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
     this.textures.clear();
-    for (const tex of [this.lutTex, this.demTex, this.demModelTex, this.demSmoothTex]) if (tex) gl.deleteTexture(tex);
+    for (const tex of [this.lutTex, this.demTex, this.demModelTex, this.demSmoothTex, this.insetTex]) if (tex) gl.deleteTexture(tex);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     if (this.program) gl.deleteProgram(this.program);
-    this.lutTex = this.demTex = this.demModelTex = this.demSmoothTex = this.vbo = this.vao = this.program = null;
+    this.lutTex = this.demTex = this.demModelTex = this.demSmoothTex = this.insetTex = this.vbo = this.vao = this.program = null;
     this.map = null;
     this.gl = null;
   }
@@ -476,6 +508,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       this.modelUploaded = this.modelBitmap;
     }
     const terrainOn = !!this.terrain && this.demUploaded && this.modelUploaded !== null;
+    const insetOn = terrainOn && this.insetUploaded;
     const terrainMode = terrainOn && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
     const lift = this.liftWind && !this.lite && (def.terrain === 'rain' || def.terrain === 'lowcloud') ? this.liftWind : null;
 
@@ -497,6 +530,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       bind(4, this.demModelTex);
       bind(7, this.demSmoothTex);
     }
+    if (insetOn) bind(12, this.insetTex);
     if (lift) {
       bind(8, this.textureFor(gl, lift.uA));
       bind(9, this.textureFor(gl, lift.uB));
@@ -516,6 +550,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     unit('u_dem', 3, terrainOn);
     unit('u_demModel', 4, terrainOn);
     unit('u_demSmooth', 7, terrainOn);
+    unit('u_inset', 12, insetOn);
     unit('u_wuA', 8, !!lift);
     unit('u_wuB', 9, !!lift);
     unit('u_wvA', 10, !!lift);
@@ -552,6 +587,15 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       gl.uniform2f(u['u_demEnc'], meta.min, meta.max);
     } else {
       for (const name of ['u_demSize', 'u_smoothSize', 'u_modelSize']) gl.uniform2i(u[name], 1, 1);
+    }
+    gl.uniform1i(u['u_insetOn'], insetOn ? 1 : 0);
+    const inset = this.terrain?.inset?.meta;
+    if (insetOn && inset) {
+      gl.uniform4f(u['u_insetGrid'], inset.lonMin, inset.latMax, inset.step, 0);
+      gl.uniform2i(u['u_insetSize'], inset.nx, inset.ny);
+      gl.uniform4f(u['u_insetBounds'], inset.lonMin, inset.latMin, inset.lonMax, inset.latMax);
+    } else {
+      gl.uniform2i(u['u_insetSize'], 1, 1);
     }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -604,6 +648,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private uploadTerrain(gl: WebGL2RenderingContext, data: TerrainData): void {
     this.uploadTerrainImage(gl, this.demTex, data.fine);
     this.uploadTerrainImage(gl, this.demSmoothTex, data.smooth);
+    if (data.inset) this.uploadTerrainImage(gl, this.insetTex, data.inset.bitmap);
+    this.insetUploaded = !!data.inset;
     this.demUploaded = true;
   }
 

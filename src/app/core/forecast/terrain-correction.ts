@@ -214,3 +214,23 @@ export function applyTerrain(mode: TerrainMode | null, value: number, ctx: Terra
   }
   return value;
 }
+
+/** Bounds of a terrain grid, in degrees. */
+export interface TerrainBounds {
+  lonMin: number;
+  latMin: number;
+  lonMax: number;
+  latMax: number;
+}
+
+/** How far (degrees) the fine inset fades into the 1 km terrain inside its edge: about 5 km. */
+export const INSET_RAMP_DEG = 0.05;
+
+/**
+ * Weight of the fine (90 m) inset at a point: 0 at its edge (where the 1 km terrain takes over, so the border is seamless),
+ * rising linearly to 1 once the point is INSET_RAMP_DEG inside. The shader uses the same formula.
+ */
+export function insetWeight(lat: number, lon: number, b: TerrainBounds, ramp: number = INSET_RAMP_DEG): number {
+  const d = Math.min(lon - b.lonMin, b.lonMax - lon, lat - b.latMin, b.latMax - lat);
+  return Math.min(1, Math.max(0, d / ramp));
+}
