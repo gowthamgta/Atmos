@@ -332,6 +332,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private tileMapDirty = true;
   private presentCache: ReadonlySet<string> | null = null;
   private presentCacheFor: TerrainData | null = null;
+  private presentCacheLevel: number | null = null;
   private relief = 0;
   private lite = false;
   private visible = false;
@@ -591,9 +592,12 @@ export class ScalarFieldLayer implements CustomLayerInterface {
 
   /** The tiles that have ground (a tile not in the list is open sea), read once per terrain. */
   private presentTiles(data: TerrainData): ReadonlySet<string> {
-    if (this.presentCacheFor !== data) {
-      this.presentCache = new Set(data.meta.tiles);
+    const level = this.tileLevel;
+    if (this.presentCacheFor !== data || this.presentCacheLevel !== level) {
+      // the 90 m level only has tiles where there is a 90 m file (South India); the others use the 270 m tiles
+      this.presentCache = new Set(level === 0 ? data.meta.tilesL0 ?? data.meta.tiles : data.meta.tiles);
       this.presentCacheFor = data;
+      this.presentCacheLevel = level;
     }
     return this.presentCache!;
   }

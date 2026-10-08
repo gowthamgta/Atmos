@@ -16,12 +16,17 @@ describe('terrain on a forecast grid', () => {
     expect(terrainOnGrid(india, southTerrain)).toBe(true);
   });
 
+  it('applies an all-India terrain to the smaller South India field too', () => {
+    const indiaTerrain = grid(5, 37.5, 68, 97.5, 0.1);
+    expect(terrainOnGrid(southTerrain, indiaTerrain)).toBe(true);
+  });
+
   it('applies the terrain to the field it was built for', () => {
     expect(terrainOnGrid(southTerrain, southTerrain)).toBe(true);
   });
 
-  it('does not apply it to a field that does not cover the terrain box', () => {
-    expect(terrainOnGrid(grid(6, 20, 73, 90, 0.1), southTerrain)).toBe(false);
+  it('does not apply it to a field that does not overlap the terrain box', () => {
+    expect(terrainOnGrid(grid(20, 30, 73, 90, 0.1), southTerrain)).toBe(false);
   });
 
   it('does not apply it when the spacing or the lattice differs', () => {

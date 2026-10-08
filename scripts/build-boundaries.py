@@ -1,8 +1,9 @@
 """
 Builds the state and district outlines the map draws (and the click inspector names places with):
 
-  public/data/south-india-districts.geojson   state outlines (all of South India and Sri Lanka) and district polygons
-                                              with their state: the map draws the district lines of Tamil Nadu only
+  public/data/south-india-districts.geojson   state outlines (every state and union territory of India, and Sri Lanka)
+                                              and district polygons of the South Indian states with their state: the map
+                                              draws the district lines of Tamil Nadu only
 
 The terrain is built separately (pipeline/build_terrain.py) from the Copernicus DEM.
 
@@ -26,6 +27,7 @@ from shapely.ops import unary_union
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# the South Indian states: their districts are kept (the click inspector names them)
 STATES = {
     'Tamil Nadu': 'Tamil Nadu', 'Kerala': 'Kerala', 'Karnataka': 'Karnataka',
     'Andhra Pradesh': 'Andhra Pradesh', 'Telangana': 'Telangana', 'Puducherry': 'Puducherry',
@@ -75,17 +77,18 @@ def build_districts(cache, out_path):
     a2 = json.load(open(fetch(f'{base}/ADM2/geoBoundaries-IND-ADM2_simplified.geojson',
                               os.path.join(cache, 'adm2.geojson')), encoding='utf-8'))
 
-    states = {}
+    # every state and union territory of India: its outline is drawn
+    all_states = {}
     for f in a1['features']:
-        key = ascii_name(f['properties']['shapeName'])
-        if key in STATES:
-            states[STATES[key]] = shape(f['geometry'])
-    missing = set(STATES.values()) - set(states)
+        key = ascii_name(f['properties']['shapeName']).strip()
+        all_states[STATES.get(key, key)] = shape(f['geometry'])
+    missing = set(STATES.values()) - set(all_states)
     if missing:
         raise RuntimeError(f'states missing from source: {sorted(missing)}')
+    states = {name: g for name, g in all_states.items() if name in STATES.values()}   # owners of the districts kept
 
     features, counts = [], {s: 0 for s in states}
-    for name, geom in states.items():
+    for name, geom in all_states.items():
         features.append({'type': 'Feature', 'properties': {'kind': 'state', 'name': name},
                          'geometry': simplified(geom, 0.003)})
 

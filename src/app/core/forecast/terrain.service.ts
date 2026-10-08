@@ -2,14 +2,20 @@ import { Injectable, signal } from '@angular/core';
 import { ForecastGrid, gridPosition } from './forecast.model';
 import { PointTerrain, terrainDelta } from './terrain-correction';
 import { TerrainLevel, sampleTile, tileNameAt } from './terrain-tiles';
+import { PAGES } from './forecast-models';
 
-/** Contents of public/data/terrain/index.json, written by pipeline/build_terrain.py. */
+/** The terrain files, published with the forecast data on GitHub Pages (written by pipeline/build_terrain.py). */
+export const TERRAIN_BASE = `${PAGES}/terrain`;
+
+/** Contents of terrain/index.json, written by pipeline/build_terrain.py. */
 export interface TerrainMeta {
   domain: { latMax: number; latMin: number; lonMin: number; lonMax: number };
   tileDeg: number;
   levels: { id: number; perDeg: number; dir: string }[];
-  /** Tiles that have ground. A tile not listed is open sea. */
+  /** Tiles that have ground (their 270 m and 1.08 km files). A tile not listed is open sea. */
   tiles: string[];
+  /** Tiles with a 90 m file: South India only (absent in older builds, where every tile has one). */
+  tilesL0?: string[];
   min: number;
   max: number;
   /** The ground smoothed over ~4 km (R,G metres, B unused). */
@@ -108,6 +114,8 @@ export class TerrainService {
   private readonly cpuTiles = new Map<string, CpuTile>();
   private readonly cpuLoading = new Map<string, Promise<void>>();
   private present: ReadonlySet<string> = new Set();
+  /** Tiles with a 90 m file (see TerrainMeta.tilesL0). */
+  private presentL0: ReadonlySet<string> = new Set();
 
   ensureLoaded(): Promise<TerrainData> {
     const have = this.data();
@@ -131,7 +139,7 @@ export class TerrainService {
 
   /** A 90 m, 270 m or 1.08 km tile as an image (metres in R,G; land in B). */
   async tileImage(level: TerrainLevel, name: string): Promise<ImageBitmap> {
-    const res = await this.ok(fetch(`/data/terrain/L${level}/${name}.webp`));
+    const res = await this.ok(fetch(`${TERRAIN_BASE}/L${level}/${name}.webp`));
     return createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   }
 
@@ -187,7 +195,7 @@ export class TerrainService {
   /** Loads the 90 m tile under a point for the click card (no-op when it is loaded or is sea). */
   prepareAt(lat: number, lon: number): Promise<void> {
     const name = tileNameAt(lat, lon);
-    if (this.cpuTiles.has(name) || !this.present.has(name)) return Promise.resolve();
+    if (this.cpuTiles.has(name) || !this.presentL0.has(name)) return Promise.resolve();
     const running = this.cpuLoading.get(name);
     if (running) return running;
     const load = this.tileImage(0, name)
@@ -209,15 +217,16 @@ export class TerrainService {
   }
 
   private async load(): Promise<TerrainData> {
-    const meta = (await (await this.ok(fetch('/data/terrain/index.json'))).json()) as TerrainMeta;
+    const meta = (await (await this.ok(fetch(`${TERRAIN_BASE}/index.json`))).json()) as TerrainMeta;
     const image = async (name: string) =>
-      createImageBitmap(await (await this.ok(fetch(`/data/terrain/${name}`))).blob(), {
+      createImageBitmap(await (await this.ok(fetch(`${TERRAIN_BASE}/${name}`))).blob(), {
         premultiplyAlpha: 'none',
         colorSpaceConversion: 'none',
       });
     const kms = Object.keys(meta.model).map(Number);
     const [smooth, ...models] = await Promise.all([meta.smooth.file, ...kms.map(km => meta.model[String(km)])].map(image));
     this.present = new Set(meta.tiles);
+    this.presentL0 = new Set(meta.tilesL0 ?? meta.tiles);
     const data: TerrainData = {
       meta,
       smooth,

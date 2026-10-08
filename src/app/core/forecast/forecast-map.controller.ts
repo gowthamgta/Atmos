@@ -19,8 +19,8 @@ const RELIEF_STRENGTH = 0.55;
 
 /**
  * Whether the terrain can be used on a field's grid: the terrain's cells line up with the field's (same spacing, offset by a
- * whole number of cells) and its box lies inside the field's grid. The field may cover more than the terrain (all of India
- * against the South India terrain); outside the terrain the model's own ground is used (see the colour shader).
+ * whole number of cells) and the two boxes overlap. Where the field goes beyond the terrain, or the terrain beyond the field,
+ * the model's own ground is used (see the colour shader, which checks the terrain box per pixel).
  */
 export function terrainOnGrid(field: ForecastGrid, terrain: ForecastGrid): boolean {
   const eps = 1e-6;
@@ -28,8 +28,8 @@ export function terrainOnGrid(field: ForecastGrid, terrain: ForecastGrid): boole
   const cellsDown = (field.latMax - terrain.latMax) / field.step;
   return Math.abs(field.step - terrain.step) < eps &&
     Math.abs(cellsAcross - Math.round(cellsAcross)) < 1e-3 && Math.abs(cellsDown - Math.round(cellsDown)) < 1e-3 &&
-    terrain.lonMin >= field.lonMin - eps && terrain.lonMax <= field.lonMax + eps &&
-    terrain.latMin >= field.latMin - eps && terrain.latMax <= field.latMax + eps;
+    terrain.lonMin < field.lonMax - eps && terrain.lonMax > field.lonMin + eps &&
+    terrain.latMin < field.latMax - eps && terrain.latMax > field.latMin + eps;
 }
 
 /**

@@ -24,7 +24,7 @@ Tiles are cached in --cache, so re-running does not download them again. A tile 
 Needs: numpy, Pillow, tifffile, imagecodecs, scipy
 """
 from __future__ import annotations
-import argparse, json, math, os, sys, urllib.error, urllib.request
+import argparse, json, math, os, sys, time, urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -35,7 +35,7 @@ from scipy.ndimage import gaussian_filter, uniform_filter
 import config as C
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT_DIR = os.path.join(HERE, "..", "public", "data", "terrain")
+OUT_DIR = os.path.join(HERE, "data", "terrain")          # published to GitHub Pages with the forecast (see nwp.yml)
 BUCKET = "https://copernicus-dem-30m.s3.eu-central-1.amazonaws.com"
 MAX_M = 4000.0
 SRC_PER_DEG = 3600                       # Copernicus cells per degree (30 m)
@@ -63,14 +63,20 @@ def fetch_source(lat: int, lon: int, cache: str) -> str | None:
         return None
     if not os.path.exists(path):
         os.makedirs(cache, exist_ok=True)
-        try:
-            print(f"  downloading {name}", flush=True)
-            urllib.request.urlretrieve(f"{BUCKET}/{name}/{name}.tif", path + ".part")
-        except urllib.error.HTTPError as e:
-            if e.code != 404:
-                raise
-            open(absent, "w").close()
-            return None
+        for attempt in range(5):             # the bucket sometimes drops a connection: try again, a little later each time
+            try:
+                print(f"  downloading {name}", flush=True)
+                urllib.request.urlretrieve(f"{BUCKET}/{name}/{name}.tif", path + ".part")
+                break
+            except urllib.error.HTTPError as e:   # a missing tile (404) is sea, not an error
+                if e.code != 404:
+                    raise
+                open(absent, "w").close()
+                return None
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                if attempt == 4:
+                    raise
+                time.sleep(15 * (attempt + 1))
         os.replace(path + ".part", path)
     return path
 
@@ -82,8 +88,19 @@ def load_source(lat: int, lon: int, cache: str) -> np.ndarray | None:
     return np.nan_to_num(tifffile.imread(path).astype(np.float32), nan=0.0)
 
 
+# The 90 m tiles (the full detail, about 0.9 MB each) are kept for South India only: the page size limit of the forecast host.
+# Everywhere else the terrain is the 270 m tiles (the 1.08 km ones too), and the app uses the 90 m files where they exist.
+FULL_RES_BOX = (5.5, 14.5, 73.0, 89.5)   # south, north, west, east of the 90 m tiles
+
+
+def in_full_res_box(lat: int, lon: int) -> bool:
+    """Whether the 1 x 1 degree tile with south-west corner (lat, lon) overlaps the 90 m box."""
+    s, n, w, e = FULL_RES_BOX
+    return lat < n and lat + 1 > s and lon < e and lon + 1 > w
+
+
 def process_tile(lat: int, lon: int, cache: str, out: str) -> tuple[int, int, np.ndarray, np.ndarray] | None:
-    """Writes the tile's 90 m and 1.08 km files, and returns its 270 m level for the mosaic (None: open sea)."""
+    """Writes the tile's 90 m (South India only) and 1.08 km files, and returns its 270 m level for the mosaic (None: open sea)."""
     src = load_source(lat, lon, cache)
     if src is None:
         return None
@@ -91,7 +108,7 @@ def process_tile(lat: int, lon: int, cache: str, out: str) -> tuple[int, int, np
     del src
     name = tile_name(lat, lon)
     for lvl, (z, land) in levels.items():
-        if lvl == 1:
+        if lvl == 1 or (lvl == 0 and not in_full_res_box(lat, lon)):
             continue
         folder = os.path.join(out, f"L{lvl}")
         os.makedirs(folder, exist_ok=True)
@@ -152,12 +169,15 @@ def build(cache: str, out: str, workers: int) -> None:
     mosaic_z = np.zeros(((top - lats[0]) * LEVELS[1], (lons[-1] + 1 - left) * LEVELS[1]), np.float32)
     mosaic_l = np.zeros_like(mosaic_z)
     present: list[str] = []
+    present_full: list[tuple[int, int]] = []
     with ThreadPoolExecutor(workers) as pool:
         for done in pool.map(lambda t: process_tile(t[0], t[1], cache, out), todo):
             if done is None:
                 continue
             la, lo, z1, l1 = done
             present.append(tile_name(la, lo))
+            if in_full_res_box(la, lo):
+                present_full.append((la, lo))
             r0 = (top - (la + 1)) * LEVELS[1]
             c0 = (lo - left) * LEVELS[1]
             mosaic_z[r0:r0 + LEVELS[1], c0:c0 + LEVELS[1]] = z1
@@ -190,7 +210,8 @@ def build(cache: str, out: str, workers: int) -> None:
         "domain": {"latMax": C.LAT_MAX, "latMin": C.LAT_MIN, "lonMin": C.LON_MIN, "lonMax": C.LON_MAX},
         "tileDeg": 1,
         "levels": [{"id": lvl, "perDeg": n, "dir": f"L{lvl}"} for lvl, n in LEVELS.items()],
-        "tiles": sorted(present),
+        "tiles": sorted(present),                       # tiles with ground (their 270 m and 1.08 km files)
+        "tilesL0": sorted(tile_name(la, lo) for la, lo in present_full),   # the tiles with a 90 m file (see FULL_RES_BOX)
         "min": 0,
         "max": MAX_M,
         "smooth": {"file": "smooth.png", "latMax": float(node_lat_s[0]), "latMin": float(node_lat_s[-1]),
@@ -215,7 +236,12 @@ if __name__ == "__main__":
     ap.add_argument("--cache", default=os.path.join(HERE, "..", ".dem-cache"), help="downloaded DEM tiles (git-ignored)")
     ap.add_argument("--out", default=OUT_DIR)
     ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--india", action="store_true", help="the whole of India on the ECMWF IFS grid (the default is the South India box)")
     args = ap.parse_args()
+    if args.india:
+        # the terrain, its smooth and model grids follow the ECMWF India box (config.IFS_*), which contains the South India box
+        C.LAT_MIN, C.LAT_MAX, C.LON_MIN, C.LON_MAX = C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX
+        C.NX, C.NY = C.IFS_NX, C.IFS_NY
     os.makedirs(args.out, exist_ok=True)
     build(args.cache, args.out, args.workers)
     sys.exit(0)

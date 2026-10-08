@@ -67,6 +67,8 @@ jobs:
           if ls site/*/latest.json >/dev/null 2>&1; then
             # models that were not rebuilt come over from the live site
             python mirror.py --site site --base-url "$base" --models $models
+            # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
+            cp -r data/terrain site/terrain
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
