@@ -110,7 +110,7 @@ export function buildPointRows(
   }
   const chances: [string, string, number][] = [
     ['px0', 'Chance of rain, next 24 h', v('px0')],
-    ['xr', 'Extreme rain probability, next 24 h', v('xr')],
+    ['xr', 'Chance of 50+ mm, next 24 h', v('xr')],
   ];
   for (const [id, label, p] of chances) {
     if (!Number.isNaN(p)) rows.push({ id, label, text: `${fmt(p)} %`, terrainAdjusted: false });

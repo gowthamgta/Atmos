@@ -18,12 +18,12 @@ def _field(v):
 def _write_ens(site, starts):
     """An ensemble product whose px0 equals the start hour (so it is easy to tell which start a value came from)."""
     root = os.path.join(site, "ens", "20261005T18Z")
-    for name in ("px0",):
+    for name in ("px0", "xr"):
         for h in starts:
             path = os.path.join(root, name, f"{h:03d}.png")
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            open(path, "wb").write(encode_field(_field(float(h)), 0, 100, 12))
-    vars_ = {n: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"} for n in ("px0",)}
+            open(path, "wb").write(encode_field(_field(float(h)) if name == "px0" else _field(2.0 * h), 0, 100, 12))
+    vars_ = {n: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"} for n in ("px0", "xr")}
     steps = [{"h": h, "valid": f"{RUN + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in starts]
     json.dump({"model": "ens", "run": "20261005T18Z", "steps": steps, "vars": vars_}, open(os.path.join(root, "manifest.json"), "w"))
     json.dump({"model": "ens", "run": "20261005T18Z"}, open(os.path.join(site, "ens", "latest.json"), "w"))
@@ -67,7 +67,7 @@ def test_attach_aligns_the_ensemble_to_each_models_valid_times(tmp_path):
     assert abs(float(_px0(root, 12)[5, 5]) - 6) < tol                           # +6 h start
     assert abs(float(_px0(root, 15)[5, 5]) - 9) < tol
     manifest = json.load(open(os.path.join(root, "manifest.json")))
-    assert {"px0"} <= set(manifest["vars"]) and "t2m" in manifest["vars"]
+    assert {"px0", "xr"} <= set(manifest["vars"]) and "t2m" in manifest["vars"]
 
 
 def test_steps_beyond_the_last_start_get_a_no_data_image(tmp_path):
@@ -128,51 +128,15 @@ def test_attach_gives_a_rebuilt_set_of_pictures_a_new_build_and_does_not_pile_su
     assert json.load(open(manifest_path))["build"] == first
 
 
-def _write_rain24(site, model, run_id, steps, mm):
-    """A 24 h rain picture of `mm` millimetres at every step, listed in the model's manifest."""
-    root = os.path.join(site, model, run_id)
-    v = C.VARS["rain24"]
-    for h in steps:
-        path = os.path.join(root, "rain24", f"{h:03d}.png")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        open(path, "wb").write(encode_field(_field(mm), v.lo, v.hi, v.bits))
-    mp = os.path.join(root, "manifest.json")
-    m = json.load(open(mp))
-    m["vars"]["rain24"] = {"unit": "mm", "min": v.lo, "max": v.hi, "encoding": "rg16"}
-    json.dump(m, open(mp, "w"))
-
-
-def test_the_extreme_rain_probability_is_made_from_the_models_rain_the_blends_and_the_chance_of_rain(tmp_path):
+def test_the_extreme_rain_probability_is_attached_like_the_chance_of_rain(tmp_path):
     site = str(tmp_path)
-    _write_ens(site, [0, 6, 12])                           # px0 = the start hour: 0 %, 6 %, 12 % (so use px0 high enough below)
-    # make the chance of rain high everywhere: 90 % at every start
-    for h in (0, 6, 12):
-        v = C.VARS["px0"]
-        open(os.path.join(site, "ens", "20261005T18Z", "px0", f"{h:03d}.png"), "wb").write(encode_field(_field(90.0), v.lo, v.hi, v.bits))
-    steps = [0, 3, 6]
-    gfs = _write_model(site, "gfs", RUN, steps)
-    blend_root = _write_model(site, "blend", RUN, steps)
-    _write_rain24(site, "gfs", f"{RUN:%Y%m%dT%H}Z", steps, 50.0)
-    _write_rain24(site, "blend", f"{RUN:%Y%m%dT%H}Z", steps, 50.0)
+    _write_ens(site, [0, 6, 12])
+    root = _write_model(site, "gfs", RUN, [0, 3, 6, 9])
     run, fields = attach.load_ens(site)
-    reader, blend_run = attach.blend_rain24_reader(site)
-    assert blend_run == f"{RUN:%Y%m%dT%H}Z"
-    for model in ("gfs", "blend"):
-        assert attach.attach_model(site, model, run, fields, reader, blend_run)
+    assert attach.attach_model(site, "gfs", run, fields)
     v = C.VARS["xr"]
-    got = decode_field(open(os.path.join(gfs, "xr", "006.png"), "rb").read(), v.lo, v.hi)
-    assert abs(float(got[3, 3]) - 70) < 0.5                  # 50 mm in the model and in the blend, rain expected
-    again = decode_field(open(os.path.join(blend_root, "xr", "000.png"), "rb").read(), v.lo, v.hi)
-    assert abs(float(again[3, 3]) - 70) < 0.5                # the blend against itself
-    manifest = json.load(open(os.path.join(gfs, "manifest.json")))
-    assert "xr" in manifest["vars"] and manifest["build"].endswith(f"20261005T18Z.{RUN:%Y%m%dT%H}Z")
-    # the blend says only 25 mm: a weaker case
-    _write_rain24(site, "blend", f"{RUN:%Y%m%dT%H}Z", steps, 25.0)
-    reader, blend_run = attach.blend_rain24_reader(site)
-    attach.attach_model(site, "gfs", run, fields, reader, blend_run)
-    weaker = decode_field(open(os.path.join(gfs, "xr", "006.png"), "rb").read(), v.lo, v.hi)
-    assert float(weaker[3, 3]) < 45
-    # no blend at all: the model stands alone
-    attach.attach_model(site, "gfs", run, fields)
-    alone = decode_field(open(os.path.join(gfs, "xr", "006.png"), "rb").read(), v.lo, v.hi)
-    assert abs(float(alone[3, 3]) - 70) < 0.5
+    xr = lambda h: decode_field(open(os.path.join(root, "xr", f"{h:03d}.png"), "rb").read(), v.lo, v.hi)   # noqa: E731
+    assert abs(float(xr(6)[2, 2]) - 12.0) < 0.1                 # valid +6 h after the ensemble began: its 6 h start (2 x 6)
+    assert abs(float(xr(3)[2, 2]) - 6.0) < 0.1                  # +3 h: half-way between the 0 h and 6 h starts
+    manifest = json.load(open(os.path.join(root, "manifest.json")))
+    assert "xr" in manifest["vars"] and "50 mm" in manifest["notes"]["xr"]

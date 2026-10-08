@@ -136,7 +136,7 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'rain24', label: 'Rain, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'px0', label: 'Chance of rain', icon: '🌦', group: 'Rain chance (24 h)', varId: 'px0', unit: '% chance of 0.1 mm or more', min: 0, max: 100, stops: PROB, gamma: 1, clearBelow: 5, ticks: [10, 25, 50, 75, 100], opacity: 0.88, terrain: null },
-  { id: 'xr', label: 'Extreme rain probability', icon: '⚠', group: 'Rain chance (24 h)', varId: 'xr', unit: '% chance of an extreme rain day', min: 0, max: 100, stops: PROB, gamma: 0.9, clearBelow: 3, ticks: [10, 25, 50, 75, 95], opacity: 0.9, terrain: null },
+  { id: 'xr', label: 'Extreme rain probability', icon: '⚠', group: 'Rain chance (24 h)', varId: 'xr', unit: '% chance of 50 mm or more in 24 h (ECMWF ensemble)', min: 0, max: 100, stops: PROB, gamma: 0.9, clearBelow: 3, ticks: [10, 25, 50, 75, 95], opacity: 0.9, terrain: null },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {
     id: 'pressure', label: 'Pressure', icon: '⏲', group: 'Pressure and storms', varId: 'msl', unit: 'hPa', min: 1000, max: 1020, stops: PRESSURE, gamma: 1,

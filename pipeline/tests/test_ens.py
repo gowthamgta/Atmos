@@ -43,9 +43,10 @@ def test_manifest_lists_the_threshold_and_the_start_times():
     from datetime import datetime, timezone
     m = ens.build_manifest(datetime(2026, 10, 5, 18, tzinfo=timezone.utc), [0, 6])
     assert m["run"] == "20261005T18Z" and [s["h"] for s in m["steps"]] == [0, 6]
-    assert set(m["vars"]) == {"px0"} and all(v["max"] == 100 for v in m["vars"].values())
+    assert set(m["vars"]) == {"px0", "xr"} and all(v["max"] == 100 for v in m["vars"].values())
     assert m["steps"][1]["valid"] == "2026-10-06T00:00:00Z"
     assert m["thresholdsMm"] == {"px0": 0.1}                                               # measurable rain
+    assert m["probabilityProducts"] == {"xr": {"param": "tpg50", "mm": 50.0}}              # ECMWF's own chance of 50 mm or more
 
 
 def _write_global_grib(path, lon_first, ni, nj, value_at):
@@ -105,3 +106,42 @@ def test_a_run_built_by_an_older_version_of_the_method_is_not_treated_as_live(mo
     assert ens.live_run("u") is None
     monkeypatch.setattr(requests, "get", lambda url, timeout=30: Reply({"run": "20261005T18Z", "version": ens.VERSION}))
     assert ens.live_run("u") == "20261005T18Z"
+
+
+def test_the_probability_windows_to_fetch_are_the_ones_ecmwf_publishes():
+    assert ens.probability_starts([0, 6, 12, 18, 24]) == [0, 12, 24]
+    assert ens.probability_starts([6]) == [0, 12]
+    assert ens.probability_starts(list(range(0, 73, 6))) == list(range(0, 73, 12))
+
+
+def test_a_start_between_two_published_windows_is_their_mix():
+    windows = {0: np.full((2, 2), 10.0, np.float32), 12: np.full((2, 2), 50.0, np.float32)}
+    assert float(ens.blend_probability(windows, 0)[0, 0]) == 10.0
+    assert abs(float(ens.blend_probability(windows, 6)[0, 0]) - 30.0) < 1e-5
+    assert abs(float(ens.blend_probability(windows, 3)[0, 0]) - 20.0) < 1e-5
+
+
+def test_probability_messages_are_read_by_their_window_and_placed_on_the_domain_grid(tmp_path):
+    pytest = __import__("pytest")
+    pytest.importorskip("eccodes")
+    import eccodes as ec
+    import config as C
+    path = str(tmp_path / "ep.grib2")
+    with open(path, "wb") as f:
+        for start in (0, 12):
+            gid = ec.codes_grib_new_from_samples("regular_ll_sfc_grib2")
+            for key, value in [("Ni", 1440), ("Nj", 721), ("latitudeOfFirstGridPointInDegrees", 90.0), ("latitudeOfLastGridPointInDegrees", -90.0),
+                               ("longitudeOfFirstGridPointInDegrees", 180.0), ("longitudeOfLastGridPointInDegrees", 179.75),
+                               ("iDirectionIncrementInDegrees", 0.25), ("jDirectionIncrementInDegrees", 0.25), ("jScansPositively", 0)]:
+                ec.codes_set(gid, key, value)
+            ec.codes_set(gid, "paramId", 228)
+            lats = 90.0 - 0.25 * np.arange(721)
+            lons = (180.0 + 0.25 * np.arange(1440)) % 360
+            # a probability that grows with longitude and is shifted by the window's start
+            ec.codes_set_values(gid, np.array([[min(100.0, 0.5 * lo + start) for lo in lons] for _ in lats], np.float64).ravel())
+            ec.codes_write(gid, f)
+            ec.codes_release(gid)
+    got = ens.read_probabilities(path, "tp")             # the test file holds tp messages, which carry no step range of their own
+    assert set(got) == {0}                                # both messages say step 0: the later one wins
+    out = got[0]
+    assert abs(float(out[round((C.LAT_MAX - 13.0) / C.STEP_DEG), round((80.0 - C.LON_MIN) / C.STEP_DEG)]) - min(100.0, 0.5 * 80.0 + 12)) < 0.2

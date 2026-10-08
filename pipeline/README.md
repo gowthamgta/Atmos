@@ -60,11 +60,13 @@ datasets only have an "any rain" probability, which is why ECMWF's files are use
 which `ens.read_members` handles; a test builds a GRIB in that layout. The chance is on the ensemble's own 0.25 degree grid
 (about 25 km), resampled to 0.1 degree.
 
-`xr` is made by `attach.py` per model, from `extreme.py`: the model's own `rain24`, the all-model blend's `rain24` at the same
-time (the blend is built first) and `px0`. The amount sets the probability along a curve (25 mm 25 %, 50 mm 70 %, 75 mm 82 %, 100 mm
-90 %, 150 mm and over 95 %, never higher); it is lowered when the model and the blend disagree (by up to 35 % when one has next to
-nothing) and falls to nothing when the chance of rain is under 20 % (full weight from 70 %). A model with no blend stands alone.
-The amounts are IMD's: heavy rain starts at 64.5 mm a day, very heavy at 115.6 mm.
+`xr`, the extreme-rain probability, is ECMWF's own: the open data has ready-made ensemble probability products (`type=ep`; the
+list is `10fgg10/15/25`, `tpg1/5/10/20/25/50/100`, `ptsa_*` at 850 hPa and the `gh`, `t`, `ws`, `msl` probabilities), and `tpg50` is the chance
+of 50 mm or more of rain in a 24 h window. ECMWF publishes a window every 12 h; `ens.py` fetches the few messages it needs (about
+0.3 MB, byte ranges through the `ecmwf-opendata` client), regrids them like the members, and gives the starts in between the mix of
+the two windows around them. `attach.py` copies it onto every model's timeline like `px0`. The Extreme Forecast Index itself (EFI) is
+not in the open data: ECMWF publishes it only as rendered charts (charts.ecmwf.int, Europe, no cross-origin access) and its GRIB fields are
+restricted to member states.
 
 ## All models in one (`blend`)
 `blend.py` writes one more model: the weighted mean of every model's published fields, lined up by valid time (a time between
