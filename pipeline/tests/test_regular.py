@@ -167,6 +167,8 @@ def test_regular_models_publish_what_their_datasets_have():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
     assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
     for m in models_regular.ALL:
+        if m.GRID.domain != C.DOMAIN:
+            continue                                        # the world model is surface-only (see models_regular.py)
         # every model has all seven levels (vertical velocity is published by only some)
         assert not {k for k in D.LEVEL_RAW_KEYS if not k.startswith("vertical_velocity")} - m.PROVIDES - {"relative_humidity_200hPa"}, m.MODEL_ID
 

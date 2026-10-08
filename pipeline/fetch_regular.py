@@ -20,13 +20,46 @@ import numpy as np
 import omfiles
 import requests
 
-from config import BUCKET_URL, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN, NX, NY, STEP_DEG
+from config import BUCKET_URL, DOMAIN, LAT_MAX, LAT_MIN, LON_MAX, LON_MIN, NX, NY, STEP_DEG
 from derive import unavailable_for
 from net import download
 from regular import regrid_regular, window_indices
 
 LATS = LAT_MAX - STEP_DEG * np.arange(NY)
 LONS = LON_MIN + STEP_DEG * np.arange(NX)
+
+
+@dataclass(frozen=True)
+class Grid:
+    """A regular output grid: rows run north to south, columns west to east, `step` degrees apart."""
+    lat_min: float
+    lat_max: float
+    lon_min: float
+    lon_max: float
+    step: float
+    domain: str            # id of the grid; the app refuses a run built for another grid (see run.py)
+
+    @property
+    def ny(self) -> int:
+        return round((self.lat_max - self.lat_min) / self.step) + 1
+
+    @property
+    def nx(self) -> int:
+        return round((self.lon_max - self.lon_min) / self.step) + 1
+
+    def lats(self) -> np.ndarray:
+        return self.lat_max - self.step * np.arange(self.ny)
+
+    def lons(self) -> np.ndarray:
+        return self.lon_min + self.step * np.arange(self.nx)
+
+    def manifest(self) -> dict:
+        return {"latMax": self.lat_max, "latMin": self.lat_min, "lonMin": self.lon_min, "lonMax": self.lon_max,
+                "step": self.step, "nx": self.nx, "ny": self.ny}
+
+
+INDIA = Grid(LAT_MIN, LAT_MAX, LON_MIN, LON_MAX, STEP_DEG, DOMAIN)          # the South India box (config.py)
+WORLD = Grid(-90.0, 90.0, -180.0, 179.5, 0.5, "world-0.5deg")               # the whole globe, 0.5 degrees
 
 _BBOX = re.compile(r"BBOX\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]")
 
@@ -132,7 +165,7 @@ def accumulation_window(offsets: list[float], step_h: float) -> int:
     return max(int(round(step_h - prev[-1])), 1)
 
 
-def read_dataset_vars(path: str, names: list[str], bbox: tuple[float, float, float, float]) -> dict[str, np.ndarray]:
+def read_dataset_vars(path: str, names: list[str], bbox: tuple[float, float, float, float], grid: Grid = INDIA) -> dict[str, np.ndarray]:
     """Read variables from one local file and resample them to the pipeline grid; missing ones come back as NaN."""
     reader = omfiles.OmFileReader(path)
     out: dict[str, np.ndarray] = {}
@@ -142,13 +175,13 @@ def read_dataset_vars(path: str, names: list[str], bbox: tuple[float, float, flo
         try:
             var = reader.get_child_by_name(name)
         except ValueError:
-            out[name] = np.full((NY, NX), np.nan, np.float32)
+            out[name] = np.full((grid.ny, grid.nx), np.nan, np.float32)
             continue
         if geom is None:
             rows, cols = var.shape[-2], var.shape[-1]
             geom = grid_geometry(bbox, rows, cols)
-            r0, r1 = window_indices(geom.lat_first, geom.dlat, rows, LAT_MIN, LAT_MAX)
-            c0, c1 = window_indices(geom.lon_first, geom.dlon, cols, LON_MIN, LON_MAX)
+            r0, r1 = window_indices(geom.lat_first, geom.dlat, rows, grid.lat_min, grid.lat_max)
+            c0, c1 = window_indices(geom.lon_first, geom.dlon, cols, grid.lon_min, grid.lon_max)
             window = (r0, r1, c0, c1)
         r0, r1, c0, c1 = window  # type: ignore[misc]
         block = np.asarray(var[r0:r1, c0:c1], np.float32)
@@ -160,7 +193,7 @@ def read_dataset_vars(path: str, names: list[str], bbox: tuple[float, float, flo
         if k:
             block = to_si(k, str(unit), block)
         out[name] = regrid_regular(block, geom.lat_first + r0 * geom.dlat, geom.dlat,
-                                   geom.lon_first + c0 * geom.dlon, geom.dlon, LATS, LONS)
+                                   geom.lon_first + c0 * geom.dlon, geom.dlon, grid.lats(), grid.lons())
     del reader
     return out
 
@@ -169,8 +202,9 @@ class RegularModel:
     """A model made of one or more regular-grid datasets; offers the same interface as the fetch_*.py modules."""
 
     def __init__(self, *, model_id: str, label: str, sources: list[Source], run_hours: tuple[int, ...],
-                 step_hours: list[int]) -> None:
+                 step_hours: list[int], grid: Grid = INDIA) -> None:
         self.MODEL_ID = model_id
+        self.GRID = grid
         self.LABEL = label
         self.sources = sources
         self.RUN_HOURS = run_hours
@@ -216,11 +250,11 @@ class RegularModel:
                 info = self._info[s.dataset]
                 wind_vars = [v for w in s.winds for v in w[2:]]
                 names = list(dict.fromkeys(list(s.vars.values()) + wind_vars))
-                data = read_dataset_vars(paths[s.dataset], names, info.bbox)
+                data = read_dataset_vars(paths[s.dataset], names, info.bbox, self.GRID)
                 for key, name in s.vars.items():
                     out[key] = data[name]
                 for u_key, v_key, speed_name, dir_name in s.winds:
                     out[u_key], out[v_key] = speed_dir_to_uv(data[speed_name], data[dir_name])
         for key in REQUIRED_KEYS:
-            out.setdefault(key, np.full((NY, NX), np.nan, np.float32))
+            out.setdefault(key, np.full((self.GRID.ny, self.GRID.nx), np.nan, np.float32))
         return out

@@ -11,11 +11,16 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
 import { TerrainService } from './terrain.service';
-import { bracketSteps } from './forecast.model';
+import { ForecastGrid, bracketSteps } from './forecast.model';
 import { isPhone } from '../ui/device-profile';
 
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
 const RELIEF_STRENGTH = 0.55;
+
+/** Whether two grids are the same cells (the terrain can only be sampled where its grid lines up with the field's). */
+function sameGrid(a: ForecastGrid, b: ForecastGrid): boolean {
+  return a.nx === b.nx && a.ny === b.ny && a.lonMin === b.lonMin && a.latMax === b.latMax && a.step === b.step;
+}
 
 /**
  * Owns the forecast GL layers on the map (colour field and wind particles): mounts them, and keeps them showing
@@ -129,9 +134,11 @@ export class ForecastMapController {
       return;
     }
     // 90 m terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels
+    // the terrain covers the South India box only: a field on another grid (the world model) is drawn without it
     const terrainData = this.terrain.data();
-    const modelGround = terrainData ? this.terrain.modelGround(terrainData, this.catalog.model().gridKm).bitmap : null;
-    layer.setTerrain(terrainData, modelGround);
+    const onTerrain = !!terrainData && sameGrid(manifest.grid, terrainData.meta.grid);
+    const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, this.catalog.model().gridKm).bitmap : null;
+    layer.setTerrain(onTerrain ? terrainData : null, modelGround);
     layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
     layer.setLite(isPhone()); // phones take the cheaper relief slope; larger screens take the full one
     if (!terrainData) {

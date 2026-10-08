@@ -209,7 +209,8 @@ def test_the_blend_never_leaves_the_range_of_the_models(tmp_path):
 
 def test_every_model_the_pipeline_builds_is_in_the_blend_and_in_its_resolution_order():
     import run
-    models = set(run.MODELS)
+    # the blend combines the South India models; a model on another grid (the world one) is published alone
+    models = {k for k, m in run.MODELS.items() if run.grid_of(m).domain == run.C.DOMAIN}
     assert models == set(blend.WEIGHTS), "a model without a weight would be blended at the default weight, one without a model never"
     assert set(blend.RESOLUTION_ORDER) == models                       # every model can lend its detail, none is missing from the order
 

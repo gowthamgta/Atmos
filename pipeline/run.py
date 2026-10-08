@@ -18,6 +18,7 @@ import fetch_aifs
 import fetch_gfs
 import fetch_ifs
 import models_regular
+from fetch_regular import INDIA
 from derive import derive, forward_accumulation, forward_extreme
 from encode import encode_field
 
@@ -30,12 +31,17 @@ def published_vars(fetcher):
     return [v for v in C.VARS.values() if v.id not in fetcher.UNAVAILABLE_VARS]
 
 
+def grid_of(fetcher):
+    """The output grid of a model: its own (the world model) or the South India box."""
+    return getattr(fetcher, "GRID", None) or INDIA
+
+
 def build_manifest(fetcher, run, steps, build=None):
+    grid = grid_of(fetcher)
     return {
         "model": fetcher.MODEL_ID,
         "run": f"{run:%Y%m%dT%H}Z",
-        "grid": {"latMax": C.LAT_MAX, "latMin": C.LAT_MIN, "lonMin": C.LON_MIN, "lonMax": C.LON_MAX,
-                 "step": C.STEP_DEG, "nx": C.NX, "ny": C.NY},
+        "grid": grid.manifest(),
         "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps],
         "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in published_vars(fetcher)},
         "levels": list(C.LEVELS),
@@ -44,7 +50,7 @@ def build_manifest(fetcher, run, steps, build=None):
         # which build of the run this is: a run built again under the same id (levels that were missing, a changed method) gets a
         # new one, and the app puts it on every picture's address so no browser keeps the old pictures
         "build": build or build_id(),
-        "domain": C.DOMAIN,
+        "domain": grid.domain,
     }
 
 
@@ -62,7 +68,7 @@ def build_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def live_run(url: str, fmt: int | None = None) -> str | None:
+def live_run(url: str, fmt: int | None = None, domain: str = C.DOMAIN) -> str | None:
     """Run id currently served at `url` (a latest.json), or None if unreachable, not there yet, published incomplete
     (some data was missing, so it should be built again), or built the old way (`fmt` is the model's current LIVE_FORMAT)."""
     try:
@@ -70,7 +76,7 @@ def live_run(url: str, fmt: int | None = None) -> str | None:
         if not r.ok:
             return None
         j = r.json()
-        if j.get("complete") is False or (fmt is not None and j.get("format") != fmt) or j.get("domain") != C.DOMAIN:
+        if j.get("complete") is False or (fmt is not None and j.get("format") != fmt) or j.get("domain") != domain:
             return None
         return j["run"]
     except (requests.RequestException, ValueError, KeyError):
@@ -107,7 +113,7 @@ def main() -> int:
         if run.hour not in fetcher.RUN_HOURS:
             print(f"{args.model}: latest run {run_id} is not one of {fetcher.RUN_HOURS}Z; nothing to do")
             return 0
-        if args.live_url and live_run(args.live_url, getattr(fetcher, "LIVE_FORMAT", None)) == run_id:
+        if args.live_url and live_run(args.live_url, getattr(fetcher, "LIVE_FORMAT", None), grid_of(fetcher).domain) == run_id:
             print(f"{args.model}: run {run_id} is already live; nothing to do")
             return 0
     all_steps = fetcher.steps_for(run) if hasattr(fetcher, "steps_for") else fetcher.STEP_HOURS  # shorter runs publish fewer steps
@@ -147,7 +153,7 @@ def main() -> int:
     write(os.path.join(args.out, fetcher.MODEL_ID, run_id, "manifest.json"),
           json.dumps(build_manifest(fetcher, run, sorted(done), build)).encode())
     gaps = fetcher.incomplete_steps() if hasattr(fetcher, "incomplete_steps") else []
-    latest = {"model": fetcher.MODEL_ID, "run": run_id, "build": build}
+    latest = {"model": fetcher.MODEL_ID, "run": run_id, "build": build, "domain": grid_of(fetcher).domain}
     if hasattr(fetcher, "LIVE_FORMAT"):
         latest["format"] = fetcher.LIVE_FORMAT
     if gaps:

@@ -27,7 +27,7 @@ import { RadarProductKey } from '../../core/domain/models/radar.model';
 const KALLAKURICHI = { lng: 78.96, lat: 11.74 } as const;
 const HOME_ZOOM = 6.2;
 /** How far the map can be panned and zoomed out: wide enough to roam freely beyond the forecast area. */
-const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [[52, -10], [108, 34]];
+const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [[-180, -85], [180, 85]];
 
 // State and district outlines for South India and Sri Lanka (built by scripts/build-boundaries.py).
 // The lines are drawn above every raster overlay (radar, forecast) so boundaries stay readable on top of them.
