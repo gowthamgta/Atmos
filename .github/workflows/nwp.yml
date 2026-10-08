@@ -1,23 +1,23 @@
 name: nwp
 
-# Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data, cut out South India,
-# encode them, add an all-model blend (blend.py) and deploy the result to
-# GitHub Pages (free, CORS-open). No external storage, no billing.
-# Runs every 30 minutes (the FY-4B satellite pictures are new every 15): each model exits early when its newest run is not ready, is not one it uses, or is already live.
+# Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
+# India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
+# Runs every 30 minutes: each model exits early when its newest run is not ready, is not one it uses, or is already live.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
     - cron: "15,45 * * * *"
-  # a change to the FY-4B step or to how the IFS run and the blend are built rebuilds and deploys at once
+  # a change to how the models are built rebuilds and deploys at once
   push:
     paths:
-      - "pipeline/fy4.py"
       - "pipeline/data/**"
       - "pipeline/run.py"
       - "pipeline/fetch_ifs.py"
       - "pipeline/fetch_regular.py"
       - "pipeline/models_regular.py"
-      - "pipeline/blend.py"
+      - "pipeline/config.py"
+      - "pipeline/derive.py"
+      - "pipeline/encode.py"
       - "pipeline/cyclones.py"
   workflow_dispatch:
     inputs:
@@ -64,15 +64,9 @@ jobs:
           # tropical-cyclone tracks near South India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
-          # FY-4B pictures of South India (a new slot every 15 minutes); the live ones are kept when there is nothing new
-          python fy4.py --out site --live-url "$base/fy4/latest.json" $force \
-            || echo "::warning::fy4 failed; the live pictures stay in place"
           if ls site/*/latest.json >/dev/null 2>&1; then
-            # models that were not rebuilt (and the previous blend) come over from the live site
-            python mirror.py --site site --base-url "$base" --models $models blend
-            # one forecast from all the models
-            python blend.py --site site --live-url "$base/blend/latest.json" $force \
-              || echo "::warning::blend failed; the live copy stays in place"
+            # models that were not rebuilt come over from the live site
+            python mirror.py --site site --base-url "$base" --models $models
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"

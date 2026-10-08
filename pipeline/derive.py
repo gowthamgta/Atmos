@@ -32,10 +32,10 @@ def apparent_temperature(t_c: np.ndarray, rh: np.ndarray, wind_ms: np.ndarray) -
     return t_c + 0.33 * e - 0.70 * wind_ms - 4.00
 
 
-def vorticity_divergence(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def vorticity_divergence(u: np.ndarray, v: np.ndarray, lat_max: float = LAT_MAX) -> tuple[np.ndarray, np.ndarray]:
     """Relative vorticity and horizontal divergence (both in 1e-5 per second) of a wind on the pipeline grid (row 0 = north)."""
     earth_radius = 6.371e6
-    lat = np.radians(LAT_MAX - STEP_DEG * np.arange(u.shape[0]))[:, None]
+    lat = np.radians(lat_max - STEP_DEG * np.arange(u.shape[0]))[:, None]
     step = np.radians(STEP_DEG)
     dx = earth_radius * np.cos(lat) * step
     dy = earth_radius * step
@@ -50,7 +50,7 @@ def vorticity_divergence(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.n
     return (vo * 1e5).astype(np.float32), (dv * 1e5).astype(np.float32)
 
 
-def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np.ndarray]:
+def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1, lat_max: float = LAT_MAX) -> dict[str, np.ndarray]:
     """Published variables from one model step.
 
     `precip_window_h`: the source precipitation is a total over this many hours (the model's accumulation window at this
@@ -96,7 +96,7 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
         out[f"rh{lvl}"] = raw.get(f"relative_humidity_{lvl}hPa", missing)
         out[f"gh{lvl}"] = raw.get(f"geopotential_height_{lvl}hPa", missing)
         out[f"w{lvl}"] = raw.get(f"vertical_velocity_{lvl}hPa", missing)
-        out[f"vo{lvl}"], out[f"dv{lvl}"] = vorticity_divergence(out[f"u{lvl}"], out[f"v{lvl}"])
+        out[f"vo{lvl}"], out[f"dv{lvl}"] = vorticity_divergence(out[f"u{lvl}"], out[f"v{lvl}"], lat_max)
     return out
 
 

@@ -9,11 +9,11 @@ export function isPhone(): boolean {
 }
 
 /**
- * Satellite picture size to request (pixels): about 0.8 km per pixel on desktop, about 1.5 km on a phone. The height follows
- * the forecast domain's shape (16.5 by 9 degrees), so the picture is not stretched.
+ * Satellite picture size to request (pixels) for the India box (29.5 by 29.5 degrees, square): about 1.6 km per pixel on
+ * desktop, about 3 km on a phone.
  */
 export function satelliteImageSize(phone: boolean): { width: number; height: number } {
-  return phone ? { width: 1650, height: 900 } : { width: 2200, height: 1200 };
+  return phone ? { width: 1000, height: 1000 } : { width: 2000, height: 2000 };
 }
 
 /** Largest side of the radar mosaic (pixels): 0.5 km per pixel on desktop; about 0.6 km on a phone. */

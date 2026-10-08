@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 BUCKET_URL = "https://openmeteo.s3.amazonaws.com"
-LATEST_URL = f"{BUCKET_URL}/data_spatial/ecmwf_ifs/latest.json"  # IFS; GFS builds its own in fetch_gfs.py
+LATEST_URL = f"{BUCKET_URL}/data_spatial/ecmwf_ifs/latest.json"  # ECMWF IFS
 
 # The region the app covers: South India, Sri Lanka and the seas around them. Every data set (model fields, terrain,
 # satellite overlays) is cut to this box. A regular lat/lon grid at 0.1 degrees (~11 km).
@@ -15,7 +15,14 @@ STEP_DEG = 0.1
 NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 91 rows, north to south
 NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 166 columns, west to east
 
-# Each model module (fetch_ifs.py, fetch_gfs.py) declares its own MODEL_ID, RUN_HOURS, STEP_HOURS and rain semantics.
+# ECMWF IFS (9 km) covers all of India, on the same 0.1 degree lattice (so the South India terrain sits inside it).
+IFS_LAT_MAX, IFS_LAT_MIN = 37.5, 5.0
+IFS_LON_MIN, IFS_LON_MAX = 68.0, 97.5
+IFS_DOMAIN = "india-5-37.5N-68-97.5E"
+IFS_NY = round((IFS_LAT_MAX - IFS_LAT_MIN) / STEP_DEG) + 1
+IFS_NX = round((IFS_LON_MAX - IFS_LON_MIN) / STEP_DEG) + 1
+
+# Each model module (fetch_ifs.py) declares its own MODEL_ID, RUN_HOURS, STEP_HOURS and rain semantics.
 
 
 @dataclass(frozen=True)

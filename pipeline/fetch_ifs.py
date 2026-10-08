@@ -1,11 +1,11 @@
-"""Download hourly IFS .om files from Open-Meteo's public bucket and cut out the South India window."""
+"""Download hourly IFS .om files from Open-Meteo's public bucket and cut out the India window."""
 from __future__ import annotations
 import os, tempfile
 from datetime import datetime, timedelta, timezone
 import numpy as np
 import omfiles
 import requests
-from config import BUCKET_URL, LATEST_URL, LAT_MAX, LAT_MIN, LON_MIN, NX, NY, SOURCE_VARS, STEP_DEG
+from config import BUCKET_URL, LATEST_URL, IFS_DOMAIN, IFS_LAT_MAX, IFS_LAT_MIN, IFS_LON_MAX, IFS_LON_MIN, IFS_NX, IFS_NY, SOURCE_VARS, STEP_DEG
 from net import download
 import fetch_regular
 from derive import LEVEL_RAW_KEYS, unavailable_for
@@ -37,9 +37,12 @@ def precip_window_hours(step_h: int) -> int:
     return 3 if step_h > 90 else 1
 
 
-LATS = LAT_MAX - STEP_DEG * np.arange(NY)
-LONS = LON_MIN + STEP_DEG * np.arange(NX)
-R0, R1 = band_rows(LAT_MIN, LAT_MAX)
+NX, NY = IFS_NX, IFS_NY
+LATS = IFS_LAT_MAX - STEP_DEG * np.arange(NY)
+LONS = IFS_LON_MIN + STEP_DEG * np.arange(NX)
+R0, R1 = band_rows(IFS_LAT_MIN, IFS_LAT_MAX)
+# the output grid of this model (its manifest and live-run check; see run.py)
+GRID = fetch_regular.Grid(IFS_LAT_MIN, IFS_LAT_MAX, IFS_LON_MIN, IFS_LON_MAX, STEP_DEG, IFS_DOMAIN)
 A, B = int(OFFSETS[R0]), int(OFFSETS[R1])
 
 
@@ -91,7 +94,7 @@ def _levels_aloft(run: datetime, step_h: int, tmp: str) -> dict[str, np.ndarray]
             _ifs025_bbox = fetch_regular.dataset_info("ecmwf_ifs025").bbox
         path = os.path.join(tmp, "aloft.om")
         download(fetch_regular.RegularModel.file_url("ecmwf_ifs025", run, step_h), path)
-        return fetch_regular.read_dataset_vars(path, list(LEVEL_RAW_KEYS), _ifs025_bbox)
+        return fetch_regular.read_dataset_vars(path, list(LEVEL_RAW_KEYS), _ifs025_bbox, GRID)
     except Exception as e:  # noqa: BLE001 - a missing optional dataset must not stop the run
         print(f"  pressure levels unavailable for +{step_h} h: {e}")
         global _level_error

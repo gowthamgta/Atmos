@@ -1,6 +1,6 @@
 /**
- * Meteosat-9 imagery (EUMETSAT's Indian Ocean Data Coverage service, 45.5 E) from EUMETView, EUMETSAT's public map
- * service. It needs no key or login, allows cross-origin requests, and has a new image every 15 minutes.
+ * Meteosat-9 imagery over all of India (EUMETSAT's Indian Ocean Data Coverage service, 45.5 E) from EUMETView, EUMETSAT's
+ * public map service. It needs no key or login, allows cross-origin requests, and has a new image every 15 minutes.
  *
  * The overlay shows the European HRV RGB (high-resolution visible) by day and the infrared channel by night,
  * when the visible picture goes dark.
@@ -17,12 +17,9 @@ import { isPhone, satelliteImageSize } from '../ui/device-profile';
 
 export const EUMETVIEW_WMS = 'https://view.eumetsat.int/geoserver/msg_iodc/wms';
 
-/** The area requested: the forecast domain (South India, Sri Lanka and the seas around them). */
-export const SATELLITE_BOUNDS = { west: 73, east: 89.5, south: 5.5, north: 14.5 } as const;
-/**
- * Pixels requested: about 1 km per pixel, finer than the satellite's own pixels (about 2-3 km here), so nothing is lost.
- * Phones get a quarter of the pixels (about 2 km per pixel): five full-size pictures would take over 80 MB of GPU memory.
- */
+/** The area requested: all of India (the forecast domain covers the same box). */
+export const SATELLITE_BOUNDS = { west: 68, east: 97.5, south: 5, north: 37.5 } as const;
+/** Pixels requested: a square picture of the box (about 1.6 km per pixel on desktop, 3 km on a phone). */
 export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
 /**
@@ -31,7 +28,7 @@ export const SATELLITE_SIZE = satelliteImageSize(isPhone());
  */
 export const SATELLITE_NATURAL_LAYER = 'rgb_naturalenhncd';
 /**
- * Its size: half the width and height of the main picture. Its pixels are 3 km (4-5 km over India), so this is still finer than the
+ * Its size: half the width and height of the main picture. Its pixels are 3 km, so this is still finer than the
  * data, and the server renders it much faster (the full-size request often failed with a 500 when several came at once).
  */
 export const SATELLITE_NATURAL_SIZE = { width: Math.round(SATELLITE_SIZE.width / 2), height: Math.round(SATELLITE_SIZE.height / 2) };
@@ -42,66 +39,22 @@ export const SATELLITE_LAG_MIN = 25;
 /** Frames in the loop: 5 x 15 min = the last hour (the first frame is exactly 60 minutes before the newest). */
 export const SATELLITE_FRAME_COUNT = 5;
 
-/** The pictures shown: Meteosat's HRV or FY-4B's true colour (`rgb`) by day, infrared at night. */
-export type SatelliteChannel = 'hrv' | 'rgb' | 'ir';
-
-/** The two satellites: Meteosat-9 (EUMETSAT's map service) and FY-4B (pictures the pipeline builds from NSMC's, see pipeline/fy4.py). */
-export type SatelliteSource = 'meteosat' | 'fy4b';
+/** The pictures shown: Meteosat's HRV by day, infrared at night. */
+export type SatelliteChannel = 'hrv' | 'ir';
 
 export interface SatelliteProduct {
   id: SatelliteChannel;
   label: string;
-  /** Layer name on EUMETView (workspace msg_iodc); empty for FY-4B. */
+  /** Layer name on EUMETView. */
   layer: string;
-  source: SatelliteSource;
 }
 
-export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview', source: 'meteosat' };
-export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108', source: 'meteosat' };
-export const FY4B_RGB: SatelliteProduct = { id: 'rgb', label: 'True colour', layer: '', source: 'fy4b' };
-export const FY4B_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: '', source: 'fy4b' };
+export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview' };
+export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108' };
 
-export interface SatelliteSourceInfo {
-  id: SatelliteSource;
-  label: string;
-  credit: string;
-}
-
-export const SATELLITE_SOURCES: Record<SatelliteSource, SatelliteSourceInfo> = {
-  meteosat: { id: 'meteosat', label: 'Meteosat-9', credit: '© EUMETSAT' },
-  fy4b: { id: 'fy4b', label: 'FY-4B', credit: 'FY-4B AGRI, NSMC / CMA' },
-};
-
-/** Where the pipeline publishes the FY-4B pictures (same Pages site as the forecast data). */
-export const FY4B_BASE = 'https://gowthamgta.github.io/Atmos/fy4';
-
-/** One FY-4B picture as listed in `latest.json`. */
-export interface Fy4Frame {
-  /** ISO time of the scan. */
-  time: string;
-  kind: 'day' | 'night';
-  /** File names next to latest.json: the full-size picture and the phone-size one. */
-  hd: string;
-  lite: string;
-}
-
-/** The FY-4B `latest.json`, checked: only frames with a readable time and both file names are kept, oldest first. */
-export function parseFy4State(json: unknown): Fy4Frame[] {
-  const frames = (json as { frames?: unknown })?.frames;
-  if (!Array.isArray(frames)) return [];
-  const ok = frames.filter((f): f is Fy4Frame =>
-    !!f && typeof f.time === 'string' && !Number.isNaN(Date.parse(f.time)) && (f.kind === 'day' || f.kind === 'night') &&
-    typeof f.hd === 'string' && typeof f.lite === 'string' && !/[\/]/.test(f.hd) && !/[\/]/.test(f.lite));
-  return ok.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
-}
-
-export function fy4PictureUrl(frame: Fy4Frame, phone: boolean): string {
-  return `${FY4B_BASE}/${phone ? frame.lite : frame.hd}`;
-}
-
-export function fy4ProductFor(frame: Fy4Frame): SatelliteProduct {
-  return frame.kind === 'day' ? FY4B_RGB : FY4B_IR;
-}
+/** The satellite's name and credit, as shown in the menus and the panel. */
+export const SATELLITE_NAME = 'Meteosat-9';
+export const SATELLITE_CREDIT = '© EUMETSAT';
 
 /**
  * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
@@ -109,8 +62,8 @@ export function fy4ProductFor(frame: Fy4Frame): SatelliteProduct {
  */
 export type SatelliteView = 'clouds' | 'picture';
 
-/** Domain centre, used to decide whether it is day or night over the area. */
-const CENTRE = { lat: 13, lon: 79 };
+/** Centre of India, used to decide whether it is day or night over the area. */
+const CENTRE = { lat: 20, lon: 79 };
 /** Sun height (degrees) above which the visible picture is bright enough to use. */
 export const DAYLIGHT_MIN_ELEVATION_DEG = 8;
 
@@ -135,7 +88,7 @@ export function sunElevationDeg(timeMs: number, latDeg: number, lonDeg: number):
   return Math.asin(Math.max(-1, Math.min(1, sinElevation))) / rad;
 }
 
-/** The picture for a frame: HRV while the sun is up over South India, infrared otherwise. */
+/** The picture for a frame: HRV while the sun is up over India, infrared otherwise. */
 export function productForTime(timeMs: number): SatelliteProduct {
   return sunElevationDeg(timeMs, CENTRE.lat, CENTRE.lon) >= DAYLIGHT_MIN_ELEVATION_DEG ? SATELLITE_HRV : SATELLITE_IR;
 }

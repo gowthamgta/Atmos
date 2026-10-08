@@ -3,8 +3,8 @@
 The folder is deployed to GitHub Pages by .github/workflows/nwp.yml (free, CORS-open, no external bucket).
 
   python run.py --model ecmwf_ifs --out site --force         # full run into ./site/ecmwf_ifs
-  python run.py --model gfs --steps 0,3 --out out --force    # quick local test
-  python run.py --model gfs --out site --live-url https://<user>.github.io/<repo>/gfs/latest.json
+  python run.py --model ukmo --steps 0,3 --out out --force   # quick local test
+  python run.py --model ukmo --out site --live-url https://<user>.github.io/<repo>/ukmo/latest.json
                                                              # exits quietly if that run is already live
 """
 from __future__ import annotations
@@ -14,8 +14,6 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import requests
 import config as C
-import fetch_aifs
-import fetch_gfs
 import fetch_ifs
 import models_regular
 from fetch_regular import INDIA
@@ -23,7 +21,7 @@ from derive import derive, forward_accumulation, forward_extreme
 from encode import encode_field
 
 # modules and RegularModel instances share one interface (MODEL_ID, RUN_HOURS, latest_run(), read_step(), ...)
-MODELS = {m.MODEL_ID: m for m in (fetch_ifs, fetch_gfs, fetch_aifs, *models_regular.ALL)}
+MODELS = {m.MODEL_ID: m for m in (fetch_ifs, *models_regular.ALL)}
 
 
 def published_vars(fetcher):
@@ -59,7 +57,7 @@ DERIVED_ACROSS_STEPS = {"rain24", "tmin24", "tmax24"}   # needs several steps, s
 
 def process_step(fetcher, run, h):
     """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from."""
-    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h))
+    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid_of(fetcher).lat_max)
     pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS}
     return h, pngs, fields["precip"], fields["t2m"]
 

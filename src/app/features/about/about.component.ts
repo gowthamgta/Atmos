@@ -8,13 +8,11 @@ interface Credit {
 
 /** Credits for every data source, which the open-data providers ask to be shown. */
 const CREDITS: readonly Credit[] = [
-  { name: 'ECMWF IFS and AIFS', what: 'ECMWF open data (CC BY 4.0)' },
-  { name: 'NOAA GFS', what: 'NOAA / NCEP (US public domain)' },
-  { name: 'DWD ICON', what: 'Deutscher Wetterdienst open data' },
+  { name: 'ECMWF IFS', what: 'ECMWF open data (CC BY 4.0)' },
   { name: 'UK Met Office', what: 'Contains Met Office data' },
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
-  { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
+  { name: 'Satellite', what: 'Meteosat-9 over India, © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
   { name: 'Terrain', what: 'Copernicus DEM GLO-30 (© DLR and Airbus), averaged to 90 m' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
   { name: 'Base map', what: '© OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors; hillshade © Esri' },

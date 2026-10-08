@@ -83,6 +83,7 @@ uniform vec4 u_modelGrid;  // model ground
 uniform ivec2 u_modelSize;
 uniform vec2 u_demEnc;     // terrain value range
 uniform int u_terrainOn;   // 1 when the terrain textures are bound
+uniform vec4 u_terrainBox; // west, south, east, north: where the 90 m terrain is; outside it the model's own ground is used
 uniform int u_magnitude;   // 1: show hypot(first, second component) e.g. wind speed from u and v
 uniform int u_terrainMode; // 0 off, else TERRAIN_MODE_CODE
 uniform float u_relief;    // 0..1 strength of the relief shading
@@ -189,6 +190,7 @@ vec2 tileSlope(float lat, float lon) {
 void main() {
   float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * v_merc.y))));
   float lon = v_merc.x * 360.0 - 180.0;
+  bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
   vec2 g = vec2((lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
   // Fade out over the last 12 cells (about 1.2 degrees) so the data area does not end in a hard edge.
   vec2 toFar = vec2(u_size) - 1.0 - g;
@@ -209,8 +211,8 @@ void main() {
   vec2 model = vec2(0.0, 1.0);
   vec2 fine = vec2(0.0, 1.0);
   vec2 fineSlope = vec2(0.0);
-  bool needFineSlope = u_lite == 0 && u_terrainOn == 1 && u_relief > 0.0;
-  if (u_terrainOn == 1) {
+  bool needFineSlope = u_lite == 0 && onGround && u_relief > 0.0;
+  if (onGround) {
     model = terrainAt(u_demModel, u_modelGrid, u_modelSize, lat, lon);
     vec3 tile = tileTerrain(lat, lon);
     fine = tile.z > 0.5 ? tile.xy : model;
@@ -223,7 +225,7 @@ void main() {
     }
   }
 
-  if (u_terrainOn == 1 && u_terrainMode != 0) {
+  if (onGround && u_terrainMode != 0) {
     float dz = clamp(fine.x - model.x, -${f(MAX_TERRAIN_DELTA_M)}, ${f(MAX_TERRAIN_DELTA_M)});
     int m = u_terrainMode;
     if (m == 1) {
@@ -248,7 +250,7 @@ void main() {
   float alpha = u_opacity * edgeFade;
   if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * 1.5, v);
 
-  if (u_terrainOn == 1) {
+  if (onGround) {
     // 90 m relief: hills lit from the north-west, so the Ghats, Nilgiris and valleys read through every layer
     if (u_relief > 0.0) {
       vec3 n = normalize(vec3(-fineSlope * 3.0, 1.0));
@@ -280,7 +282,7 @@ interface Uniforms {
 const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
-  'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn',
+  'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
@@ -499,6 +501,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       g4('u_modelGrid', meta.grid);
       s2('u_modelSize', meta.grid);
       gl.uniform2f(u['u_demEnc'], meta.min, meta.max);
+      gl.uniform4f(u['u_terrainBox'], meta.domain.lonMin, meta.domain.latMin, meta.domain.lonMax, meta.domain.latMax);
       gl.uniform2i(u['u_tileCount'], this.tileGrid.cols, this.tileGrid.rows);
       gl.uniform2f(u['u_tileOrigin'], this.tileGrid.lonMin, this.tileGrid.latTop);
       gl.uniform1f(u['u_tilePx'], this.tilePx);

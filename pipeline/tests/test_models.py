@@ -7,8 +7,6 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import config as C
-import fetch_aifs
-import fetch_gfs
 import fetch_ifs
 import mirror
 import run as pipeline_run
@@ -44,20 +42,15 @@ def test_regrid_regular_propagates_gaps_and_clamps_outside_the_window():
     assert out[1, 1] == 1.0   # far outside: clamped to the edge value instead of failing
 
 
-def test_gfs_file_urls_point_at_the_right_dataset_and_hour():
-    assert fetch_gfs.file_url(fetch_gfs.FINE, RUN, 3).endswith("/ncep_gfs013/2026/10/05/0600Z/2026-10-05T0900.om")
-    assert fetch_gfs.file_url(fetch_gfs.COARSE, RUN, 24).endswith("/ncep_gfs025/2026/10/05/0600Z/2026-10-06T0600.om")
-
 
 def test_ifs_file_urls_unchanged():
     assert fetch_ifs.file_url(RUN, 3).endswith("/ecmwf_ifs/2026/10/05/0600Z/2026-10-05T0900.om")
 
 
 def test_model_modules_declare_what_run_py_needs():
-    for m in (fetch_ifs, fetch_gfs):
+    for m in (fetch_ifs,):
         assert m.MODEL_ID and m.LABEL and m.RUN_HOURS and m.STEP_HOURS and m.PRECIP_NOTE
         assert m.STEP_HOURS[0] == 0 and m.STEP_HOURS == sorted(m.STEP_HOURS)
-    assert fetch_ifs.MODEL_ID != fetch_gfs.MODEL_ID
 
 
 def test_derive_uses_the_models_own_relative_humidity_when_there_is_no_dew_point():
@@ -88,59 +81,41 @@ def _fake_site(files):
 def test_mirror_copies_a_live_model_and_writes_latest_last(tmp_path):
     base = "https://x.github.io/Atmos"
     manifest = {"vars": {"t2m": {}, "rh": {}}, "steps": [{"h": 0}, {"h": 3}]}
-    files = {f"{base}/gfs/latest.json": json.dumps({"run": "R1"}).encode(),
-             f"{base}/gfs/R1/manifest.json": json.dumps(manifest).encode()}
+    files = {f"{base}/ukmo/latest.json": json.dumps({"run": "R1"}).encode(),
+             f"{base}/ukmo/R1/manifest.json": json.dumps(manifest).encode()}
     for var in manifest["vars"]:
         for h in (0, 3):
-            files[f"{base}/gfs/R1/{var}/{h:03d}.png"] = b"png-" + var.encode()
-    assert mirror.mirror_model(str(tmp_path), base, "gfs", get=_fake_site(files))
-    assert json.loads((tmp_path / "gfs" / "latest.json").read_text())["run"] == "R1"
-    assert (tmp_path / "gfs" / "R1" / "t2m" / "003.png").read_bytes() == b"png-t2m"
-    assert len(list((tmp_path / "gfs" / "R1").rglob("*.png"))) == 4
+            files[f"{base}/ukmo/R1/{var}/{h:03d}.png"] = b"png-" + var.encode()
+    assert mirror.mirror_model(str(tmp_path), base, "ukmo", get=_fake_site(files))
+    assert json.loads((tmp_path / "ukmo" / "latest.json").read_text())["run"] == "R1"
+    assert (tmp_path / "ukmo" / "R1" / "t2m" / "003.png").read_bytes() == b"png-t2m"
+    assert len(list((tmp_path / "ukmo" / "R1").rglob("*.png"))) == 4
 
 
 def test_mirror_skips_a_model_that_is_not_live_yet_and_leaves_nothing(tmp_path):
-    assert mirror.mirror_model(str(tmp_path), "https://x.github.io/Atmos", "gfs", get=_fake_site({})) is False
-    assert not (tmp_path / "gfs").exists()
+    assert mirror.mirror_model(str(tmp_path), "https://x.github.io/Atmos", "ukmo", get=_fake_site({})) is False
+    assert not (tmp_path / "ukmo").exists()
 
 
 def test_mirror_cleans_up_when_a_file_is_missing(tmp_path):
     base = "https://x.github.io/Atmos"
     manifest = {"vars": {"t2m": {}}, "steps": [{"h": 0}, {"h": 3}]}
-    files = {f"{base}/gfs/latest.json": json.dumps({"run": "R1"}).encode(),
-             f"{base}/gfs/R1/manifest.json": json.dumps(manifest).encode(),
-             f"{base}/gfs/R1/t2m/000.png": b"ok"}            # 003.png is missing
-    assert mirror.mirror_model(str(tmp_path), base, "gfs", get=_fake_site(files)) is False
-    assert not (tmp_path / "gfs").exists()
+    files = {f"{base}/ukmo/latest.json": json.dumps({"run": "R1"}).encode(),
+             f"{base}/ukmo/R1/manifest.json": json.dumps(manifest).encode(),
+             f"{base}/ukmo/R1/t2m/000.png": b"ok"}            # 003.png is missing
+    assert mirror.mirror_model(str(tmp_path), base, "ukmo", get=_fake_site(files)) is False
+    assert not (tmp_path / "ukmo").exists()
 
 
 def test_each_model_declares_its_rain_accumulation_window():
     # verified against Open-Meteo's hourly API for each model
     assert [fetch_ifs.precip_window_hours(h) for h in (6, 90, 93, 144)] == [1, 1, 3, 3]
-    assert [fetch_gfs.precip_window_hours(h) for h in (6, 120, 123, 144)] == [1, 1, 3, 3]
-    assert {fetch_aifs.precip_window_hours(h) for h in (6, 72, 144)} == {6}
 
 
-def test_aifs_urls_steps_and_unavailable_variables():
-    assert fetch_aifs.file_url(RUN, 6).endswith("/ecmwf_aifs025_single/2026/10/05/0600Z/2026-10-05T1200.om")
-    assert fetch_aifs.STEP_HOURS == list(range(0, 145, 6))
-    assert fetch_aifs.UNAVAILABLE_VARS == {"gust", "cape", "tcwv", "vis", "li", "cin"}
-    assert fetch_gfs.UNAVAILABLE_VARS == set()
-    assert fetch_ifs.UNAVAILABLE_VARS == {"li"}      # winds aloft come from the 0.25 degree IFS dataset; IFS has no lifted index
-
-
-def test_manifest_lists_only_variables_the_model_provides():
-    full = pipeline_run.build_manifest(fetch_ifs, RUN, [0, 3])["vars"]
-    aifs = pipeline_run.build_manifest(fetch_aifs, RUN, [0, 6])["vars"]
-    assert {"gust", "cape", "tcwv"} <= set(full)
-    assert {"u850", "v850", "u500", "v500"} <= set(full)
-    assert not ({"gust", "cape", "tcwv"} & set(aifs))
-    assert {"u850", "v850", "u500", "v500"} <= set(aifs)
-    assert {"t2m", "rh", "feels", "u10", "v10", "msl", "precip", "cloud"} <= set(aifs)
 
 
 def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
-    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "gfs", "ecmwf_aifs", "dwd_icon", "ukmo"])
+    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "ukmo"])
     for m in pipeline_run.MODELS.values():
         assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)
 

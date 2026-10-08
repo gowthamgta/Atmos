@@ -54,21 +54,10 @@ rain window covers the gap (exact), otherwise it is estimated from the mean of t
 sampled, e.g. one hour in three). No data where the run ends before 24 h more. Checked on a real GFS run against Open-Meteo's
 hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can differ by tens of mm).
 
-## All models in one (`blend`)
-`blend.py` writes one more model: the weighted mean of every model's published fields, lined up by valid time (a time between
-two steps is interpolated only when both exist; wind is averaged as u and v). Weights in `blend.WEIGHTS` (IFS 3, GFS 2, UKMO 2,
-AIFS 1.5, ICON 1.5); a model that ends early drops out. Its run id is the assembly time, so a changed input
-always gets new URLs.
-
-A plain average is blurrier than every one of its members (measured on a real run: mean gradient of temperature 0.19 against
-0.29 for IFS; rain 0.018 against 0.029), because it carries the resolution of its coarsest models. So the blend (a) uses
-probability matching for rain and the 24 h total (the position comes from the mean, the intensities are the weighted mean of
-the models' own sorted values, so peaks and wet area stay realistic), (b) sums the 24 h rain from the blended rain rate (not averaged
-separately, which left the two disagreeing: a 24 h total of 1.3 mm against 0.1 mm of rain in the same day), (c) adds back the fine structure of the best-resolved model
-(`blend.RESOLUTION_ORDER`: that model minus a ~28 km smoothed copy of itself, at gain 0.5), and (d) is clipped to the range of
-the models at each cell. Result on the same run: 88-99% of IFS's sharpness, the same domain-mean rain, a rain peak of 5.8 mm/h
-against 3.1 for the plain mean. `blend.VERSION` (now 5) is bumped when a method changes, which makes a run that is already live under the old method rebuild.
-The workflow order is: models, `cyclones.py`, `fy4.py`, `mirror.py` (unchanged models and blend), `blend.py`.
+## Models published
+Two models: ECMWF IFS (all of India, 9 km) and the UK Met Office (South India, 10 km). The workflow order is: the models,
+`cyclones.py`, `mirror.py` (copies a model that was not rebuilt from the live site). The all-model blend and the FY-4B
+pictures were removed; the Meteosat-9 picture is fetched by the app from EUMETView, so nothing is published for it.
 
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
@@ -93,16 +82,13 @@ again. A tile the bucket does not have is open sea.
 The app picks the level by zoom: 90 m from zoom 9.5, 270 m from 7.5, 1.08 km below (`src/app/core/forecast/terrain-tiles.ts`).
 
 ## Models
-Seven models plus the blend, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.
-Sources are Open-Meteo's public `data_spatial` datasets.
+Both are resampled onto their own 0.1° grid (ECMWF IFS: all of India, 5-37.5 N, 68-97.5 E; UK Met Office: the South India
+box) and published in the same format, so the app treats them alike. Sources are Open-Meteo's public `data_spatial` datasets.
 
 | id | model | grid / range | runs | rain value covers | not provided |
 |---|---|---|---|---|---|
-| `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | O1280, +144 h, 3-hourly | 00Z 12Z | 1 h to +90 h, then 3 h | - |
-| `ecmwf_aifs` | ECMWF AIFS (AI) | 0.25°, +144 h, 6-hourly | 4 a day | 6 h | gusts, CAPE, moisture, visibility |
-| `gfs` | NOAA GFS (0.117° surface + 0.25° pressure/gusts/CAPE) | +144 h, 3-hourly | 4 a day | 1 h to +120 h, then 3 h | - |
-| `ukmo` | UK Met Office global 10 km | ~10 km, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
-| `dwd_icon` | DWD ICON global | regular grid, +144 h, 3-hourly | 00Z 12Z | 1 h to +78 h, then 3 h | sunshine, visibility, moisture |
+| `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | O1280 cut to all of India, +144 h, 3-hourly | 00Z 12Z | 1 h to +90 h, then 3 h | - |
+| `ukmo` | UK Met Office global 10 km | ~10 km, South India, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
 
 How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
 accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);

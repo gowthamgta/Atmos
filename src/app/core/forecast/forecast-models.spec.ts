@@ -12,11 +12,11 @@ describe('forecast model registry', () => {
     }
   });
 
-  it('lists every pipeline model by its folder id, with ECMWF IFS as the default', () => {
+  it('lists the pipeline models by their folder id, with ECMWF IFS as the default', () => {
     expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('ecmwf_ifs');
-    expect(forecastModelById('gfs').label).toBe('NOAA GFS');
+    expect(forecastModelById('ukmo').label).toBe('UK Met Office');
     expect(FORECAST_MODELS.map(m => m.id).sort()).toEqual(
-      ['blend', 'dwd_icon', 'ecmwf_aifs', 'ecmwf_ifs', 'gfs', 'ukmo']
+      ['ecmwf_ifs', 'ukmo']
     );
   });
 

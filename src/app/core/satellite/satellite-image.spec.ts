@@ -22,10 +22,10 @@ describe('mercator helpers', () => {
     for (const lat of [-30, 0, 4, 13, 22, 60]) expect(latFromMercatorY(mercatorY(lat))).toBeCloseTo(lat, 8);
   });
 
-  it('gives a slightly taller picture than plain latitude would for 5.5-14.5 N', () => {
+  it('gives a taller picture than plain latitude would for 5-37.5 N', () => {
     const h = mercatorHeight(1100);
-    expect(h).toBeGreaterThan(600); // the plain-latitude picture is 600 tall (9 of 16.5 degrees)
-    expect(h).toBeLessThan(620);
+    expect(h).toBeGreaterThan(1212); // the plain-latitude picture is about 1212 tall (32.5 of 29.5 degrees)
+    expect(h).toBeLessThan(1360);
   });
 });
 
@@ -135,7 +135,7 @@ describe('toOverlayPixels', () => {
 
 describe('satelliteCoordinates', () => {
   it('lists the corners clockwise from the north-west', () => {
-    expect(satelliteCoordinates()).toEqual([[73, 14.5], [89.5, 14.5], [89.5, 5.5], [73, 5.5]]);
+    expect(satelliteCoordinates()).toEqual([[68, 37.5], [97.5, 37.5], [97.5, 5], [68, 5]]);
   });
 });
 
@@ -294,22 +294,10 @@ describe('shadeCloudLayer (cloud only)', () => {
   });
 });
 
-describe('true-colour (FY-4B) pictures', () => {
-  it('finds cloud as bright in every channel, and not green land or blue sea', () => {
-    const src = new Uint8ClampedArray([
-      200, 210, 215, 255,   // cloud
-      60, 110, 70, 255,     // green land
-      15, 30, 70, 255,      // sea
-    ]);
-    const cover = cloudCover(src, 3, 1, 'rgb', 0);
-    expect(cover[0]).toBeGreaterThan(0.95);
-    expect(cover[1]).toBe(0);
-    expect(cover[2]).toBe(0);
-  });
-
+describe('picture view', () => {
   it('keeps the picture in the full view and makes true black (no data) see-through in the infrared one', () => {
     const out = new Uint8ClampedArray(4);
-    shadePixel('rgb', 'picture', 60, 110, 70, 0, out, 0);
+    shadePixel('hrv', 'picture', 60, 110, 70, 0, out, 0);
     expect(Array.from(out.slice(0, 3))).toEqual([60, 110, 70]);
     expect(out[3]).toBeGreaterThan(200);
     shadePixel('ir', 'picture', 0, 0, 0, 0, out, 0);

@@ -92,7 +92,7 @@ def test_a_model_without_humidity_still_derives_without_crashing():
 import config as C
 import derive as D
 import encode as E
-import fetch_aifs, fetch_gfs, fetch_ifs
+import fetch_ifs
 
 
 def test_every_level_has_five_fields_with_sensible_ranges():
@@ -157,7 +157,7 @@ def test_unavailable_for_follows_the_raw_fields_a_model_has():
 
 
 def test_the_three_hand_written_models_provide_all_levels():
-    for mod in (fetch_ifs, fetch_gfs, fetch_aifs):
+    for mod in (fetch_ifs,):
         for key in D.LEVEL_RAW_KEYS:
             assert key in mod.PROVIDES, (mod.MODEL_ID, key)
         assert not any(v[0] in "utv" and v[1:].isdigit() for v in mod.UNAVAILABLE_VARS if v[1:].isdigit())
@@ -188,8 +188,6 @@ def test_reduced_precision_encoding_stays_within_its_error_bound_and_compresses_
 def test_stability_variables_come_from_the_models_that_have_them():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
     assert "cin" not in by_id["ukmo"].UNAVAILABLE_VARS and "li" in by_id["ukmo"].UNAVAILABLE_VARS      # UKMO: CIN only
-    assert {"cin", "li"} <= by_id["dwd_icon"].UNAVAILABLE_VARS
-    assert not ({"cin", "li"} & fetch_gfs.UNAVAILABLE_VARS)                                              # GFS: both
     assert "cin" not in fetch_ifs.UNAVAILABLE_VARS and "li" in fetch_ifs.UNAVAILABLE_VARS                # IFS: CIN only
 
 

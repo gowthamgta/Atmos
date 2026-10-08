@@ -3,7 +3,7 @@
 A Pages deployment replaces the whole site, so a deploy triggered by one model must still carry the others.
 Mirroring them from the live site is cheap (about 30 MB per model from GitHub's CDN) compared with rebuilding.
 
-  python mirror.py --site site --base-url https://<user>.github.io/<repo> --models ecmwf_ifs gfs
+  python mirror.py --site site --base-url https://<user>.github.io/<repo> --models ecmwf_ifs ukmo
 """
 from __future__ import annotations
 import argparse, json, os, shutil, sys

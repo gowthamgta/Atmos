@@ -42,12 +42,6 @@ def level_speed_dir() -> tuple[tuple[str, str, str, str], ...]:
 
 STEPS_3H_144 = list(range(0, 145, 3))
 
-# DWD ICON global (13 km). 00Z and 12Z runs reach furthest.
-ICON = RegularModel(
-    model_id="dwd_icon", label="DWD ICON", run_hours=(0, 12), step_hours=STEPS_3H_144,
-    sources=[Source("dwd_icon", _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CLOUD_LAYERS + level_uv() + level_scalars()))],
-)
-
 # UK Met Office global deterministic, ~10 km. Short range (about 2.5 days) and big files, so two runs a day.
 UKMO = RegularModel(
     model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 61, 3)),
@@ -59,4 +53,4 @@ UKMO = RegularModel(
 )
 
 
-ALL: tuple[RegularModel, ...] = (ICON, UKMO)
+ALL: tuple[RegularModel, ...] = (UKMO,)

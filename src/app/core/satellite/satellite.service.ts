@@ -2,15 +2,10 @@ import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import { isPhone } from '../ui/device-profile';
 import {
-  FY4B_BASE,
   SATELLITE_NATURAL_LAYER,
   SATELLITE_NATURAL_SIZE,
   SatelliteProduct,
-  SatelliteSource,
   SatelliteView,
-  fy4PictureUrl,
-  fy4ProductFor,
-  parseFy4State,
   frameTimes,
   latestFrameTime,
   parseNewestTime,
@@ -58,7 +53,6 @@ export class SatelliteService {
   readonly failed = signal(false);
   readonly opacity = signal(0.9);
   readonly view = signal<SatelliteView>('clouds');
-  readonly source = signal<SatelliteSource>('meteosat');
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -116,28 +110,10 @@ export class SatelliteService {
   }
 
   /**
-   * What to show: the frames of the last hour, oldest first, each with a way to fetch it. Meteosat: the times come from the
-   * service's newest time and the picture from EUMETView (by day also the true-colour one, to sharpen). FY-4B: the frames are
-   * those the pipeline listed in its latest.json.
+   * What to show: the frames of the last hour, oldest first, each with a way to fetch it. The times come from the service's
+   * newest time and the picture from EUMETView (by day also the natural-colour one, to find low cloud).
    */
-  private async plan(nowMs: number, source: SatelliteSource): Promise<PlanItem[]> {
-    if (source === 'fy4b') {
-      try {
-        const res = await fetch(`${FY4B_BASE}/latest.json?t=${Math.floor(nowMs / 60_000)}`);
-        if (!res.ok) return [];
-        const phone = isPhone();
-        return parseFy4State(await res.json()).map(frame => ({
-          timeMs: Date.parse(frame.time),
-          product: fy4ProductFor(frame),
-          fetch: async () => {
-            const blob = await this.downloadUrl(fy4PictureUrl(frame, phone));
-            return blob ? { blob } : null;
-          },
-        }));
-      } catch {
-        return [];
-      }
-    }
+  private async plan(nowMs: number): Promise<PlanItem[]> {
     const newest = await this.newestTime(nowMs);
     return frameTimes(newest).map(t => {
       const product = productForTime(t);
@@ -161,7 +137,7 @@ export class SatelliteService {
     const token = ++this.loadToken;
     const nowMs = Date.now();
     this.now.set(nowMs);
-    const plan = await this.plan(nowMs, this.source());
+    const plan = await this.plan(nowMs);
     if (token !== this.loadToken) return;
     const times = plan.map(p => p.timeMs);
 
@@ -197,21 +173,6 @@ export class SatelliteService {
         void this.load();
       }, 20_000);
     }
-  }
-
-  /** Switch satellite: the other one's pictures are dropped and the new one's last hour is loaded. */
-  async setSource(source: SatelliteSource): Promise<void> {
-    if (source === this.source()) return;
-    this.pause();
-    this.loadToken++; // abandon a load in progress
-    this.source.set(source);
-    const old = [...this.built.values()];
-    this.built.clear();
-    this.raws.clear();
-    this.frames.set([]);
-    this.position.set(0);
-    for (const pending of old) void pending.then(f => f && URL.revokeObjectURL(f.url));
-    await this.load();
   }
 
   /** A picture, or null. EUMETView sometimes answers a busy moment with a 500: that is tried once more after a short wait. */

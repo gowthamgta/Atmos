@@ -17,9 +17,19 @@ import { isPhone } from '../ui/device-profile';
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
 const RELIEF_STRENGTH = 0.55;
 
-/** Whether two grids are the same cells (the terrain can only be sampled where its grid lines up with the field's). */
-function sameGrid(a: ForecastGrid, b: ForecastGrid): boolean {
-  return a.nx === b.nx && a.ny === b.ny && a.lonMin === b.lonMin && a.latMax === b.latMax && a.step === b.step;
+/**
+ * Whether the terrain can be used on a field's grid: the terrain's cells line up with the field's (same spacing, offset by a
+ * whole number of cells) and its box lies inside the field's grid. The field may cover more than the terrain (all of India
+ * against the South India terrain); outside the terrain the model's own ground is used (see the colour shader).
+ */
+export function terrainOnGrid(field: ForecastGrid, terrain: ForecastGrid): boolean {
+  const eps = 1e-6;
+  const cellsAcross = (field.lonMin - terrain.lonMin) / field.step;
+  const cellsDown = (field.latMax - terrain.latMax) / field.step;
+  return Math.abs(field.step - terrain.step) < eps &&
+    Math.abs(cellsAcross - Math.round(cellsAcross)) < 1e-3 && Math.abs(cellsDown - Math.round(cellsDown)) < 1e-3 &&
+    terrain.lonMin >= field.lonMin - eps && terrain.lonMax <= field.lonMax + eps &&
+    terrain.latMin >= field.latMin - eps && terrain.latMax <= field.latMax + eps;
 }
 
 /**
@@ -136,7 +146,7 @@ export class ForecastMapController {
     // 90 m terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels
     // the terrain covers the South India box only: a field on another grid (the world model) is drawn without it
     const terrainData = this.terrain.data();
-    const onTerrain = !!terrainData && sameGrid(manifest.grid, terrainData.meta.grid);
+    const onTerrain = !!terrainData && terrainOnGrid(manifest.grid, terrainData.meta.grid);
     const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, this.catalog.model().gridKm).bitmap : null;
     layer.setTerrain(onTerrain ? terrainData : null, modelGround);
     layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
