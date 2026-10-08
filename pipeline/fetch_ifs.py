@@ -47,11 +47,17 @@ A, B = int(OFFSETS[R0]), int(OFFSETS[R1])
 
 
 def latest_run() -> datetime:
-    """Reference time of the newest fully published run."""
+    """Reference time of the newest fully published run of the hours this model uses (RUN_HOURS).
+
+    Open-Meteo reports the newest run, which is often a 06Z or 18Z run this model does not use: then the run before it (00Z or
+    12Z) is the one to build, not nothing.
+    """
     j = requests.get(LATEST_URL, timeout=30).json()
     if not j.get("completed"):
         raise RuntimeError("latest run is still in progress")
     run = datetime.strptime(j["reference_time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    while run.hour not in RUN_HOURS:
+        run -= timedelta(hours=1)
     if not _levels_published(run):
         raise RuntimeError(f"the 0.25 degree pressure-level data of run {run:%Y%m%dT%HZ} is not published yet")
     return run
