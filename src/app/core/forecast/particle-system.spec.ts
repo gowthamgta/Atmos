@@ -80,6 +80,33 @@ describe('ParticleSystem', () => {
     }
   });
 
+  it('moves the same number of screen pixels east or north in the same wind (Mercator, 11.7 N)', () => {
+    const zoom = 8;
+    const world = 512 * 2 ** zoom; // MapLibre's world size in CSS pixels
+    const px = (lon: number, lat: number) => ({
+      x: ((lon + 180) / 360) * world,
+      y: (world / (2 * Math.PI)) * (Math.PI - Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))),
+    });
+    const view: ViewState = { west: 74, south: 8, east: 80, north: 14, zoom };
+    const east = new ParticleSystem(1, 1, rng());
+    const north = new ParticleSystem(1, 1, rng());
+    for (const ps of [east, north]) {
+      ps.reset(view, GRID);
+      ps.life.fill(100);
+      ps.age.fill(0);
+      ps.lon[0] = 78;
+      ps.lat[0] = 11.7;
+    }
+    const start = px(78, 11.7);
+    east.step(0.5, uniformWind(8, 0), { west: 0, south: 0, east: 180, north: 90, zoom });
+    north.step(0.5, uniformWind(0, 8), { west: 0, south: 0, east: 180, north: 90, zoom });
+    const e = px(east.lon[0], east.lat[0]);
+    const n = px(north.lon[0], north.lat[0]);
+    const expected = 8 * PX_PER_MS * 0.5; // 8 m/s for half a second, in screen pixels
+    expect(Math.hypot(e.x - start.x, e.y - start.y)).toBeCloseTo(expected, 1);
+    expect(Math.hypot(n.x - start.x, n.y - start.y)).toBeCloseTo(expected, 1);
+  });
+
   it('blends the two time steps', () => {
     const ps = new ParticleSystem(5, 5, rng());
     ps.reset(VIEW, GRID);

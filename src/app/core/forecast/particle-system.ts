@@ -20,7 +20,7 @@ export interface ViewState {
 }
 
 /** Screen speed of a particle: this many pixels per second for each m/s of wind. */
-export const PX_PER_MS = 6;
+export const PX_PER_MS = 4.5;
 /** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha. */
 export const INSTANCE_FLOATS = 5;
 

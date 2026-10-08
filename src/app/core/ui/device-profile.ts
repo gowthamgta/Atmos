@@ -1,7 +1,7 @@
 /**
  * What the device can take. Phones (and other small touch screens) get lighter settings by default: fewer texture reads
  * per pixel in the forecast shader, smaller satellite and radar images. Everything stays switchable by the user where it
- * changes the look (the "90 m detail" switch in the layer menu).
+ * changes the look (the terrain relief switch in the layer menu).
  */
 export function isPhone(): boolean {
   if (typeof window === 'undefined') return false;

@@ -51,13 +51,8 @@ export class ForecastStateService {
   readonly cyclones = signal(false);
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
   readonly districtLines = signal(false);
-  /** 90 m hill shading blended into the forecast colours (off by default to keep the map light). */
-  readonly relief = signal(false);
-  /**
-   * Full 90 m detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default to keep
-   * the map light and fast; can be enabled from the layer menu.
-   */
-  readonly detail = signal(false);
+  /** 90 m hill shading of the colour layers and the basemap, on by default (the layer menu switches it off). */
+  readonly relief = signal(true);
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
   readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 
@@ -153,10 +148,6 @@ export class ForecastStateService {
     this.mapLayers.deactivateAll();
     this.isobars.set(true);
     this.start();
-  }
-
-  toggleDetail(): void {
-    this.detail.update(on => !on);
   }
 
   toggleDistrictLines(): void {
