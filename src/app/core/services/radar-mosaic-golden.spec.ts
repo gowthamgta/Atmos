@@ -36,15 +36,16 @@ function hash(a: ArrayLike<number> & { buffer: ArrayBufferLike; byteOffset: numb
 }
 
 describe('composeRadarMosaic: unchanged output on a fixed multi-station scene', () => {
+  // CAZ alone: PPZ is a picture of its own now, so its scans are not part of this one
   const sources: [string, ProcessedRadarResult][] = [
-    ['karaikal', scan('karaikal', 'caz', 1, 0)], ['karaikal:ppz', scan('karaikal', 'ppz', 2, 3)],
-    ['chennai', scan('chennai', 'caz', 3, 0)], ['chennai:ppz', scan('chennai', 'ppz', 4, 5)],
+    ['karaikal', scan('karaikal', 'caz', 1, 0)],
+    ['chennai', scan('chennai', 'caz', 3, 0)],
     ['thiruvananthapuram', scan('thiruvananthapuram', 'caz', 5, 1)], ['mangaluru', scan('mangaluru', 'caz', 6, 2)],
     ['sriharikota', scan('sriharikota', 'caz', 7, 0)],
   ];
 
   it('gives the same field, picture and corners', () => {
     const m = composeRadarMosaic(IMD_RADAR_STATIONS, sources, 0.5, 1400, 'caz')!;
-    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1400, h: 1400, field: 'd227136e', shown: 'e49fe9fc' })   // recorded from the implementation before the banded rewrite;
+    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1400, h: 1400, field: '8373ba3c', shown: '617a6a32' })   // recorded for CAZ alone: PPZ is its own picture now, so the merged values no longer apply
   });
 });

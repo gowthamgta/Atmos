@@ -8,12 +8,16 @@ interface ProductOption {
   key: RadarProductKey;
   name: string;
   hint: string;
+  /** How the scan is named in the status line. */
+  scan: string;
   title: string;
 }
 
+/** Each product is its own picture and downloads only its own pictures (one per radar). */
 const PRODUCTS: readonly ProductOption[] = [
-  { key: 'caz', name: 'Merged', hint: 'CAZ + PPZ', title: 'Column maximum (CAZ) and reflectivity sweep (PPZ) merged into one picture. PPZ is used only when its scan is less than 20 minutes from CAZ; otherwise CAZ is shown alone' },
-  { key: 'ppi', name: 'PPI', hint: 'Base scan', title: 'Plan Position Indicator (lowest base reflectivity sweep), shown on its own' },
+  { key: 'caz', name: 'CAZ', hint: 'Column max', scan: 'column maximum (CAZ)', title: 'Column maximum reflectivity (CAZ): the strongest echo in each column of air, out to the range of each radar' },
+  { key: 'ppz', name: 'PPZ', hint: 'Reflectivity', scan: 'reflectivity sweep (PPZ)', title: 'Plan Position Indicator reflectivity (PPZ): the radar sweep, out to its longer range (up to 500 km), shown on its own' },
+  { key: 'ppi', name: 'PPI', hint: 'Base scan', scan: 'PPI sweep', title: 'Plan Position Indicator (lowest base reflectivity sweep), shown on its own' },
 ];
 
 /** "14:45" (IST) for a time in epoch ms. */
@@ -30,7 +34,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
   syncing: 'Syncing',
 };
 
-/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs the merged picture's freshness, the last-hour loop and opacity. */
+/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs the picture's freshness, the last-hour loop and opacity. */
 @Component({
   selector: 'app-radar-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -132,7 +136,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
-    .products { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
+    .products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
     .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
     .prod:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
     .prod.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
@@ -244,10 +248,9 @@ export class RadarPanelComponent {
   protected readonly opacityPercent = computed(() => Math.round(this.opacity() * 100));
   protected readonly freshnessLabel = computed(() => FRESHNESS_LABEL[this.freshness()] ?? '');
   protected readonly scanLabel = computed(() => {
-    const p = this.product();
+    const mode = PRODUCTS.find(o => o.key === this.product())?.scan ?? '';
     const st = this.shortName(this.radar.activeStation().name);
     const t = this.radar.observationTiming();
-    const mode = p === 'ppi' ? 'PPI sweep' : 'merged scan (CAZ + PPZ)';
     return t?.ist ? `${st} ${mode} ${t.ist}` : `${st} ${mode}`;
   });
 

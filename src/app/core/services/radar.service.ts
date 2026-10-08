@@ -18,7 +18,7 @@ import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForS
 import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
-import { MAX_SCAN_AGE_MIN, MERGED_PRODUCTS, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
@@ -39,7 +39,6 @@ const yieldToBrowser = () => new Promise<void>(r => setTimeout(r, 0));
 
 export { RADAR_COLOR_STOPS, sampleRadarColorRamp } from './radar-field';
 
-export { MERGED_PRODUCTS } from './radar-mosaic';
 export { removeRadialInterference } from './radar-process';
 
 
@@ -53,6 +52,25 @@ export function scanNotDue(timing: { epochMs?: number; source?: string } | null 
   if (timing.source !== 'radar_metadata' && timing.source !== 'printed_stamp' && timing.source !== 'http_last_modified') return false;
   const age = nowMs - timing.epochMs;
   return age >= 0 && age < recheckMs;
+}
+
+/** IMD writes every radar picture (CAZ, PPZ and PPI alike) on the five-minute mark, a few seconds after it. */
+export const IMD_WRITE_GAP_MS = 5 * 60_000;
+/** A look is due this long before the next picture is written, so a refresh each minute lands just after the write. */
+const LOOK_LEAD_MS = 6_000;
+/** A radar whose newest picture is over an hour old has stopped publishing: it is looked at every 15 minutes, not every minute. */
+const STALE_PICTURE_MS = 60 * 60_000;
+const STALE_RECHECK_MS = 15 * 60_000;
+
+/**
+ * True while a station's next picture is not due: its newest picture was written less than 4 min 54 s ago. Both times are
+ * the file's own (its Last-Modified time, and when it was last asked for), not the time printed inside the picture, which
+ * can trail the write by twenty minutes or more and would make every radar look overdue on every refresh.
+ */
+export function pictureNotDue(nowMs: number, writtenMs: number, fetchedMs: number): boolean {
+  const age = nowMs - writtenMs;
+  if (age >= STALE_PICTURE_MS) return nowMs - fetchedMs < STALE_RECHECK_MS;
+  return age >= 0 && age < IMD_WRITE_GAP_MS - LOOK_LEAD_MS;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -87,8 +105,6 @@ export class RadarService implements OnDestroy {
   readonly lastSyncTime = signal<string | null>(null);
   readonly isRefreshing = signal<boolean>(false);
   readonly allRadarResults = signal<Map<string, ProcessedRadarResult>>(new Map());
-  /** The merged scans other than CAZ (PPI, SRI), keyed `stationId:product`. CAZ stays in allRadarResults. */
-  private readonly extraResults = signal<Map<string, ProcessedRadarResult>>(new Map());
   readonly compositeMosaic = signal<ProcessedRadarResult | null>(null);
   readonly hoverInfo = signal<RadarHoverInfo | null>(null);
 
@@ -124,13 +140,9 @@ export class RadarService implements OnDestroy {
   readonly trackGrid = computed<TrackingGrid>(() => {
     const product = this.activeProduct();
     let s = 90, w = 180, n = -90, e = -180;
-    // in merged mode the picture covers the PPZ scans too, which reach further than CAZ
-    const products: readonly RadarProductKey[] = product === 'caz' ? MERGED_PRODUCTS : [product];
     for (const st of this.stations) {
-      for (const p of products) {
-        const [[bs, bw], [bn, be]] = st.products[p].bounds;
-        s = Math.min(s, bs); w = Math.min(w, bw); n = Math.max(n, bn); e = Math.max(e, be);
-      }
+      const [[bs, bw], [bn, be]] = st.products[product].bounds;
+      s = Math.min(s, bs); w = Math.min(w, bw); n = Math.max(n, bn); e = Math.max(e, be);
     }
     return trackingGrid(s, w, n, e);
   });
@@ -174,15 +186,19 @@ export class RadarService implements OnDestroy {
   private liveClockTimer: any = null;
   private currentRequestId = 0;
   private mosaicTimer: ReturnType<typeof setTimeout> | null = null;
-  // Last processed sweep per station, keyed by a hash of the GIF bytes. IMD publishes new images
-  // roughly every 10 minutes, so most 1-minute refreshes can reuse the previous result.
+  // Last processed sweep per station, keyed by a hash of the GIF bytes. IMD writes new pictures
+  // about every five minutes, so most 1-minute refreshes can reuse the previous result.
   private sweepCache = new Map<string, { key: string; result: ProcessedRadarResult | null }>();
   /** The scan time read off each picture that prints it (see radar-stamp.ts), kept per picture so an unchanged one is not decoded again. */
   private stampCache = new Map<string, { hash: string; time: StampTime | null }>();
+  /**
+   * Per station and product (`stationId:product`): when its newest picture was written (the file's Last-Modified time) and
+   * when it was last asked for. They decide when the station is asked for again (see pictureNotDue).
+   */
+  private readonly pictureWrittenAt = new Map<string, number>();
+  private readonly pictureFetchedAt = new Map<string, number>();
   /** Decodes the pictures and builds their intensity fields in web workers (see radar-processor.ts). */
   private readonly processor = new RadarProcessor();
-  private readonly extrasFetchedAt = new Map<string, number>();
-  private static readonly EXTRAS_REFRESH_MS = 4 * 60_000;
 
   constructor() {
     this.fetchAllRadarSweeps();
@@ -319,8 +335,7 @@ export class RadarService implements OnDestroy {
   setProduct(product: RadarProductKey): void {
     this.activeProduct.set(product);
     this.allRadarResults.set(new Map());
-    this.extraResults.set(new Map());
-    this.extrasFetchedAt.clear();
+    this.forgetPictureTimes();
     this.compositeMosaic.set(null);
     this.clearHistory();
     this.fetchAllRadarSweeps();
@@ -329,6 +344,7 @@ export class RadarService implements OnDestroy {
   setTransparent(transparent: boolean): void {
     this.transparentMode.set(transparent);
     this.allRadarResults.set(new Map());
+    this.forgetPictureTimes();
     this.compositeMosaic.set(null);
     this.clearHistory();
     this.fetchAllRadarSweeps();
@@ -369,8 +385,6 @@ export class RadarService implements OnDestroy {
 
   private inFlightSweeps: { key: string; done: Promise<void>; startedAt: number } | null = null;
   private static readonly SWEEP_JOIN_MAX_MS = 90_000;
-  /** A station's newest scan is not looked for again before this age (IMD publishes about every 5 minutes). */
-  private static readonly SCAN_RECHECK_AFTER_MS = 4 * 60_000;
 
   private async runSweepFetch(): Promise<void> {
     const requestId = ++this.currentRequestId;
@@ -389,41 +403,12 @@ export class RadarService implements OnDestroy {
         if (!station) break;
         // IMD publishes a new scan about every 5 minutes: while the station's newest scan is younger than the next one is due,
         // downloading the same picture again only costs bandwidth, so the station waits until it is due
-        if (scanNotDue(this.allRadarResults().get(station.id)?.timing, Date.now(), RadarService.SCAN_RECHECK_AFTER_MS)) continue;
+        if (this.notDueYet(station, productKey)) continue;
         try {
-          // In merged mode (CAZ) the PPZ scan is fetched alongside; a missing one is simply left out of the merge. IMD updates
-          // about every 10 minutes, so it is refreshed every few minutes, and the X-band radar's is skipped: its images are
-          // big and the Chennai S-band radar covers the same ground.
-          const now = Date.now();
-          const wantExtras = productKey === 'caz' && station.band !== 'X-Band' && now - (this.extrasFetchedAt.get(station.id) ?? 0) >= RadarService.EXTRAS_REFRESH_MS;
-          const extras = wantExtras
-            ? await Promise.all(
-                MERGED_PRODUCTS.filter(p => p !== productKey).map(async p => [p, await this.processStationSweep(station, p, isTransparent, false).catch(() => null)] as const)
-              )
-            : [];
-          if (wantExtras && requestId === this.currentRequestId) {
-            // only a fully successful fetch starts the wait; a failed one is tried again on the next minute's refresh
-            if (extras.every(([, r]) => r)) this.extrasFetchedAt.set(station.id, now);
-            this.extraResults.update(map => {
-              const next = new Map(map);
-              for (const [p, r] of extras) {
-                const key = `${station.id}:${p}`;
-                const previous = next.get(key);
-                // a failed fetch keeps the last scan for up to an hour instead of making the layer vanish
-                if (r) next.set(key, r);
-                else if (!previous || now - (previous.timing?.epochMs ?? 0) > 60 * 60_000) next.delete(key);
-              }
-              return next;
-            });
-            this.scheduleMosaic();
-          }
           const res = await this.processStationSweep(station, productKey, isTransparent);
           if (res && requestId === this.currentRequestId) {
             // Unchanged image: same result object, nothing to redraw
-            if (this.allRadarResults().get(station.id) === res) {
-              if (extras.some(([, r]) => r)) this.scheduleMosaic(); // a merged scan may have changed even if CAZ did not
-              continue;
-            }
+            if (this.allRadarResults().get(station.id) === res) continue;
             this.allRadarResults.update(map => {
               const next = new Map(map);
               next.set(station.id, res);
@@ -472,7 +457,7 @@ export class RadarService implements OnDestroy {
     this.mosaicTimer = setTimeout(() => {
       this.mosaicTimer = null;
       this.lastMosaicAt = Date.now();
-      this.generateMergedMosaic();
+      this.generateComposite();
     }, wait);
   }
 
@@ -482,7 +467,7 @@ export class RadarService implements OnDestroy {
     clearTimeout(this.mosaicTimer);
     this.mosaicTimer = null;
     this.lastMosaicAt = Date.now();
-    this.generateMergedMosaic();
+    this.generateComposite();
   }
 
   /** FNV-1a hash of the raw image bytes, used to detect unchanged sweeps. */
@@ -495,12 +480,25 @@ export class RadarService implements OnDestroy {
     return `${bytes.length}:${(hash >>> 0).toString(16)}`;
   }
 
+  /** The results were dropped (new product or transparency): every station is asked for again, whatever its write time said. */
+  private forgetPictureTimes(): void {
+    this.pictureWrittenAt.clear();
+    this.pictureFetchedAt.clear();
+  }
+
+  /** True while the station's next picture is not due yet, so asking for it now would only return the same picture. */
+  private notDueYet(station: RadarStationConfig, product: RadarProductKey): boolean {
+    const key = `${station.id}:${product}`;
+    const written = this.pictureWrittenAt.get(key);
+    // no write time from the server: fall back to the scan time read off the picture
+    if (written === undefined) return scanNotDue(this.allRadarResults().get(station.id)?.timing, Date.now(), IMD_WRITE_GAP_MS - LOOK_LEAD_MS);
+    return pictureNotDue(Date.now(), written, this.pictureFetchedAt.get(key) ?? 0);
+  }
+
   async processStationSweep(
     station: RadarStationConfig,
     productKey: RadarProductKey,
-    isTransparent: boolean,
-    /** The primary scan (CAZ) sets the station's timing and online state; the merged extras do not. */
-    primary = true
+    isTransparent: boolean
   ): Promise<ProcessedRadarResult | null> {
     const productConfig = station.products[productKey] || station.products.caz;
     // One address per minute: the proxy caches for 60 s, so the same picture asked for twice in a minute is downloaded once
@@ -545,6 +543,11 @@ export class RadarService implements OnDestroy {
     }
 
     if (!rawArrayBuf) return null;
+
+    // when the picture was written and when it was asked for: the next look is timed from these (see notDueYet)
+    const pictureKey = `${station.id}:${productKey}`;
+    this.pictureFetchedAt.set(pictureKey, Date.now());
+    if (sweepHeaderIsWriteTime && sweepHeaderDate && !isNaN(sweepHeaderDate.getTime())) this.pictureWrittenAt.set(pictureKey, sweepHeaderDate.getTime());
 
     // ── Observation Timestamp Extraction & Per-Station Freshness Calculation ──
     let timing: RadarObservationTiming | null = binaryTiming;
@@ -591,7 +594,7 @@ export class RadarService implements OnDestroy {
     if (timing) {
       timing.ageMinutes = ageMinutes;
       timing.freshness = freshness;
-      if (primary) this.stationTimings.update(m => new Map(m).set(station.id, timing!));
+      this.stationTimings.update(m => new Map(m).set(station.id, timing!));
     }
 
     // Skip decoding only if radar sweep is older than 24 hours (1440 mins) or unreadable
@@ -615,10 +618,10 @@ export class RadarService implements OnDestroy {
     still ??= await this.processor.still(rawArrayBuf, pixelOptions);
     let processed: ProcessedRadarResult | null;
     if (still.decoded) {
-      processed = still.w < 50 || still.h < 50 ? null : this.buildResult(station, productKey, productConfig, still.w, still.h, still.layoutOk, still.field, timing, isDisplayed, primary);
+      processed = still.w < 50 || still.h < 50 ? null : this.buildResult(station, productKey, productConfig, still.w, still.h, still.layoutOk, still.field, timing, isDisplayed, true);
     } else if (still.bytes) {
       // the GIF reader could not decode it: the browser's own decoder, on the main thread
-      processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, still.bytes, timing, isDisplayed, primary);
+      processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, still.bytes, timing, isDisplayed);
     } else {
       processed = null;
     }
@@ -778,12 +781,8 @@ export class RadarService implements OnDestroy {
   }
 
   /** Rebuilds the live composite from the latest still of every radar. */
-  private generateMergedMosaic(): void {
-    // In merged mode ('caz'), combine CAZ with PPZ extras; in PPI mode, compose the PPI scans on their own
-    const sources = this.activeProduct() === 'caz'
-      ? [...this.allRadarResults(), ...this.extraResults()]
-      : [...this.allRadarResults()];
-    this.compositeMosaic.set(this.composeMosaic(sources, Date.now()));
+  private generateComposite(): void {
+    this.compositeMosaic.set(this.composeMosaic([...this.allRadarResults()], Date.now()));
   }
 
   /** The live composite on the storm-tracking grid. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { KARAIKAL_DWR_CONFIG, IMD_RADAR_STATIONS, rainRateToDbz } from '../domain/models/radar.model';
-import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scanNotDue } from './radar.service';
+import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scanNotDue, pictureNotDue } from './radar.service';
 
 describe('Radar Domain & Config', () => {
   it('should have valid Karaikal S-Band DWR configuration', () => {
@@ -458,5 +458,20 @@ describe('Radar refresh: which stations wait for their next scan', () => {
 
   it('does not wait on a scan time in the future (a clock that runs behind)', () => {
     expect(scanNotDue({ epochMs: T + 10 * 60_000, source: 'radar_metadata' }, T, recheck)).toBe(false);
+  });
+
+  it('asks again 4 min 54 s after a picture was written (IMD writes every five minutes), so the look lands just after the write', () => {
+    expect(pictureNotDue(T + 4 * 60_000 + 30_000, T, T)).toBe(true);   // 4 min 30 s after the write: not due
+    expect(pictureNotDue(T + 4 * 60_000 + 54_000, T, T)).toBe(false);  // 4 min 54 s: due
+  });
+
+  it('looks at a radar whose picture is over an hour old once in 15 minutes, not every minute', () => {
+    const old = T - 2 * 60 * 60_000;
+    expect(pictureNotDue(T, old, T - 5 * 60_000)).toBe(true);    // asked 5 min ago: wait
+    expect(pictureNotDue(T, old, T - 16 * 60_000)).toBe(false);  // asked 16 min ago: due
+  });
+
+  it('does not wait on a write time in the future', () => {
+    expect(pictureNotDue(T, T + 10 * 60_000, T)).toBe(false);
   });
 });
