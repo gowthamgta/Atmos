@@ -24,8 +24,8 @@ PROVIDES = frozenset(SOURCE_VARS) | frozenset(LEVEL_RAW_KEYS)
 UNAVAILABLE_VARS: frozenset[str] = unavailable_for(PROVIDES)
 _ifs025_bbox: tuple[float, float, float, float] | None = None
 # Bump when the way a run is built changes so that a run already live under the old way is rebuilt: v2 = the pressure levels
-# are published only with the 0.25 degree data (a run that went out with empty levels is rebuilt).
-LIVE_FORMAT = 2
+# are published only with the 0.25 degree data (a run that went out with empty levels is rebuilt); v3 = the 250 hPa level and vertical velocity.
+LIVE_FORMAT = 3
 # Steps whose pressure levels could not be read in this process. A run with any of them is published as incomplete, so the
 # next scheduled run builds it again (see run.py) instead of the empty levels staying live for twelve hours.
 _level_gaps: set[int] = set()
