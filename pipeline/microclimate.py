@@ -7,8 +7,7 @@ those values:
   heat         NWS heat index (Rothfusz) from the air temperature and humidity, with the NWS bands
   rain timing  the first time in the next 24 h the district's mean rain reaches 0.5 mm/h, and when it stops
   sea breeze   coastal districts only: the onshore wind (blowing from the sea) reaching 2 m/s between 09 and 18 IST
-  flood risk   the largest 24 h rain in the next 72 h, on the IMD classes (heavy 64.5 mm, very heavy 115.6, extremely heavy 204.5),
-               with the ensemble's chance of 50 mm or more at that time
+  flood risk   the largest 24 h rain in the next 72 h, on the IMD classes (heavy 64.5 mm, very heavy 115.6, extremely heavy 204.5)
 
 Sea breeze and rain timing are only as good as the model (a 10 km grid resolves the land-sea contrast only roughly), and nothing
 here is checked against station observations: see the app's notes.
@@ -30,7 +29,7 @@ OUT_FILE = "tn.json"
 VERSION = 1
 STATE = "Tamil Nadu"
 IST = timedelta(hours=5, minutes=30)
-VARS = ("t2m", "rh", "u10", "v10", "precip", "rain24", "px0", "xr")
+VARS = ("t2m", "rh", "u10", "v10", "precip", "rain24")
 DISTRICTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "public", "data", "south-india-districts.geojson")
 
 # Sea-side directions of the coastal districts, as unit vectors (east, north) pointing from the land to the sea. Only the
@@ -161,11 +160,11 @@ def window(times: list[datetime], now: datetime, hours: int) -> list[int]:
     return [i for i in range(first, len(times)) if times[i] <= times[first] + timedelta(hours=hours)]
 
 
-def rain_timing(times, precip, px0, idx) -> dict:
+def rain_timing(times, precip, idx) -> dict:
     """When the rain starts and stops in the window (mean rate of the district, mm/h)."""
     wet = [i for i in idx if np.isfinite(precip[i]) and precip[i] >= RAIN_MM_H]
     if not wet:
-        return {"start": None, "end": None, "ongoing": False, "peakMmH": 0.0, "peakTime": None, "chancePct": None}
+        return {"start": None, "end": None, "ongoing": False, "peakMmH": 0.0, "peakTime": None}
     s = wet[0]
     ongoing = s == idx[0]
     e = next((i for i in idx if i > s and np.isfinite(precip[i]) and precip[i] < RAIN_MM_H), None)
@@ -176,7 +175,6 @@ def rain_timing(times, precip, px0, idx) -> dict:
         "ongoing": ongoing,
         "peakMmH": round(float(precip[peak]), 1),
         "peakTime": iso(times[peak]),
-        "chancePct": None if not np.isfinite(px0[s]) else round(float(px0[s])),
     }
 
 
@@ -197,17 +195,16 @@ def sea_breeze(times, u, v, sea_side, idx) -> dict:
     }
 
 
-def flood_risk(times, rain24, xr, idx) -> dict:
-    """The largest 24 h rain in the window, its IMD class and the ensemble's chance of 50 mm or more then."""
+def flood_risk(times, rain24, idx) -> dict:
+    """The largest 24 h rain in the window and its IMD class."""
     vals = [(rain24[i], i) for i in idx if np.isfinite(rain24[i])]
     if not vals:
-        return {"band": "No data", "peakMm": None, "peakTime": None, "chance50Pct": None}
+        return {"band": "No data", "peakMm": None, "peakTime": None}
     mm, i = max(vals)
     return {
         "band": flood_band(mm),
         "peakMm": round(float(mm), 1),
         "peakTime": iso(times[i]),
-        "chance50Pct": None if not np.isfinite(xr[i]) else round(float(xr[i])),
     }
 
 
@@ -253,7 +250,7 @@ def build(site_run: tuple[str, list[datetime], dict[str, list[np.ndarray]]], dis
         t = mean("t2m")
         rh = np.clip(mean("rh"), 0, 100)
         u, v = mean("u10"), mean("v10")
-        precip, rain24, px0, xr = mean("precip"), mean("rain24"), mean("px0"), mean("xr")
+        precip, rain24 = mean("precip"), mean("rain24")
         wind = np.hypot(u, v)
         frm = (np.degrees(np.arctan2(-u, -v)) + 360.0) % 360.0
         hi = heat_index_c(t, rh)
@@ -276,13 +273,13 @@ def build(site_run: tuple[str, list[datetime], dict[str, list[np.ndarray]]], dis
             "series": {
                 "tempC": _series(t, 1), "heatIndexC": _series(hi, 1), "rhPct": _series(rh, 0),
                 "windMs": _series(wind, 1), "windFromDeg": _series(frm, 0), "precipMmH": _series(precip, 2),
-                "chancePct": _series(px0, 0), "rain24Mm": _series(rain24, 1), "extremeChancePct": _series(xr, 0),
+                "rain24Mm": _series(rain24, 1),
             },
             "indicators": {
                 "heat": heat,
-                "rain": rain_timing(times, precip, px0, idx24),
+                "rain": rain_timing(times, precip, idx24),
                 "seaBreeze": sea,
-                "flood": flood_risk(times, rain24, xr, idx72),
+                "flood": flood_risk(times, rain24, idx72),
             },
         })
     return {

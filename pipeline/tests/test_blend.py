@@ -57,8 +57,8 @@ def test_models_are_lined_up_by_valid_time_and_interpolated_only_between_real_st
     assert blend.field_at_valid(c, "t2m", valid(-3)) is None and blend.field_at_valid(c, "t2m", valid(15)) is None
     assert blend.field_at_valid(c, "u10", valid(3)) is None                          # a variable the model does not have
     far = tmp_path / "sparse"
-    _write_model(str(far), "gdps", T0, [0, 12], {"t2m": lambda h: 20})
-    assert blend.field_at_valid(blend.load_component(str(far), "gdps"), "t2m", valid(6)) is None    # 12 h apart: not bridged
+    _write_model(str(far), "gfs", T0, [0, 12], {"t2m": lambda h: 20})
+    assert blend.field_at_valid(blend.load_component(str(far), "gfs"), "t2m", valid(6)) is None    # 12 h apart: not bridged
 
 
 def test_the_blend_axis_starts_at_the_newest_run_and_runs_to_the_longest_horizon(tmp_path):
@@ -88,7 +88,7 @@ def test_build_blends_models_from_different_runs_and_publishes_a_manifest(tmp_pa
     assert abs(float(_read(site, "precip", 0)[0, 0]) - (3 * 1 + 2 * 3) / 5) < 0.05
     # past GFS's last step (T0+15h) only IFS is left
     assert abs(float(_read(site, "t2m", 12)[0, 0]) - 38) < 0.02                          # T0+18h: 20 + 18
-    assert "px0" not in manifest["vars"] and "xr" not in manifest["vars"] and {"t2m", "precip"} <= set(manifest["vars"])
+    assert {"t2m", "precip"} <= set(manifest["vars"])
     latest = json.load(open(os.path.join(site, "blend", "latest.json")))
     assert latest["run"] == run_id and latest["components"] == manifest["components"]
 
@@ -100,14 +100,6 @@ def test_build_needs_at_least_two_models_and_ignores_its_own_output(tmp_path):
     _write_model(site, "ecmwf_ifs", T0, [0, 3], {"t2m": lambda h: 20})
     assert blend.build(site)
     assert "blend" not in [c.model for c in blend.components_of(site)]                  # a second build never blends the old blend
-
-
-def test_the_ensemble_product_is_not_a_model_to_blend(tmp_path):
-    site = str(tmp_path)
-    _write_model(site, "gfs", T0, [0, 3], {"t2m": lambda h: 30})
-    _write_model(site, "ecmwf_ifs", T0, [0, 3], {"t2m": lambda h: 20})
-    _write_model(site, "ens", T0, [0, 3], {"t2m": lambda h: 99})          # same layout as a model, but it is not one
-    assert sorted(c.model for c in blend.components_of(site)) == ["ecmwf_ifs", "gfs"]
 
 
 def _spike(value, row, col):
@@ -241,3 +233,23 @@ def test_missing_models_are_named(tmp_path):
     _write_model(site, "gfs", T0, [0], {"t2m": lambda h: 24.0})
     missing = blend.missing_models(blend.components_of(site))
     assert "ukmo" in missing and "ecmwf_ifs" not in missing and "gfs" not in missing
+
+
+def test_rain_over_24_hours_is_the_sum_of_the_blended_rain_rate():
+    # a 3 h rate of 1 mm/h for 8 steps is 24 mm over the next 24 h; a missing rate makes its cells NaN
+    rates = [np.full((C.NY, C.NX), 1.0, np.float32) for _ in range(12)]
+    rates[5][0, 0] = np.nan
+    out = blend.rain24_from_precip(rates)
+    assert np.allclose(out[0][1, 1], 24.0) and np.allclose(out[3][1, 1], 24.0)
+    assert np.isnan(out[0][0, 0]) and np.isnan(out[3][0, 0])      # the windows of steps 0 and 3 hold the missing rate
+    assert np.isnan(out[4:]).all()                                  # the last 24 h of the axis have no full day after them
+
+
+def test_the_blend_writes_a_24_hour_rain_that_matches_its_own_rain_rate(tmp_path):
+    site = str(tmp_path)
+    hours = [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30]
+    _write_model(site, "ecmwf_ifs", T0, hours, {"t2m": lambda h: 20, "precip": lambda h: 1.0, "rain24": lambda h: 0.0})
+    _write_model(site, "gfs", T0, hours, {"t2m": lambda h: 22, "precip": lambda h: 1.0, "rain24": lambda h: 0.0})
+    blend.build(site)
+    assert abs(float(_read(site, "rain24", 0)[10, 10]) - 24.0) < 0.1          # 1 mm/h for 24 h, whatever the models' own totals say
+    assert abs(float(_read(site, "precip", 0)[10, 10]) - 1.0) < 0.01

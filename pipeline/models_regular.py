@@ -59,24 +59,4 @@ UKMO = RegularModel(
 )
 
 
-# Environment Canada GDPS ~15 km: surface fields and the pressure levels are separate datasets, winds as speed + direction.
-GDPS = RegularModel(
-    model_id="gdps", label="Canada GDPS", run_hours=(0, 12), step_hours=STEPS_3H_144,
-    sources=[
-        Source("cmc_gem_gdps_15km", _SAME(SURFACE_CORE + ["wind_gusts_10m", "shortwave_radiation"]),
-               winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"),)),
-        Source("cmc_gem_gdps_15km_upper_level", _SAME(level_scalars()), winds=level_speed_dir()),
-    ],
-)
-
-
-# China Meteorological Administration GRAPES global (~15 km). Large files, so every other output step and two runs a day.
-GRAPES = RegularModel(
-    model_id="cma_grapes", label="CMA GRAPES", run_hours=(0, 12), step_hours=list(range(0, 121, 6)),
-    sources=[Source("cma_grapes_global",
-                    _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CIN_LI + CLOUD_LAYERS + ["visibility", "shortwave_radiation"]
-                          + level_uv() + level_scalars() + level_w()))],
-)
-
-
-ALL: tuple[RegularModel, ...] = (ICON, UKMO, GDPS, GRAPES)
+ALL: tuple[RegularModel, ...] = (ICON, UKMO)

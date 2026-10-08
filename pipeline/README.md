@@ -27,8 +27,8 @@ python run.py --out site --force                 # full run into ./site
 ```
 Variables (see `config.py`):
 - surface: `t2m`, `rh`, `feels`, `dew` (dew point), `u10`/`v10`, `gust`, `msl`, `precip`, `cloud`, `cloud_low`/`cloud_mid`/`cloud_high`,
-  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`, `li` (lifted index, GFS and GRAPES only), `cin` (convective inhibition, magnitude;
-  IFS, GFS, UKMO and GRAPES), `rain24` (mm over the next 24 h from each step, see below)
+  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`, `li` (lifted index, GFS only), `cin` (convective inhibition, magnitude;
+  IFS, GFS and UKMO), `rain24` (mm over the next 24 h from each step, see below)
 - pressure levels 925, 850, 700, 500, 300 and 200 hPa (about 0.8, 1.5, 3, 5.6, 9.2 and 12 km up), five fields each:
   `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height). These are stored with 12 significant bits (error far below
   anything visible: 0.003 degC, 0.02 m/s), which makes them about 25% smaller.
@@ -52,36 +52,21 @@ rain window covers the gap (exact), otherwise it is estimated from the mean of t
 sampled, e.g. one hour in three). No data where the run ends before 24 h more. Checked on a real GFS run against Open-Meteo's
 hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can differ by tens of mm).
 
-## Chance of rain (`px0`) and extreme-rain probability (`xr`)
-`ens.py` reads ECMWF's own ensemble (50 members, open data, CC BY 4.0) and publishes the share of members whose rain over the
-next 24 h reaches 0.1 mm (measurable rain), for starts every 6 h to +72 h: PoP = wet members / all members. `attach.py` copies it
-onto every model's own timeline (linear in time between starts), so the layer works with any model. Open-Meteo's ensemble
-datasets only have an "any rain" probability, which is why ECMWF's files are used. ECMWF's global grids start at 180 E (not 0),
-which `ens.read_members` handles; a test builds a GRIB in that layout. The chance is on the ensemble's own 0.25 degree grid
-(about 25 km), resampled to 0.1 degree.
-
-`xr`, the extreme-rain probability, is ECMWF's own: the open data has ready-made ensemble probability products (`type=ep`; the
-list is `10fgg10/15/25`, `tpg1/5/10/20/25/50/100`, `ptsa_*` at 850 hPa and the `gh`, `t`, `ws`, `msl` probabilities), and `tpg50` is the chance
-of 50 mm or more of rain in a 24 h window. ECMWF publishes a window every 12 h; `ens.py` fetches the few messages it needs (about
-0.3 MB, byte ranges through the `ecmwf-opendata` client), regrids them like the members, and gives the starts in between the mix of
-the two windows around them. `attach.py` copies it onto every model's timeline like `px0`. The Extreme Forecast Index itself (EFI) is
-not in the open data: ECMWF publishes it only as rendered charts (charts.ecmwf.int, Europe, no cross-origin access) and its GRIB fields are
-restricted to member states.
-
 ## All models in one (`blend`)
 `blend.py` writes one more model: the weighted mean of every model's published fields, lined up by valid time (a time between
 two steps is interpolated only when both exist; wind is averaged as u and v). Weights in `blend.WEIGHTS` (IFS 3, GFS 2, UKMO 2,
-AIFS 1.5, ICON 1.5, GDPS 1, GRAPES 1); a model that ends early drops out. Its run id is the assembly time, so a changed input
+AIFS 1.5, ICON 1.5); a model that ends early drops out. Its run id is the assembly time, so a changed input
 always gets new URLs.
 
 A plain average is blurrier than every one of its members (measured on a real run: mean gradient of temperature 0.19 against
 0.29 for IFS; rain 0.018 against 0.029), because it carries the resolution of its coarsest models. So the blend (a) uses
 probability matching for rain and the 24 h total (the position comes from the mean, the intensities are the weighted mean of
-the models' own sorted values, so peaks and wet area stay realistic), (b) adds back the fine structure of the best-resolved model
-(`blend.RESOLUTION_ORDER`: that model minus a ~28 km smoothed copy of itself, at gain 0.5), and (c) is clipped to the range of
+the models' own sorted values, so peaks and wet area stay realistic), (b) sums the 24 h rain from the blended rain rate (not averaged
+separately, which left the two disagreeing: a 24 h total of 1.3 mm against 0.1 mm of rain in the same day), (c) adds back the fine structure of the best-resolved model
+(`blend.RESOLUTION_ORDER`: that model minus a ~28 km smoothed copy of itself, at gain 0.5), and (d) is clipped to the range of
 the models at each cell. Result on the same run: 88-99% of IFS's sharpness, the same domain-mean rain, a rain peak of 5.8 mm/h
-against 3.1 for the plain mean. `blend.VERSION` and `ens.VERSION` are bumped when a method changes, which makes a run that is
-already live under the old method rebuild. The workflow order is: models, `ens.py`, `mirror.py` (unchanged models, ens, blend), `blend.py`, `attach.py`.
+against 3.1 for the plain mean. `blend.VERSION` (now 4) is bumped when a method changes, which makes a run that is already live under the old method rebuild.
+The workflow order is: models, `cyclones.py`, `fy4.py`, `mirror.py` (unchanged models and blend), `blend.py`, `microclimate.py`.
 
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
@@ -98,8 +83,6 @@ Sources are Open-Meteo's public `data_spatial` datasets.
 | `gfs` | NOAA GFS (0.117° surface + 0.25° pressure/gusts/CAPE) | +144 h, 3-hourly | 4 a day | 1 h to +120 h, then 3 h | - |
 | `ukmo` | UK Met Office global 10 km | ~10 km, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
 | `dwd_icon` | DWD ICON global | regular grid, +144 h, 3-hourly | 00Z 12Z | 1 h to +78 h, then 3 h | sunshine, visibility, moisture |
-| `gdps` | Environment Canada GDPS (surface + upper-level datasets) | ~15 km, +144 h, 3-hourly | 00Z 12Z | 1 h, then 3 h | low/mid/high cloud, CAPE, visibility, moisture |
-| `cma_grapes` | CMA GRAPES global | ~15 km, +120 h, 6-hourly sampled | 00Z 12Z | 3 h | moisture |
 
 How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
 accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);

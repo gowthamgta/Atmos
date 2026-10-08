@@ -1,7 +1,7 @@
 name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data, cut out South India,
-# encode them, add the ECMWF-ensemble rain chances (ens.py) and an all-model blend (blend.py), and deploy the result to
+# encode them, add an all-model blend (blend.py) and the Tamil Nadu microclimate (microclimate.py), and deploy the result to
 # GitHub Pages (free, CORS-open). No external storage, no billing.
 # Runs every 30 minutes (the FY-4B satellite pictures are new every 15): each model exits early when its newest run is not ready, is not one it uses, or is already live.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
@@ -60,21 +60,18 @@ jobs:
             python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force \
               || echo "::warning::$model failed; the live copy stays in place"
           done
-          # the ECMWF ensemble: chance of heavy rain in the next 24 h (attached to every model below)
-          python ens.py --out site --live-url "$base/ens/latest.json" $force \
-            || echo "::warning::ens failed; the live copy stays in place"
           # tropical-cyclone tracks near South India (a small JSON file; the live one is kept when there is nothing new)
-          python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force             || echo "::warning::cyclones failed; the live file stays in place"
+          python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
+            || echo "::warning::cyclones failed; the live file stays in place"
           # FY-4B pictures of South India (a new slot every 15 minutes); the live ones are kept when there is nothing new
           python fy4.py --out site --live-url "$base/fy4/latest.json" $force \
             || echo "::warning::fy4 failed; the live pictures stay in place"
           if ls site/*/latest.json >/dev/null 2>&1; then
-            # models that were not rebuilt (and the previous ensemble and blend) come over from the live site
-            python mirror.py --site site --base-url "$base" --models $models ens blend
-            # one forecast from all the models, then the ensemble chances on every model's timeline (the blend included)
+            # models that were not rebuilt (and the previous blend) come over from the live site
+            python mirror.py --site site --base-url "$base" --models $models blend
+            # one forecast from all the models
             python blend.py --site site --live-url "$base/blend/latest.json" $force \
               || echo "::warning::blend failed; the live copy stays in place"
-            python attach.py --site site
             # Tamil Nadu districts: the blend averaged over each district with the heat, rain, sea-breeze and flood indicators
             python microclimate.py --site site --districts ../public/data/south-india-districts.geojson \
               || echo "::warning::microclimate failed; the live file stays in place"

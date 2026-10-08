@@ -12,7 +12,6 @@ export interface RainIndicator {
   ongoing: boolean;
   peakMmH: number;
   peakTime: string | null;
-  chancePct: number | null;
 }
 
 export interface SeaBreezeIndicator {
@@ -25,7 +24,6 @@ export interface FloodIndicator {
   band: string;
   peakMm: number | null;
   peakTime: string | null;
-  chance50Pct: number | null;
 }
 
 export interface DistrictSeries {
@@ -35,9 +33,7 @@ export interface DistrictSeries {
   windMs: (number | null)[];
   windFromDeg: (number | null)[];
   precipMmH: (number | null)[];
-  chancePct: (number | null)[];
   rain24Mm: (number | null)[];
-  extremeChancePct: (number | null)[];
 }
 
 export interface DistrictMicroclimate {
@@ -72,9 +68,7 @@ export interface StepValues {
   windMs: number | null;
   windFromDeg: number | null;
   precipMmH: number | null;
-  chancePct: number | null;
   rain24Mm: number | null;
-  extremeChancePct: number | null;
 }
 
 /** Index of the last step at or before `timeMs` (the first step when the time is earlier than all of them). */
@@ -97,9 +91,7 @@ export function valuesAt(d: DistrictMicroclimate, index: number): StepValues {
     windMs: at(s.windMs),
     windFromDeg: at(s.windFromDeg),
     precipMmH: at(s.precipMmH),
-    chancePct: at(s.chancePct),
     rain24Mm: at(s.rain24Mm),
-    extremeChancePct: at(s.extremeChancePct),
   };
 }
 

@@ -55,7 +55,6 @@ import { PanelService } from '../../core/ui/panel.service';
                 <li><span>Humidity</span><b>{{ fmt(now().rhPct, 0) }}%</b></li>
                 <li><span>Wind</span><b>{{ windText() }}</b></li>
                 <li><span>Rain now</span><b>{{ fmt(now().precipMmH, 1) }} mm/h</b></li>
-                <li><span>Rain chance, next 24 h</span><b>{{ pct(now().chancePct) }}</b></li>
               </ul>
             </div>
 
@@ -190,10 +189,6 @@ export class MicroclimateCardComponent {
     return v === null || !Number.isFinite(v) ? '–' : v.toFixed(digits);
   }
 
-  protected pct(v: number | null): string {
-    return v === null || !Number.isFinite(v) ? '–' : `${Math.round(v)}%`;
-  }
-
   protected windText(): string {
     const v = this.now();
     if (v.windMs === null) return '–';
@@ -224,7 +219,6 @@ export class MicroclimateCardComponent {
   protected floodText(d: DistrictMicroclimate): string {
     const f = d.indicators.flood;
     if (f.peakMm === null) return 'No data';
-    const chance = f.chance50Pct === null ? '' : ` · chance of 50 mm or more ${Math.round(f.chance50Pct)}%`;
-    return `up to ${Math.round(f.peakMm)} mm in 24 h, ${istLabel(f.peakTime)}${chance}`;
+    return `up to ${Math.round(f.peakMm)} mm in 24 h, ${istLabel(f.peakTime)}`;
   }
 }

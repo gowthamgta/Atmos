@@ -10,7 +10,6 @@ in the same format, so the app treats it like any other.
   - Wind is averaged as u and v components, which is the right vector mean (strongly disagreeing models cancel out).
   - Weights favour the models that verify best here (ECMWF IFS first); a model that stops early (UK Met Office at
     +60 h) simply drops out and the rest carry on.
-  - The ensemble rain chances are not blended: attach.py adds them to this model like any other.
 
   python blend.py --site site              # writes site/blend (reads every model folder in site)
 """
@@ -28,12 +27,11 @@ from encode import decode_field, encode_field
 BLEND_ID = "blend"
 LABEL = "All models (blend)"
 STEP_HOURS = 3
-VERSION = 3        # bump when the method changes: v2 added probability-matched rain and high-resolution detail; v3 rebuilds when a model is rebuilt under the same run
+VERSION = 4        # bump when the method changes: v2 added probability-matched rain and high-resolution detail; v3 rebuilds when a model is rebuilt under the same run; v4 sums rain24 from the blended rain rate
 # Relative weights. IFS is the best global model for this region; AIFS, ICON and the UKMO model are close behind.
 WEIGHTS: dict[str, float] = {
-    "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5, "gdps": 1.0, "cma_grapes": 1.0,
+    "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5,
 }
-NOT_BLENDED = {"px0", "xr"}     # added to every model by attach.py
 
 # --- keeping the blend sharp --------------------------------------------------------------------------------------
 # A plain average of models smears everything to the resolution of its coarsest members (AIFS 28 km, GRAPES and GDPS
@@ -42,11 +40,11 @@ NOT_BLENDED = {"px0", "xr"}     # added to every model by attach.py
 #     the *intensities* are the weighted mean of the models' own sorted values, so peaks stay realistic.
 #  2. Fine detail comes back from the highest-resolution model that has the variable: its field minus a smoothed copy
 #     of itself (the structure the coarse models cannot know) is added to the consensus.
-RESOLUTION_ORDER = ["ecmwf_ifs", "ukmo", "dwd_icon", "gfs", "gdps", "cma_grapes", "ecmwf_aifs"]   # finest first (native grid 9 to 28 km)
+RESOLUTION_ORDER = ["ecmwf_ifs", "ukmo", "dwd_icon", "gfs", "ecmwf_aifs"]   # finest first (native grid 9 to 28 km)
 PROBABILITY_MATCHED = {"precip", "rain24"}
 DETAIL_SIGMA_PX = 2.5     # about 28 km at 0.1 degrees: below this scale only the high-resolution models have real information
 DETAIL_GAIN = 0.5    # measured on real runs: lands the blend at about the sharpness of the best model, not beyond it
-NOT_MODELS = {BLEND_ID, "ens"}                # folders in the site that are products, not forecast models
+NOT_MODELS = {BLEND_ID}                       # folders in the site that are products, not forecast models
 
 
 def parse_valid(text: str) -> datetime:
@@ -217,6 +215,26 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
     return out
 
 
+def rain24_from_precip(precip: list[np.ndarray], step_hours: int = STEP_HOURS, hours: int = 24) -> list[np.ndarray]:
+    """Rain over the next `hours` hours from each step (mm), summed from the blend's rain rate (mm/h, the mean over the 3 h
+    before each step), the way derive.forward_accumulation sums a model's. A cell with a missing rate in the window, or a
+    step too close to the end of the axis, is NaN. Summing the blended rate keeps it consistent with the blended precipitation."""
+    k = hours // step_hours
+    out: list[np.ndarray] = []
+    for i in range(len(precip)):
+        if i + k >= len(precip):
+            out.append(np.full((C.NY, C.NX), np.nan, np.float32))
+            continue
+        acc = np.zeros((C.NY, C.NX), np.float64)
+        missing = np.zeros((C.NY, C.NX), bool)
+        for rate in precip[i + 1:i + k + 1]:
+            missing |= ~np.isfinite(rate)
+            acc += np.where(np.isfinite(rate), rate, 0.0) * step_hours
+        acc[missing] = np.nan
+        out.append(acc.astype(np.float32))
+    return out
+
+
 def write(path: str, data: bytes) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
@@ -252,7 +270,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     ref, axis = blend_axis(components)
     if steps_limit:
         axis = axis[:steps_limit]
-    variables = sorted({v for c in components for v in c.vars} - NOT_BLENDED)
+    variables = sorted({v for c in components for v in c.vars})
     published = [v for v in variables if v in C.VARS]
     runs = {c.model: c.run_id for c in components}
     run_id = run_id_now()
@@ -261,17 +279,30 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     if missing_models(components):
         print(f"blend: WARNING: no data for {', '.join(missing_models(components))}; they are not in this blend", flush=True)
 
+    # rain over the next 24 h is summed from the blend's own rain rate (see rain24_from_precip), so the two agree
+    from_precip = "precip" in published and "rain24" in published
+    step_vars = [v for v in published if not (from_precip and v == "rain24")]
+
     def one(i: int):
-        fields = blend_step(components, published, axis[i])
-        return i, {v: encode_field(fields[v], C.VARS[v].lo, C.VARS[v].hi, C.VARS[v].bits) for v in published}
+        fields = blend_step(components, step_vars, axis[i])
+        return i, fields
 
     steps = []
+    precip: list[np.ndarray] = []
+    h_of: list[int] = []
     with ThreadPoolExecutor(workers) as pool:
-        for i, pngs in pool.map(one, range(len(axis))):
+        for i, fields in pool.map(one, range(len(axis))):
             h = int((axis[i] - ref).total_seconds() // 3600)
-            for v, png in pngs.items():
-                write(os.path.join(run_dir, v, f"{h:03d}.png"), png)
+            for v in step_vars:
+                write(os.path.join(run_dir, v, f"{h:03d}.png"), encode_field(fields[v], C.VARS[v].lo, C.VARS[v].hi, C.VARS[v].bits))
+            if from_precip:
+                precip.append(fields["precip"])
+            h_of.append(h)
             steps.append({"h": h, "valid": f"{axis[i]:%Y-%m-%dT%H:%M:%SZ}"})
+    if from_precip:
+        info = C.VARS["rain24"]
+        for h, r in zip(h_of, rain24_from_precip(precip)):
+            write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(r, info.lo, info.hi, info.bits))
     manifest = {
         "model": BLEND_ID,
         "run": run_id,

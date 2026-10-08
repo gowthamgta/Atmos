@@ -199,15 +199,6 @@ export class ForecastStateService {
     this.mapLayers.selectSingleLayer('gibs');
   }
 
-  /** Observed rain (NASA IMERG) is another observed layer, replacing any forecast layer. */
-  selectImerg(): void {
-    this.activeLayerId.set(null);
-    this.windParticles.set(false);
-    this.isobars.set(false);
-    this.pause();
-    this.mapLayers.selectSingleLayer('imerg');
-  }
-
   private start(): void {
     void this.catalog.ensureLoaded().then(() => this.initialiseTime());
   }

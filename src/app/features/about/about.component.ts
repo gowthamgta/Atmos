@@ -12,11 +12,9 @@ const CREDITS: readonly Credit[] = [
   { name: 'NOAA GFS', what: 'NOAA / NCEP (US public domain)' },
   { name: 'DWD ICON', what: 'Deutscher Wetterdienst open data' },
   { name: 'UK Met Office', what: 'Contains Met Office data' },
-  { name: 'Canada GDPS', what: 'Environment and Climate Change Canada' },
-  { name: 'CMA GRAPES', what: 'China Meteorological Administration' },
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
-  { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); observed rain from NASA GPM IMERG; cyclone tracks from ECMWF open data' },
+  { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
   { name: 'Terrain', what: 'AWS Terrain Tiles (SRTM and other public DEMs)' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
   { name: 'Base map', what: '© OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors; hillshade © Esri' },
@@ -40,7 +38,7 @@ const CREDITS: readonly Credit[] = [
           <button type="button" class="close" (click)="panels.close('about')" aria-label="Close" title="Close (Esc)">×</button>
         </header>
         <p>
-          A forecast map for South India and the seas around it. Ten weather models, resampled onto one 0.1° grid, with
+          A forecast map for South India and the seas around it. Five weather models, resampled onto one 0.1° grid, with
           temperature and humidity adjusted to 1 km terrain. A personal, non-commercial project; forecasts are model
           output and not a safety warning, so follow IMD for official alerts.
         </p>

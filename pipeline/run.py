@@ -41,7 +41,7 @@ def build_manifest(fetcher, run, steps, build=None):
         "levels": list(C.LEVELS),
         "path": "{var}/{h:03d}.png",
         "notes": {"precip": fetcher.PRECIP_NOTE},
-        # which build of the run this is: a run built again under the same id (levels that were missing, new ensemble chances) gets a
+        # which build of the run this is: a run built again under the same id (levels that were missing, a changed method) gets a
         # new one, and the app puts it on every picture's address so no browser keeps the old pictures
         "build": build or build_id(),
     }

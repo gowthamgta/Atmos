@@ -19,13 +19,13 @@ const chennai: DistrictMicroclimate = {
   name: 'Chennai', lat: 13, lon: 80.2, coastal: true,
   series: {
     tempC: [28, 30, 32], heatIndexC: [30, 33, 37], rhPct: [80, 70, 60], windMs: [3, 4, null], windFromDeg: [90, 85, 80],
-    precipMmH: [0, 0.6, 0], chancePct: [10, 40, 60], rain24Mm: [5, 9, 12], extremeChancePct: [0, 2, 3],
+    precipMmH: [0, 0.6, 0], rain24Mm: [5, 9, 12],
   },
   indicators: {
     heat: { peakC: 37, peakTime: '2026-10-08T06:00:00Z', band: 'Extreme caution' },
-    rain: { start: '2026-10-08T03:00:00Z', end: null, ongoing: false, peakMmH: 0.6, peakTime: '2026-10-08T03:00:00Z', chancePct: 40 },
+    rain: { start: '2026-10-08T03:00:00Z', end: null, ongoing: false, peakMmH: 0.6, peakTime: '2026-10-08T03:00:00Z' },
     seaBreeze: { likely: true, from: '2026-10-08T06:00:00Z', peakOnshoreMs: 3.8 },
-    flood: { band: 'Low', peakMm: 12, peakTime: '2026-10-08T06:00:00Z', chance50Pct: 3 },
+    flood: { band: 'Low', peakMm: 12, peakTime: '2026-10-08T06:00:00Z' },
   },
 };
 

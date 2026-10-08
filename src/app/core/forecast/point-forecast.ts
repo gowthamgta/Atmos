@@ -5,7 +5,7 @@ import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terra
 /** Fields read for the click card at the ground. */
 export const SURFACE_INSPECT_VARS = [
   't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
-  'rain24', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv', 'px0', 'xr',
+  'rain24', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv',
 ] as const;
 
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
@@ -103,17 +103,10 @@ export function buildPointRows(
   rows.splice(1, 0, ...extremes.filter(([, , x]) => !Number.isNaN(x)).map(([id, label, x]) => (
     { id, label, text: withUnit(adjust('temperature', x), 1, '°C'), terrainAdjusted: adjusted })));
   if (!Number.isNaN(v('rain24'))) {
-    // rows after the rain one: the 24 h total, and the chance of rain and the extreme-rain probability (shown only where the data exists)
+    // the row after the rain one: the 24 h total
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
       id: 'rain24', label: 'Rain, next 24 h', text: withUnit(adjust('rain', v('rain24')), v('rain24') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
-  }
-  const chances: [string, string, number][] = [
-    ['px0', 'Chance of rain, next 24 h', v('px0')],
-    ['xr', 'Chance of 50+ mm, next 24 h', v('xr')],
-  ];
-  for (const [id, label, p] of chances) {
-    if (!Number.isNaN(p)) rows.push({ id, label, text: `${fmt(p)} %`, terrainAdjusted: false });
   }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {
@@ -153,7 +146,7 @@ export function buildPointRows(
 /** The click-card row that shows each layer's value at the ground. */
 const LAYER_ROW: Record<string, string> = {
   temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24',
-  tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin', px0: 'px0', xr: 'xr',
+  tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin',
 };
 /** ...and at a pressure level (only some layers can be shown there). */
 const LAYER_LEVEL_ROW: Record<string, string> = { temp: 'lvl-temp', humidity: 'lvl-humidity', wind: 'lvl-wind', pressure: 'lvl-height', vertical: 'lvl-w', vorticity: 'lvl-vo', divergence: 'lvl-dv' };

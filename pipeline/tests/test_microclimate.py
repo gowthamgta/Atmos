@@ -39,18 +39,17 @@ def test_a_point_inside_a_square_only():
 def test_rain_timing_finds_the_start_end_and_peak():
     times = [datetime(2026, 10, 8, 0, tzinfo=UTC) + timedelta(hours=3 * k) for k in range(8)]
     precip = np.array([0.0, 0.1, 0.8, 2.0, 0.3, 0.0, 0.0, 0.0])
-    px0 = np.array([10, 20, 60, 80, 40, 10, 5, 5], float)
-    r = M.rain_timing(times, precip, px0, list(range(8)))
+    r = M.rain_timing(times, precip, list(range(8)))
     assert r["start"] == "2026-10-08T06:00:00Z" and r["end"] == "2026-10-08T12:00:00Z"
-    assert r["peakMmH"] == 2.0 and r["peakTime"] == "2026-10-08T09:00:00Z" and r["chancePct"] == 60
+    assert r["peakMmH"] == 2.0 and r["peakTime"] == "2026-10-08T09:00:00Z"
     assert r["ongoing"] is False
 
 
 def test_rain_already_falling_is_ongoing_and_dry_means_no_start():
     times = [datetime(2026, 10, 8, 0, tzinfo=UTC) + timedelta(hours=3 * k) for k in range(3)]
-    ongoing = M.rain_timing(times, np.array([1.0, 0.0, 0.0]), np.zeros(3), [0, 1, 2])
+    ongoing = M.rain_timing(times, np.array([1.0, 0.0, 0.0]), [0, 1, 2])
     assert ongoing["ongoing"] is True and ongoing["start"] == "2026-10-08T00:00:00Z"
-    dry = M.rain_timing(times, np.zeros(3), np.zeros(3), [0, 1, 2])
+    dry = M.rain_timing(times, np.zeros(3), [0, 1, 2])
     assert dry["start"] is None and dry["end"] is None
 
 
@@ -88,7 +87,7 @@ def _write_blend(site: str, run: str, valid: list[datetime], values: dict[str, f
     for k, t in enumerate(valid):
         steps.append({"h": k * 3, "valid": t.strftime("%Y-%m-%dT%H:%M:%SZ")})
     for name, (lo, hi) in {"t2m": (-10, 50), "rh": (0, 100), "u10": (-60, 60), "v10": (-60, 60), "precip": (0, 100),
-                           "rain24": (0, 600), "px0": (0, 100), "xr": (0, 100)}.items():
+                           "rain24": (0, 600)}.items():
         vars_[name] = {"unit": "x", "min": lo, "max": hi, "encoding": "rg16"}
         for k in range(len(valid)):
             path = os.path.join(root, run, name, f"{k * 3:03d}.png")
@@ -107,7 +106,6 @@ def test_a_whole_run_gives_every_district_its_values_and_indicators(tmp_path):
         "rh": 70, "u10": -4.0, "v10": 0.0,
         "precip": lambda k: 3.0 if k in (5, 6) else 0.0,
         "rain24": lambda k: 80.0 if k == 6 else 10.0,
-        "px0": 60, "xr": 40,
     })
     got = M.read_blend(site)
     assert got is not None

@@ -18,7 +18,7 @@ export function levelHeightLabel(level: Level): string {
   return level === 'surface' ? 'at the ground' : `about ${LEVEL_KM[level]} km up`;
 }
 
-export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Rain chance (24 h)' | 'Visibility' | 'Pressure and storms' | 'Upper air';
+export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Visibility' | 'Pressure and storms' | 'Upper air';
 
 /** The part of a layer that changes with altitude. */
 export interface LevelSpec {
@@ -79,7 +79,6 @@ const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
 const DEW = ['#3a2f5c', '#2a5aa0', '#1f8a8f', '#5aa84a', '#d4b02a', '#d9622a'];
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
-const PROB = ['#1c2330', '#2a4a8a', '#2a9d8f', '#e0b02a', '#e0652a', '#b3262f', '#8a1f9a'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
 const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
 // air moving down / calm / up (vertical velocity), and clockwise / calm / anticlockwise (vorticity), spreading / calm / converging
@@ -142,8 +141,6 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
   { id: 'rain24', label: 'Rain, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
-  { id: 'px0', label: 'Chance of rain', icon: '🌦', group: 'Rain chance (24 h)', varId: 'px0', unit: '% chance of 0.1 mm or more', min: 0, max: 100, stops: PROB, gamma: 1, clearBelow: 5, ticks: [10, 25, 50, 75, 100], opacity: 0.88, terrain: null },
-  { id: 'xr', label: 'Extreme rain probability', icon: '⚠', group: 'Rain chance (24 h)', varId: 'xr', unit: '% chance of 50 mm or more in 24 h (ECMWF ensemble)', min: 0, max: 100, stops: PROB, gamma: 0.9, clearBelow: 3, ticks: [10, 25, 50, 75, 95], opacity: 0.9, terrain: null },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {
     id: 'pressure', label: 'Pressure', icon: '⏲', group: 'Pressure and storms', varId: 'msl', unit: 'hPa', min: 1000, max: 1020, stops: PRESSURE, gamma: 1,
@@ -171,7 +168,7 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   },
 ];
 
-export const LAYER_GROUPS: readonly LayerGroup[] = ['Temperature', 'Wind', 'Rain and humidity', 'Rain chance (24 h)', 'Visibility', 'Pressure and storms', 'Upper air'];
+export const LAYER_GROUPS: readonly LayerGroup[] = ['Temperature', 'Wind', 'Rain and humidity', 'Visibility', 'Pressure and storms', 'Upper air'];
 
 /** True when the layer can be shown at pressure levels. */
 export function supportsLevels(def: ForecastLayerDef | null): boolean {

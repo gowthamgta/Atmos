@@ -178,8 +178,6 @@ def _needs() -> dict[str, list[set[str]]]:
         "tmax24": [{"temperature_2m"}],
         "li": [{"lifted_index"}],
         "cin": [{"convective_inhibition"}],
-        # the ensemble chances are not part of any single model run: attach.py adds them to every model afterwards
-        **{name: [{"ensemble_rain_chance"}] for name in ("px0", "xr")},
     }
     for lvl in LEVELS:
         needs[f"u{lvl}"] = [{f"wind_u_component_{lvl}hPa"}]

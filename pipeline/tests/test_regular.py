@@ -9,9 +9,6 @@ import fetch_regular as FR
 import models_regular
 from derive import derive
 
-ENSEMBLE = frozenset({"px0", "xr"})   # supplied by attach.py, never by a single model
-
-
 def test_parse_bbox_reads_south_west_north_east():
     wkt = 'GEOGCRS["WGS 84", USAGE[SCOPE["grid"], BBOX[-89.912125,-180.0,89.912125,179.88281]]]'
     assert FR.parse_bbox(wkt) == (-89.912125, -180.0, 89.912125, 179.88281)
@@ -150,13 +147,13 @@ def test_unavailable_for_follows_the_raw_fields_a_model_has():
         "wind_gusts_10m", "pressure_msl", "precipitation", "cloud_cover", "cape", "total_column_integrated_water_vapour",
         "cloud_cover_low", "cloud_cover_mid", "cloud_cover_high", "visibility", "shortwave_radiation",
             "convective_inhibition", "lifted_index"}
-    assert D.unavailable_for(everything) == {"px0", "xr"}   # only attach.py supplies those
+    assert D.unavailable_for(everything) == set()
     no_humidity = everything - {"relative_humidity_2m"}
-    assert D.unavailable_for(no_humidity) - ENSEMBLE == {"rh", "feels", "dew"}                        # none of the three can be made
-    assert D.unavailable_for(no_humidity | {"dew_point_2m"}) == ENSEMBLE                 # a dew point restores all three
-    assert D.unavailable_for(everything - {"wind_v_component_10m"}) - ENSEMBLE == {"v10", "feels"}     # feels-like needs both wind components
-    assert D.unavailable_for(everything - {"geopotential_height_500hPa"}) - ENSEMBLE == {"gh500"}
-    assert D.unavailable_for(everything - {"relative_humidity_200hPa"}) - ENSEMBLE == {"rh200"}
+    assert D.unavailable_for(no_humidity) == {"rh", "feels", "dew"}                        # none of the three can be made
+    assert D.unavailable_for(no_humidity | {"dew_point_2m"}) == set()                 # a dew point restores all three
+    assert D.unavailable_for(everything - {"wind_v_component_10m"}) == {"v10", "feels"}     # feels-like needs both wind components
+    assert D.unavailable_for(everything - {"geopotential_height_500hPa"}) == {"gh500"}
+    assert D.unavailable_for(everything - {"relative_humidity_200hPa"}) == {"rh200"}
 
 
 def test_the_three_hand_written_models_provide_all_levels():
@@ -168,9 +165,7 @@ def test_the_three_hand_written_models_provide_all_levels():
 
 def test_regular_models_publish_what_their_datasets_have():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
-    assert {"cloud_low", "cloud_mid", "cloud_high"} <= by_id["gdps"].UNAVAILABLE_VARS     # the Canadian surface set has none
-    assert by_id["ukmo"].UNAVAILABLE_VARS - {"px0", "xr"} == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
-    assert "vis" not in by_id["cma_grapes"].UNAVAILABLE_VARS and "solar" not in by_id["cma_grapes"].UNAVAILABLE_VARS
+    assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
     for m in models_regular.ALL:
         # every model has all seven levels (vertical velocity is published by only some)
         assert not {k for k in D.LEVEL_RAW_KEYS if not k.startswith("vertical_velocity")} - m.PROVIDES - {"relative_humidity_200hPa"}, m.MODEL_ID
@@ -191,8 +186,7 @@ def test_reduced_precision_encoding_stays_within_its_error_bound_and_compresses_
 def test_stability_variables_come_from_the_models_that_have_them():
     by_id = {m.MODEL_ID: m for m in models_regular.ALL}
     assert "cin" not in by_id["ukmo"].UNAVAILABLE_VARS and "li" in by_id["ukmo"].UNAVAILABLE_VARS      # UKMO: CIN only
-    assert not ({"cin", "li"} & by_id["cma_grapes"].UNAVAILABLE_VARS)                                    # GRAPES: both
-    assert {"cin", "li"} <= by_id["dwd_icon"].UNAVAILABLE_VARS and {"cin", "li"} <= by_id["gdps"].UNAVAILABLE_VARS
+    assert {"cin", "li"} <= by_id["dwd_icon"].UNAVAILABLE_VARS
     assert not ({"cin", "li"} & fetch_gfs.UNAVAILABLE_VARS)                                              # GFS: both
     assert "cin" not in fetch_ifs.UNAVAILABLE_VARS and "li" in fetch_ifs.UNAVAILABLE_VARS                # IFS: CIN only
 
@@ -203,7 +197,7 @@ def test_cin_is_published_as_a_magnitude_whatever_the_sign_of_the_source():
             "wind_gusts_10m": z, "pressure_msl": z + 101000, "precipitation": z, "cloud_cover": z, "cape": z,
             "total_column_integrated_water_vapour": z + 50}
     assert np.allclose(D.derive({**base, "convective_inhibition": z - 248})["cin"], 248)   # UK Met Office: negative
-    assert np.allclose(D.derive({**base, "convective_inhibition": z + 216})["cin"], 216)   # GFS, IFS, GRAPES: positive
+    assert np.allclose(D.derive({**base, "convective_inhibition": z + 216})["cin"], 216)   # GFS, IFS: positive
     assert np.isnan(D.derive(base)["cin"]).all() and np.isnan(D.derive(base)["li"]).all()
     assert np.allclose(D.derive({**base, "lifted_index": z - 5})["li"], -5)
 
