@@ -25,7 +25,6 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'gfs', label: 'NOAA GFS', resolution: '13–28 km', gridKm: 13, baseUrl: `${PAGES}/gfs` },
   { id: 'ukmo', label: 'UK Met Office', resolution: '10 km', gridKm: 10, baseUrl: `${PAGES}/ukmo` },
   { id: 'dwd_icon', label: 'DWD ICON', resolution: '13 km', gridKm: 13, baseUrl: `${PAGES}/dwd_icon` },
-  { id: 'world_ifs', label: 'ECMWF IFS · world', resolution: '110 km, whole globe', gridKm: 110, baseUrl: `${PAGES}/world_ifs` },
 ];
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;

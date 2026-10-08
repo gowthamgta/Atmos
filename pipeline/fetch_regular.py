@@ -59,7 +59,6 @@ class Grid:
 
 
 INDIA = Grid(LAT_MIN, LAT_MAX, LON_MIN, LON_MAX, STEP_DEG, DOMAIN)          # the South India box (config.py)
-WORLD = Grid(-90.0, 90.0, -180.0, 179.0, 1.0, "world-1deg")                 # the whole globe, 1 degree
 
 _BBOX = re.compile(r"BBOX\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]")
 

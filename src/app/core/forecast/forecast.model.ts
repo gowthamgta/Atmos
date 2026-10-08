@@ -68,8 +68,11 @@ export function decodeRg16(r: number, g: number, b: number, min: number, max: nu
 }
 
 /** Web-Mercator Y in 0..1 (0 = north pole side), as used by MapLibre custom layers. */
+/** Web Mercator stops at this latitude (the poles would be infinitely tall); a whole-globe grid reaches the poles. */
+const MERCATOR_MAX_LAT = 85.0511287798;
+
 export function mercatorUnitY(latDeg: number): number {
-  const phi = (latDeg * Math.PI) / 180;
+  const phi = (Math.max(-MERCATOR_MAX_LAT, Math.min(MERCATOR_MAX_LAT, latDeg)) * Math.PI) / 180;
   return 0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI);
 }
 

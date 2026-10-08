@@ -11,6 +11,15 @@ import {
 
 const GRID: ForecastGrid = { latMax: 22, latMin: 4, lonMin: 68, lonMax: 90, step: 0.1, nx: 221, ny: 181 };
 
+describe('mercatorUnitY', () => {
+  it('stays finite at the poles of a whole-globe grid, and matches the usual value elsewhere', () => {
+    expect(Number.isFinite(mercatorUnitY(90))).toBe(true);
+    expect(Number.isFinite(mercatorUnitY(-90))).toBe(true);
+    expect(mercatorUnitY(0)).toBeCloseTo(0.5, 9);
+    expect(mercatorUnitY(14.5)).toBeLessThan(mercatorUnitY(5.5));
+  });
+});
+
 describe('bracketSteps', () => {
   const t = [0, 3, 6, 12].map(h => h * 3_600_000);
 
