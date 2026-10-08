@@ -16,7 +16,7 @@ export interface ForecastModelDef {
   baseUrl: string;
 }
 
-const PAGES = 'https://gowthamgta.github.io/Atmos';
+export const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'ecmwf_ifs', label: 'ECMWF IFS', resolution: '9 km', gridKm: 9, baseUrl: `${PAGES}/ecmwf_ifs` },

@@ -104,6 +104,9 @@ function ladderKm(level: Level): string {
               <button type="button" class="layer" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
                 <span class="l-icon" aria-hidden="true">≋</span><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
               </button>
+              <button type="button" class="layer" [class.active]="microclimateOpen()" [attr.aria-pressed]="microclimateOpen()" (click)="panels.toggle('microclimate')" title="Tamil Nadu districts: temperature, heat, rain timing, sea breeze and flood risk from the models">
+                <span class="l-icon" aria-hidden="true">🗺</span><span class="l-name">Tamil Nadu microclimate</span>
+              </button>
               <button type="button" class="layer" [class.active]="state.cyclones()" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
                 <span class="l-icon" aria-hidden="true">🌀</span><span class="l-name">Cyclone tracks</span>
               </button>
@@ -206,6 +209,7 @@ export class LayerMenuComponent {
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
   protected readonly satelliteActive = computed(() => this.mapLayers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly gibsActive = computed(() => this.mapLayers.layers().some(l => l.id === 'gibs' && l.active));
+  protected readonly microclimateOpen = computed(() => this.panels.open() === 'microclimate');
   protected readonly imergActive = computed(() => this.mapLayers.layers().some(l => l.id === 'imerg' && l.active));
 
   /** Layers grouped for display. */

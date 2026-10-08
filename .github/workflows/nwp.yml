@@ -17,6 +17,7 @@ on:
       - "pipeline/fetch_ifs.py"
       - "pipeline/blend.py"
       - "pipeline/cyclones.py"
+      - "pipeline/microclimate.py"
   workflow_dispatch:
     inputs:
       force:
@@ -74,6 +75,9 @@ jobs:
             python blend.py --site site --live-url "$base/blend/latest.json" $force \
               || echo "::warning::blend failed; the live copy stays in place"
             python attach.py --site site
+            # Tamil Nadu districts: the blend averaged over each district with the heat, rain, sea-breeze and flood indicators
+            python microclimate.py --site site --districts ../public/data/south-india-districts.geojson \
+              || echo "::warning::microclimate failed; the live file stays in place"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"

@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 
-export type PanelId = 'layers' | 'about';
+export type PanelId = 'layers' | 'about' | 'microclimate';
 
 /** Which top-right panel is open. Only one at a time, so they never stack on top of each other. */
 @Injectable({ providedIn: 'root' })
