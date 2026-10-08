@@ -27,10 +27,11 @@ def test_the_domain_window_is_in_each_channels_own_pixels():
     x0, y0, x1, y1 = fy4.window("C02")
     a0, b0, a1, b1 = fy4.window("C01")
     c0, d0, c1, d1 = fy4.window("C13")
-    assert (x1 - x0) == 2 * (a1 - a0) == 8 * (c1 - c0)
-    assert (y1 - y0) == 2 * (b1 - b0) == 8 * (d1 - d0)
-    # 22 degrees of longitude at 0.005 degrees a pixel
-    assert x1 - x0 == 4400 and y1 - y0 == 3600
+    # the 4 km channel has a whole number of pixels only when the domain is a multiple of 0.04 degrees: allow one pixel
+    assert abs((x1 - x0) - 2 * (a1 - a0)) <= 1 and abs((x1 - x0) - 8 * (c1 - c0)) <= 8
+    assert abs((y1 - y0) - 2 * (b1 - b0)) <= 1 and abs((y1 - y0) - 8 * (d1 - d0)) <= 8
+    # the forecast domain (16.5 degrees of longitude, 9 of latitude) at 0.005 degrees a pixel
+    assert x1 - x0 == 3300 and y1 - y0 == 1800
 
 
 def test_crop_domain_pads_rows_south_of_the_pictures_coverage():

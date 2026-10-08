@@ -68,7 +68,7 @@ export class ForecastInspectorService {
       const hB = manifest.steps[b].h;
       const [place] = await Promise.all([
         this.districts.lookup(lat, lon),
-        this.terrain.ensureLoaded().catch(() => null), // terrain is optional; values fall back to model resolution
+        this.terrain.ensureLoaded().then(() => this.terrain.prepareAt(lat, lon)).catch(() => null), // terrain is optional; values fall back to model resolution
       ]);
       const level = this.state.level();
       const values: Record<string, number> = {};

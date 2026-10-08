@@ -51,10 +51,10 @@ export class ForecastStateService {
   readonly cyclones = signal(false);
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
   readonly districtLines = signal(false);
-  /** 1 km hill shading blended into the forecast colours (off by default to keep the map light). */
+  /** 90 m hill shading blended into the forecast colours (off by default to keep the map light). */
   readonly relief = signal(false);
   /**
-   * Full 1 km detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default to keep
+   * Full 90 m detail: smooth bicubic fields, and rain/low-cloud lift and sunshine on slopes. Off by default to keep
    * the map light and fast; can be enabled from the layer menu.
    */
   readonly detail = signal(false);
@@ -163,7 +163,7 @@ export class ForecastStateService {
     this.districtLines.update(on => !on);
   }
 
-  /** Turn the 1 km relief shading of the colour layers on or off. */
+  /** Turn the 90 m relief shading of the colour layers on or off. */
   toggleRelief(): void {
     this.relief.update(on => !on);
   }

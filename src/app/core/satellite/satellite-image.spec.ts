@@ -22,10 +22,10 @@ describe('mercator helpers', () => {
     for (const lat of [-30, 0, 4, 13, 22, 60]) expect(latFromMercatorY(mercatorY(lat))).toBeCloseTo(lat, 8);
   });
 
-  it('gives a slightly taller picture than plain latitude would for 4-22 N', () => {
+  it('gives a slightly taller picture than plain latitude would for 5.5-14.5 N', () => {
     const h = mercatorHeight(1100);
-    expect(h).toBeGreaterThan(900); // the plain-latitude picture is 900 tall
-    expect(h).toBeLessThan(1000);
+    expect(h).toBeGreaterThan(600); // the plain-latitude picture is 600 tall (9 of 16.5 degrees)
+    expect(h).toBeLessThan(620);
   });
 });
 
@@ -135,7 +135,7 @@ describe('toOverlayPixels', () => {
 
 describe('satelliteCoordinates', () => {
   it('lists the corners clockwise from the north-west', () => {
-    expect(satelliteCoordinates()).toEqual([[68, 22], [90, 22], [90, 4], [68, 4]]);
+    expect(satelliteCoordinates()).toEqual([[73, 14.5], [89.5, 14.5], [89.5, 5.5], [73, 5.5]]);
   });
 });
 

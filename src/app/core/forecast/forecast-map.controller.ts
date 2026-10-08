@@ -13,7 +13,7 @@ import { ForecastStateService } from './forecast-state.service';
 import { TerrainService } from './terrain.service';
 import { bracketSteps } from './forecast.model';
 
-/** How strongly the 1 km relief is shaded into the forecast colours when it is on. */
+/** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
 const RELIEF_STRENGTH = 0.55;
 
 /**
@@ -137,7 +137,7 @@ export class ForecastMapController {
       layer.setLayer(null);
       return;
     }
-    // 1 km terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels
+    // 90 m terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels
     const terrainData = this.terrain.data();
     const modelGround = terrainData ? this.terrain.modelGround(terrainData, this.catalog.model().gridKm).bitmap : null;
     layer.setTerrain(terrainData, modelGround);

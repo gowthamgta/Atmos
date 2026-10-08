@@ -94,7 +94,7 @@ describe('altitude', () => {
     const temp = resolveLayer(forecastLayerById('temp')!, 500);
     expect(temp.varId).toBe('t500');
     expect(temp.label).toBe('Temperature · 500 hPa');
-    expect(temp.terrain).toBeNull(); // the 1 km terrain correction is a near-surface thing
+    expect(temp.terrain).toBeNull(); // the 90 m terrain correction is a near-surface thing
     expect(temp.min).toBeLessThan(-8); // 500 hPa is about -5 degC in the tropics, inside the range
     expect(temp.max).toBeGreaterThan(-5);
     expect(temp.stops).toEqual(forecastLayerById('temp')!.stops); // same palette

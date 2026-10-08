@@ -44,6 +44,7 @@ def build_manifest(fetcher, run, steps, build=None):
         # which build of the run this is: a run built again under the same id (levels that were missing, a changed method) gets a
         # new one, and the app puts it on every picture's address so no browser keeps the old pictures
         "build": build or build_id(),
+        "domain": C.DOMAIN,
     }
 
 
@@ -69,7 +70,7 @@ def live_run(url: str, fmt: int | None = None) -> str | None:
         if not r.ok:
             return None
         j = r.json()
-        if j.get("complete") is False or (fmt is not None and j.get("format") != fmt):
+        if j.get("complete") is False or (fmt is not None and j.get("format") != fmt) or j.get("domain") != C.DOMAIN:
             return None
         return j["run"]
     except (requests.RequestException, ValueError, KeyError):

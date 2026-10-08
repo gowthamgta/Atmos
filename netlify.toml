@@ -52,7 +52,7 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
-# Baked terrain and boundary data (rebuilt only by scripts/build-south-india-data.py)
+# Baked terrain and boundary data (rebuilt only by scripts/build-boundaries.py and pipeline/build_terrain.py)
 [[headers]]
   for = "/data/*"
   [headers.values]

@@ -10,7 +10,7 @@ export interface ForecastModelDef {
   resolution: string;
   /**
    * Native grid spacing (km) of the near-surface fields: how coarse the model's own view of the terrain is, which
-   * sets how much the 1 km terrain correction has to add.
+   * sets how much the 90 m terrain correction has to add.
    */
   gridKm: number;
   baseUrl: string;

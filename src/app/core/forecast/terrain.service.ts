@@ -1,31 +1,37 @@
 import { Injectable, signal } from '@angular/core';
 import { ForecastGrid, gridPosition } from './forecast.model';
-import { PointTerrain, insetWeight, terrainDelta } from './terrain-correction';
+import { PointTerrain, terrainDelta } from './terrain-correction';
+import { TerrainLevel, sampleTile, tileNameAt } from './terrain-tiles';
 
-/** Contents of public/data/sa-terrain.json, written by scripts/build-south-india-data.py. */
+/** Contents of public/data/terrain/index.json, written by pipeline/build_terrain.py. */
 export interface TerrainMeta {
-  /** 1 km terrain (R,G metres, B land fraction). */
-  fine: ForecastGrid;
-  /** The terrain smoothed over ~4 km (R,G metres): the reference for ridges, valleys and windward slopes. */
-  smooth: ForecastGrid;
-  /** The ground as each model sees it, on the forecast grid (R,G metres, B land fraction); one image per resolution. */
-  model: ForecastGrid;
-  modelKms: number[];
+  domain: { latMax: number; latMin: number; lonMin: number; lonMax: number };
+  tileDeg: number;
+  levels: { id: number; perDeg: number; dir: string }[];
+  /** Tiles that have ground. A tile not listed is open sea. */
+  tiles: string[];
   min: number;
   max: number;
+  /** The ground smoothed over ~4 km (R,G metres, B unused). */
+  smooth: ForecastGrid & { file: string };
+  /** The forecast grid the terrain is sampled on, and the ground each model resolution sees (km -> file). */
+  grid: ForecastGrid;
+  model: Record<string, string>;
+  source: string;
 }
 
 export interface TerrainData {
   meta: TerrainMeta;
-  fine: ImageBitmap;
   smooth: ImageBitmap;
-  /** Model ground images by native resolution (km). */
+  /** The ground as each model sees it, by native grid (km). */
   models: Map<number, ImageBitmap>;
-  /** The 90 m Tamil Nadu inset (see scripts/build-tamil-nadu-dem.py), or null when the file is not there. */
-  inset: { meta: ForecastGrid & { min: number; max: number }; bitmap: ImageBitmap } | null;
+  /** A 90 m, 270 m or 1.08 km tile (see TerrainService.tileImage). */
+  tileImage: (level: TerrainLevel, name: string) => Promise<ImageBitmap>;
 }
 
 const M_PER_DEG = 111_200;
+/** Decoded 90 m tiles kept in memory for the click card (about 6 MB each as RGBA). */
+const CPU_TILE_CACHE = 6;
 
 /** The model-ground resolution (km) closest to a model's native grid spacing. */
 export function nearestModelKm(available: readonly number[], gridKm: number): number {
@@ -85,11 +91,23 @@ function slopeOf(bitmap: ImageBitmap, grid: ForecastGrid, lat: number, lon: numb
   return [(z(lat, lon + s) - z(lat, lon - s)) / dx, (z(lat + s, lon) - z(lat - s, lon)) / dy];
 }
 
-/** Loads the static terrain once, for the GPU downscaling and for click inspection. */
+/** A decoded 90 m tile, kept in memory for the click card. */
+interface CpuTile {
+  rgba: Uint8ClampedArray;
+  n: number;
+}
+
+/**
+ * Loads the terrain once: the index, the smoothed ground and the model-ground grids (all small). The 90 m tiles load on
+ * demand: the map asks for the tiles on screen (see ScalarFieldLayer), and the click card for the one under the cursor.
+ */
 @Injectable({ providedIn: 'root' })
 export class TerrainService {
   readonly data = signal<TerrainData | null>(null);
   private loading: Promise<TerrainData> | null = null;
+  private readonly cpuTiles = new Map<string, CpuTile>();
+  private readonly cpuLoading = new Map<string, Promise<void>>();
+  private present: ReadonlySet<string> = new Set();
 
   ensureLoaded(): Promise<TerrainData> {
     const have = this.data();
@@ -101,73 +119,113 @@ export class TerrainService {
     return this.loading;
   }
 
+  /** Whether a tile has ground in it (a tile without ground is open sea). Needs the terrain loaded. */
+  hasTile(name: string): boolean {
+    return this.present.has(name);
+  }
+
+  /** Tile names with ground, once the terrain is loaded. */
+  tileNames(): ReadonlySet<string> {
+    return this.present;
+  }
+
+  /** A 90 m, 270 m or 1.08 km tile as an image (metres in R,G; land in B). */
+  async tileImage(level: TerrainLevel, name: string): Promise<ImageBitmap> {
+    const res = await this.ok(fetch(`/data/terrain/L${level}/${name}.webp`));
+    return createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+  }
+
   /** Model-ground image for a model whose native grid is `gridKm` km. */
   modelGround(data: TerrainData, gridKm: number): { km: number; bitmap: ImageBitmap } {
-    const km = nearestModelKm(data.meta.modelKms, gridKm);
+    const km = nearestModelKm([...data.models.keys()], gridKm);
     return { km, bitmap: data.models.get(km)! };
   }
 
-  /** The ground at a point as the corrections need it; null until the terrain has loaded or outside the domain. */
+  /**
+   * The ground at a point as the corrections need it, from the 90 m tile under it. Null until the terrain and that tile
+   * have loaded, or outside the domain: the model's own values are then shown (see prepareAt, which loads the tile).
+   */
   pointTerrain(lat: number, lon: number, gridKm: number): PointTerrain | null {
     const t = this.data();
     if (!t) return null;
-    const { fine: fg, smooth: sg, model: mg, min, max } = t.meta;
-    if (lat > fg.latMax || lat < fg.latMin || lon < fg.lonMin || lon > fg.lonMax) return null;
+    const { domain, min, max, smooth: smoothGrid, grid } = t.meta;
+    if (lat > domain.latMax || lat < domain.latMin || lon < domain.lonMin || lon > domain.lonMax) return null;
+    const name = tileNameAt(lat, lon);
+    const cpu = this.cpuTiles.get(name);
+    if (!cpu) {
+      void this.prepareAt(lat, lon);
+      return null;
+    }
     const model = this.modelGround(t, gridKm).bitmap;
-    const coarse = sampleTerrain(t.fine, fg, lat, lon, min, max);
-    const m = sampleTerrain(model, mg, lat, lon, min, max);
-    const sm = sampleTerrain(t.smooth, sg, lat, lon, min, max);
-    // the 90 m inset where it covers the point, faded into the 1 km ground at its edge
-    const inset = t.inset;
-    const w = inset ? insetWeight(lat, lon, inset.meta) : 0;
-    const fine = w > 0 && inset ? sampleTerrain(inset.bitmap, inset.meta, lat, lon, min, max) : coarse;
-    const f = w > 0 && inset
-      ? { z: coarse.z + (fine.z - coarse.z) * w, land: coarse.land + (fine.land - coarse.land) * w }
-      : coarse;
+    // position inside the tile: distances from its north and west edges, in degrees
+    const dLat = Math.floor(lat) + 1 - lat;
+    const dLon = lon - Math.floor(lon);
+    const fine = sampleTile(cpu.rgba, cpu.n, dLat, dLon, max);
+    const m = sampleTerrain(model, grid, lat, lon, min, max);
+    const sm = sampleTerrain(t.smooth, smoothGrid, lat, lon, min, max);
+    // slope of the 90 m ground over two cells either side (a neighbour outside the tile is clamped to its edge)
+    const step = 2 / cpu.n;
+    const zE = sampleTile(cpu.rgba, cpu.n, dLat, dLon + step, max).z;
+    const zW = sampleTile(cpu.rgba, cpu.n, dLat, dLon - step, max).z;
+    const zN = sampleTile(cpu.rgba, cpu.n, dLat - step, dLon, max).z;
+    const zS = sampleTile(cpu.rgba, cpu.n, dLat + step, dLon, max).z;
+    const dx = 2 * step * M_PER_DEG * Math.cos((lat * Math.PI) / 180);
+    const dy = 2 * step * M_PER_DEG;
     return {
-      fine: f.z,
+      fine: fine.z,
       model: m.z,
-      dz: terrainDelta(f.z, m.z),
-      tpi: f.z - sm.z,
-      landFine: f.land,
+      dz: terrainDelta(fine.z, m.z),
+      tpi: fine.z - sm.z,
+      landFine: fine.land,
       landModel: m.land,
-      slope: slopeOf(t.smooth, sg, lat, lon, min, max),
-      modelSlope: slopeOf(model, mg, lat, lon, min, max),
-      fineSlope: w > 0.5 && inset ? slopeOf(inset.bitmap, inset.meta, lat, lon, min, max) : slopeOf(t.fine, fg, lat, lon, min, max),
+      slope: slopeOf(t.smooth, smoothGrid, lat, lon, min, max),
+      modelSlope: slopeOf(model, grid, lat, lon, min, max),
+      fineSlope: [(zE - zW) / dx, (zN - zS) / dy],
     };
   }
 
-  private async load(): Promise<TerrainData> {
-    const meta = (await (await this.ok(fetch('/data/sa-terrain.json'))).json()) as TerrainMeta;
-    const image = async (name: string) =>
-      createImageBitmap(await (await this.ok(fetch(`/data/${name}`))).blob(), {
-        premultiplyAlpha: 'none',
-        colorSpaceConversion: 'none',
-      });
-    const [fine, smooth, ...models] = await Promise.all([
-      image('sa-elevation-1km.png'),
-      image('sa-elevation-smooth.png'),
-      ...meta.modelKms.map(km => image(`sa-model-elevation-${km}km.png`)),
-    ]);
-    const inset = await this.loadInset();
-    const data: TerrainData = { meta, fine, smooth, models: new Map(meta.modelKms.map((km, i) => [km, models[i]])), inset };
-    this.data.set(data);
-    return data;
+  /** Loads the 90 m tile under a point for the click card (no-op when it is loaded or is sea). */
+  prepareAt(lat: number, lon: number): Promise<void> {
+    const name = tileNameAt(lat, lon);
+    if (this.cpuTiles.has(name) || !this.present.has(name)) return Promise.resolve();
+    const running = this.cpuLoading.get(name);
+    if (running) return running;
+    const load = this.tileImage(0, name)
+      .then(bitmap => {
+        const canvas: OffscreenCanvas | HTMLCanvasElement =
+          typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(bitmap.width, bitmap.height) : Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height });
+        const c = canvas.getContext('2d', { willReadFrequently: true }) as Canvas2D;
+        c.drawImage(bitmap, 0, 0);
+        const n = bitmap.width;
+        const rgba = c.getImageData(0, 0, n, bitmap.height).data;
+        bitmap.close();
+        if (this.cpuTiles.size >= CPU_TILE_CACHE) this.cpuTiles.delete(this.cpuTiles.keys().next().value!);
+        this.cpuTiles.set(name, { rgba, n });
+      })
+      .catch(err => console.warn('[terrain] tile unavailable', name, err))
+      .finally(() => this.cpuLoading.delete(name));
+    this.cpuLoading.set(name, load);
+    return load;
   }
 
-  /** The Tamil Nadu 90 m inset; a missing file leaves the 1 km terrain in place everywhere. */
-  private async loadInset(): Promise<TerrainData['inset']> {
-    try {
-      const meta = (await (await this.ok(fetch('/data/tn-terrain.json'))).json()) as ForecastGrid & { min: number; max: number };
-      const bitmap = await createImageBitmap(await (await this.ok(fetch('/data/tn-elevation-90m.webp'))).blob(), {
+  private async load(): Promise<TerrainData> {
+    const meta = (await (await this.ok(fetch('/data/terrain/index.json'))).json()) as TerrainMeta;
+    const image = async (name: string) =>
+      createImageBitmap(await (await this.ok(fetch(`/data/terrain/${name}`))).blob(), {
         premultiplyAlpha: 'none',
         colorSpaceConversion: 'none',
       });
-      return { meta, bitmap };
-    } catch (err) {
-      console.warn('[terrain] 90 m inset unavailable; using the 1 km terrain', err);
-      return null;
-    }
+    const kms = Object.keys(meta.model).map(Number);
+    const [smooth, ...models] = await Promise.all([meta.smooth.file, ...kms.map(km => meta.model[String(km)])].map(image));
+    this.present = new Set(meta.tiles);
+    const data: TerrainData = {
+      meta,
+      smooth,
+      models: new Map(kms.map((km, i) => [km, models[i]])),
+      tileImage: (level, name) => this.tileImage(level, name),
+    };
+    this.data.set(data);
+    return data;
   }
 
   private async ok(pending: Promise<Response>): Promise<Response> {
@@ -176,3 +234,4 @@ export class TerrainService {
     return res;
   }
 }
+

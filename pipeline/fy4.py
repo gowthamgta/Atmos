@@ -20,6 +20,8 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 import numpy as np
+
+import config as C
 from PIL import Image, ImageDraw
 
 Image.MAX_IMAGE_PIXELS = None
@@ -36,9 +38,10 @@ DEG_05KM = 0.005
 GRID_DEG = {"C01": 2 * DEG_05KM, "C02": DEG_05KM, "C03": 2 * DEG_05KM, "C13": 8 * DEG_05KM}
 
 # The domain published: the same as the app's satellite pictures.
-WEST, EAST, SOUTH, NORTH = 68.0, 90.0, 4.0, 22.0
-SIZE_HD = (3300, 2700)
-SIZE_LITE = (1650, 1350)
+WEST, EAST, SOUTH, NORTH = C.LON_MIN, C.LON_MAX, C.LAT_MIN, C.LAT_MAX
+# the picture at the 0.5 km channel's own pixels (0.005 degrees) over the domain, and half of that for the phone picture
+SIZE_HD = (round((EAST - WEST) / DEG_05KM), round((NORTH - SOUTH) / DEG_05KM))
+SIZE_LITE = (SIZE_HD[0] // 2, SIZE_HD[1] // 2)
 FRAME_COUNT = 5
 SLOT_MIN = 15
 VERSION = 1                                   # bump when the picture method changes, so a slot that is live is rebuilt

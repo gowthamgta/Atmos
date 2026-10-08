@@ -85,7 +85,7 @@ describe('point forecast helpers', () => {
   };
   const find = (rows: ReturnType<typeof buildPointRows>, id: string) => rows.find(r => r.id === id)!;
 
-  it('moves every near-surface value to the 1 km ground and marks it', () => {
+  it('moves every near-surface value to the 90 m ground and marks it', () => {
     const rows = buildPointRows(values, ground(1000));
     expect(rows.filter(r => r.terrainAdjusted).map(r => r.id)).toEqual(['temp', 'feels', 'dew', 'humidity', 'wind', 'gust', 'rain']);
     expect(find(rows, 'dew').text).toBe('22.2 °C'); // 1.8 °C per km

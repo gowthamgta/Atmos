@@ -1,0 +1,112 @@
+{
+ "version": 1,
+ "domain": {
+  "latMax": 14.5,
+  "latMin": 5.5,
+  "lonMin": 73.0,
+  "lonMax": 89.5
+ },
+ "tileDeg": 1,
+ "levels": [
+  {
+   "id": 0,
+   "perDeg": 1200,
+   "dir": "L0"
+  },
+  {
+   "id": 1,
+   "perDeg": 400,
+   "dir": "L1"
+  },
+  {
+   "id": 2,
+   "perDeg": 100,
+   "dir": "L2"
+  }
+ ],
+ "tiles": [
+  "N05E073",
+  "N05E080",
+  "N06E073",
+  "N06E079",
+  "N06E080",
+  "N06E081",
+  "N07E073",
+  "N07E079",
+  "N07E080",
+  "N07E081",
+  "N08E073",
+  "N08E076",
+  "N08E077",
+  "N08E078",
+  "N08E079",
+  "N08E080",
+  "N08E081",
+  "N09E076",
+  "N09E077",
+  "N09E078",
+  "N09E079",
+  "N09E080",
+  "N10E073",
+  "N10E075",
+  "N10E076",
+  "N10E077",
+  "N10E078",
+  "N10E079",
+  "N11E073",
+  "N11E075",
+  "N11E076",
+  "N11E077",
+  "N11E078",
+  "N11E079",
+  "N12E074",
+  "N12E075",
+  "N12E076",
+  "N12E077",
+  "N12E078",
+  "N12E079",
+  "N12E080",
+  "N13E074",
+  "N13E075",
+  "N13E076",
+  "N13E077",
+  "N13E078",
+  "N13E079",
+  "N13E080",
+  "N14E074",
+  "N14E075",
+  "N14E076",
+  "N14E077",
+  "N14E078",
+  "N14E079",
+  "N14E080"
+ ],
+ "min": 0,
+ "max": 4000.0,
+ "smooth": {
+  "file": "smooth.png",
+  "latMax": 14.5,
+  "latMin": 5.5,
+  "lonMin": 73.0,
+  "lonMax": 89.5,
+  "step": 0.05,
+  "nx": 331,
+  "ny": 181
+ },
+ "grid": {
+  "latMax": 14.5,
+  "latMin": 5.5,
+  "lonMin": 73.0,
+  "lonMax": 89.5,
+  "step": 0.1,
+  "nx": 166,
+  "ny": 91
+ },
+ "model": {
+  "9": "model-9km.png",
+  "10": "model-10km.png",
+  "13": "model-13km.png",
+  "28": "model-28km.png"
+ },
+ "source": "Copernicus DEM GLO-30, 30 m averaged to 90 m, 270 m and 1.08 km; \u00a9 DLR and Airbus"
+}

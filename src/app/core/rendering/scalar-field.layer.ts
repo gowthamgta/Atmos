@@ -2,7 +2,6 @@ import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap 
 import { ForecastGrid, mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import { ForecastLayerDef, buildPaletteLut } from '../forecast/forecast-layers';
 import {
-  INSET_RAMP_DEG,
   DEWPOINT_LAPSE_C_PER_M,
   DIFFUSE_FRACTION,
   EXPOSURE_MAX,
@@ -24,6 +23,7 @@ import {
   solarDeclination,
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
+import { TILE_SLOTS, TileGrid, TileSlots, buildTileMap, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -52,20 +52,20 @@ export const TERRAIN_MODE_CODE: Record<TerrainMode, number> = {
  * Fields are rg16 PNGs (R = high byte, G = low byte, B = 255 for "no data") on the 0.1° grid. The GPU cannot filter
  * those bytes, so texels are fetched exactly, decoded, and interpolated here with a bicubic (Catmull-Rom) filter,
  * which gives smooth gradients without the diamond pattern of bilinear blending. Each pixel is then moved from the
- * model's ground to the real 1 km ground (see terrain-correction.ts, whose constants are inlined below), and the
- * 1 km relief can be shaded into the colours.
+ * model's ground to the real 90 m ground (see terrain-correction.ts, whose constants are inlined below), and the
+ * 90 m relief can be shaded into the colours.
  *
  * Terrain images: metres = (R * 256 + G) / 65535 over u_demEnc, land fraction = B (no "no data" flag).
  */
 const FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
+precision lowp sampler2DArray;   // the terrain tiles (GLSL ES 3.00 wants a precision for every sampler type)
 uniform sampler2D u_a;
 uniform sampler2D u_b;
 uniform sampler2D u_a2;      // second component (vector layers), time A
 uniform sampler2D u_b2;      // second component, time B
 uniform sampler2D u_lut;
-uniform sampler2D u_dem;       // 1 km terrain + land fraction
 uniform sampler2D u_demModel;  // the ground as the model sees it (forecast grid) + its land fraction
 uniform sampler2D u_demSmooth; // terrain smoothed over ~4 km
 uniform sampler2D u_wuA;       // wind driving the orographic lift: u and v at times A and B
@@ -83,8 +83,11 @@ uniform float u_gamma;
 uniform float u_clear;
 uniform vec4 u_grid;     // lonMin, latMax, step, unused
 uniform ivec2 u_size;
-uniform vec4 u_demGrid;    // 1 km terrain: lonMin, latMax, step
-uniform ivec2 u_demSize;
+uniform sampler2DArray u_tiles; // the 90 m terrain tiles held on the GPU at the detail level in use, one per layer
+uniform sampler2D u_tileMap;    // which layer holds each 1 x 1 degree tile (see terrain-tiles.ts)
+uniform ivec2 u_tileCount;      // tile columns and rows of the domain
+uniform vec2 u_tileOrigin;      // lonMin of tile column 0, and the top (north) edge of tile row 0
+uniform float u_tilePx;         // cells per degree at the detail level in use
 uniform vec4 u_smoothGrid; // smoothed terrain
 uniform ivec2 u_smoothSize;
 uniform vec4 u_modelGrid;  // model ground
@@ -98,11 +101,6 @@ uniform vec3 u_sun;        // declination (rad), equation of time (min), UTC min
 uniform float u_relief;    // 0..1 strength of the relief shading
 uniform float u_levelHeight; // pressure-level layers: height of the level (m); 0 at the ground
 uniform int u_lite;        // 1: phone mode, about a fifth of the texture reads (bilinear fields, no slope-based corrections)
-uniform sampler2D u_inset;  // Tamil Nadu 90 m terrain + land fraction (same encoding as u_dem)
-uniform vec4 u_insetGrid;   // lonMin, latMax, step
-uniform ivec2 u_insetSize;
-uniform vec4 u_insetBounds; // lonMin, latMin, lonMax, latMax of the inset
-uniform int u_insetOn;      // 1 when the inset is bound
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -204,25 +202,38 @@ vec2 slopeAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
   return vec2((zE - zW) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (zN - zS) / (2.0 * s * M_PER_DEG));
 }
 
-// Weight of the 90 m inset: 0 at its edge (the 1 km terrain takes over, so the border is seamless), 1 once INSET_RAMP_DEG inside.
-float insetWeight(float lat, float lon) {
-  if (u_insetOn == 0) return 0.0;
-  float d = min(min(lon - u_insetBounds.x, u_insetBounds.z - lon), min(lat - u_insetBounds.y, u_insetBounds.w - lat));
-  return clamp(d / ${f(INSET_RAMP_DEG)}, 0.0, 1.0);
+// The ground from the 90 m tiles held on the GPU: (metres, land fraction, 1). Open sea is 0 m with no land and counts as
+// held. A tile that is not on the GPU, or lies outside the domain, gives (0, 0, 0): the caller then uses the model's ground.
+vec3 tileTerrain(float lat, float lon) {
+  vec2 d = vec2(lon - u_tileOrigin.x, u_tileOrigin.y - lat);
+  ivec2 t = ivec2(floor(d));
+  if (t.x < 0 || t.y < 0 || t.x >= u_tileCount.x || t.y >= u_tileCount.y) return vec3(0.0);
+  int slot = int(texelFetch(u_tileMap, t, 0).r * 255.0 + 0.5);
+  if (slot == 254) return vec3(0.0, 0.0, 1.0);   // open sea
+  if (slot > 253) return vec3(0.0);              // not on the GPU
+  vec2 g = clamp((d - vec2(t)) * u_tilePx - 0.5, vec2(0.0), vec2(u_tilePx - 1.0));
+  vec2 fr = fract(g);
+  ivec2 i0 = ivec2(floor(g));
+  ivec2 hi = ivec2(u_tilePx) - 1;
+  vec2 acc = vec2(0.0);
+  for (int k = 0; k < 4; k++) {
+    ivec2 o = ivec2(k & 1, k >> 1);
+    vec4 c = texelFetch(u_tiles, ivec3(clamp(i0 + o, ivec2(0), hi), slot), 0);
+    float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
+    acc += vec2(decode(c, u_demEnc), c.b) * w;
+  }
+  return vec3(acc, 1.0);
 }
 
-// Terrain (metres, land fraction) of the 1 km grid, faded into the 90 m inset where it covers the point.
-vec2 fineAt(float lat, float lon) {
-  vec2 coarse = terrainAt(u_dem, u_demGrid, u_demSize, lat, lon);
-  float w = insetWeight(lat, lon);
-  if (w <= 0.0) return coarse;
-  return mix(coarse, terrainAt(u_inset, u_insetGrid, u_insetSize, lat, lon), w);
-}
-
-// Slope of the terrain used by fineAt: the inset's own grid where it covers the point, else the 1 km grid.
-vec2 fineSlopeAt(float lat, float lon) {
-  if (insetWeight(lat, lon) > 0.5) return slopeAt(u_inset, u_insetGrid, u_insetSize, lat, lon);
-  return slopeAt(u_dem, u_demGrid, u_demSize, lat, lon);
+// Slope (m/m, rising east and north) of the 90 m ground over two cells either side; zero where a neighbour is not held.
+vec2 tileSlope(float lat, float lon) {
+  float s = 2.0 / u_tilePx;
+  vec3 e = tileTerrain(lat, lon + s);
+  vec3 w = tileTerrain(lat, lon - s);
+  vec3 n = tileTerrain(lat + s, lon);
+  vec3 so = tileTerrain(lat - s, lon);
+  if (min(min(e.z, w.z), min(n.z, so.z)) < 0.5) return vec2(0.0);
+  return vec2((e.x - w.x) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (n.x - so.x) / (2.0 * s * M_PER_DEG));
 }
 
 vec3 sunVector(float lat, float lon) {
@@ -251,22 +262,25 @@ void main() {
     v = length(vec2(first.x, second.x));
   }
 
+  // the ground under the pixel: its 90 m tile where that is on the GPU, else the model's own ground (nothing corrected there)
+  vec2 model = vec2(0.0, 1.0);
   vec2 fine = vec2(0.0, 1.0);
   vec2 fineSlope = vec2(0.0);
   bool needFineSlope = u_lite == 0 && u_terrainOn == 1 && (u_relief > 0.0 || u_terrainMode == 8);
   if (u_terrainOn == 1) {
-    fine = fineAt(lat, lon);
+    model = terrainAt(u_demModel, u_modelGrid, u_modelSize, lat, lon);
+    vec3 tile = tileTerrain(lat, lon);
+    fine = tile.z > 0.5 ? tile.xy : model;
     if (needFineSlope) {
-      fineSlope = fineSlopeAt(lat, lon);
+      fineSlope = tile.z > 0.5 ? tileSlope(lat, lon) : vec2(0.0);
     } else if (u_lite == 1 && u_relief > 0.0) {
-      // the screen-space slope of the 1 km ground (one terrain read instead of sixteen), in metres per metre
+      // the screen-space slope of the ground (one terrain read instead of sixteen), in metres per metre
       float mPerPx = max(length(dFdx(v_merc)) * 40075016.686 * cos(radians(lat)), 1.0);
       fineSlope = vec2(dFdx(fine.x), -dFdy(fine.x)) / mPerPx;
     }
   }
 
   if (u_terrainOn == 1 && u_terrainMode != 0) {
-    vec2 model = terrainAt(u_demModel, u_modelGrid, u_modelSize, lat, lon);
     float dz = clamp(fine.x - model.x, -${f(MAX_TERRAIN_DELTA_M)}, ${f(MAX_TERRAIN_DELTA_M)});
     int m = u_terrainMode;
     if (m == 1) {
@@ -306,7 +320,7 @@ void main() {
   if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * 1.5, v);
 
   if (u_terrainOn == 1) {
-    // 1 km relief: hills lit from the north-west, so the Ghats, Nilgiris and valleys read through every layer
+    // 90 m relief: hills lit from the north-west, so the Ghats, Nilgiris and valleys read through every layer
     if (u_relief > 0.0) {
       vec3 n = normalize(vec3(-fineSlope * 3.0, 1.0));
       vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
@@ -345,14 +359,14 @@ interface Uniforms {
 }
 
 const UNIFORMS = [
-  'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_dem', 'u_demModel', 'u_demSmooth', 'u_wuA', 'u_wuB', 'u_wvA', 'u_wvB',
+  'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth', 'u_wuA', 'u_wuB', 'u_wvA', 'u_wvB',
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_encWu', 'u_encWv', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
-  'u_demGrid', 'u_demSize', 'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn',
+  'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn',
   'u_magnitude', 'u_terrainMode', 'u_hasLift', 'u_sun', 'u_relief', 'u_levelHeight', 'u_lite',
-  'u_inset', 'u_insetGrid', 'u_insetSize', 'u_insetBounds', 'u_insetOn',
+  'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 
-/** MapLibre custom layer drawing one forecast variable at 1 km, blended between two time steps on the GPU. */
+/** MapLibre custom layer drawing one forecast variable on the 90 m terrain, blended between two time steps on the GPU. */
 export class ScalarFieldLayer implements CustomLayerInterface {
   readonly id = 'forecast-scalar-layer';
   readonly type = 'custom' as const;
@@ -381,13 +395,23 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private lutFor: ForecastLayerDef | null = null;
   private terrain: TerrainData | null = null;
   private modelBitmap: ImageBitmap | null = null;
-  private demTex: WebGLTexture | null = null;
   private demModelTex: WebGLTexture | null = null;
   private demSmoothTex: WebGLTexture | null = null;
-  private insetTex: WebGLTexture | null = null;
-  private demUploaded = false;
-  private insetUploaded = false;
+  private smoothUploadedFor: TerrainData | null = null;
   private modelUploaded: ImageBitmap | null = null;
+  /** The 90 m tiles of the detail level in use, one per layer of a texture array (see updateTiles). */
+  private tileTex: WebGLTexture | null = null;
+  /** Which layer holds each 1 x 1 degree tile of the domain (one byte each; see buildTileMap). */
+  private tileMapTex: WebGLTexture | null = null;
+  private tileGrid: TileGrid | null = null;
+  private tileLevel: TerrainLevel | null = null;
+  private tilePx = 1;
+  private slots: TileSlots | null = null;
+  private tilesPending = new Set<string>();
+  private tilesOnScreen = new Set<string>();
+  private tileMapDirty = true;
+  private presentCache: ReadonlySet<string> | null = null;
+  private presentCacheFor: TerrainData | null = null;
   private sun: [number, number, number] = [0, 0, 0];
   private relief = 0;
   private lite = false;
@@ -412,7 +436,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   /** Provide (or clear) the terrain, and the model ground matching the shown model's resolution. */
   setTerrain(data: TerrainData | null, modelBitmap: ImageBitmap | null): void {
     if (this.terrain === data && this.modelBitmap === modelBitmap) return;
-    if (this.terrain !== data) this.demUploaded = false;
+    if (this.terrain !== data) this.resetTiles();
     this.terrain = data;
     this.modelBitmap = modelBitmap;
     this.map?.triggerRepaint();
@@ -444,7 +468,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
 
   /**
    * Phone mode: bilinear fields and no slope-based corrections (rain/low cloud lift, sunshine on slopes), which cuts the
-   * work per pixel to about a fifth. The height-based 1 km corrections and the relief shading stay.
+   * work per pixel to about a fifth. The height-based terrain corrections and the relief shading stay.
    */
   setLite(lite: boolean): void {
     if (this.lite === lite) return;
@@ -452,7 +476,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  /** Strength (0..1) of the 1 km relief shading over land. */
+  /** Strength (0..1) of the 90 m relief shading over land. */
   setRelief(strength: number): void {
     if (this.relief === strength) return;
     this.relief = strength;
@@ -469,12 +493,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
     this.lutTex = gl.createTexture();
-    this.demTex = gl.createTexture();
     this.demModelTex = gl.createTexture();
     this.demSmoothTex = gl.createTexture();
-    this.insetTex = gl.createTexture();
-    this.demUploaded = false;
-    this.insetUploaded = false;
+    this.tileMapTex = gl.createTexture();
+    this.smoothUploadedFor = null;
     this.modelUploaded = null;
     this.uploadQuad();
   }
@@ -482,11 +504,13 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
     this.textures.clear();
-    for (const tex of [this.lutTex, this.demTex, this.demModelTex, this.demSmoothTex, this.insetTex]) if (tex) gl.deleteTexture(tex);
+    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.tileMapTex, this.tileTex]) if (tex) gl.deleteTexture(tex);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     if (this.program) gl.deleteProgram(this.program);
-    this.lutTex = this.demTex = this.demModelTex = this.demSmoothTex = this.insetTex = this.vbo = this.vao = this.program = null;
+    this.lutTex = this.demModelTex = this.demSmoothTex = this.tileMapTex = this.tileTex = this.vbo = this.vao = this.program = null;
+    this.slots = null;
+    this.tileLevel = null;
     this.map = null;
     this.gl = null;
   }
@@ -502,13 +526,16 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     const texA2 = magnitude ? this.textureFor(gl, this.frameA2!) : null;
     const texB2 = magnitude ? (this.frameB2!.key === this.frameA2!.key ? texA2 : this.textureFor(gl, this.frameB2!)) : null;
     if (this.lutFor !== def) this.uploadLut(gl, def);
-    if (this.terrain && !this.demUploaded) this.uploadTerrain(gl, this.terrain);
+    if (this.terrain && this.smoothUploadedFor !== this.terrain) {
+      this.uploadTerrainImage(gl, this.demSmoothTex, this.terrain.smooth);
+      this.smoothUploadedFor = this.terrain;
+    }
     if (this.modelBitmap && this.modelUploaded !== this.modelBitmap) {
       this.uploadTerrainImage(gl, this.demModelTex, this.modelBitmap);
       this.modelUploaded = this.modelBitmap;
     }
-    const terrainOn = !!this.terrain && this.demUploaded && this.modelUploaded !== null;
-    const insetOn = terrainOn && this.insetUploaded;
+    if (this.terrain) this.updateTiles(gl, this.terrain);
+    const terrainOn = !!this.terrain && this.smoothUploadedFor === this.terrain && this.modelUploaded !== null && this.tileTex !== null;
     const terrainMode = terrainOn && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
     const lift = this.liftWind && !this.lite && (def.terrain === 'rain' || def.terrain === 'lowcloud') ? this.liftWind : null;
 
@@ -526,11 +553,12 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       bind(6, texB2);
     }
     if (terrainOn) {
-      bind(3, this.demTex);
       bind(4, this.demModelTex);
       bind(7, this.demSmoothTex);
+      gl.activeTexture(gl.TEXTURE0 + 12);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
+      bind(13, this.tileMapTex);
     }
-    if (insetOn) bind(12, this.insetTex);
     if (lift) {
       bind(8, this.textureFor(gl, lift.uA));
       bind(9, this.textureFor(gl, lift.uB));
@@ -547,10 +575,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     unit('u_lut', 2, true);
     unit('u_a2', 5, magnitude);
     unit('u_b2', 6, magnitude);
-    unit('u_dem', 3, terrainOn);
     unit('u_demModel', 4, terrainOn);
     unit('u_demSmooth', 7, terrainOn);
-    unit('u_inset', 12, insetOn);
+    unit('u_tiles', 12, terrainOn);
+    unit('u_tileMap', 13, terrainOn);
     unit('u_wuA', 8, !!lift);
     unit('u_wuB', 9, !!lift);
     unit('u_wvA', 10, !!lift);
@@ -575,27 +603,20 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
     const meta = this.terrain?.meta;
-    if (terrainOn && meta) {
+    if (terrainOn && meta && this.tileGrid) {
       const g4 = (name: string, g: ForecastGrid) => gl.uniform4f(u[name], g.lonMin, g.latMax, g.step, 0);
       const s2 = (name: string, g: ForecastGrid) => gl.uniform2i(u[name], g.nx, g.ny);
-      g4('u_demGrid', meta.fine);
-      s2('u_demSize', meta.fine);
       g4('u_smoothGrid', meta.smooth);
       s2('u_smoothSize', meta.smooth);
-      g4('u_modelGrid', meta.model);
-      s2('u_modelSize', meta.model);
+      g4('u_modelGrid', meta.grid);
+      s2('u_modelSize', meta.grid);
       gl.uniform2f(u['u_demEnc'], meta.min, meta.max);
+      gl.uniform2i(u['u_tileCount'], this.tileGrid.cols, this.tileGrid.rows);
+      gl.uniform2f(u['u_tileOrigin'], this.tileGrid.lonMin, this.tileGrid.latTop);
+      gl.uniform1f(u['u_tilePx'], this.tilePx);
     } else {
-      for (const name of ['u_demSize', 'u_smoothSize', 'u_modelSize']) gl.uniform2i(u[name], 1, 1);
-    }
-    gl.uniform1i(u['u_insetOn'], insetOn ? 1 : 0);
-    const inset = this.terrain?.inset?.meta;
-    if (insetOn && inset) {
-      gl.uniform4f(u['u_insetGrid'], inset.lonMin, inset.latMax, inset.step, 0);
-      gl.uniform2i(u['u_insetSize'], inset.nx, inset.ny);
-      gl.uniform4f(u['u_insetBounds'], inset.lonMin, inset.latMin, inset.lonMax, inset.latMax);
-    } else {
-      gl.uniform2i(u['u_insetSize'], 1, 1);
+      for (const name of ['u_smoothSize', 'u_modelSize']) gl.uniform2i(u[name], 1, 1);
+      gl.uniform2i(u['u_tileCount'], 0, 0);
     }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -645,12 +666,108 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
-  private uploadTerrain(gl: WebGL2RenderingContext, data: TerrainData): void {
-    this.uploadTerrainImage(gl, this.demTex, data.fine);
-    this.uploadTerrainImage(gl, this.demSmoothTex, data.smooth);
-    if (data.inset) this.uploadTerrainImage(gl, this.insetTex, data.inset.bitmap);
-    this.insetUploaded = !!data.inset;
-    this.demUploaded = true;
+  /** Drops the tiles on the GPU (new terrain): the next frame loads them again. */
+  private resetTiles(): void {
+    if (this.gl && this.tileTex) this.gl.deleteTexture(this.tileTex);
+    this.tileTex = null;
+    this.tileLevel = null;
+    this.slots = null;
+    this.tilesPending.clear();
+    this.tileMapDirty = true;
+  }
+
+  /**
+   * Keeps the 90 m tiles on screen on the GPU: the detail level follows the zoom (see terrainLevelForZoom), each tile on
+   * screen that is not held yet is loaded into a free slot, and the tile map is refreshed when a slot changes. A tile
+   * that finds no slot (every slot holds a tile on screen) is not drawn: its pixels use the model's ground.
+   */
+  private updateTiles(gl: WebGL2RenderingContext, data: TerrainData): void {
+    if (!this.map) return;
+    const level = terrainLevelForZoom(this.map.getZoom());
+    if (level !== this.tileLevel || !this.tileTex) this.switchTileLevel(gl, data, level);
+    if (!this.slots || !this.tileGrid) return;
+    const b = this.map.getBounds();
+    const bounds = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+    const visible = tilesInBounds(this.tileGrid, bounds, this.presentTiles(data));
+    this.tilesOnScreen = new Set(visible);
+    this.slots.touch(visible);
+    for (const name of visible) {
+      if (this.slots.has(name) || this.tilesPending.has(name)) continue;
+      this.loadTile(gl, data, name, level);
+    }
+    if (this.tileMapDirty) this.uploadTileMap(gl);
+  }
+
+  /** The tiles that have ground (a tile not in the list is open sea), read once per terrain. */
+  private presentTiles(data: TerrainData): ReadonlySet<string> {
+    if (this.presentCacheFor !== data) {
+      this.presentCache = new Set(data.meta.tiles);
+      this.presentCacheFor = data;
+    }
+    return this.presentCache!;
+  }
+
+  /** A new detail level: a texture array with a slot per tile the level can hold on screen. */
+  private switchTileLevel(gl: WebGL2RenderingContext, data: TerrainData, level: TerrainLevel): void {
+    if (this.tileTex) gl.deleteTexture(this.tileTex);
+    this.tilesPending.clear();
+    this.tileLevel = level;
+    this.tileGrid = tileGridOf(data.meta.domain);
+    this.tilePx = data.meta.levels.find(l => l.id === level)?.perDeg ?? 1200;
+    const slots = TILE_SLOTS[level];
+    this.slots = new TileSlots(slots);
+    this.tileTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, this.tilePx, this.tilePx, slots);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.tileMapDirty = true;
+  }
+
+  /** Loads one tile and puts it in a free slot (if none is free, it is left out: see updateTiles). */
+  private loadTile(gl: WebGL2RenderingContext, data: TerrainData, name: string, level: TerrainLevel): void {
+    this.tilesPending.add(name);
+    data.tileImage(level, name).then(bitmap => {
+      this.tilesPending.delete(name);
+      if (this.terrain !== data || this.tileLevel !== level || !this.slots || !this.tileTex) {
+        bitmap.close(); // the level or the terrain changed while it loaded
+        return;
+      }
+      const slot = this.slots.assign(name, this.tilesOnScreen);
+      if (slot === null) {
+        bitmap.close();
+        return;
+      }
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, slot, this.tilePx, this.tilePx, 1, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+      bitmap.close();
+      this.tileMapDirty = true;
+      this.map?.triggerRepaint();
+    }).catch(err => {
+      this.tilesPending.delete(name);
+      console.warn('[forecast] terrain tile unavailable', name, err);
+    });
+  }
+
+  /** The tile map: which slot each tile sits in (see buildTileMap), uploaded when a slot changed. */
+  private uploadTileMap(gl: WebGL2RenderingContext): void {
+    const data = this.terrain;
+    if (!data || !this.tileGrid || !this.slots) return;
+    const map = buildTileMap(this.tileGrid, this.presentTiles(data), this.slots.resident());
+    gl.bindTexture(gl.TEXTURE_2D, this.tileMapTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, this.tileGrid.cols, this.tileGrid.rows, 0, gl.RED, gl.UNSIGNED_BYTE, map);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.tileMapDirty = false;
   }
 
   private textureFor(gl: WebGL2RenderingContext, frame: FieldFrame): WebGLTexture {

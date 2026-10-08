@@ -101,7 +101,7 @@ describe('satelliteFrameUrl', () => {
 
   it('orders the box south, west, north, east as WMS 1.3.0 needs for EPSG:4326', () => {
     expect(url.searchParams.get('crs')).toBe('EPSG:4326');
-    expect(url.searchParams.get('bbox')).toBe('4,68,22,90');
+    expect(url.searchParams.get('bbox')).toBe('5.5,73,14.5,89.5');
   });
 
   it('never contains a key, token or secret', () => {

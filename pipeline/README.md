@@ -1,7 +1,7 @@
 # AtmosIQ forecast pipeline
 
 Fetches ECMWF IFS (about 9 km, O1280 grid) from Open-Meteo's public bucket, cuts out South India
-(4-22°N, 68-90°E), regrids to 0.1°, derives RH and feels-like, encodes every variable and forecast hour
+(5.5-14.5°N, 73-89.5°E, the box in `config.py`), regrids to 0.1°, derives RH and feels-like, encodes every variable and forecast hour
 as a 16-bit RG PNG, and writes a static site folder. GitHub Actions deploys that folder to **GitHub Pages**:
 free, no card, no external bucket, and Pages serves `Access-Control-Allow-Origin: *`.
 
@@ -21,10 +21,12 @@ python run.py --out site --force                 # full run into ./site
 
 ## Output (served from `https://<user>.github.io/<repo>/`)
 ```
-<model>/latest.json                         {"model","run"}
+<model>/latest.json                         {"model","run","domain"}
 <model>/<run>/manifest.json                 grid, steps, per-variable range/unit
 <model>/<run>/<var>/<hhh>.png               value = min + (R*256+G)/65535*(max-min); B=255 means no data
 ```
+`latest.json` also names the box (`domain`, the `DOMAIN` id in `config.py`). A run built for another box is not treated as live, so changing `DOMAIN` rebuilds every model on the next run.
+
 Variables (see `config.py`):
 - surface: `t2m`, `rh`, `feels`, `dew` (dew point), `u10`/`v10`, `gust`, `msl`, `precip`, `cloud`, `cloud_low`/`cloud_mid`/`cloud_high`,
   `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`, `li` (lifted index, GFS only), `cin` (convective inhibition, magnitude;
@@ -33,7 +35,7 @@ Variables (see `config.py`):
   `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height). These are stored with 12 significant bits (error far below
   anything visible: 0.003 degC, 0.02 m/s), which makes them about 25% smaller.
 A model only publishes what it can supply; the manifest lists exactly those variables and the app greys out the rest.
-A full run is about 1 MB per forecast step per model, around 200 MB for all seven models.
+The box is 91 × 166 cells (about 40% of the earlier 181 × 221), so a run is about 40% of the earlier ~200 MB for all seven models.
 Step 0 is the analysis hour, so gust, precip and CAPE are no-data there.
 Each deploy replaces the previous one, so only the newest run exists. A client that still holds the old
 `latest.json` gets a 404; it should re-fetch `latest.json` and retry.
@@ -65,12 +67,30 @@ the models' own sorted values, so peaks and wet area stay realistic), (b) sums t
 separately, which left the two disagreeing: a 24 h total of 1.3 mm against 0.1 mm of rain in the same day), (c) adds back the fine structure of the best-resolved model
 (`blend.RESOLUTION_ORDER`: that model minus a ~28 km smoothed copy of itself, at gain 0.5), and (d) is clipped to the range of
 the models at each cell. Result on the same run: 88-99% of IFS's sharpness, the same domain-mean rain, a rain peak of 5.8 mm/h
-against 3.1 for the plain mean. `blend.VERSION` (now 4) is bumped when a method changes, which makes a run that is already live under the old method rebuild.
+against 3.1 for the plain mean. `blend.VERSION` (now 5) is bumped when a method changes, which makes a run that is already live under the old method rebuild.
 The workflow order is: models, `cyclones.py`, `fy4.py`, `mirror.py` (unchanged models and blend), `blend.py`.
 
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
 3 h after that (checked against Open-Meteo's hourly API, which divides those by 3), so `derive()` divides by 3 after +90 h.
+
+## Terrain (`build_terrain.py`)
+The ground under the forecast comes from Copernicus DEM GLO-30 (30 m), averaged to 90 m, 270 m and 1.08 km.
+`build_terrain.py` writes it into `public/data/terrain/`, which the app serves from Netlify (not Pages). The result is
+committed and the workflow does not rebuild it, so run the script only when the box or the source changes:
+```
+python pipeline/build_terrain.py --cache C:/Temp/dem
+```
+Downloaded DEM tiles stay in `--cache` (`.dem-cache/` by default, git-ignored), so a second run does not download them
+again. A tile the bucket does not have is open sea.
+
+- `L0/`, `L1/`, `L2/`: one lossless WebP per 1° × 1° tile, named by its south-west corner (`N11E078` covers 11–12° N,
+  78–79° E), 1200, 400 or 100 cells a side. Red and green hold the metres over 0–4000 m (16 bits); blue holds the land fraction.
+- `smooth.png`: the ground smoothed over about 4 km, on a 0.05° grid.
+- `model-<K>km.png`: the ground a K km model sees (a box mean), on the forecast grid, for K = 9, 10, 13 and 28.
+- `index.json`: the box, the tiles that have ground, the grids and the value range.
+
+The app picks the level by zoom: 90 m from zoom 9.5, 270 m from 7.5, 1.08 km below (`src/app/core/forecast/terrain-tiles.ts`).
 
 ## Models
 Seven models plus the blend, all resampled onto the same 0.1° grid and published in the same format, so the app treats them alike.

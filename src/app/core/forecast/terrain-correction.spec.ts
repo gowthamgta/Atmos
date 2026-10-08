@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sunElevationDeg } from '../satellite/satellite.config';
 import {
-  insetWeight,
   EXPOSURE_MAX,
   OROGRAPHIC_MAX,
   OROGRAPHIC_MIN,
@@ -119,16 +118,5 @@ describe('applyTerrain', () => {
     const noon = { terrain: { ...flat, fineSlope: [0, 0.3] as [number, number] }, timeMs: T('2026-12-21T06:45:00Z'), lat: 13, lon: 79 };
     // in December the noon sun is in the south, so a slope rising to the north (facing south) gets more sun
     expect(applyTerrain('solar', 600, noon)).toBeGreaterThan(600);
-  });
-});
-
-describe('the 90 m inset blend', () => {
-  const b = { lonMin: 76, latMin: 8, lonMax: 80, latMax: 13 };
-
-  it('is 0 at the inset edge, 1 well inside, and linear across the ramp', () => {
-    expect(insetWeight(10, 76, b)).toBe(0);
-    expect(insetWeight(10, 79.9, b)).toBe(1);                   // 0.1 deg inside the east edge
-    expect(insetWeight(12.99, 78, b)).toBeCloseTo(0.2, 6);     // 0.01 deg inside the north edge, of a 0.05 deg ramp
-    expect(insetWeight(7.9, 78, b)).toBe(0);                    // outside: never the fine grid
   });
 });

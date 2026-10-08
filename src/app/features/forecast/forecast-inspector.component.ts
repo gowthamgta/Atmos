@@ -36,7 +36,7 @@ const IST = 'Asia/Kolkata';
               } @else {
                 <div class="row">
                   <dt>{{ row.label }}</dt>
-                  <dd>{{ row.text }}@if (row.terrainAdjusted) { <span class="adj" title="Adjusted to 1 km terrain">▲</span> }</dd>
+                  <dd>{{ row.text }}@if (row.terrainAdjusted) { <span class="adj" title="Adjusted to 90 m terrain">▲</span> }</dd>
                 </div>
               }
             }
@@ -45,7 +45,7 @@ const IST = 'Asia/Kolkata';
             }
           </dl>
           <footer>
-            @if (adjusted()) { ▲ adjusted to 1 km terrain. }
+            @if (adjusted()) { ▲ adjusted to 90 m terrain. }
             Model: {{ catalog.model().label }}, {{ catalog.model().resolution }}.
           </footer>
         } @else if (inspector.busy()) {

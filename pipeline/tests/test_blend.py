@@ -19,7 +19,8 @@ def _write_model(site, model, run, steps, values):
     """A model run: `values[var]` is a function of the step hour. Steps are forecast hours after `run`."""
     run_id = f"{run:%Y%m%dT%H}Z"
     root = os.path.join(site, model, run_id)
-    manifest = {"model": model, "run": run_id, "vars": {}, "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps]}
+    manifest = {"model": model, "run": run_id, "vars": {}, "grid": {"nx": C.NX, "ny": C.NY},
+                "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps]}
     for var, fn in values.items():
         v = C.VARS[var]
         manifest["vars"][var] = {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"}
@@ -127,7 +128,7 @@ def _block(value, row, col, size=20):
 
 def test_probability_matching_keeps_realistic_intensity_when_models_place_the_rain_differently():
     # two models each have a 10 mm area, in different places: a plain mean shows two weak 5 mm areas covering twice the ground
-    a, b = _block(10, 40, 40), _block(10, 100, 150)
+    a, b = _block(10, 40, 40), _block(10, 50, 110)
     mean = blend.weighted_mean([(1.0, a), (1.0, b)])
     assert float(mean.max()) == 5.0 and int((mean > 0).sum()) == 800
     matched = blend.probability_matched(mean, [(1.0, a), (1.0, b)])
@@ -163,14 +164,14 @@ def _write_precip_model(site, model, field):
     os.makedirs(os.path.join(root, "precip"), exist_ok=True)
     open(os.path.join(root, "precip", "003.png"), "wb").write(encode_field(field, v.lo, v.hi, v.bits))
     json.dump({"model": model, "run": run_id, "vars": {"precip": {"unit": "mm", "min": v.lo, "max": v.hi, "encoding": "rg16"}},
-               "steps": [{"h": 3, "valid": f"{T0 + timedelta(hours=3):%Y-%m-%dT%H:%M:%SZ}"}]}, open(os.path.join(root, "manifest.json"), "w"))
+               "grid": {"nx": C.NX, "ny": C.NY}, "steps": [{"h": 3, "valid": f"{T0 + timedelta(hours=3):%Y-%m-%dT%H:%M:%SZ}"}]}, open(os.path.join(root, "manifest.json"), "w"))
     json.dump({"model": model, "run": run_id}, open(os.path.join(site, model, "latest.json"), "w"))
 
 
 def test_blend_step_keeps_rain_intense_when_models_disagree_on_where_it_falls(tmp_path):
     site = str(tmp_path)
     _write_precip_model(site, "ecmwf_ifs", _block(12, 40, 40))
-    _write_precip_model(site, "ukmo", _block(12, 100, 150))
+    _write_precip_model(site, "ukmo", _block(12, 50, 110))
     comps = blend.components_of(site)
     valid = T0 + timedelta(hours=3)
     plain = blend.weighted_mean([(c.weight, blend.field_at_valid(c, "precip", valid)) for c in comps])
@@ -199,7 +200,7 @@ def test_the_blend_never_leaves_the_range_of_the_models(tmp_path):
         os.makedirs(os.path.join(root, "t2m"), exist_ok=True)
         open(os.path.join(root, "t2m", "003.png"), "wb").write(encode_field(field, v.lo, v.hi, v.bits))
         json.dump({"model": model, "run": run_id, "vars": {"t2m": {"unit": "C", "min": v.lo, "max": v.hi, "encoding": "rg16"}},
-                   "steps": [{"h": 3, "valid": f"{T0 + timedelta(hours=3):%Y-%m-%dT%H:%M:%SZ}"}]}, open(os.path.join(root, "manifest.json"), "w"))
+                   "grid": {"nx": C.NX, "ny": C.NY}, "steps": [{"h": 3, "valid": f"{T0 + timedelta(hours=3):%Y-%m-%dT%H:%M:%SZ}"}]}, open(os.path.join(root, "manifest.json"), "w"))
         json.dump({"model": model, "run": run_id}, open(os.path.join(site, model, "latest.json"), "w"))
     out = blend.blend_step(blend.components_of(site), ["t2m"], T0 + timedelta(hours=3))["t2m"]
     assert float(out.max()) <= 40.01 and float(out.min()) >= 23.99                       # inside [lowest model, highest model]

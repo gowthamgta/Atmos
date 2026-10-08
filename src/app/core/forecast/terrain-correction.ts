@@ -1,7 +1,7 @@
 /**
- * 1 km terrain downscaling of model fields. Every model is published on a 0.1° grid, but it sees its own cells as
- * flat ground at their mean height, so at each 1 km pixel the real ground differs from the model's by
- * dz = (1 km terrain) - (model's ground). These formulas move each near-surface field from the model's ground to
+ * 90 m terrain downscaling of model fields. Every model is published on a 0.1° grid, but it sees its own cells as
+ * flat ground at their mean height, so at each 90 m cell the real ground differs from the model's by
+ * dz = (90 m terrain) - (model's ground). These formulas move each near-surface field from the model's ground to
  * the real one, using:
  *  - dz (height): temperature, feels-like, dew point, humidity, moisture column;
  *  - ridge/valley position and the coast (land fraction): wind and gusts;
@@ -36,7 +36,7 @@ export const WIND_FACTOR_MIN = 0.6;
 export const WIND_FACTOR_MAX = 1.6;
 
 /**
- * Rain from air forced up the slopes: the change in rain per m/s of lift (wind times slope) that the 1 km terrain adds
+ * Rain from air forced up the slopes: the change in rain per m/s of lift (wind times slope) that the 90 m terrain adds
  * beyond what the model's own smoother terrain already gives it.
  */
 export const OROGRAPHIC_GAIN_S_PER_M = 1.2;
@@ -89,7 +89,7 @@ export function windFactor(tpi: number, landFine: number, landModel: number): nu
 
 /**
  * Rain multiplier from the wind blowing up (or down) the slopes. `liftFine` and `liftModel` are wind · slope (m/s)
- * on the 1 km-scale terrain and on the model's own terrain; only the extra lift the model cannot see changes the rain.
+ * on the 90 m terrain and on the model's own terrain; only the extra lift the model cannot see changes the rain.
  */
 export function orographicFactor(liftFine: number, liftModel: number): number {
   return clamp(1 + OROGRAPHIC_GAIN_S_PER_M * (liftFine - liftModel), OROGRAPHIC_MIN, OROGRAPHIC_MAX);
@@ -156,7 +156,7 @@ export function solarFactor(gx: number, gy: number, sun: readonly [number, numbe
 
 /** Everything about the ground at one point that the corrections need. */
 export interface PointTerrain {
-  /** 1 km ground height and the model's ground (m), and their difference (clamped). */
+  /** 90 m ground height and the model's ground (m), and their difference (clamped). */
   fine: number;
   model: number;
   dz: number;
@@ -167,7 +167,7 @@ export interface PointTerrain {
   /** Slope (m/m, east and north) of the smoothed terrain and of the model's terrain, for windward lift. */
   slope: [number, number];
   modelSlope: [number, number];
-  /** Slope of the 1 km terrain, for sunshine on hillsides. */
+  /** Slope of the 90 m terrain, for sunshine on hillsides. */
   fineSlope: [number, number];
 }
 
@@ -213,24 +213,4 @@ export function applyTerrain(mode: TerrainMode | null, value: number, ctx: Terra
     }
   }
   return value;
-}
-
-/** Bounds of a terrain grid, in degrees. */
-export interface TerrainBounds {
-  lonMin: number;
-  latMin: number;
-  lonMax: number;
-  latMax: number;
-}
-
-/** How far (degrees) the fine inset fades into the 1 km terrain inside its edge: about 5 km. */
-export const INSET_RAMP_DEG = 0.05;
-
-/**
- * Weight of the fine (90 m) inset at a point: 0 at its edge (where the 1 km terrain takes over, so the border is seamless),
- * rising linearly to 1 once the point is INSET_RAMP_DEG inside. The shader uses the same formula.
- */
-export function insetWeight(lat: number, lon: number, b: TerrainBounds, ramp: number = INSET_RAMP_DEG): number {
-  const d = Math.min(lon - b.lonMin, b.lonMax - lon, lat - b.latMin, b.latMax - lat);
-  return Math.min(1, Math.max(0, d / ramp));
 }

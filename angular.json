@@ -50,7 +50,7 @@
                 "input": "public"
               },
               {
-                "glob": "maplibre-gl-{worker,shared}.mjs",
+                "glob": "maplibre-gl-*.mjs",
                 "input": "node_modules/maplibre-gl/dist",
                 "output": "/"
               }

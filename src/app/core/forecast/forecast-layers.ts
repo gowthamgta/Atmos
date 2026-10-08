@@ -58,7 +58,7 @@ export interface ForecastLayerDef {
   ticks: readonly number[];
   /** Fraction of full opacity. */
   opacity: number;
-  /** How the 1 km terrain downscaling applies to this variable (null: smooth interpolation of the model field only). */
+  /** How the 90 m terrain downscaling applies to this variable (null: smooth interpolation of the model field only). */
   terrain: TerrainMode | null;
   /** Pressure-level layers: about how high the level is (m). Where the ground is higher, the level is underground. */
   levelHeightM?: number;
@@ -184,7 +184,7 @@ export function resolveLayer(def: ForecastLayerDef, level: Level): ForecastLayer
     ...spec,
     varId2: spec.varId2,                // a scalar level layer must not inherit the surface layer's second component
     label: `${spec.label ?? def.label} · ${level} hPa`,
-    terrain: null,                      // the 1 km terrain correction only applies to the near-surface fields
+    terrain: null,                      // the 90 m terrain correction only applies to the near-surface fields
     levelHeightM: LEVEL_KM[level] * 1000, // where the ground reaches above the level it is shown faded
     clearBelow: 0,
   };

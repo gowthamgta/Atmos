@@ -5,12 +5,15 @@ from dataclasses import dataclass
 BUCKET_URL = "https://openmeteo.s3.amazonaws.com"
 LATEST_URL = f"{BUCKET_URL}/data_spatial/ecmwf_ifs/latest.json"  # IFS; GFS builds its own in fetch_gfs.py
 
-# South India + seas; regular lat/lon grid at 0.1 degrees (~11 km, close to IFS's native ~9 km)
-LAT_MAX, LAT_MIN = 22.0, 4.0
-LON_MIN, LON_MAX = 68.0, 90.0
+# The region the app covers: South India, Sri Lanka and the seas around them. Every data set (model fields, terrain,
+# satellite overlays) is cut to this box. A regular lat/lon grid at 0.1 degrees (~11 km).
+LAT_MAX, LAT_MIN = 14.5, 5.5
+LON_MIN, LON_MAX = 73.0, 89.5
+# Changing the domain (or anything that makes the published grids differ) changes this id: every live model is then built again
+DOMAIN = "south-india-5.5-14.5N-73-89.5E"
 STEP_DEG = 0.1
-NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 181 rows, north to south
-NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 221 columns, west to east
+NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 91 rows, north to south
+NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 166 columns, west to east
 
 # Each model module (fetch_ifs.py, fetch_gfs.py) declares its own MODEL_ID, RUN_HOURS, STEP_HOURS and rain semantics.
 

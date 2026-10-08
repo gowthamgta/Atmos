@@ -5,7 +5,7 @@ import { FORECAST_LAYERS, LEVEL_KM, forecastLayerById, resolveLayer } from './fo
 import { FORECAST_MODELS } from './forecast-models';
 import { nearestModelKm } from './terrain.service';
 
-describe('1 km downscaling registry', () => {
+describe('90 m downscaling registry', () => {
   it('gives every near-surface layer that the terrain affects a downscaling mode the shader knows', () => {
     const modes = Object.fromEntries(FORECAST_LAYERS.map(l => [l.id, l.terrain]));
     expect(modes).toMatchObject({

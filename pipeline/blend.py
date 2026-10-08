@@ -27,7 +27,7 @@ from encode import decode_field, encode_field
 BLEND_ID = "blend"
 LABEL = "All models (blend)"
 STEP_HOURS = 3
-VERSION = 4        # bump when the method changes: v2 added probability-matched rain and high-resolution detail; v3 rebuilds when a model is rebuilt under the same run; v4 sums rain24 from the blended rain rate
+VERSION = 5        # bump when the method changes: v5 rebuilds on the cropped domain (grids of other sizes are left out); v2 added probability-matched rain and high-resolution detail; v3 rebuilds when a model is rebuilt under the same run; v4 sums rain24 from the blended rain rate
 # Relative weights. IFS is the best global model for this region; AIFS, ICON and the UKMO model are close behind.
 WEIGHTS: dict[str, float] = {
     "ecmwf_ifs": 3.0, "gfs": 2.0, "ukmo": 2.0, "ecmwf_aifs": 1.5, "dwd_icon": 1.5,
@@ -75,6 +75,11 @@ def load_component(site: str, model: str) -> Component | None:
         manifest = json.load(open(os.path.join(root, run_id, "manifest.json")))
         run = parse_run(run_id)
     except (OSError, ValueError, KeyError):
+        return None
+    grid = manifest.get("grid", {})
+    if grid.get("nx") != C.NX or grid.get("ny") != C.NY:
+        # a copy from before the domain changed: its grid does not line up with the others, so it is left out
+        print(f"blend: {model} is on another grid ({grid.get('nx')}x{grid.get('ny')}); left out until it is rebuilt", flush=True)
         return None
     steps = {parse_valid(s["valid"]): int(s["h"]) for s in manifest["steps"]}
     build = f"{latest.get('format', 0)}{'' if latest.get('complete', True) else 'i'}"

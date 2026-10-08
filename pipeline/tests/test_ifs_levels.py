@@ -50,11 +50,13 @@ def test_a_step_whose_levels_cannot_be_read_is_recorded(monkeypatch, tmp_path):
 def test_live_run_ignores_incomplete_and_old_format_runs(monkeypatch):
     def serve(payload):
         monkeypatch.setattr(run.requests, "get", lambda *a, **k: _Resp(200, payload))
-    serve({"run": "20261007T00Z"})
-    assert run.live_run("u") == "20261007T00Z"                                  # a model without a format: as before
+    serve({"run": "20261007T00Z", "domain": run.C.DOMAIN})
+    assert run.live_run("u") == "20261007T00Z"                                  # no format asked for: as before
     assert run.live_run("u", fmt=2) is None                                    # IFS wants format 2: the old live copy is rebuilt
-    serve({"run": "20261007T00Z", "format": 2})
+    serve({"run": "20261007T00Z", "format": 2, "domain": run.C.DOMAIN})
     assert run.live_run("u", fmt=2) == "20261007T00Z"
-    serve({"run": "20261007T00Z", "format": 2, "complete": False})
+    serve({"run": "20261007T00Z", "format": 2, "domain": run.C.DOMAIN, "complete": False})
     assert run.live_run("u", fmt=2) is None                                    # published with gaps: built again
     assert run.live_run("u") is None
+    serve({"run": "20261007T00Z", "format": 2})
+    assert run.live_run("u", fmt=2) is None                                    # published for another domain: built again

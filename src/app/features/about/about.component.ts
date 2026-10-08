@@ -15,8 +15,7 @@ const CREDITS: readonly Credit[] = [
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
   { name: 'Satellite', what: 'Meteosat-9 (Indian Ocean service), © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
-  { name: 'Terrain', what: 'AWS Terrain Tiles (SRTM and other public DEMs)' },
-  { name: 'Tamil Nadu terrain', what: 'Copernicus DEM GLO-30 (© DLR and Airbus), averaged to 90 m' },
+  { name: 'Terrain', what: 'Copernicus DEM GLO-30 (© DLR and Airbus), averaged to 90 m' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
   { name: 'Base map', what: '© OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors; hillshade © Esri' },
 ];
@@ -40,7 +39,7 @@ const CREDITS: readonly Credit[] = [
         </header>
         <p>
           A forecast map for South India and the seas around it. Five weather models, resampled onto one 0.1° grid, with
-          temperature and humidity adjusted to the terrain (1 km, and 90 m over Tamil Nadu). A personal, non-commercial project; forecasts are model
+          temperature and humidity adjusted to the 90 m terrain. A personal, non-commercial project; forecasts are model
           output and not a safety warning, so follow IMD for official alerts.
         </p>
         <h2>Data</h2>

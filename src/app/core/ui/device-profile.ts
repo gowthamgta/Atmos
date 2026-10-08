@@ -1,7 +1,7 @@
 /**
  * What the device can take. Phones (and other small touch screens) get lighter settings by default: fewer texture reads
  * per pixel in the forecast shader, smaller satellite and radar images. Everything stays switchable by the user where it
- * changes the look (the "1 km detail" switch in the layer menu).
+ * changes the look (the "90 m detail" switch in the layer menu).
  */
 export function isPhone(): boolean {
   if (typeof window === 'undefined') return false;
@@ -9,11 +9,11 @@ export function isPhone(): boolean {
 }
 
 /**
- * Satellite picture size to request (pixels): about 1 km per pixel on desktop, about 1.4 km on a phone (1650 px wide,
- * a little over half the pixels of the desktop picture, so five frames stay near 40 MB of GPU memory).
+ * Satellite picture size to request (pixels): about 0.8 km per pixel on desktop, about 1.5 km on a phone. The height follows
+ * the forecast domain's shape (16.5 by 9 degrees), so the picture is not stretched.
  */
 export function satelliteImageSize(phone: boolean): { width: number; height: number } {
-  return phone ? { width: 1650, height: 1350 } : { width: 2200, height: 1800 };
+  return phone ? { width: 1650, height: 900 } : { width: 2200, height: 1200 };
 }
 
 /** Largest side of the radar mosaic (pixels): 0.5 km per pixel on desktop; about 0.6 km on a phone. */

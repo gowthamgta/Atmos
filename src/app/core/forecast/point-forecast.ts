@@ -28,7 +28,7 @@ export interface PointRow {
   label: string;
   /** Preformatted value including the unit. Empty for a heading row. */
   text: string;
-  /** True when the 1 km terrain correction was applied. */
+  /** True when the 90 m terrain correction was applied. */
   terrainAdjusted: boolean;
   /** A section heading rather than a value. */
   heading?: boolean;
@@ -39,7 +39,7 @@ export interface PointForecast {
   lon: number;
   district: string | null;
   state: string | null;
-  /** Ground height from the 1 km terrain (null while it is unavailable). */
+  /** Ground height from the 90 m terrain (null while it is unavailable). */
   elevationM: number | null;
   timeMs: number;
   rows: PointRow[];
@@ -75,7 +75,7 @@ function windText(u: number, v: number, factor = 1): string {
 
 /**
  * Turns blended raw field values into display rows, moving the near-surface ones from the model's ground to the real
- * 1 km ground exactly as the map does. `terrain` is null while the terrain is unavailable (model values are shown).
+ * 90 m ground exactly as the map does. `terrain` is null while the terrain is unavailable (model values are shown).
  */
 export function buildPointRows(
   values: Record<string, number>,

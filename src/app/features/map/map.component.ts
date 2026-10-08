@@ -23,14 +23,13 @@ import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
 import { SATELLITE_BOUNDS } from '../../core/satellite/satellite.config';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
-/** [[west, south], [east, north]]: Tamil Nadu focus view by default. */
-const TAMIL_NADU_VIEW: [[number, number], [number, number]] = [[76.0, 8.0], [80.6, 13.8]];
-/** [[west, south], [east, north]]: the whole forecast area (South India, Sri Lanka and the seas around them). */
-const SOUTH_INDIA_VIEW: [[number, number], [number, number]] = [[67.5, 3.5], [90.5, 22.5]];
+/** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
+const KALLAKURICHI = { lng: 78.96, lat: 11.74 } as const;
+const HOME_ZOOM = 6.2;
 /** How far the map can be panned and zoomed out: wide enough to roam freely beyond the forecast area. */
 const MAP_MAX_BOUNDS: [[number, number], [number, number]] = [[52, -10], [108, 34]];
 
-// State and district outlines for South India and Sri Lanka (built by scripts/build-south-india-data.py).
+// State and district outlines for South India and Sri Lanka (built by scripts/build-boundaries.py).
 // The lines are drawn above every raster overlay (radar, forecast) so boundaries stay readable on top of them.
 const BOUNDARY_SOURCE_ID = 'boundaries';
 const BOUNDARY_FIRST_LAYER_ID = 'district-casing';
@@ -528,9 +527,9 @@ export class MapComponent implements OnInit, OnDestroy {
           }
         ]
       },
-      // Open centered on Tamil Nadu by default; users can zoom out freely beyond it
-      bounds: TAMIL_NADU_VIEW,
-      fitBoundsOptions: { padding: 16 },
+      // Open centred on Kallakurichi; users can zoom out freely beyond the forecast area
+      center: [KALLAKURICHI.lng, KALLAKURICHI.lat],
+      zoom: HOME_ZOOM,
       minZoom: 3.2,
       maxZoom: 15,
       maxBounds: MAP_MAX_BOUNDS,
@@ -759,7 +758,8 @@ export class MapComponent implements OnInit, OnDestroy {
 
     const widths = (z5: number, z10: number): maplibregl.ExpressionSpecification =>
       ['interpolate', ['linear'], ['zoom'], 5, z5, 10, z10];
-    const isDistrict: maplibregl.ExpressionSpecification = ['==', ['get', 'kind'], 'district'];
+    // the district lines are drawn for Tamil Nadu only; the other states show their outlines
+    const isDistrict: maplibregl.ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'district'], ['==', ['get', 'state'], 'Tamil Nadu']];
     const isState: maplibregl.ExpressionSpecification = ['==', ['get', 'kind'], 'state'];
     const line = (
       id: string,
@@ -907,7 +907,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
   public flyToMosaicCenter(): void {
     if (!this.map) return;
-    this.map.fitBounds(TAMIL_NADU_VIEW, { padding: 16, essential: true });
+    this.map.easeTo({ center: [KALLAKURICHI.lng, KALLAKURICHI.lat], zoom: HOME_ZOOM, essential: true });
   }
 
   public zoomIn(): void {

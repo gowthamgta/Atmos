@@ -107,11 +107,11 @@ function ladderKm(level: Level): string {
               <button type="button" class="layer" [class.active]="state.districtLines()" [attr.aria-pressed]="state.districtLines()" (click)="state.toggleDistrictLines()" title="Show or hide the district boundaries (state and country outlines stay)">
                 <span class="l-icon" aria-hidden="true">▦</span><span class="l-name">District boundaries</span>
               </button>
-              <button type="button" class="layer" [class.active]="state.relief()" [attr.aria-pressed]="state.relief()" (click)="state.toggleRelief()" title="Shade the 1 km terrain into the colour layer">
+              <button type="button" class="layer" [class.active]="state.relief()" [attr.aria-pressed]="state.relief()" (click)="state.toggleRelief()" title="Shade the 90 m terrain into the colour layer">
                 <span class="l-icon" aria-hidden="true">⛰</span><span class="l-name">Terrain relief</span>
               </button>
-              <button type="button" class="layer" [class.active]="state.detail()" [attr.aria-pressed]="state.detail()" (click)="state.toggleDetail()" title="Full 1 km detail: smoother fields, rain over hills and sunshine on slopes. Turn off if the map lags.">
-                <span class="l-icon" aria-hidden="true">✦</span><span class="l-name">1 km detail</span>
+              <button type="button" class="layer" [class.active]="state.detail()" [attr.aria-pressed]="state.detail()" (click)="state.toggleDetail()" title="Full 90 m detail: smoother fields, rain over hills and sunshine on slopes. Turn off if the map lags.">
+                <span class="l-icon" aria-hidden="true">✦</span><span class="l-name">90 m detail</span>
               </button>
             </div>
           </div>

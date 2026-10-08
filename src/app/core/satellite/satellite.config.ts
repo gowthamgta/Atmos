@@ -17,8 +17,8 @@ import { isPhone, satelliteImageSize } from '../ui/device-profile';
 
 export const EUMETVIEW_WMS = 'https://view.eumetsat.int/geoserver/msg_iodc/wms';
 
-/** The area requested: South India, Sri Lanka and the seas around them (same as the forecast domain). */
-export const SATELLITE_BOUNDS = { west: 68, east: 90, south: 4, north: 22 } as const;
+/** The area requested: the forecast domain (South India, Sri Lanka and the seas around them). */
+export const SATELLITE_BOUNDS = { west: 73, east: 89.5, south: 5.5, north: 14.5 } as const;
 /**
  * Pixels requested: about 1 km per pixel, finer than the satellite's own pixels (about 2-3 km here), so nothing is lost.
  * Phones get a quarter of the pixels (about 2 km per pixel): five full-size pictures would take over 80 MB of GPU memory.
