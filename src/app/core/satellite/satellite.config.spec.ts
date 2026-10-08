@@ -89,19 +89,19 @@ describe('satelliteFrameUrl', () => {
 
   it('asks the public EUMETView map service for the HRV RGB at an explicit time', () => {
     expect(`${url.origin}${url.pathname}`).toBe(EUMETVIEW_WMS);
-    expect(url.searchParams.get('layers')).toBe('msg_fes:rgb_eview');
+    expect(url.searchParams.get('layers')).toBe('msg_iodc:rgb_eview');
     expect(url.searchParams.get('time')).toBe('2026-10-05T05:30:00Z');
     expect(url.searchParams.get('request')).toBe('GetMap');
     expect(url.searchParams.get('format')).toBe('image/jpeg');
   });
 
   it('uses the infrared layer for night frames', () => {
-    expect(new URL(satelliteFrameUrl(SATELLITE_IR, T('2026-10-05T20:00:00Z'))).searchParams.get('layers')).toBe('msg_fes:ir108');
+    expect(new URL(satelliteFrameUrl(SATELLITE_IR, T('2026-10-05T20:00:00Z'))).searchParams.get('layers')).toBe('msg_iodc:ir108');
   });
 
   it('orders the box south, west, north, east as WMS 1.3.0 needs for EPSG:4326', () => {
     expect(url.searchParams.get('crs')).toBe('EPSG:4326');
-    expect(url.searchParams.get('bbox')).toBe('-55,-75,65,85');
+    expect(url.searchParams.get('bbox')).toBe('5.5,73,14.5,89.5');
   });
 
   it('never contains a key, token or secret', () => {
@@ -129,8 +129,8 @@ describe('parseNewestTime', () => {
   });
 
   it('asks the capabilities of the layer being shown', () => {
-    expect(satelliteCapabilitiesUrl(SATELLITE_IR)).toContain('/msg_fes/ir108/ows?');
-    expect(satelliteCapabilitiesUrl(SATELLITE_HRV)).toContain('/msg_fes/rgb_eview/ows?');
+    expect(satelliteCapabilitiesUrl(SATELLITE_IR)).toContain('/msg_iodc/ir108/ows?');
+    expect(satelliteCapabilitiesUrl(SATELLITE_HRV)).toContain('/msg_iodc/rgb_eview/ows?');
   });
 });
 

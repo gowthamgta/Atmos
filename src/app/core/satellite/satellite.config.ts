@@ -1,6 +1,5 @@
 /**
- * Meteosat imagery over the globe (EUMETSAT's full-disc service, centred on 0 degrees: Europe, Africa, the Atlantic and the
- * Indian Ocean, India included) from EUMETView, EUMETSAT's public map
+ * Meteosat-9 imagery (EUMETSAT's Indian Ocean Data Coverage service, 45.5 E) from EUMETView, EUMETSAT's public map
  * service. It needs no key or login, allows cross-origin requests, and has a new image every 15 minutes.
  *
  * The overlay shows the European HRV RGB (high-resolution visible) by day and the infrared channel by night,
@@ -16,44 +15,10 @@
 
 import { isPhone, satelliteImageSize } from '../ui/device-profile';
 
-/** EUMETView's full-disc Meteosat workspace (the Indian Ocean one, msg_iodc, is a smaller area inside it). */
-export const EUMETVIEW_WORKSPACE = 'msg_fes';
-export const EUMETVIEW_WMS = `https://view.eumetsat.int/geoserver/${EUMETVIEW_WORKSPACE}/wms`;
-
-/** A box in degrees: the area a picture covers. */
-export interface SatelliteBounds {
-  west: number;
-  east: number;
-  south: number;
-  north: number;
-}
+export const EUMETVIEW_WMS = 'https://view.eumetsat.int/geoserver/msg_iodc/wms';
 
 /** The area requested: the forecast domain (South India, Sri Lanka and the seas around them). */
-export const SATELLITE_BOUNDS: SatelliteBounds = { west: 73, east: 89.5, south: 5.5, north: 14.5 };
-/** The Meteosat picture: Europe, Africa, the Atlantic and the Indian Ocean, India included (the sub-satellite point is at 0 E). */
-export const METEOSAT_BOUNDS: SatelliteBounds = { west: -75, east: 85, south: -55, north: 65 };
-
-/** The box a product's picture covers: the globe-wide Meteosat box, or the South India box for FY-4B. */
-export function boundsFor(product: SatelliteProduct): SatelliteBounds {
-  return product.source === 'meteosat' ? METEOSAT_BOUNDS : SATELLITE_BOUNDS;
-}
-
-/** Pixels for a box at a given width: the height follows the box's shape in degrees (the picture is plain lat/lon). */
-export function sizeForBounds(b: SatelliteBounds, width: number): { width: number; height: number } {
-  return { width, height: Math.round((width * (b.north - b.south)) / (b.east - b.west)) };
-}
-
-/** The request size of a product's picture: about 1 km per pixel over India, about 6 km per pixel over the Meteosat box. */
-export function sizeFor(product: SatelliteProduct): { width: number; height: number } {
-  if (product.source === 'fy4b') return SATELLITE_SIZE;
-  return sizeForBounds(METEOSAT_BOUNDS, isPhone() ? 1000 : 2000);
-}
-
-/** The natural-colour picture (see SATELLITE_NATURAL_LAYER): half the width and height of the main picture. */
-export function naturalSizeFor(product: SatelliteProduct): { width: number; height: number } {
-  const s = sizeFor(product);
-  return { width: Math.round(s.width / 2), height: Math.round(s.height / 2) };
-}
+export const SATELLITE_BOUNDS = { west: 73, east: 89.5, south: 5.5, north: 14.5 } as const;
 /**
  * Pixels requested: about 1 km per pixel, finer than the satellite's own pixels (about 2-3 km here), so nothing is lost.
  * Phones get a quarter of the pixels (about 2 km per pixel): five full-size pictures would take over 80 MB of GPU memory.
@@ -103,7 +68,7 @@ export interface SatelliteSourceInfo {
 }
 
 export const SATELLITE_SOURCES: Record<SatelliteSource, SatelliteSourceInfo> = {
-  meteosat: { id: 'meteosat', label: 'Meteosat', credit: '© EUMETSAT' },
+  meteosat: { id: 'meteosat', label: 'Meteosat-9', credit: '© EUMETSAT' },
   fy4b: { id: 'fy4b', label: 'FY-4B', credit: 'FY-4B AGRI, NSMC / CMA' },
 };
 
@@ -177,7 +142,7 @@ export function productForTime(timeMs: number): SatelliteProduct {
 
 /** Capabilities document of a layer: tiny, and it lists the newest time the service really has. */
 export function satelliteCapabilitiesUrl(product: SatelliteProduct): string {
-  return `https://view.eumetsat.int/geoserver/${EUMETVIEW_WORKSPACE}/${product.layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`;
+  return `https://view.eumetsat.int/geoserver/msg_iodc/${product.layer}/ows?service=WMS&version=1.3.0&request=GetCapabilities`;
 }
 
 /**
@@ -209,13 +174,13 @@ export function frameTimes(latestMs: number, count = SATELLITE_FRAME_COUNT, step
 }
 
 /** GetMap URL for one frame. JPEG keeps a frame to 20-400 KB; transparency is done afterwards, in the browser. */
-export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, layer: string = product.layer, size: { width: number; height: number } = sizeFor(product)): string {
-  const b = boundsFor(product);
+export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, layer: string = product.layer, size: { width: number; height: number } = SATELLITE_SIZE): string {
+  const b = SATELLITE_BOUNDS;
   const params = new URLSearchParams({
     service: 'WMS',
     version: '1.3.0',
     request: 'GetMap',
-    layers: `${EUMETVIEW_WORKSPACE}:${layer}`,
+    layers: `msg_iodc:${layer}`,
     styles: '',
     crs: 'EPSG:4326',
     // WMS 1.3.0 with EPSG:4326 orders the box as south, west, north, east

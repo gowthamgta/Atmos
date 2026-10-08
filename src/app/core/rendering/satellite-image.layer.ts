@@ -1,15 +1,6 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
-import { SATELLITE_BOUNDS, SatelliteBounds } from '../satellite/satellite.config';
-
-/** The four corners of a box as the quad the picture is drawn on (two triangles' vertices, as a strip). */
-function quadCorners(b: SatelliteBounds): Float32Array {
-  const x0 = mercatorUnitX(b.west);
-  const x1 = mercatorUnitX(b.east);
-  const y0 = mercatorUnitY(b.north);
-  const y1 = mercatorUnitY(b.south);
-  return new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]);
-}
+import { SATELLITE_BOUNDS } from '../satellite/satellite.config';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -124,8 +115,6 @@ export interface SatelliteLayerFrame {
   /** Unique key of the picture (its object URL). */
   key: string;
   url: string;
-  /** The box the picture covers (the same for every frame of a source). */
-  bounds?: SatelliteBounds;
 }
 
 interface Slot {
@@ -142,8 +131,6 @@ export class SatelliteImageLayer implements CustomLayerInterface {
 
   private map: MapLibreMap | null = null;
   private gl: WebGL2RenderingContext | null = null;
-  /** The box the picture on the map covers (set from the frames: Meteosat's or FY-4B's). */
-  private bounds: SatelliteBounds = SATELLITE_BOUNDS;
   private program: WebGLProgram | null = null;
   private vao: WebGLVertexArrayObject | null = null;
   private vbo: WebGLBuffer | null = null;
@@ -158,14 +145,6 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   /** The pictures of the loop, oldest first. Pictures no longer listed are released. */
   setFrames(frames: readonly SatelliteLayerFrame[]): void {
     this.frames = [...frames];
-    const next = frames[0]?.bounds ?? SATELLITE_BOUNDS;
-    if (next !== this.bounds) {
-      this.bounds = next;
-      if (this.gl && this.vbo) {
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.vbo);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, quadCorners(next), this.gl.STATIC_DRAW);
-      }
-    }
     const keep = new Set(frames.map(f => f.key));
     for (const [key, slot] of this.slots) {
       if (keep.has(key)) continue;
@@ -239,9 +218,14 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     }
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
+    const b = SATELLITE_BOUNDS;
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, quadCorners(this.bounds), gl.STATIC_DRAW);
+    const x0 = mercatorUnitX(b.west);
+    const x1 = mercatorUnitX(b.east);
+    const y0 = mercatorUnitY(b.north);
+    const y1 = mercatorUnitY(b.south);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(program, 'a_pos');
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
@@ -309,7 +293,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, b ? b.texture : a.texture);
     const u = this.uniforms;
-    const bounds = this.bounds;
+    const bounds = SATELLITE_BOUNDS;
     gl.uniformMatrix4fv(u['u_matrix'], false, options.defaultProjectionData.mainMatrix as unknown as Float32List);
     gl.uniform1i(u['u_a'], 0);
     gl.uniform1i(u['u_b'], 1);

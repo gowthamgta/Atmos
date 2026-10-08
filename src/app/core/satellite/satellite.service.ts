@@ -1,12 +1,10 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import { isPhone } from '../ui/device-profile';
-import type { SatelliteBounds } from './satellite.config';
 import {
   FY4B_BASE,
   SATELLITE_NATURAL_LAYER,
-  boundsFor,
-  naturalSizeFor,
+  SATELLITE_NATURAL_SIZE,
   SatelliteProduct,
   SatelliteSource,
   SatelliteView,
@@ -33,8 +31,6 @@ export interface SatelliteFrame {
   product: SatelliteProduct;
   /** Object URL of the finished overlay picture. */
   url: string;
-  /** The box the picture covers. */
-  bounds: SatelliteBounds;
 }
 
 /** Time a picture is shown while playing, and the pause on the newest picture before the loop restarts. */
@@ -153,7 +149,7 @@ export class SatelliteService {
           // frame works without it
           const [blob, natural] = await Promise.all([
             this.download(product, t),
-            product.id === 'hrv' ? this.download(product, t, SATELLITE_NATURAL_LAYER, naturalSizeFor(product)) : Promise.resolve(null),
+            product.id === 'hrv' ? this.download(product, t, SATELLITE_NATURAL_LAYER, SATELLITE_NATURAL_SIZE) : Promise.resolve(null),
           ]);
           return blob ? { blob, natural: natural ?? undefined } : null;
         },
@@ -248,7 +244,7 @@ export class SatelliteService {
       const raw = this.raws.get(timeMs)!;
       pending = this.process(raw.blob, raw.product, view, view === 'clouds' ? raw.natural : undefined).then(url => {
         if (!url) this.built.delete(key); // try again on the next refresh
-        return url ? { timeMs, product: raw.product, url, bounds: boundsFor(raw.product) } : null;
+        return url ? { timeMs, product: raw.product, url } : null;
       });
       this.built.set(key, pending);
     }
@@ -300,7 +296,7 @@ export class SatelliteService {
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? URL.createObjectURL(r.png) : null));
-      worker.postMessage({ id, jpeg, kind: product.id, view, natural, bounds: boundsFor(product) } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, view, natural } satisfies SatelliteWorkerRequest);
     });
   }
 
