@@ -15,6 +15,8 @@ on:
       - "pipeline/data/**"
       - "pipeline/run.py"
       - "pipeline/fetch_ifs.py"
+      - "pipeline/fetch_regular.py"
+      - "pipeline/models_regular.py"
       - "pipeline/blend.py"
       - "pipeline/cyclones.py"
   workflow_dispatch:
