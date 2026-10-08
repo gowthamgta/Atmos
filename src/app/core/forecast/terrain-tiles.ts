@@ -23,8 +23,13 @@ export function terrainLevelForZoom(zoom: number): TerrainLevel {
   return 2;
 }
 
-/** Tiles held on the GPU at once, per level (the 90 m level is the largest: about 1.2k x 1.2k cells each). */
-export const TILE_SLOTS: Record<TerrainLevel, number> = { 0: 20, 1: 56, 2: 56 };
+/**
+ * Tiles held on the GPU at once, per level. The 90 m level is the largest (about 1.2k x 1.2k cells each, 5.8 MB): 30 on a
+ * desktop, 20 on a phone. More slots mean fewer tiles reloaded when the view moves.
+ */
+export function tileSlots(phone: boolean): Record<TerrainLevel, number> {
+  return { 0: phone ? 20 : 30, 1: 56, 2: 56 };
+}
 
 /** The tile that holds a point: its south-west corner, e.g. N11E078 for 11.74 N, 78.96 E. */
 export function tileNameAt(lat: number, lon: number): string {
@@ -113,6 +118,11 @@ export class TileSlots {
 
   has(name: string): boolean {
     return this.slotOf.has(name);
+  }
+
+  /** Slots that hold no tile. */
+  freeCount(): number {
+    return this.nameOf.filter(n => n === null).length;
   }
 
   slot(name: string): number | undefined {
@@ -211,31 +221,34 @@ export function sampleTile(
 export function resampleTileRgb(src: Uint8ClampedArray, n: number, m: number, max = 4000): Uint8ClampedArray<ArrayBuffer> {
   const out: Uint8ClampedArray<ArrayBuffer> = new Uint8ClampedArray(new ArrayBuffer(m * m * 4));
   const scale = n / m;
+  // the source column and row of each output column and row, with the weight of the second one: computed once
+  const x0 = new Int32Array(m), x1 = new Int32Array(m), fx = new Float64Array(m);
+  const y0 = new Int32Array(m), y1 = new Int32Array(m), fy = new Float64Array(m);
+  for (let k = 0; k < m; k++) {
+    const sx = Math.min(n - 1, Math.max(0, (k + 0.5) * scale - 0.5));
+    x0[k] = Math.floor(sx);
+    x1[k] = Math.min(n - 1, x0[k] + 1);
+    fx[k] = sx - x0[k];
+    const sy = Math.min(n - 1, Math.max(0, (k + 0.5) * scale - 0.5));
+    y0[k] = Math.floor(sy);
+    y1[k] = Math.min(n - 1, y0[k] + 1);
+    fy[k] = sy - y0[k];
+  }
+  const k16 = max / 65535;
   for (let y = 0; y < m; y++) {
-    const sy = Math.min(n - 1, Math.max(0, (y + 0.5) * scale - 0.5));
-    const y0 = Math.floor(sy);
-    const y1 = Math.min(n - 1, y0 + 1);
-    const fy = sy - y0;
+    const r0 = y0[y] * n, r1 = y1[y] * n, wy = fy[y], wy0 = 1 - wy;
     for (let x = 0; x < m; x++) {
-      const sx = Math.min(n - 1, Math.max(0, (x + 0.5) * scale - 0.5));
-      const x0 = Math.floor(sx);
-      const x1 = Math.min(n - 1, x0 + 1);
-      const fx = sx - x0;
-      let z = 0;
-      let land = 0;
-      for (const [yy, wy] of [[y0, 1 - fy], [y1, fy]] as const) {
-        for (const [xx, wx] of [[x0, 1 - fx], [x1, fx]] as const) {
-          const p = (yy * n + xx) * 4;
-          const w = wx * wy;
-          z += ((src[p] * 256 + src[p + 1]) / 65535) * max * w;
-          land += (src[p + 2] / 255) * w;
-        }
-      }
-      const q = Math.min(65535, Math.max(0, Math.round((z / max) * 65535)));
+      const a = (r0 + x0[x]) * 4, b = (r0 + x1[x]) * 4, c = (r1 + x0[x]) * 4, d = (r1 + x1[x]) * 4;
+      const wx = fx[x], wx0 = 1 - wx;
+      const w00 = wx0 * wy0, w10 = wx * wy0, w01 = wx0 * wy, w11 = wx * wy;
+      const z = ((src[a] * 256 + src[a + 1]) * w00 + (src[b] * 256 + src[b + 1]) * w10 +
+        (src[c] * 256 + src[c + 1]) * w01 + (src[d] * 256 + src[d + 1]) * w11) * k16;
+      const land = src[a + 2] * w00 + src[b + 2] * w10 + src[c + 2] * w01 + src[d + 2] * w11;
+      const q = Math.min(65535, Math.max(0, Math.round(z / max * 65535)));
       const o = (y * m + x) * 4;
       out[o] = q >> 8;
       out[o + 1] = q & 255;
-      out[o + 2] = Math.min(255, Math.max(0, Math.round(land * 255)));
+      out[o + 2] = Math.round(land);
       out[o + 3] = 255;
     }
   }

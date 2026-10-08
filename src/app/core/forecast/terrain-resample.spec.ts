@@ -36,3 +36,13 @@ describe('resampleTileRgb', () => {
     }
   });
 });
+
+describe('resampleTileRgb speed', () => {
+  it('turns a 400 px tile into a 1200 px one well inside a frame (no long stall on the page)', () => {
+    const src = tile(400, (x, y) => 500 + 0.5 * x + 0.3 * y);
+    resampleTileRgb(src, 400, 1200);            // warm up
+    const t0 = performance.now();
+    resampleTileRgb(src, 400, 1200);
+    expect(performance.now() - t0).toBeLessThan(200);
+  });
+});

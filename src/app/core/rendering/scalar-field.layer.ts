@@ -16,7 +16,8 @@ import {
   WIND_FACTOR_MIN,
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
-import { TILE_SLOTS, TileGrid, TileSlots, buildTileMap, resampleTileRgb, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
+import { isPhone } from '../ui/device-profile';
+import { TileGrid, tileSlots, TileSlots, buildTileMap, resampleTileRgb, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -605,6 +606,15 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       if (this.slots.has(name) || this.tilesPending.has(name)) continue;
       this.loadTile(gl, data, name, level);
     }
+    // the tiles just outside the view are loaded ahead of a pan, into free slots only: they never push out a tile on screen
+    const ahead = tilesInBounds(this.tileGrid, { west: bounds.west - 1, south: bounds.south - 1, east: bounds.east + 1, north: bounds.north + 1 }, this.presentTiles(data));
+    let free = this.slots.freeCount() - this.tilesPending.size;
+    for (const name of ahead) {
+      if (free <= 0) break;
+      if (this.tilesOnScreen.has(name) || this.slots.has(name) || this.tilesPending.has(name)) continue;
+      this.loadTile(gl, data, name, level);
+      free--;
+    }
     if (this.tileMapDirty) this.uploadTileMap(gl);
   }
 
@@ -647,7 +657,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.tileLevel = level;
     this.tileGrid = tileGridOf(data.meta.domain);
     this.tilePx = data.meta.levels.find(l => l.id === level)?.perDeg ?? 1200;
-    const slots = TILE_SLOTS[level];
+    const slots = tileSlots(isPhone())[level];
     this.slots = new TileSlots(slots);
     this.tileTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
