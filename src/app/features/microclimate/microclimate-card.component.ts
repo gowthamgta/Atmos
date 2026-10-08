@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MicroclimateService } from '../../core/microclimate/microclimate.service';
 import {
@@ -24,7 +24,6 @@ import { PanelService } from '../../core/ui/panel.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (open()) {
-      <div class="backdrop" (click)="panels.close('microclimate')" aria-hidden="true"></div>
       <section class="panel glass-panel-solid" role="dialog" aria-label="Tamil Nadu microclimate">
         <header>
           <div class="heading">
@@ -101,7 +100,6 @@ import { PanelService } from '../../core/ui/panel.service';
   `,
   styles: [`
     :host { display: contents; }
-    .backdrop { position: fixed; inset: 0; z-index: 899; background: rgba(4, 8, 16, 0.35); }
     .panel { position: fixed; top: 64px; right: 12px; z-index: 900; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 88px); overflow: auto; padding: 14px 16px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; }
     header { display: flex; align-items: flex-start; gap: 10px; }
     .heading { flex: 1; min-width: 0; }
@@ -142,7 +140,7 @@ export class MicroclimateCardComponent {
   protected readonly open = computed(() => this.panels.open() === 'microclimate');
   protected readonly data = this.service.data;
   protected readonly failed = this.service.failed;
-  protected readonly selectedName = signal('Chennai');
+  protected readonly selectedName = this.service.selected;
   protected readonly names = computed(() => (this.data() ? districtNames(this.data()!) : []));
   protected readonly runLabel = computed(() => {
     const run = this.data()?.run;
@@ -182,7 +180,7 @@ export class MicroclimateCardComponent {
   protected floodTone = floodTone;
 
   protected onDistrict(event: Event): void {
-    this.selectedName.set((event.target as HTMLSelectElement).value);
+    this.service.selected.set((event.target as HTMLSelectElement).value);
   }
 
   protected fmt(v: number | null, digits: number): string {

@@ -11,6 +11,8 @@ import {
   seaBreezeSentence,
   stepIndex,
   valuesAt,
+  metricById,
+  metricColour,
 } from './microclimate.model';
 
 const times = ['2026-10-08T00:00:00Z', '2026-10-08T03:00:00Z', '2026-10-08T06:00:00Z'];
@@ -74,5 +76,23 @@ describe('microclimate model', () => {
     expect(seaBreezeSentence(null)).toBe('Not a coastal district');
     expect(seaBreezeSentence({ likely: false, from: null, peakOnshoreMs: 1.2 })).toContain('No sea breeze expected');
     expect(seaBreezeSentence(chennai.indicators.seaBreeze, now)).toBe('Sea breeze likely from 11:30 IST, up to 3.8 m/s');
+  });
+});
+
+describe('microclimate map colours', () => {
+  it('reads each metric from the step values', () => {
+    const v = valuesAt(chennai, 2);
+    expect(metricById('feels').value(v)).toBe(37);
+    expect(metricById('temp').value(v)).toBe(32);
+    expect(metricById('wind').value(v)).toBeNull();
+    expect(metricById('wind').value(valuesAt(chennai, 0))).toBeCloseTo(3 * 3.6);
+  });
+
+  it('colours a value along the palette, clamped, and leaves a missing value uncoloured', () => {
+    const feels = metricById('feels');
+    expect(metricColour(feels, feels.min - 10)).toBe(feels.stops[0]);
+    expect(metricColour(feels, feels.max + 10)).toBe(feels.stops[feels.stops.length - 1]);
+    expect(metricColour(feels, null)).toBeNull();
+    expect(metricColour(feels, NaN)).toBeNull();
   });
 });

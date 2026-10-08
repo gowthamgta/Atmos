@@ -1,6 +1,6 @@
 import { Injectable, signal } from '@angular/core';
 import { PAGES } from '../forecast/forecast-models';
-import { MicroclimateData } from './microclimate.model';
+import { MicroMetric, MicroclimateData } from './microclimate.model';
 
 export const MICROCLIMATE_URL = `${PAGES}/microclimate/tn.json`;
 
@@ -9,6 +9,11 @@ export const MICROCLIMATE_URL = `${PAGES}/microclimate/tn.json`;
 export class MicroclimateService {
   readonly data = signal<MicroclimateData | null>(null);
   readonly failed = signal(false);
+  /** Colour the Tamil Nadu districts on the map. */
+  readonly onMap = signal(false);
+  readonly metric = signal<MicroMetric>('feels');
+  /** The district shown in the card (set from the picker or a click on the map). */
+  readonly selected = signal('Chennai');
   private loading: Promise<void> | null = null;
 
   load(): void {
