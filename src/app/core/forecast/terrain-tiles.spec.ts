@@ -17,12 +17,14 @@ import {
 const DOMAIN = { latMax: 14.5, latMin: 5.5, lonMin: 73.0, lonMax: 89.5 };
 
 describe('terrain tiles', () => {
-  it('picks the detail level from the zoom: 90 m only when zoomed in', () => {
+  it('picks the detail level from the zoom: 90 m when zoomed in, 270 m down to zoom 5, 1.08 km below', () => {
     expect(terrainLevelForZoom(12)).toBe(0);
     expect(terrainLevelForZoom(9.5)).toBe(0);
     expect(terrainLevelForZoom(9.49)).toBe(1);
     expect(terrainLevelForZoom(7.5)).toBe(1);
-    expect(terrainLevelForZoom(6.2)).toBe(2);
+    expect(terrainLevelForZoom(6.2)).toBe(1);
+    expect(terrainLevelForZoom(5)).toBe(1);
+    expect(terrainLevelForZoom(4.99)).toBe(2);
     expect(terrainLevelForZoom(3)).toBe(2);
   });
 

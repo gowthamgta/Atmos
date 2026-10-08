@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { TERRAIN_MODE_CODE } from '../rendering/scalar-field.layer';
-import { liftWindVars } from './forecast-map.controller';
 import { FORECAST_LAYERS, LEVEL_KM, forecastLayerById, resolveLayer } from './forecast-layers';
 import { FORECAST_MODELS } from './forecast-models';
 import { nearestModelKm } from './terrain.service';
@@ -21,12 +20,6 @@ describe('90 m downscaling registry', () => {
     expect(t850.levelHeightM).toBe(LEVEL_KM[850] * 1000);
     expect(t850.terrain).toBeNull();
     expect(forecastLayerById('temp')!.levelHeightM).toBeUndefined();
-  });
-
-  it('lifts with the 850 hPa wind when published, else the 10 m wind', () => {
-    expect(liftWindVars({ u850: {}, v850: {}, u10: {}, v10: {} })).toEqual(['u850', 'v850']);
-    expect(liftWindVars({ u10: {}, v10: {} })).toEqual(['u10', 'v10']);
-    expect(liftWindVars({ u850: {} })).toBeNull();
   });
 
   it('matches every model to the model-ground terrain closest to its native grid', () => {

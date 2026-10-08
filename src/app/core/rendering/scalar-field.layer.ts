@@ -3,24 +3,17 @@ import { ForecastGrid, mercatorUnitX, mercatorUnitY } from '../forecast/forecast
 import { ForecastLayerDef, buildPaletteLut } from '../forecast/forecast-layers';
 import {
   DEWPOINT_LAPSE_C_PER_M,
-  DIFFUSE_FRACTION,
   EXPOSURE_MAX,
   EXPOSURE_MIN,
   EXPOSURE_PER_M,
   LAPSE_RATE_C_PER_M,
-  LOW_CLOUD_OROGRAPHIC_POWER,
   MAX_TERRAIN_DELTA_M,
-  OROGRAPHIC_GAIN_S_PER_M,
-  OROGRAPHIC_MAX,
-  OROGRAPHIC_MIN,
   RH_LOG_PER_M,
   SEA_WIND_GAIN,
-  SOLAR_FACTOR_MAX,
   TerrainMode,
   VAPOUR_SCALE_HEIGHT_M,
   WIND_FACTOR_MAX,
   WIND_FACTOR_MIN,
-  solarDeclination,
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
 import { TILE_SLOTS, TileGrid, TileSlots, buildTileMap, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
@@ -36,7 +29,10 @@ void main() {
 
 const f = (n: number) => n.toFixed(8);
 
-/** Shader code for each terrain mode (the numbers match TERRAIN_MODE_CODE). */
+/**
+ * Shader code for each terrain mode. The shader applies 1 to 4 and 7 (the 90 m terrain corrections). Codes 5 (rain), 6
+ * (low cloud) and 8 (sunshine) are kept for the point forecast only (see terrain-correction.ts): the shader ignores them.
+ */
 export const TERRAIN_MODE_CODE: Record<TerrainMode, number> = {
   temperature: 1,
   humidity: 2,
@@ -50,10 +46,9 @@ export const TERRAIN_MODE_CODE: Record<TerrainMode, number> = {
 
 /**
  * Fields are rg16 PNGs (R = high byte, G = low byte, B = 255 for "no data") on the 0.1° grid. The GPU cannot filter
- * those bytes, so texels are fetched exactly, decoded, and interpolated here with a bicubic (Catmull-Rom) filter,
- * which gives smooth gradients without the diamond pattern of bilinear blending. Each pixel is then moved from the
- * model's ground to the real 90 m ground (see terrain-correction.ts, whose constants are inlined below), and the
- * 90 m relief can be shaded into the colours.
+ * those bytes, so texels are fetched exactly, decoded, and interpolated here, bilinearly. Each pixel is then moved from
+ * the model's ground to the real terrain (see terrain-correction.ts, whose constants are inlined below), and the terrain
+ * relief can be shaded into the colours.
  *
  * Terrain images: metres = (R * 256 + G) / 65535 over u_demEnc, land fraction = B (no "no data" flag).
  */
@@ -68,16 +63,10 @@ uniform sampler2D u_b2;      // second component, time B
 uniform sampler2D u_lut;
 uniform sampler2D u_demModel;  // the ground as the model sees it (forecast grid) + its land fraction
 uniform sampler2D u_demSmooth; // terrain smoothed over ~4 km
-uniform sampler2D u_wuA;       // wind driving the orographic lift: u and v at times A and B
-uniform sampler2D u_wuB;
-uniform sampler2D u_wvA;
-uniform sampler2D u_wvB;
 uniform float u_mix;
 uniform float u_opacity;
 uniform vec2 u_enc;      // value range of the 16-bit encoding
 uniform vec2 u_enc2;     // same, second component
-uniform vec2 u_encWu;    // same, lift-wind u
-uniform vec2 u_encWv;    // same, lift-wind v
 uniform vec2 u_disp;     // display range mapped onto the palette
 uniform float u_gamma;
 uniform float u_clear;
@@ -96,11 +85,9 @@ uniform vec2 u_demEnc;     // terrain value range
 uniform int u_terrainOn;   // 1 when the terrain textures are bound
 uniform int u_magnitude;   // 1: show hypot(first, second component) e.g. wind speed from u and v
 uniform int u_terrainMode; // 0 off, else TERRAIN_MODE_CODE
-uniform int u_hasLift;     // 1 when the lift-wind textures are bound
-uniform vec3 u_sun;        // declination (rad), equation of time (min), UTC minutes
 uniform float u_relief;    // 0..1 strength of the relief shading
 uniform float u_levelHeight; // pressure-level layers: height of the level (m); 0 at the ground
-uniform int u_lite;        // 1: phone mode, about a fifth of the texture reads (bilinear fields, no slope-based corrections)
+uniform int u_lite;        // 1: phone mode, the relief slope from screen differences (about 20 texture reads per pixel fewer)
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -130,51 +117,14 @@ vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
   return vec2(wsum > 0.001 ? sum / wsum : 0.0, wsum);
 }
 
-vec4 catmullRom(float t) {
-  float t2 = t * t;
-  float t3 = t2 * t;
-  return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
-}
-
-// Bicubic (Catmull-Rom) over the 4x4 texels around g, kept within the range of the 4 nearest so it never overshoots
-// (no negative rain, no rings). Falls back to bilinear next to missing data. Returns (value, valid).
-vec2 sampleCubic(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
-  ivec2 i1 = ivec2(floor(g));
-  vec2 fr = g - vec2(i1);
-  vec4 wx = catmullRom(fr.x);
-  vec4 wy = catmullRom(fr.y);
-  float sum = 0.0;
-  float lo = 1e30;
-  float hi = -1e30;
-  for (int j = 0; j < 4; j++) {
-    for (int i = 0; i < 4; i++) {
-      ivec2 p = clamp(i1 + ivec2(i - 1, j - 1), ivec2(0), size - 1);
-      vec4 c = texelFetch(tex, p, 0);
-      if (c.b > 0.5) return sampleField(tex, g, size, enc);
-      float v = decode(c, enc);
-      sum += v * wx[i] * wy[j];
-      if ((i == 1 || i == 2) && (j == 1 || j == 2)) { lo = min(lo, v); hi = max(hi, v); }
-    }
-  }
-  return vec2(clamp(sum, lo, hi), 1.0);
-}
-
 // Blends two time steps of one variable; where one step has no data the other is used. Returns (value, valid).
 vec2 blendTime(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
-  vec2 a = u_lite == 1 ? sampleField(ta, g, u_size, enc) : sampleCubic(ta, g, u_size, enc);
-  vec2 b = u_lite == 1 ? sampleField(tb, g, u_size, enc) : sampleCubic(tb, g, u_size, enc);
-  float wa = (1.0 - u_mix) * (a.y > 0.5 ? 1.0 : 0.0);
-  float wb = u_mix * (b.y > 0.5 ? 1.0 : 0.0);
-  if (wa + wb < 0.0001) return vec2(0.0, 0.0);
-  return vec2((a.x * wa + b.x * wb) / (wa + wb), 1.0);
-}
-
-float blendTimeLinear(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
   vec2 a = sampleField(ta, g, u_size, enc);
   vec2 b = sampleField(tb, g, u_size, enc);
   float wa = (1.0 - u_mix) * (a.y > 0.5 ? 1.0 : 0.0);
   float wb = u_mix * (b.y > 0.5 ? 1.0 : 0.0);
-  return wa + wb < 0.0001 ? 0.0 : (a.x * wa + b.x * wb) / (wa + wb);
+  if (wa + wb < 0.0001) return vec2(0.0, 0.0);
+  return vec2((a.x * wa + b.x * wb) / (wa + wb), 1.0);
 }
 
 // Terrain: (metres, land fraction), bilinear.
@@ -236,13 +186,6 @@ vec2 tileSlope(float lat, float lon) {
   return vec2((e.x - w.x) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (n.x - so.x) / (2.0 * s * M_PER_DEG));
 }
 
-vec3 sunVector(float lat, float lon) {
-  float ha = radians((u_sun.z + u_sun.y + 4.0 * lon) / 4.0 - 180.0);
-  float la = radians(lat);
-  float d = u_sun.x;
-  return vec3(-cos(d) * sin(ha), cos(la) * sin(d) - sin(la) * cos(d) * cos(ha), sin(la) * sin(d) + cos(la) * cos(d) * cos(ha));
-}
-
 void main() {
   float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * v_merc.y))));
   float lon = v_merc.x * 360.0 - 180.0;
@@ -266,7 +209,7 @@ void main() {
   vec2 model = vec2(0.0, 1.0);
   vec2 fine = vec2(0.0, 1.0);
   vec2 fineSlope = vec2(0.0);
-  bool needFineSlope = u_lite == 0 && u_terrainOn == 1 && (u_relief > 0.0 || u_terrainMode == 8);
+  bool needFineSlope = u_lite == 0 && u_terrainOn == 1 && u_relief > 0.0;
   if (u_terrainOn == 1) {
     model = terrainAt(u_demModel, u_modelGrid, u_modelSize, lat, lon);
     vec3 tile = tileTerrain(lat, lon);
@@ -296,20 +239,6 @@ void main() {
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fine.y);
       v *= clamp(exposure * coast, ${f(WIND_FACTOR_MIN)}, ${f(WIND_FACTOR_MAX)});
-    } else if ((m == 5 || m == 6) && u_hasLift == 1 && u_lite == 0) {
-      vec2 wind = vec2(blendTimeLinear(u_wuA, u_wuB, g, u_encWu), blendTimeLinear(u_wvA, u_wvB, g, u_encWv));
-      float liftFine = dot(wind, slopeAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon));
-      float liftModel = dot(wind, slopeAt(u_demModel, u_modelGrid, u_modelSize, lat, lon));
-      float k = clamp(1.0 + ${f(OROGRAPHIC_GAIN_S_PER_M)} * (liftFine - liftModel), ${f(OROGRAPHIC_MIN)}, ${f(OROGRAPHIC_MAX)});
-      v = m == 5 ? v * k : min(100.0, v * pow(k, ${f(LOW_CLOUD_OROGRAPHIC_POWER)}));
-    } else if (m == 8 && u_lite == 0) {
-      vec3 sun = sunVector(lat, lon);
-      if (sun.z > 0.05) {
-        vec3 n = normalize(vec3(-fineSlope, 1.0));
-        float direct = ${f(1 - DIFFUSE_FRACTION)} * max(dot(n, sun), 0.0) / max(sun.z, 0.1);
-        float diffuse = ${f(DIFFUSE_FRACTION)} * (1.0 + n.z) * 0.5;
-        v *= clamp(direct + diffuse, 0.0, ${f(SOLAR_FACTOR_MAX)});
-      }
     }
   }
 
@@ -344,25 +273,15 @@ export interface FieldFrame {
   bitmap: ImageBitmap;
 }
 
-/** Wind (u, v at the two time steps) that drives the orographic lift for rain and low cloud. */
-export interface LiftWind {
-  uA: FieldFrame;
-  uB: FieldFrame;
-  vA: FieldFrame;
-  vB: FieldFrame;
-  encU: [number, number];
-  encV: [number, number];
-}
-
 interface Uniforms {
   [name: string]: WebGLUniformLocation | null;
 }
 
 const UNIFORMS = [
-  'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth', 'u_wuA', 'u_wuB', 'u_wvA', 'u_wvB',
-  'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_encWu', 'u_encWv', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
+  'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
+  'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn',
-  'u_magnitude', 'u_terrainMode', 'u_hasLift', 'u_sun', 'u_relief', 'u_levelHeight', 'u_lite',
+  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 
@@ -390,7 +309,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private frameB: FieldFrame | null = null;
   private frameA2: FieldFrame | null = null;
   private frameB2: FieldFrame | null = null;
-  private liftWind: LiftWind | null = null;
   private mix = 0;
   private lutFor: ForecastLayerDef | null = null;
   private terrain: TerrainData | null = null;
@@ -412,7 +330,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private tileMapDirty = true;
   private presentCache: ReadonlySet<string> | null = null;
   private presentCacheFor: TerrainData | null = null;
-  private sun: [number, number, number] = [0, 0, 0];
   private relief = 0;
   private lite = false;
   private visible = false;
@@ -452,23 +369,9 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  /** Wind for the orographic lift of rain and low cloud (null: no lift correction). */
-  setLiftWind(wind: LiftWind | null): void {
-    this.liftWind = wind;
-    this.map?.triggerRepaint();
-  }
-
-  /** The shown time, for sunshine on slopes. */
-  setTime(timeMs: number): void {
-    const { declination, eqTimeMin } = solarDeclination(timeMs);
-    const d = new Date(timeMs);
-    this.sun = [declination, eqTimeMin, d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60];
-    this.map?.triggerRepaint();
-  }
-
   /**
-   * Phone mode: bilinear fields and no slope-based corrections (rain/low cloud lift, sunshine on slopes), which cuts the
-   * work per pixel to about a fifth. The height-based terrain corrections and the relief shading stay.
+   * Phone mode: the relief slope comes from screen-space differences of the terrain, not four extra terrain reads per
+   * pixel, which keeps the frame rate on small screens. The height-based terrain corrections stay on both.
    */
   setLite(lite: boolean): void {
     if (this.lite === lite) return;
@@ -537,7 +440,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     if (this.terrain) this.updateTiles(gl, this.terrain);
     const terrainOn = !!this.terrain && this.smoothUploadedFor === this.terrain && this.modelUploaded !== null && this.tileTex !== null;
     const terrainMode = terrainOn && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
-    const lift = this.liftWind && !this.lite && (def.terrain === 'rain' || def.terrain === 'lowcloud') ? this.liftWind : null;
 
     gl.useProgram(program);
     gl.bindVertexArray(this.vao);
@@ -559,12 +461,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
       bind(13, this.tileMapTex);
     }
-    if (lift) {
-      bind(8, this.textureFor(gl, lift.uA));
-      bind(9, this.textureFor(gl, lift.uB));
-      bind(10, this.textureFor(gl, lift.vA));
-      bind(11, this.textureFor(gl, lift.vB));
-    }
 
     const u = this.uniforms;
     // Unused samplers must not alias a unit holding a different kind of texture; point them at unit 0.
@@ -579,17 +475,11 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     unit('u_demSmooth', 7, terrainOn);
     unit('u_tiles', 12, terrainOn);
     unit('u_tileMap', 13, terrainOn);
-    unit('u_wuA', 8, !!lift);
-    unit('u_wuB', 9, !!lift);
-    unit('u_wvA', 10, !!lift);
-    unit('u_wvB', 11, !!lift);
     gl.uniform1i(u['u_magnitude'], magnitude ? 1 : 0);
     gl.uniform1f(u['u_mix'], this.mix);
     gl.uniform1f(u['u_opacity'], def.opacity);
     gl.uniform2f(u['u_enc'], this.enc[0], this.enc[1]);
     gl.uniform2f(u['u_enc2'], this.enc2[0], this.enc2[1]);
-    gl.uniform2f(u['u_encWu'], lift?.encU[0] ?? 0, lift?.encU[1] ?? 1);
-    gl.uniform2f(u['u_encWv'], lift?.encV[0] ?? 0, lift?.encV[1] ?? 1);
     gl.uniform2f(u['u_disp'], def.min, def.max);
     gl.uniform1f(u['u_gamma'], def.gamma);
     gl.uniform1f(u['u_clear'], def.clearBelow);
@@ -597,8 +487,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], grid.nx, grid.ny);
     gl.uniform1i(u['u_terrainOn'], terrainOn ? 1 : 0);
     gl.uniform1i(u['u_terrainMode'], terrainMode);
-    gl.uniform1i(u['u_hasLift'], lift ? 1 : 0);
-    gl.uniform3f(u['u_sun'], this.sun[0], this.sun[1], this.sun[2]);
     gl.uniform1f(u['u_relief'], terrainOn ? this.relief : 0);
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
@@ -781,7 +669,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     // NEAREST is required: the shader decodes exact bytes and interpolates the decoded values itself.
     this.uploadTerrainImage(gl, tex, frame.bitmap);
     this.textures.set(frame.key, tex);
-    const inUse = [this.frameA, this.frameB, this.frameA2, this.frameB2, this.liftWind?.uA, this.liftWind?.uB, this.liftWind?.vA, this.liftWind?.vB];
+    const inUse = [this.frameA, this.frameB, this.frameA2, this.frameB2];
     while (this.textures.size > ScalarFieldLayer.MAX_TEXTURES) {
       const oldest = this.textures.keys().next().value as string;
       if (inUse.some(f => f?.key === oldest)) break;

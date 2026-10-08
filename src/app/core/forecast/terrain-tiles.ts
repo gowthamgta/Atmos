@@ -14,11 +14,12 @@ export type TerrainLevel = 0 | 1 | 2;
 
 /**
  * The detail level for a map zoom. Full 90 m tiles only when the screen pixels are about that size (zoomed in: 90 m is
- * visible); coarser copies of the same data when zoomed out, where a 90 m cell is far below a screen pixel.
+ * visible). Zoomed out, the 270 m copy is used down to zoom 5 (a screen pixel is then about 2.4 km, so 270 m cells still
+ * give the ridges their true heights); the 1.08 km copy only further out, where the whole domain is a few hundred pixels.
  */
 export function terrainLevelForZoom(zoom: number): TerrainLevel {
   if (zoom >= 9.5) return 0;
-  if (zoom >= 7.5) return 1;
+  if (zoom >= 5) return 1;
   return 2;
 }
 
