@@ -16,7 +16,7 @@ import {
   WIND_FACTOR_MIN,
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
-import { TILE_SLOTS, TileGrid, TileSlots, buildTileMap, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
+import { TILE_SLOTS, TileGrid, TileSlots, buildTileMap, resampleTileRgb, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -332,7 +332,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private tileMapDirty = true;
   private presentCache: ReadonlySet<string> | null = null;
   private presentCacheFor: TerrainData | null = null;
-  private presentCacheLevel: number | null = null;
+  private l0For: TerrainData | null = null;
+  private l0Set: ReadonlySet<string> | null = null;
   private blankTiles: WebGLTexture | null = null;
   private relief = 0;
   private lite = false;
@@ -609,14 +610,34 @@ export class ScalarFieldLayer implements CustomLayerInterface {
 
   /** The tiles that have ground (a tile not in the list is open sea), read once per terrain. */
   private presentTiles(data: TerrainData): ReadonlySet<string> {
-    const level = this.tileLevel;
-    if (this.presentCacheFor !== data || this.presentCacheLevel !== level) {
-      // the 90 m level only has tiles where there is a 90 m file (South India); the others use the 270 m tiles
-      this.presentCache = new Set(level === 0 ? data.meta.tilesL0 ?? data.meta.tiles : data.meta.tiles);
+    if (this.presentCacheFor !== data) {
+      this.presentCache = new Set(data.meta.tiles);
       this.presentCacheFor = data;
-      this.presentCacheLevel = level;
     }
     return this.presentCache!;
+  }
+
+  /** Whether a tile has its own 90 m file (South India); the others are drawn at 90 m from their 270 m file. */
+  private hasL0(data: TerrainData, name: string): boolean {
+    const list = data.meta.tilesL0;
+    if (!list) return true;                       // an index without the list: every tile has a 90 m file
+    if (this.l0For !== data) {
+      this.l0Set = new Set(list);
+      this.l0For = data;
+    }
+    return this.l0Set!.has(name);
+  }
+
+  /** A tile's 270 m image, resampled to the size of the 90 m level (see resampleTileRgb). */
+  private async detailFromCoarse(coarse: ImageBitmap, maxM: number): Promise<ImageBitmap> {
+    const n = coarse.width;
+    const canvas = new OffscreenCanvas(n, n);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(coarse, 0, 0);
+    const px = ctx.getImageData(0, 0, n, n).data;
+    coarse.close();
+    const m = this.tilePx;
+    return createImageBitmap(new ImageData(resampleTileRgb(px, n, m, maxM), m, m));
   }
 
   /** A new detail level: a texture array with a slot per tile the level can hold on screen. */
@@ -642,7 +663,11 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   /** Loads one tile and puts it in a free slot (if none is free, it is left out: see updateTiles). */
   private loadTile(gl: WebGL2RenderingContext, data: TerrainData, name: string, level: TerrainLevel): void {
     this.tilesPending.add(name);
-    data.tileImage(level, name).then(bitmap => {
+    // the 90 m level where a tile has no 90 m file: its 270 m file, at the 90 m size
+    const image = level === 0 && !this.hasL0(data, name)
+      ? data.tileImage(1, name).then(coarse => this.detailFromCoarse(coarse, data.meta.max))
+      : data.tileImage(level, name);
+    image.then(bitmap => {
       this.tilesPending.delete(name);
       if (this.terrain !== data || this.tileLevel !== level || !this.slots || !this.tileTex) {
         bitmap.close(); // the level or the terrain changed while it loaded

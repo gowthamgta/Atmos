@@ -202,3 +202,42 @@ export function sampleTile(
   }
   return { z, land };
 }
+
+/**
+ * A tile at another size, from its encoded pixels (R,G: 16-bit metres over 0..max; B: land fraction). Bilinear on the decoded
+ * metres and land, then encoded again, so heights are never blended byte by byte (which would make false steps at edges).
+ * Used for the 90 m detail where a tile only has its 270 m file: the same ground, drawn at the finer size.
+ */
+export function resampleTileRgb(src: Uint8ClampedArray, n: number, m: number, max = 4000): Uint8ClampedArray<ArrayBuffer> {
+  const out: Uint8ClampedArray<ArrayBuffer> = new Uint8ClampedArray(new ArrayBuffer(m * m * 4));
+  const scale = n / m;
+  for (let y = 0; y < m; y++) {
+    const sy = Math.min(n - 1, Math.max(0, (y + 0.5) * scale - 0.5));
+    const y0 = Math.floor(sy);
+    const y1 = Math.min(n - 1, y0 + 1);
+    const fy = sy - y0;
+    for (let x = 0; x < m; x++) {
+      const sx = Math.min(n - 1, Math.max(0, (x + 0.5) * scale - 0.5));
+      const x0 = Math.floor(sx);
+      const x1 = Math.min(n - 1, x0 + 1);
+      const fx = sx - x0;
+      let z = 0;
+      let land = 0;
+      for (const [yy, wy] of [[y0, 1 - fy], [y1, fy]] as const) {
+        for (const [xx, wx] of [[x0, 1 - fx], [x1, fx]] as const) {
+          const p = (yy * n + xx) * 4;
+          const w = wx * wy;
+          z += ((src[p] * 256 + src[p + 1]) / 65535) * max * w;
+          land += (src[p + 2] / 255) * w;
+        }
+      }
+      const q = Math.min(65535, Math.max(0, Math.round((z / max) * 65535)));
+      const o = (y * m + x) * 4;
+      out[o] = q >> 8;
+      out[o + 1] = q & 255;
+      out[o + 2] = Math.min(255, Math.max(0, Math.round(land * 255)));
+      out[o + 3] = 255;
+    }
+  }
+  return out;
+}
