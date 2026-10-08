@@ -19,6 +19,7 @@ on:
       - "pipeline/derive.py"
       - "pipeline/encode.py"
       - "pipeline/requirements.txt"
+      - ".github/workflows/nwp.yml"
       - "pipeline/cyclones.py"
   workflow_dispatch:
     inputs:
