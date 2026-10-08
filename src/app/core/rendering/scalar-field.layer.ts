@@ -333,6 +333,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private presentCache: ReadonlySet<string> | null = null;
   private presentCacheFor: TerrainData | null = null;
   private presentCacheLevel: number | null = null;
+  private blankTiles: WebGLTexture | null = null;
   private relief = 0;
   private lite = false;
   private visible = false;
@@ -463,6 +464,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       gl.activeTexture(gl.TEXTURE0 + 12);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
       bind(13, this.tileMapTex);
+    } else {
+      // no terrain: the tile sampler still reads a 2D-array texture (a blank one), as the shader declares it
+      gl.activeTexture(gl.TEXTURE0 + 12);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blankTileArray(gl));
     }
 
     const u = this.uniforms;
@@ -476,7 +481,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     unit('u_b2', 6, magnitude);
     unit('u_demModel', 4, terrainOn);
     unit('u_demSmooth', 7, terrainOn);
-    unit('u_tiles', 12, terrainOn);
+    gl.uniform1i(u['u_tiles'], 12);   // always unit 12: a 2D-array texture is bound there (see above)
     unit('u_tileMap', 13, terrainOn);
     gl.uniform1i(u['u_magnitude'], magnitude ? 1 : 0);
     gl.uniform1f(u['u_mix'], this.mix);
@@ -556,6 +561,18 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  }
+
+  /** A 1 x 1 blank 2D-array texture: what the tile sampler reads when there is no terrain. */
+  private blankTileArray(gl: WebGL2RenderingContext): WebGLTexture {
+    if (!this.blankTiles) {
+      this.blankTiles = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blankTiles);
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, 1);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    }
+    return this.blankTiles;
   }
 
   /** Drops the tiles on the GPU (new terrain): the next frame loads them again. */
