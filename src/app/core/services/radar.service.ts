@@ -43,6 +43,18 @@ export { MERGED_PRODUCTS } from './radar-mosaic';
 export { removeRadialInterference } from './radar-process';
 
 
+/**
+ * True while a station's newest scan is too recent for another one to be due, so downloading it again would return the same
+ * picture. Only a time that says when the scan was written counts (read off the picture, or the file's last-modified time); the
+ * send time of the response (the server's date header, when there is no last-modified) says nothing about the scan.
+ */
+export function scanNotDue(timing: { epochMs?: number; source?: string } | null | undefined, nowMs: number, recheckMs: number): boolean {
+  if (timing?.epochMs === undefined) return false;
+  if (timing.source !== 'radar_metadata' && timing.source !== 'printed_stamp' && timing.source !== 'http_last_modified') return false;
+  const age = nowMs - timing.epochMs;
+  return age >= 0 && age < recheckMs;
+}
+
 @Injectable({ providedIn: 'root' })
 export class RadarService implements OnDestroy {
   readonly stations = IMD_RADAR_STATIONS;
@@ -338,7 +350,29 @@ export class RadarService implements OnDestroy {
     await this.fetchAllRadarSweeps();
   }
 
-  async fetchAllRadarSweeps(): Promise<void> {
+  /**
+   * Fetches and processes every station's newest scan. A call made while an identical refresh (same product and mode) is still
+   * running joins that one instead of downloading every picture again (the constructor, the layer switch and the 1-minute timer
+   * often overlap at start-up).
+   */
+  fetchAllRadarSweeps(): Promise<void> {
+    const key = `${this.activeProduct()}|${this.transparentMode()}`;
+    const running = this.inFlightSweeps;
+    // a run that has hung (a request that never answers) is not joined: a new one starts instead
+    if (running?.key === key && Date.now() - running.startedAt < RadarService.SWEEP_JOIN_MAX_MS) return running.done;
+    const done = this.runSweepFetch().finally(() => {
+      if (this.inFlightSweeps?.done === done) this.inFlightSweeps = null;
+    });
+    this.inFlightSweeps = { key, done, startedAt: Date.now() };
+    return done;
+  }
+
+  private inFlightSweeps: { key: string; done: Promise<void>; startedAt: number } | null = null;
+  private static readonly SWEEP_JOIN_MAX_MS = 90_000;
+  /** A station's newest scan is not looked for again before this age (IMD publishes about every 5 minutes). */
+  private static readonly SCAN_RECHECK_AFTER_MS = 4 * 60_000;
+
+  private async runSweepFetch(): Promise<void> {
     const requestId = ++this.currentRequestId;
     this.isRefreshing.set(true);
 
@@ -353,6 +387,9 @@ export class RadarService implements OnDestroy {
         if (requestId !== this.currentRequestId) break;
         const station = queue.shift();
         if (!station) break;
+        // IMD publishes a new scan about every 5 minutes: while the station's newest scan is younger than the next one is due,
+        // downloading the same picture again only costs bandwidth, so the station waits until it is due
+        if (scanNotDue(this.allRadarResults().get(station.id)?.timing, Date.now(), RadarService.SCAN_RECHECK_AFTER_MS)) continue;
         try {
           // In merged mode (CAZ) the PPZ scan is fetched alongside; a missing one is simply left out of the merge. IMD updates
           // about every 10 minutes, so it is refreshed every few minutes, and the X-band radar's is skipped: its images are
@@ -466,7 +503,8 @@ export class RadarService implements OnDestroy {
     primary = true
   ): Promise<ProcessedRadarResult | null> {
     const productConfig = station.products[productKey] || station.products.caz;
-    const cacheBuster = Date.now();
+    // One address per minute: the proxy caches for 60 s, so the same picture asked for twice in a minute is downloaded once
+    const cacheBuster = Math.floor(Date.now() / 60_000);
 
     const proxies = [
       `/imd-radar/${productConfig.file}`, // Netlify CDN edge proxy (production) & Vite dev proxy (local)
@@ -476,6 +514,8 @@ export class RadarService implements OnDestroy {
 
     let rawArrayBuf: ArrayBuffer | null = null;
     let sweepHeaderDate: Date | null = null;
+    // true when that date is the file's own last-modified time (when IMD wrote the scan), not the response's send time
+    let sweepHeaderIsWriteTime = false;
     let binaryTiming: RadarObservationTiming | null = null;
 
     for (const url of proxies) {
@@ -491,6 +531,7 @@ export class RadarService implements OnDestroy {
               rawArrayBuf = buf;
               binaryTiming = this.extractRadarIsoTimestamp(buf);
               const lastMod = response.headers.get('last-modified') || response.headers.get('date');
+              sweepHeaderIsWriteTime = !!response.headers.get('last-modified');
               if (lastMod) {
                 sweepHeaderDate = new Date(lastMod);
               }
@@ -528,7 +569,7 @@ export class RadarService implements OnDestroy {
     }
     if (!timing && sweepHeaderDate && !isNaN(sweepHeaderDate.getTime())) {
       // Upload time, not the scan time printed on the image: marked as approximate
-      timing = this.timingFromDate(sweepHeaderDate, 'http_header', true);
+      timing = this.timingFromDate(sweepHeaderDate, sweepHeaderIsWriteTime ? 'http_last_modified' : 'http_header', true);
     }
 
     const now = Date.now();

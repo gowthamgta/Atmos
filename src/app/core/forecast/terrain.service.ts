@@ -159,7 +159,7 @@ export class TerrainService {
   private async loadInset(): Promise<TerrainData['inset']> {
     try {
       const meta = (await (await this.ok(fetch('/data/tn-terrain.json'))).json()) as ForecastGrid & { min: number; max: number };
-      const bitmap = await createImageBitmap(await (await this.ok(fetch('/data/tn-elevation-90m.png'))).blob(), {
+      const bitmap = await createImageBitmap(await (await this.ok(fetch('/data/tn-elevation-90m.webp'))).blob(), {
         premultiplyAlpha: 'none',
         colorSpaceConversion: 'none',
       });

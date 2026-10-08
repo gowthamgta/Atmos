@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { KARAIKAL_DWR_CONFIG, IMD_RADAR_STATIONS, rainRateToDbz } from '../domain/models/radar.model';
-import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference } from './radar.service';
+import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scanNotDue } from './radar.service';
 
 describe('Radar Domain & Config', () => {
   it('should have valid Karaikal S-Band DWR configuration', () => {
@@ -436,5 +436,27 @@ describe('Radial interference removal', () => {
     paint(grid, (r, deg) => r > 40 && Math.abs(deg - 200) < 0.8);
     removeRadialInterference(grid, size);
     expect(grid.filter(v => v > 0).length).toBe(storm);
+  });
+});
+
+describe('Radar refresh: which stations wait for their next scan', () => {
+  const T = Date.UTC(2026, 9, 8, 7, 20, 1);
+  const recheck = 4 * 60_000;
+
+  it('waits while a read scan time is younger than the recheck age, and fetches again once it is old enough', () => {
+    expect(scanNotDue({ epochMs: T, source: 'radar_metadata' }, T + 60_000, recheck)).toBe(true);
+    expect(scanNotDue({ epochMs: T, source: 'printed_stamp' }, T + 3 * 60_000, recheck)).toBe(true);
+    expect(scanNotDue({ epochMs: T, source: 'radar_metadata' }, T + recheck, recheck)).toBe(false);
+  });
+
+  it('waits on the file last-modified time, but never on the send time of the response, or with no time at all', () => {
+    expect(scanNotDue({ epochMs: T, source: 'http_last_modified' }, T + 60_000, recheck)).toBe(true);
+    expect(scanNotDue({ epochMs: T, source: 'http_header' }, T + 60_000, recheck)).toBe(false);
+    expect(scanNotDue(null, T, recheck)).toBe(false);
+    expect(scanNotDue({}, T, recheck)).toBe(false);
+  });
+
+  it('does not wait on a scan time in the future (a clock that runs behind)', () => {
+    expect(scanNotDue({ epochMs: T + 10 * 60_000, source: 'radar_metadata' }, T, recheck)).toBe(false);
   });
 });

@@ -12,6 +12,8 @@ const DIST_DIR = path.resolve(__dirname, '../dist/weather-platform/browser');
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.webp': 'image/webp',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
   '.png': 'image/png',

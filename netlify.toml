@@ -36,6 +36,17 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# Build output is named by content hash (outputHashing "all"): a new build gets new names, so these can be cached for good
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 [[headers]]
   for = "/index.html"
   [headers.values]

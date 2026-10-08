@@ -1,7 +1,8 @@
 """
 Builds the Tamil Nadu terrain inset (the finer terrain the forecast fields are adjusted with): the Copernicus DEM (GLO-30, 30 m) averaged to 90 m.
 
-  public/data/tn-elevation-90m.png   terrain on a 1/1200 deg (~90 m) grid, same encoding as sa-elevation-1km.png:
+  public/data/tn-elevation-90m.webp  terrain on a 1/1200 deg (~90 m) grid, same encoding as sa-elevation-1km.png (lossless WebP,
+                                     so every value is kept exactly and the file is about 28% smaller than PNG):
                                      metres = (R * 256 + G) / 65535 * 4000, land fraction = B / 255 (sea is 0 m, B = 0)
   public/data/tn-terrain.json        grid geometry (latMax, latMin, lonMin, lonMax, step, nx, ny) and the value range
 
@@ -124,7 +125,7 @@ def main() -> int:
     rgb[..., 1] = (r % 256).astype(np.uint8)
     rgb[..., 2] = np.round(out_land * 255).astype(np.uint8)
     os.makedirs(args.out, exist_ok=True)
-    Image.fromarray(rgb).save(os.path.join(args.out, "tn-elevation-90m.png"), optimize=True)
+    Image.fromarray(rgb).save(os.path.join(args.out, "tn-elevation-90m.webp"), format="WEBP", lossless=True, method=6)
     lon_min_out = lon_first + col0 / PER_DEG
     lat_max_out = top - row0 / PER_DEG
     meta = {
