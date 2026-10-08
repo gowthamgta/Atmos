@@ -21,6 +21,7 @@ export class MapLayerService {
     { id: 'radar', name: 'IMD radar', active: true, opacity: 1.0 },
     { id: 'satellite', name: 'Meteosat satellite', active: false, opacity: 0.9 },
     { id: 'gibs', name: 'HD satellite', active: false, opacity: 1.0 },
+    { id: 'imerg', name: 'Observed rain', active: false, opacity: 0.9 },
   ]);
 
   readonly activeLayers = computed(() => this.layers().filter(l => l.active));

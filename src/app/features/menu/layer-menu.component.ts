@@ -52,6 +52,9 @@ function ladderKm(level: Level): string {
           <button type="button" class="radar" [class.active]="gibsActive()" [attr.aria-pressed]="gibsActive()" (click)="toggleGibs()" title="High-detail true-colour picture at 250 m, one per day (NASA GIBS)">
             <span aria-hidden="true">🌍</span> HD satellite <span class="radar-sub">250 m · daily</span>
           </button>
+          <button type="button" class="radar" [class.active]="imergActive()" [attr.aria-pressed]="imergActive()" (click)="toggleImerg()" title="Rain that has actually fallen, estimated from satellites (NASA IMERG)">
+            <span aria-hidden="true">☔</span> Observed rain <span class="radar-sub">IMERG · 30 min</span>
+          </button>
           <label class="model">
             <span class="sr">Forecast model</span>
             <select (change)="onModel($event)" aria-label="Forecast model">
@@ -100,6 +103,9 @@ function ladderKm(level: Level): string {
               </button>
               <button type="button" class="layer" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
                 <span class="l-icon" aria-hidden="true">≋</span><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
+              </button>
+              <button type="button" class="layer" [class.active]="state.cyclones()" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
+                <span class="l-icon" aria-hidden="true">🌀</span><span class="l-name">Cyclone tracks</span>
               </button>
               <button type="button" class="layer" [class.active]="state.districtLines()" [attr.aria-pressed]="state.districtLines()" (click)="state.toggleDistrictLines()" title="Show or hide the district boundaries (state and country outlines stay)">
                 <span class="l-icon" aria-hidden="true">▦</span><span class="l-name">District boundaries</span>
@@ -200,17 +206,19 @@ export class LayerMenuComponent {
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
   protected readonly satelliteActive = computed(() => this.mapLayers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly gibsActive = computed(() => this.mapLayers.layers().some(l => l.id === 'gibs' && l.active));
+  protected readonly imergActive = computed(() => this.mapLayers.layers().some(l => l.id === 'imerg' && l.active));
 
   /** Layers grouped for display. */
   protected readonly groups = computed(() =>
     LAYER_GROUPS.map(name => ({ name, layers: this.state.layers.filter(l => l.group === name) })).filter(g => g.layers.length > 0)
   );
 
-  protected readonly triggerIcon = computed(() => (this.radarActive() ? '📡' : this.satelliteActive() ? '🛰' : this.gibsActive() ? '🌍' : this.state.activeLayer()?.icon ?? '☰'));
+  protected readonly triggerIcon = computed(() => (this.radarActive() ? '📡' : this.satelliteActive() ? '🛰' : this.gibsActive() ? '🌍' : this.imergActive() ? '☔' : this.state.activeLayer()?.icon ?? '☰'));
   protected readonly triggerMain = computed(() => {
     if (this.radarActive()) return 'IMD radar';
     if (this.satelliteActive()) return 'Satellite';
     if (this.gibsActive()) return 'HD satellite';
+    if (this.imergActive()) return 'Observed rain';
     const base = this.state.layers.find(l => l.id === this.state.activeLayerId());
     if (base) return base.label;
     return this.state.windParticles() || this.state.isobars() ? 'Overlays' : 'Layers';
@@ -219,6 +227,7 @@ export class LayerMenuComponent {
     if (this.radarActive()) return 'Observed now';
     if (this.satelliteActive()) return SATELLITE_SOURCES[this.satellite.source()].label;
     if (this.gibsActive()) return '250 m · daily';
+    if (this.imergActive()) return 'IMERG · every 30 min';
     if (!this.state.forecastActive()) return 'Tap to choose';
     const level = this.state.level();
     return `${this.catalog.model().label} · ${level === 'surface' ? 'ground' : level + ' hPa'}`;
@@ -277,6 +286,11 @@ export class LayerMenuComponent {
   protected toggleGibs(): void {
     if (this.gibsActive()) this.mapLayers.deactivateAll();
     else this.state.selectGibs();
+  }
+
+  protected toggleImerg(): void {
+    if (this.imergActive()) this.mapLayers.deactivateAll();
+    else this.state.selectImerg();
   }
 
   protected toggleSatellite(): void {

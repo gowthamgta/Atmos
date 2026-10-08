@@ -47,6 +47,8 @@ export class ForecastStateService {
   readonly windParticles = signal(false);
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
   readonly isobars = signal(false);
+  /** Forecast tracks of tropical cyclones near the region (independent of the colour layer and the timeline). */
+  readonly cyclones = signal(false);
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
   readonly districtLines = signal(false);
   /** 1 km hill shading blended into the forecast colours (off by default to keep the map light). */
@@ -137,6 +139,10 @@ export class ForecastStateService {
     this.start();
   }
 
+  toggleCyclones(): void {
+    this.cyclones.update(on => !on);
+  }
+
   /** Show or hide the pressure lines over whatever layer is active. */
   toggleIsobars(): void {
     if (this.isobars()) {
@@ -191,6 +197,15 @@ export class ForecastStateService {
     this.isobars.set(false);
     this.pause();
     this.mapLayers.selectSingleLayer('gibs');
+  }
+
+  /** Observed rain (NASA IMERG) is another observed layer, replacing any forecast layer. */
+  selectImerg(): void {
+    this.activeLayerId.set(null);
+    this.windParticles.set(false);
+    this.isobars.set(false);
+    this.pause();
+    this.mapLayers.selectSingleLayer('imerg');
   }
 
   private start(): void {

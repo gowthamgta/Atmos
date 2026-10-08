@@ -18,6 +18,8 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
+import { ImergService } from '../../core/satellite/imerg.service';
+import { IMERG_MAX_ZOOM } from '../../core/satellite/imerg';
 import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
 import { SATELLITE_BOUNDS } from '../../core/satellite/satellite.config';
@@ -279,6 +281,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
   private gibs = inject(GibsHdService);
+  private imerg = inject(ImergService);
   private storms = inject(StormTracksService);
   private forecastState = inject(ForecastStateService);
 
@@ -321,6 +324,15 @@ export class MapComponent implements OnInit, OnDestroy {
     const opacity = this.gibs.opacity();
     if (!this.map || !this.isMapLoaded()) return;
     this.updateGibsLayer(on, template, opacity);
+  });
+
+  // Reactive Effect: observed rain (NASA IMERG half-hour rain rate)
+  private imergEffect = effect(() => {
+    const on = this.layerService.layers().some(l => l.id === 'imerg' && l.active);
+    const template = this.imerg.template();
+    const opacity = this.imerg.opacity();
+    if (!this.map || !this.isMapLoaded()) return;
+    this.updateImergLayer(on && template !== '', template, opacity);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)
@@ -397,6 +409,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
     this.removeSatelliteLayers();
     this.removeGibsLayer();
+    this.removeImergLayer();
     this.forecastMap.detach();
     this.map?.remove();
     this.map = null;
@@ -691,6 +704,40 @@ export class MapComponent implements OnInit, OnDestroy {
       this.gibsTemplate = template;
     }
     this.map.setPaintProperty('gibs-hd', 'raster-opacity', opacity);
+  }
+
+  // --- Observed rain: NASA IMERG raster tiles (transparent where it is dry) ---
+
+  private imergTemplate = '';
+
+  private removeImergLayer(): void {
+    if (!this.map) return;
+    if (this.map.getLayer('imerg-rain')) this.map.removeLayer('imerg-rain');
+    if (this.map.getSource('imerg-rain')) this.map.removeSource('imerg-rain');
+    this.imergTemplate = '';
+  }
+
+  private updateImergLayer(on: boolean, template: string, opacity: number): void {
+    if (!this.map) return;
+    if (!on) {
+      this.removeImergLayer();
+      return;
+    }
+    if (template !== this.imergTemplate || !this.map.getLayer('imerg-rain')) {
+      this.removeImergLayer();
+      const b = SATELLITE_BOUNDS;
+      this.map.addSource('imerg-rain', {
+        type: 'raster',
+        tiles: [template],
+        tileSize: 256,
+        maxzoom: IMERG_MAX_ZOOM,
+        bounds: [b.west, b.south, b.east, b.north],
+        attribution: 'NASA GPM IMERG / GIBS',
+      });
+      this.map.addLayer({ id: 'imerg-rain', type: 'raster', source: 'imerg-rain', paint: { 'raster-opacity': opacity, 'raster-fade-duration': 150, 'raster-resampling': 'nearest' } }, this.observationAnchorId());
+      this.imergTemplate = template;
+    }
+    this.map.setPaintProperty('imerg-rain', 'raster-opacity', opacity);
   }
 
   // --- Storm cells and cones ---

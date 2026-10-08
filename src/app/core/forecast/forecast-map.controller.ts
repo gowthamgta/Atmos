@@ -4,6 +4,7 @@ import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
 import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
+import { cycloneGeoJson, loadCyclones } from './cyclone-tracks';
 import { decodeFieldBitmap } from './field-decode';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -51,6 +52,10 @@ export class ForecastMapController {
   private isobarTimer: ReturnType<typeof setTimeout> | null = null;
   private lastIsobarUpdate = 0;
 
+  private cycloneLoadedAt = 0;
+
+  private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
+  private static readonly CYCLONE_LAYERS = ['forecast-cyclone-labels', 'forecast-cyclone-points', 'forecast-cyclone-track', 'forecast-cyclone-members'];
   private static readonly ISOBAR_SOURCE = 'forecast-isobars';
   private static readonly ISOBAR_MIN_INTERVAL_MS = 150;
 
@@ -63,11 +68,14 @@ export class ForecastMapController {
     this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 1500 : 9000);
     map.addLayer(this.windLayer, beforeId); // added second, so the streaks draw over the colour field
     this.addIsobarLayers(map, beforeId);
+    this.addCycloneLayers(map);
+    this.cycloneLoadedAt = 0;
     map.on('click', this.onMapClick);
     this.effects = [
       effect(() => this.update(), { injector: this.injector }),
       effect(() => this.updateWind(), { injector: this.injector }),
       effect(() => this.updateIsobars(), { injector: this.injector }),
+      effect(() => this.updateCyclones(), { injector: this.injector }),
       effect(() => this.syncMarker(), { injector: this.injector }),
     ];
   }
@@ -83,7 +91,10 @@ export class ForecastMapController {
     this.isobarToken++;
     if (this.isobarTimer) clearTimeout(this.isobarTimer);
     this.isobarTimer = null;
-    if (this.map) this.removeIsobarLayers(this.map);
+    if (this.map) {
+      this.removeIsobarLayers(this.map);
+      this.removeCycloneLayers(this.map);
+    }
     for (const l of [this.layer, this.windLayer]) {
       if (this.map && l && this.map.getLayer(l.id)) this.map.removeLayer(l.id);
     }
@@ -219,6 +230,41 @@ export class ForecastMapController {
         'text-halo-width': 1.4,
       },
     }, beforeId);
+  }
+
+  /** Forecast tracks of tropical cyclones, drawn on top: the ensemble spread, the main track and a point per time. */
+  private addCycloneLayers(map: MapLibreMap): void {
+    const source = ForecastMapController.CYCLONE_SOURCE;
+    map.addSource(source, { type: 'geojson', data: cycloneGeoJson(null) });
+    const hidden = { visibility: 'none' as const };
+    map.addLayer({ id: 'forecast-cyclone-members', type: 'line', source, filter: ['==', ['get', 'kind'], 'member'],
+      layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden }, paint: { 'line-color': '#ffd1dc', 'line-width': 1, 'line-opacity': 0.28 } });
+    map.addLayer({ id: 'forecast-cyclone-track', type: 'line', source, filter: ['==', ['get', 'kind'], 'track'],
+      layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden }, paint: { 'line-color': '#ffffff', 'line-width': 2.4, 'line-opacity': 0.92 } });
+    map.addLayer({ id: 'forecast-cyclone-points', type: 'circle', source, filter: ['==', ['get', 'kind'], 'point'], layout: hidden,
+      paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['case', ['get', 'big'], 6.5, 3.8], 'circle-stroke-color': '#0b0f1a', 'circle-stroke-width': 1.4 } });
+    map.addLayer({ id: 'forecast-cyclone-labels', type: 'symbol', source, filter: ['all', ['==', ['get', 'kind'], 'point'], ['!=', ['get', 'label'], '']],
+      layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 12, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': true, ...hidden },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8, 12, 22, 0.9)', 'text-halo-width': 1.5 } });
+  }
+
+  private removeCycloneLayers(map: MapLibreMap): void {
+    for (const id of ForecastMapController.CYCLONE_LAYERS) if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(ForecastMapController.CYCLONE_SOURCE)) map.removeSource(ForecastMapController.CYCLONE_SOURCE);
+  }
+
+  /** Shows the tracks while the overlay is on; the file is fetched when first needed and again once it is 30 minutes old. */
+  private updateCyclones(): void {
+    const map = this.map;
+    if (!map) return;
+    const on = this.state.cyclones();
+    for (const id of ForecastMapController.CYCLONE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    if (!on || Date.now() - this.cycloneLoadedAt < 30 * 60_000) return;
+    this.cycloneLoadedAt = Date.now();
+    void loadCyclones().then(data => {
+      if (!this.map || !data) return;
+      (this.map.getSource(ForecastMapController.CYCLONE_SOURCE) as { setData?: (d: unknown) => void } | undefined)?.setData?.(cycloneGeoJson(data));
+    });
   }
 
   private removeIsobarLayers(map: MapLibreMap): void {

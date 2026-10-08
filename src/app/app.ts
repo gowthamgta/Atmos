@@ -4,6 +4,7 @@ import { AboutComponent } from './features/about/about.component';
 import { RadarPanelComponent } from './features/radar/radar-panel.component';
 import { SatellitePanelComponent } from './features/satellite/satellite-panel.component';
 import { GibsPanelComponent } from './features/satellite/gibs-panel.component';
+import { ImergPanelComponent } from './features/satellite/imerg-panel.component';
 import { ForecastLegendComponent } from './features/forecast/forecast-legend.component';
 import { LayerMenuComponent } from './features/menu/layer-menu.component';
 import { ForecastTimelineComponent } from './features/forecast/forecast-timeline.component';
@@ -18,6 +19,7 @@ import { ForecastInspectorComponent } from './features/forecast/forecast-inspect
     RadarPanelComponent,
     SatellitePanelComponent,
     GibsPanelComponent,
+    ImergPanelComponent,
     ForecastLegendComponent,
     LayerMenuComponent,
     ForecastTimelineComponent,

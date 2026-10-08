@@ -16,6 +16,7 @@ on:
       - "pipeline/run.py"
       - "pipeline/fetch_ifs.py"
       - "pipeline/blend.py"
+      - "pipeline/cyclones.py"
   workflow_dispatch:
     inputs:
       force:
@@ -61,6 +62,8 @@ jobs:
           # the ECMWF ensemble: chance of heavy rain in the next 24 h (attached to every model below)
           python ens.py --out site --live-url "$base/ens/latest.json" $force \
             || echo "::warning::ens failed; the live copy stays in place"
+          # tropical-cyclone tracks near South India (a small JSON file; the live one is kept when there is nothing new)
+          python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force             || echo "::warning::cyclones failed; the live file stays in place"
           # FY-4B pictures of South India (a new slot every 15 minutes); the live ones are kept when there is nothing new
           python fy4.py --out site --live-url "$base/fy4/latest.json" $force \
             || echo "::warning::fy4 failed; the live pictures stay in place"
