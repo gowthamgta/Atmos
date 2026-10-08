@@ -66,7 +66,7 @@ separately, which left the two disagreeing: a 24 h total of 1.3 mm against 0.1 m
 (`blend.RESOLUTION_ORDER`: that model minus a ~28 km smoothed copy of itself, at gain 0.5), and (d) is clipped to the range of
 the models at each cell. Result on the same run: 88-99% of IFS's sharpness, the same domain-mean rain, a rain peak of 5.8 mm/h
 against 3.1 for the plain mean. `blend.VERSION` (now 4) is bumped when a method changes, which makes a run that is already live under the old method rebuild.
-The workflow order is: models, `cyclones.py`, `fy4.py`, `mirror.py` (unchanged models and blend), `blend.py`, `microclimate.py`.
+The workflow order is: models, `cyclones.py`, `fy4.py`, `mirror.py` (unchanged models and blend), `blend.py`.
 
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding

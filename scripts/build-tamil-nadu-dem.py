@@ -1,5 +1,5 @@
 """
-Builds the Tamil Nadu terrain inset used by the microclimate: the Copernicus DEM (GLO-30, 30 m) averaged to 90 m.
+Builds the Tamil Nadu terrain inset (the finer terrain the forecast fields are adjusted with): the Copernicus DEM (GLO-30, 30 m) averaged to 90 m.
 
   public/data/tn-elevation-90m.png   terrain on a 1/1200 deg (~90 m) grid, same encoding as sa-elevation-1km.png:
                                      metres = (R * 256 + G) / 65535 * 4000, land fraction = B / 255 (sea is 0 m, B = 0)
