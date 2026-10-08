@@ -11,7 +11,7 @@ export const SURFACE_INSPECT_VARS = [
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
 export function inspectVars(level: Level): string[] {
   const vars: string[] = [...SURFACE_INSPECT_VARS, 'u850', 'v850']; // 850 hPa wind drives the rain/low-cloud lift
-  if (level !== 'surface') vars.push(`t${level}`, `rh${level}`, `u${level}`, `v${level}`, `gh${level}`);
+  if (level !== 'surface') vars.push(`t${level}`, `rh${level}`, `u${level}`, `v${level}`, `gh${level}`, `w${level}`, `vo${level}`, `dv${level}`);
   return [...new Set(vars)];
 }
 
@@ -139,6 +139,12 @@ export function buildPointRows(
       { id: 'lvl-wind', label: 'Wind', text: windText(v(`u${level}`), v(`v${level}`)), terrainAdjusted: false },
       { id: 'lvl-height', label: 'Height', text: withUnit(v(`gh${level}`), 0, 'm'), terrainAdjusted: false },
     );
+    const aloft: [string, string, string, number, string][] = [
+      ['lvl-w', 'Vertical motion (+ rising)', `w${level}`, 100, 'cm/s'], ['lvl-vo', 'Vorticity', `vo${level}`, 1, '×10⁻⁵ /s'], ['lvl-dv', 'Divergence', `dv${level}`, 1, '×10⁻⁵ /s'],
+    ];
+    for (const [id, label, key, scale, unit] of aloft) {
+      if (!Number.isNaN(v(key))) rows.push({ id, label, text: withUnit(v(key) * scale, 1, unit), terrainAdjusted: false });
+    }
   }
   return rows;
 }
@@ -150,7 +156,7 @@ const LAYER_ROW: Record<string, string> = {
   tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin', px0: 'px0', xr: 'xr',
 };
 /** ...and at a pressure level (only some layers can be shown there). */
-const LAYER_LEVEL_ROW: Record<string, string> = { temp: 'lvl-temp', humidity: 'lvl-humidity', wind: 'lvl-wind', pressure: 'lvl-height' };
+const LAYER_LEVEL_ROW: Record<string, string> = { temp: 'lvl-temp', humidity: 'lvl-humidity', wind: 'lvl-wind', pressure: 'lvl-height', vertical: 'lvl-w', vorticity: 'lvl-vo', divergence: 'lvl-dv' };
 
 /**
  * Only the value of the layer that is on the map: one row, or none when the model has no value for it. At a pressure level the

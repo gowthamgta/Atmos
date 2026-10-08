@@ -25,12 +25,12 @@ class Var:
 
 
 # Pressure levels offered as "altitude" (hPa) and roughly how high they are
-LEVELS = (925, 850, 700, 500, 300, 200)
-LEVEL_KM = {925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 200: 12.0}
+LEVELS = (925, 850, 700, 500, 300, 250, 200)
+LEVEL_KM = {925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 250: 10.4, 200: 12.0}
 
 # Encoding ranges per level: temperature (degC) and geopotential height (m). Generous, so no value can clip.
-_LEVEL_T = {925: (8, 36), 850: (4, 32), 700: (-8, 22), 500: (-28, 2), 300: (-58, -18), 200: (-78, -38)}
-_LEVEL_GH = {925: (400, 1100), 850: (1100, 1800), 700: (2600, 3300), 500: (5500, 6100), 300: (9000, 10000), 200: (11800, 12800)}
+_LEVEL_T = {925: (8, 36), 850: (4, 32), 700: (-8, 22), 500: (-28, 2), 300: (-58, -18), 250: (-68, -28), 200: (-78, -38)}
+_LEVEL_GH = {925: (400, 1100), 850: (1100, 1800), 700: (2600, 3300), 500: (5500, 6100), 300: (9000, 10000), 250: (10200, 11200), 200: (11800, 12800)}
 
 
 def _level_vars() -> list[Var]:
@@ -42,6 +42,9 @@ def _level_vars() -> list[Var]:
             Var(f"t{lvl}", "°C", *_LEVEL_T[lvl], 12),
             Var(f"rh{lvl}", "%", 0, 100, 12),
             Var(f"gh{lvl}", "m", *_LEVEL_GH[lvl], 12),
+            Var(f"w{lvl}", "m/s", -2, 2, 12),          # vertical velocity, positive upwards (the models that publish it)
+            Var(f"vo{lvl}", "10⁻⁵ s⁻¹", -60, 60, 12),  # relative vorticity, positive = anticlockwise (cyclonic in the north); derived from u and v
+            Var(f"dv{lvl}", "10⁻⁵ s⁻¹", -40, 40, 12),  # horizontal divergence, positive = air spreading out; derived from u and v
         ]
     return out
 

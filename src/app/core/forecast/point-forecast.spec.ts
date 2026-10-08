@@ -69,7 +69,7 @@ describe('point forecast helpers', () => {
     expect(surface).toContain('t2m');
     expect(surface).toEqual(expect.arrayContaining(['u850', 'v850']));
     expect(surface.some(v => /^(t|rh|gh)\d{3}$/.test(v))).toBe(false);
-    expect(inspectVars(850)).toEqual([...surface, 't850', 'rh850', 'gh850']);
+    expect(inspectVars(850)).toEqual([...surface, 't850', 'rh850', 'gh850', 'w850', 'vo850', 'dv850']);
     expect(new Set(inspectVars(850)).size).toBe(inspectVars(850).length);
   });
 

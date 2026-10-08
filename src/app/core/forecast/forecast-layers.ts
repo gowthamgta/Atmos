@@ -3,12 +3,12 @@
 import type { TerrainMode } from './terrain-correction';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
-export type Level = 'surface' | 925 | 850 | 700 | 500 | 300 | 200;
-export const PRESSURE_LEVELS = [925, 850, 700, 500, 300, 200] as const;
+export type Level = 'surface' | 925 | 850 | 700 | 500 | 300 | 250 | 200;
+export const PRESSURE_LEVELS = [925, 850, 700, 500, 300, 250, 200] as const;
 export const ALL_LEVELS: readonly Level[] = ['surface', ...PRESSURE_LEVELS];
 
 /** Roughly how high each pressure level is above sea level, for the altitude menu. */
-export const LEVEL_KM: Record<number, number> = { 925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 200: 12.0 };
+export const LEVEL_KM: Record<number, number> = { 925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 250: 10.4, 200: 12.0 };
 
 export function levelLabel(level: Level): string {
   return level === 'surface' ? 'Surface' : `${level} hPa`;
@@ -18,7 +18,7 @@ export function levelHeightLabel(level: Level): string {
   return level === 'surface' ? 'at the ground' : `about ${LEVEL_KM[level]} km up`;
 }
 
-export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Rain chance (24 h)' | 'Visibility' | 'Pressure and storms';
+export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Rain chance (24 h)' | 'Visibility' | 'Pressure and storms' | 'Upper air';
 
 /** The part of a layer that changes with altitude. */
 export interface LevelSpec {
@@ -64,6 +64,8 @@ export interface ForecastLayerDef {
   levelHeightM?: number;
   /** Present when the layer can be shown at a pressure level: what changes there. */
   atLevel?: (level: number) => LevelSpec;
+  /** The layer only exists aloft (vertical velocity, vorticity...): choosing it from the ground goes up to a pressure level. */
+  levelOnly?: boolean;
 }
 
 /** Dark-theme palettes: the low end sinks into the dark basemap, mid-tones stay saturated and deep,
@@ -80,6 +82,8 @@ const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
 const PROB = ['#1c2330', '#2a4a8a', '#2a9d8f', '#e0b02a', '#e0652a', '#b3262f', '#8a1f9a'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
 const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
+// air moving down / calm / up (vertical velocity), and clockwise / calm / anticlockwise (vorticity), spreading / calm / converging
+const DIVERGING = ['#b3262f', '#e0762a', '#3a3f55', '#1f8fa8', '#2a56b0'];
 const INHIBITION = ['#1c2330', '#2a4a8a', '#1f8fa8', '#4fae6a', '#e0b02a', '#e0652a'];
 
 // --- what changes with altitude -------------------------------------------------------------------------------
@@ -90,6 +94,7 @@ const TEMP_RANGE: Record<number, [number, number, number[]]> = {
   700: [2, 16, [4, 8, 12, 16]],
   500: [-14, 0, [-12, -8, -4, 0]],
   300: [-40, -24, [-38, -34, -30, -26]],
+  250: [-56, -40, [-54, -50, -46, -42]],
   200: [-60, -44, [-58, -54, -50, -46]],
 };
 // maximum wind speed shown (m/s), with ticks in km/h
@@ -99,6 +104,7 @@ const WIND_RANGE: Record<number, [number, number[]]> = {
   700: [30, [20, 40, 60, 80, 100]],
   500: [40, [30, 60, 90, 120]],
   300: [60, [50, 100, 150, 200]],
+  250: [65, [50, 100, 150, 200]],
   200: [70, [50, 100, 150, 200, 250]],
 };
 // geopotential height of the pressure surface (m)
@@ -108,6 +114,7 @@ const HEIGHT_RANGE: Record<number, [number, number, number[]]> = {
   700: [3050, 3230, [3080, 3120, 3160, 3200]],
   500: [5800, 5960, [5820, 5870, 5920, 5960]],
   300: [9600, 9800, [9640, 9700, 9760]],
+  250: [10350, 10550, [10400, 10450, 10500]],
   200: [12350, 12550, [12400, 12450, 12500]],
 };
 
@@ -146,9 +153,25 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'li', label: 'Lifted index', icon: '🎈', group: 'Pressure and storms', varId: 'li', unit: '°C', min: -8, max: 8, stops: STABILITY, gamma: 1, clearBelow: 0, ticks: [-6, -3, 0, 3, 6], opacity: 0.85, terrain: null },
   { id: 'cin', label: 'Convective inhibition', icon: '🧊', group: 'Pressure and storms', varId: 'cin', unit: 'J/kg', min: 0, max: 300, stops: INHIBITION, gamma: 0.7, clearBelow: 5, ticks: [25, 50, 100, 200, 300], opacity: 0.85, terrain: null },
   { id: 'cape', label: 'Thunderstorm energy', icon: '⚡', group: 'Pressure and storms', varId: 'cape', unit: 'J/kg', min: 0, max: 4000, stops: CAPE, gamma: 0.7, clearBelow: 100, ticks: [500, 1000, 2000, 3000, 4000], opacity: 0.85, terrain: null },
+  // layers that only exist aloft; the variable at the ground is a placeholder (the layer is never drawn there)
+  {
+    id: 'vertical', label: 'Vertical air motion', icon: '↕', group: 'Upper air', varId: 'w850', unit: 'cm/s (+ rising)', displayScale: 100, min: -0.6, max: 0.6, stops: DIVERGING,
+    gamma: 1, clearBelow: 0, ticks: [-50, -25, 0, 25, 50], opacity: 0.85, terrain: null, levelOnly: true,
+    atLevel: l => ({ varId: `w${l}`, min: -0.6, max: 0.6, ticks: [-50, -25, 0, 25, 50] }),
+  },
+  {
+    id: 'vorticity', label: 'Vorticity', icon: '🌀', group: 'Upper air', varId: 'vo850', unit: '10⁻⁵ s⁻¹ (+ anticlockwise)', min: -30, max: 30, stops: DIVERGING,
+    gamma: 1, clearBelow: 0, ticks: [-20, -10, 0, 10, 20], opacity: 0.85, terrain: null, levelOnly: true,
+    atLevel: l => ({ varId: `vo${l}`, min: -30, max: 30, ticks: [-20, -10, 0, 10, 20] }),
+  },
+  {
+    id: 'divergence', label: 'Divergence', icon: '⇆', group: 'Upper air', varId: 'dv850', unit: '10⁻⁵ s⁻¹ (+ spreading out)', min: -15, max: 15, stops: DIVERGING,
+    gamma: 1, clearBelow: 0, ticks: [-10, -5, 0, 5, 10], opacity: 0.85, terrain: null, levelOnly: true,
+    atLevel: l => ({ varId: `dv${l}`, min: -15, max: 15, ticks: [-10, -5, 0, 5, 10] }),
+  },
 ];
 
-export const LAYER_GROUPS: readonly LayerGroup[] = ['Temperature', 'Wind', 'Rain and humidity', 'Rain chance (24 h)', 'Visibility', 'Pressure and storms'];
+export const LAYER_GROUPS: readonly LayerGroup[] = ['Temperature', 'Wind', 'Rain and humidity', 'Rain chance (24 h)', 'Visibility', 'Pressure and storms', 'Upper air'];
 
 /** True when the layer can be shown at pressure levels. */
 export function supportsLevels(def: ForecastLayerDef | null): boolean {
@@ -179,6 +202,7 @@ export function layerAvailable(def: ForecastLayerDef, vars: Record<string, unkno
 /** True when the layer, drawn at this altitude, has its data in the model. */
 export function layerAvailableAt(def: ForecastLayerDef, level: Level, vars: Record<string, unknown> | null | undefined): boolean {
   if (level !== 'surface' && !def.atLevel) return false;
+  if (level === 'surface' && def.levelOnly) return false;
   return layerAvailable(resolveLayer(def, level), vars);
 }
 
@@ -200,7 +224,7 @@ export interface ContourSpec {
   unit: string;
 }
 
-const CONTOUR_STEP: Record<number, number> = { 925: 5, 850: 10, 700: 10, 500: 20, 300: 20, 200: 20 };
+const CONTOUR_STEP: Record<number, number> = { 925: 5, 850: 10, 700: 10, 500: 20, 300: 20, 250: 20, 200: 20 };
 
 /** Contour lines: isobars of sea-level pressure at the surface, height lines of the pressure surface aloft. */
 export function contourSpec(level: Level): ContourSpec {

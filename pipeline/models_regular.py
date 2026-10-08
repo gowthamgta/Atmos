@@ -23,6 +23,10 @@ def level_scalars(skip: tuple[str, ...] = ()) -> list[str]:
     return [n for n in names if n not in skip]
 
 
+def level_w() -> list[str]:
+    return [f"vertical_velocity_{lvl}hPa" for lvl in LEVELS]
+
+
 def level_uv() -> list[str]:
     return [f"wind_{c}_component_{lvl}hPa" for lvl in LEVELS for c in ("u", "v")]
 
@@ -49,7 +53,7 @@ UKMO = RegularModel(
     model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 61, 3)),
     sources=[Source(
         "ukmo_global_deterministic_10km",
-        _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars()),
+        _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars() + level_w()),
         winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"), *level_speed_dir()),
     )],
 )
@@ -71,7 +75,7 @@ GRAPES = RegularModel(
     model_id="cma_grapes", label="CMA GRAPES", run_hours=(0, 12), step_hours=list(range(0, 121, 6)),
     sources=[Source("cma_grapes_global",
                     _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CIN_LI + CLOUD_LAYERS + ["visibility", "shortwave_radiation"]
-                          + level_uv() + level_scalars()))],
+                          + level_uv() + level_scalars() + level_w()))],
 )
 
 

@@ -99,7 +99,7 @@ import fetch_aifs, fetch_gfs, fetch_ifs
 
 
 def test_every_level_has_five_fields_with_sensible_ranges():
-    assert C.LEVELS == (925, 850, 700, 500, 300, 200)
+    assert C.LEVELS == (925, 850, 700, 500, 300, 250, 200)
     for lvl in C.LEVELS:
         for kind in ("u", "v", "t", "rh", "gh"):
             var = C.VARS[f"{kind}{lvl}"]
@@ -172,7 +172,8 @@ def test_regular_models_publish_what_their_datasets_have():
     assert by_id["ukmo"].UNAVAILABLE_VARS - {"px0", "xr"} == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
     assert "vis" not in by_id["cma_grapes"].UNAVAILABLE_VARS and "solar" not in by_id["cma_grapes"].UNAVAILABLE_VARS
     for m in models_regular.ALL:
-        assert not (set(D.LEVEL_RAW_KEYS) - m.PROVIDES - {"relative_humidity_200hPa"}), m.MODEL_ID    # every model has all six levels
+        # every model has all seven levels (vertical velocity is published by only some)
+        assert not {k for k in D.LEVEL_RAW_KEYS if not k.startswith("vertical_velocity")} - m.PROVIDES - {"relative_humidity_200hPa"}, m.MODEL_ID
 
 
 def test_reduced_precision_encoding_stays_within_its_error_bound_and_compresses_better():
@@ -261,3 +262,27 @@ def test_forward_extreme_takes_the_lowest_and_highest_of_the_next_24_hours():
     assert low[12][0, 0] == 22 and high[12][0, 0] == 31        # steps 12..36
     assert low[24][0, 0] == 19 and high[24][0, 0] == 31        # steps 24..48
     assert np.isnan(low[30]).all() and np.isnan(high[48]).all()  # the run ends before the window does
+
+
+def test_vorticity_and_divergence_of_simple_winds():
+    import config
+    R = 6.371e6
+    lat = np.radians(config.LAT_MAX - config.STEP_DEG * np.arange(config.NY))[:, None] * np.ones((1, config.NX))
+    lon = np.radians(config.LON_MIN + config.STEP_DEG * np.arange(config.NX))[None, :] * np.ones((config.NY, 1))
+    # solid-body rotation about the pole: u = w R cos(lat), v = 0 has vorticity 2 w sin(lat)
+    omega = 1e-5
+    u = (omega * R * np.cos(lat)).astype(np.float32)
+    vo, dv = D.vorticity_divergence(u, np.zeros_like(u))
+    row = round((config.LAT_MAX - 13.0) / config.STEP_DEG)
+    assert abs(float(vo[row, 100]) - 2 * 1.0 * np.sin(np.radians(13.0))) < 0.02       # in 1e-5 per second
+    assert abs(float(dv[row, 100])) < 0.02
+    # a uniform eastward-growing u (in metres) spreads the air out: divergence du/dx
+    u2 = (3e-6 * R * np.cos(lat) * lon).astype(np.float32)                             # du/dx = 3e-6 per second
+    _, dv2 = D.vorticity_divergence(u2, np.zeros_like(u2))
+    assert abs(float(dv2[row, 100]) - 0.3) < 0.02
+
+
+def test_the_new_level_fields_exist_and_are_derived_from_the_level_winds():
+    assert "w250" in C.VARS and "vo925" in C.VARS and "dv200" in C.VARS
+    assert D.NEEDS["vo250"] == [{"wind_u_component_250hPa", "wind_v_component_250hPa"}]
+    assert D.NEEDS["w500"] == [{"vertical_velocity_500hPa"}]

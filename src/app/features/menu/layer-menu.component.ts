@@ -195,7 +195,7 @@ export class LayerMenuComponent {
   private readonly satellite = inject(SatelliteService);
 
   protected readonly models = FORECAST_MODELS;
-  protected readonly allLevels = computed<Level[]>(() => ['surface', 925, 850, 700, 500, 300, 200]);
+  protected readonly allLevels = computed<Level[]>(() => ['surface', 925, 850, 700, 500, 300, 250, 200]);
   protected readonly open = computed(() => this.panels.open() === 'layers');
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
   protected readonly satelliteActive = computed(() => this.mapLayers.layers().some(l => l.id === 'satellite' && l.active));
@@ -250,6 +250,9 @@ export class LayerMenuComponent {
   protected available(layer: ForecastLayerDef): boolean {
     // a layer that only exists at the ground is judged at the ground (choosing it returns you there)
     const level = supportsLevels(layer) ? this.state.level() : 'surface';
+    if (layer.levelOnly && level === 'surface') {            // judged at any altitude the model has (choosing it goes up)
+      return this.state.levels().some(l => l !== 'surface' && layerAvailableAt(layer, l, this.catalog.manifest()?.vars));
+    }
     return layerAvailableAt(layer, level, this.catalog.manifest()?.vars);
   }
 

@@ -100,7 +100,9 @@ export class ForecastStateService {
       return;
     }
     this.mapLayers.deactivateAll(); // radar and legacy overlays make way
-    if (!supportsLevels(forecastLayerById(id))) this.level.set('surface'); // this layer only exists at the ground
+    const picked = forecastLayerById(id);
+    if (!supportsLevels(picked)) this.level.set('surface'); // this layer only exists at the ground
+    else if (picked?.levelOnly && this.level() === 'surface') this.level.set(this.levels().includes(850) ? 850 : (this.levels().find(l => l !== 'surface') ?? 'surface')); // this one only exists aloft
     this.activeLayerId.set(id);
     if (forecastLayerById(id)?.varId2) this.windParticles.set(true); // wind layers are shown with their animation
     this.start();
@@ -113,7 +115,8 @@ export class ForecastStateService {
   setLevel(level: Level): void {
     if (!ALL_LEVELS.includes(level) || !this.levels().includes(level)) return;
     this.level.set(level);
-    if (level !== 'surface' && !supportsLevels(forecastLayerById(this.activeLayerId()))) {
+    const active = forecastLayerById(this.activeLayerId());
+    if ((level !== 'surface' && !supportsLevels(active)) || (level === 'surface' && active?.levelOnly)) {
       this.toggleLayerOn('temp');
     }
   }

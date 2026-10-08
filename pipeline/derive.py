@@ -8,7 +8,7 @@ from typing import Iterable
 
 import numpy as np
 
-from config import LEVELS
+from config import LAT_MAX, LEVELS, STEP_DEG
 
 _A, _B = 17.625, 243.04  # Magnus formula constants
 
@@ -30,6 +30,24 @@ def apparent_temperature(t_c: np.ndarray, rh: np.ndarray, wind_ms: np.ndarray) -
     """Feels-like temperature (Steadman / Australian BoM apparent temperature)."""
     e = rh / 100.0 * 6.105 * np.exp(17.27 * t_c / (237.7 + t_c))
     return t_c + 0.33 * e - 0.70 * wind_ms - 4.00
+
+
+def vorticity_divergence(u: np.ndarray, v: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Relative vorticity and horizontal divergence (both in 1e-5 per second) of a wind on the pipeline grid (row 0 = north)."""
+    earth_radius = 6.371e6
+    lat = np.radians(LAT_MAX - STEP_DEG * np.arange(u.shape[0]))[:, None]
+    step = np.radians(STEP_DEG)
+    dx = earth_radius * np.cos(lat) * step
+    dy = earth_radius * step
+    dv_dx = np.gradient(v, axis=1) / dx
+    du_dx = np.gradient(u, axis=1) / dx
+    du_dy = -np.gradient(u, axis=0) / dy                  # rows go southwards
+    dv_dy = -np.gradient(v, axis=0) / dy
+    # the du/dy term with the metric: vorticity = dv/dx - du/dy + u tan(lat) / R, divergence = du/dx + dv/dy - v tan(lat) / R
+    tan_term = np.tan(lat) / earth_radius
+    vo = dv_dx - du_dy + u * tan_term
+    dv = du_dx + dv_dy - v * tan_term
+    return (vo * 1e5).astype(np.float32), (dv * 1e5).astype(np.float32)
 
 
 def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np.ndarray]:
@@ -77,6 +95,8 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1) -> dict[str, np
         out[f"t{lvl}"] = raw.get(f"temperature_{lvl}hPa", missing)
         out[f"rh{lvl}"] = raw.get(f"relative_humidity_{lvl}hPa", missing)
         out[f"gh{lvl}"] = raw.get(f"geopotential_height_{lvl}hPa", missing)
+        out[f"w{lvl}"] = raw.get(f"vertical_velocity_{lvl}hPa", missing)
+        out[f"vo{lvl}"], out[f"dv{lvl}"] = vorticity_divergence(out[f"u{lvl}"], out[f"v{lvl}"])
     return out
 
 
@@ -167,6 +187,8 @@ def _needs() -> dict[str, list[set[str]]]:
         needs[f"t{lvl}"] = [{f"temperature_{lvl}hPa"}]
         needs[f"rh{lvl}"] = [{f"relative_humidity_{lvl}hPa"}]
         needs[f"gh{lvl}"] = [{f"geopotential_height_{lvl}hPa"}]
+        needs[f"w{lvl}"] = [{f"vertical_velocity_{lvl}hPa"}]
+        needs[f"vo{lvl}"] = needs[f"dv{lvl}"] = [{f"wind_u_component_{lvl}hPa", f"wind_v_component_{lvl}hPa"}]
     return needs
 
 
@@ -176,7 +198,7 @@ NEEDS = _needs()
 LEVEL_RAW_KEYS = tuple(
     key for lvl in LEVELS for key in (
         f"wind_u_component_{lvl}hPa", f"wind_v_component_{lvl}hPa", f"temperature_{lvl}hPa",
-        f"relative_humidity_{lvl}hPa", f"geopotential_height_{lvl}hPa",
+        f"relative_humidity_{lvl}hPa", f"geopotential_height_{lvl}hPa", f"vertical_velocity_{lvl}hPa",
     )
 )
 

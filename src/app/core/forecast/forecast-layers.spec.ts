@@ -18,7 +18,7 @@ import {
 
 // the variables a model publishes, as they appear in a manifest
 const vars = (...ids: string[]): Record<string, object> => Object.fromEntries(ids.map(id => [id, {}]));
-const levelVars = (levels: readonly number[], kinds = ['u', 'v', 't', 'rh', 'gh']) => levels.flatMap(l => kinds.map(k => `${k}${l}`));
+const levelVars = (levels: readonly number[], kinds = ['u', 'v', 't', 'rh', 'gh', 'w', 'vo', 'dv']) => levels.flatMap(l => kinds.map(k => `${k}${l}`));
 const SURFACE = ['t2m', 'rh', 'feels', 'dew', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'solar', 'cape', 'tcwv',
   'li', 'cin', 'rain24', 'tmin24', 'tmax24', 'px0', 'xr'];
 
@@ -85,11 +85,11 @@ describe('forecast layer registry', () => {
 
 describe('altitude', () => {
   it('offers the ground and six pressure levels', () => {
-    expect(ALL_LEVELS).toEqual(['surface', 925, 850, 700, 500, 300, 200]);
+    expect(ALL_LEVELS).toEqual(['surface', 925, 850, 700, 500, 300, 250, 200]);
   });
 
-  it('only temperature, humidity, wind and pressure/height can be drawn aloft', () => {
-    expect(FORECAST_LAYERS.filter(supportsLevels).map(l => l.id).sort()).toEqual(['humidity', 'pressure', 'temp', 'wind']);
+  it('only the upper-air layers (and temperature, humidity, wind, height) can be drawn aloft', () => {
+    expect(FORECAST_LAYERS.filter(supportsLevels).map(l => l.id).sort()).toEqual(['divergence', 'humidity', 'pressure', 'temp', 'vertical', 'vorticity', 'wind']);
   });
 
   it('resolves a layer to the variables, range and label of the chosen level', () => {
@@ -121,7 +121,7 @@ describe('altitude', () => {
 
   it('keeps every level inside its own legend range for typical tropical values', () => {
     const typical: Record<number, { t: number; gh: number }> = {
-      925: { t: 24, gh: 790 }, 850: { t: 19, gh: 1530 }, 700: { t: 9, gh: 3170 }, 500: { t: -5, gh: 5890 }, 300: { t: -31, gh: 9725 }, 200: { t: -52, gh: 12470 },
+      925: { t: 24, gh: 790 }, 850: { t: 19, gh: 1530 }, 700: { t: 9, gh: 3170 }, 500: { t: -5, gh: 5890 }, 300: { t: -31, gh: 9725 }, 250: { t: -42, gh: 10450 }, 200: { t: -52, gh: 12470 },
     };
     for (const lvl of PRESSURE_LEVELS) {
       const t = resolveLayer(forecastLayerById('temp')!, lvl);
@@ -167,5 +167,16 @@ describe('altitude', () => {
     expect(contourSpec('surface')).toEqual({ varId: 'msl', step: 2, unit: 'hPa' });
     expect(contourSpec(500)).toEqual({ varId: 'gh500', step: 20, unit: 'm' });
     for (const lvl of PRESSURE_LEVELS) expect(contourSpec(lvl).step).toBeGreaterThan(0);
+  });
+
+  it('has layers that only exist aloft, offered only at a pressure level', () => {
+    const full = vars(...SURFACE, ...levelVars(PRESSURE_LEVELS));
+    for (const id of ['vertical', 'vorticity', 'divergence']) {
+      const def = forecastLayerById(id)!;
+      expect(def.levelOnly).toBe(true);
+      expect(layerAvailableAt(def, 'surface', full)).toBe(false);
+      expect(layerAvailableAt(def, 250, full)).toBe(true);
+      expect(resolveLayer(def, 250).varId).toMatch(/250$/);
+    }
   });
 });
