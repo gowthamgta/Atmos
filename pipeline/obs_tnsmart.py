@@ -27,13 +27,14 @@ def is_hour_key(key: str) -> bool:
     return len(key) == 8 and key[2] == ":" and key[5] == " " and key[6:] in ("AM", "PM") and key[:2].isdigit()
 
 
-def parse_day(rows: list[dict], district: str = DISTRICT) -> list[dict]:
-    """The stations of one district, with their hourly rainfall in mm (the file lists every station of the state)."""
+def parse_day(rows: list[dict], district: str | None = DISTRICT) -> list[dict]:
+    """The stations of one district (or of every district when district is None), with their hourly rainfall in mm."""
     stations = []
     for r in rows:
-        if r.get("district_name") != district:
+        if district is not None and r.get("district_name") != district:
             continue
         stations.append({
+            "district": r.get("district_name"),
             "station": r["station_name"],
             "lat": r.get("latitude"),
             "lon": r.get("longitude"),
@@ -44,10 +45,10 @@ def parse_day(rows: list[dict], district: str = DISTRICT) -> list[dict]:
     return stations
 
 
-def fetch_day(day: date, timeout: int = TIMEOUT_S) -> list[dict]:
+def fetch_day(day: date, timeout: int = TIMEOUT_S, district: str | None = DISTRICT) -> list[dict]:
     res = requests.get(day_url(day), timeout=timeout)
     res.raise_for_status()
-    return parse_day(res.json())
+    return parse_day(res.json(), district)
 
 
 def save_day(out_dir: str, day: date, stations: list[dict]) -> str:

@@ -80,3 +80,42 @@ def test_a_correction_from_too_few_test_points_is_not_used(tmp_path):
     path = tmp_path / "t.json"
     path.write_text(json.dumps(doc), encoding="utf-8")
     assert C.load_table(str(path)) == {}
+
+
+def test_dew_point_and_feels_like_follow_the_corrected_temperature_and_humidity():
+    lats, lons = grid()
+    shape = (len(lats), len(lons))
+    fields = {"t2m": np.full(shape, 30.0, np.float32), "rh": np.full(shape, 70.0, np.float32),
+              "u10": np.full(shape, 3.0, np.float32), "v10": np.full(shape, 4.0, np.float32),
+              "dew": np.full(shape, 99.0, np.float32), "feels": np.full(shape, 99.0, np.float32)}
+    out = C.apply(fields, lats, lons, datetime(2026, 10, 9, 6, tzinfo=timezone.utc), table(temp=2.0, rh=-5.0))
+    from derive import apparent_temperature, dew_point
+    near = (lats == 11.0)[:, None] & (lons == 78.0)[None, :]
+    t, rh = out["t2m"][near][0], out["rh"][near][0]
+    assert abs(out["dew"][near][0] - dew_point(np.array(t), np.array(rh))) < 0.01
+    assert abs(out["feels"][near][0] - apparent_temperature(np.array(t), np.array(rh), np.array(5.0))) < 0.01
+    assert out["dew"][near][0] != 99.0       # recalculated, not left at the model's value
+
+
+def test_rain_is_scaled_on_land_near_a_gauge_only():
+    lats = np.array([11.0, 10.0, 8.0])
+    lons = np.array([78.0, 79.0])
+    rate = np.full((3, 2), 2.0, np.float32)
+    land = np.array([[True, True], [True, False], [True, True]])     # (10.0, 79.0) is sea
+    rain = {"factor": 0.5, "gauges": np.array([[11.0, 78.0]])}
+    out = C.apply_rain({"precip": rate}, lats, lons, rain, land)["precip"]
+    assert np.isclose(out[0, 0], 1.0)            # land at the gauge: halved
+    assert np.isclose(out[1, 1], 2.0)            # sea: unchanged
+    assert np.isclose(out[2, 0], 2.0)            # about 111 km away: beyond the fade, unchanged
+
+
+def test_no_rain_correction_without_an_accepted_factor(tmp_path):
+    import json
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps({"rain": {"factor": 0.8, "accepted": False, "n_test": 500}, "gauges": [[11.0, 78.0]]}), encoding="utf-8")
+    assert C.load_rain(str(path)) is None
+    lats = np.array([11.0])
+    lons = np.array([78.0])
+    rate = np.array([[3.0]], np.float32)
+    out = C.apply_rain({"precip": rate}, lats, lons, None, np.array([[True]]))["precip"]
+    assert np.isclose(out[0, 0], 3.0)
