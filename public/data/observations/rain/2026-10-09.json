@@ -2,9 +2,10 @@
  "source": "TN-SMART (RIMES), station-wise hourly rainfall",
  "district": "Kallakurichi",
  "date": "2026-10-09",
- "fetched": "2026-10-09T03:08:34Z",
+ "fetched": "2026-10-09T10:48:13Z",
  "stations": [
   {
+   "district": "Kallakurichi",
    "station": "Chinna Salem",
    "lat": 11.63,
    "lon": 78.87,
@@ -37,6 +38,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Nainarpalayam",
    "lat": 11.58,
    "lon": 78.91,
@@ -69,6 +71,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Pakkampadi",
    "lat": 11.55,
    "lon": 78.83,
@@ -101,6 +104,7 @@
    "total_mm": 2.4
   },
   {
+   "district": "Kallakurichi",
    "station": "Manmalai",
    "lat": 11.83,
    "lon": 78.85,
@@ -133,6 +137,7 @@
    "total_mm": 1.2
   },
   {
+   "district": "Kallakurichi",
    "station": "Indhili",
    "lat": 11.69,
    "lon": 78.93,
@@ -165,6 +170,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Kallakurichi ARG",
    "lat": 11.74,
    "lon": 78.97,
@@ -197,6 +203,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Mudiyanur",
    "lat": 11.7,
    "lon": 79.04,
@@ -229,6 +236,7 @@
    "total_mm": 15.6
   },
   {
+   "district": "Kallakurichi",
    "station": "Varanjaram",
    "lat": 11.65,
    "lon": 79.08,
@@ -261,6 +269,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Virugavur",
    "lat": 11.69,
    "lon": 79.04,
@@ -293,6 +302,7 @@
    "total_mm": 19.2
   },
   {
+   "district": "Kallakurichi",
    "station": "Periyamambattu",
    "lat": 11.74,
    "lon": 79.08,
@@ -325,6 +335,7 @@
    "total_mm": 30.4
   },
   {
+   "district": "Kallakurichi",
    "station": "Serapattu",
    "lat": 11.98,
    "lon": 78.78,
@@ -357,6 +368,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Puthupalapattu",
    "lat": 11.89,
    "lon": 78.83,
@@ -389,6 +401,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Kilakadu",
    "lat": 11.95,
    "lon": 78.74,
@@ -421,6 +434,7 @@
    "total_mm": null
   },
   {
+   "district": "Kallakurichi",
    "station": "Uppur",
    "lat": 11.74,
    "lon": 78.65,
@@ -453,6 +467,7 @@
    "total_mm": null
   },
   {
+   "district": "Kallakurichi",
    "station": "Mundiyur",
    "lat": 11.74,
    "lon": 78.74,
@@ -485,6 +500,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Vellimalai",
    "lat": 11.8,
    "lon": 78.71,
@@ -517,6 +533,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Vadasiruvallur",
    "lat": 11.88,
    "lon": 78.92,
@@ -549,6 +566,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Sangarapuram",
    "lat": 11.88,
    "lon": 78.91,
@@ -581,6 +599,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Tirupalapandhal",
    "lat": 11.94,
    "lon": 79.13,
@@ -613,6 +632,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Tirukoilur",
    "lat": 11.96,
    "lon": 79.19,
@@ -645,6 +665,7 @@
    "total_mm": 0.4
   },
   {
+   "district": "Kallakurichi",
    "station": "Elavanasur Kottai",
    "lat": 11.71,
    "lon": 79.19,
@@ -677,6 +698,7 @@
    "total_mm": 7.2
   },
   {
+   "district": "Kallakurichi",
    "station": "Pallavadi",
    "lat": 11.82,
    "lon": 79.17,
@@ -709,6 +731,7 @@
    "total_mm": 7.2
   },
   {
+   "district": "Kallakurichi",
    "station": "Eraiyur",
    "lat": 11.79,
    "lon": 79.19,
@@ -741,6 +764,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Kaattu Edaiyar",
    "lat": 11.85,
    "lon": 79.14,
@@ -773,6 +797,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "M.Kunnathur",
    "lat": 11.81,
    "lon": 79.27,
@@ -805,6 +830,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Kalamarudhur",
    "lat": 11.77,
    "lon": 79.31,
@@ -837,6 +863,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Sendhanadu",
    "lat": 11.72,
    "lon": 79.42,
@@ -869,6 +896,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Senjikupam",
    "lat": 11.76,
    "lon": 79.38,
@@ -901,6 +929,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Jampadi",
    "lat": 12.0,
    "lon": 79.05,
@@ -933,6 +962,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Ariyalur",
    "lat": 11.93,
    "lon": 79.01,
@@ -965,6 +995,7 @@
    "total_mm": null
   },
   {
+   "district": "Kallakurichi",
    "station": "Manalurpet",
    "lat": 12.0,
    "lon": 79.09,
@@ -997,6 +1028,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Kottalam",
    "lat": 11.81,
    "lon": 78.99,
@@ -1029,6 +1061,7 @@
    "total_mm": 0.4
   },
   {
+   "district": "Kallakurichi",
    "station": "Lakkinayakkanpatti",
    "lat": 12.0,
    "lon": 78.87,
@@ -1061,6 +1094,7 @@
    "total_mm": 0.0
   },
   {
+   "district": "Kallakurichi",
    "station": "Ponparappi",
    "lat": 12.0,
    "lon": 78.95,
