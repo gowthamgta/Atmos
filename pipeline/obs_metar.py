@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 import requests
 
 API = "https://aviationweather.gov/api/data/metar"
-AIRPORTS = ("VOTR", "VOSM", "VOPC")
+AIRPORTS = ("VOMM", "VOCB", "VOMD", "VOTK", "VOTR", "VOSM", "VOPC")   # the airports of Tamil Nadu with hourly reports
 HOURS = 24
 TIMEOUT_S = 60
 KT_TO_MS = 0.514444

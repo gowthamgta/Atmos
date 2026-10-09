@@ -76,11 +76,11 @@ def _distance_km(lat: float, lon: float, lats: np.ndarray, lons: np.ndarray) -> 
     return 2 * r * np.arcsin(np.minimum(1.0, np.sqrt(a)))
 
 
-def apply(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray, valid: datetime, table: dict) -> dict[str, np.ndarray]:
+def apply(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray, valid: datetime, table: dict, land: np.ndarray | None = None) -> dict[str, np.ndarray]:
     """The fields with the corrections applied for this valid time (UTC). Returns new arrays; the input is not changed.
 
     Where two airports overlap, each variable's correction is the average of the airports' corrections, weighted by how
-    near each one is (so the two never add up).
+    near each one is (so the two never add up). The sea is left out when the land mask is given.
     """
     if not table:
         return fields
@@ -99,6 +99,8 @@ def apply(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray, val
         if name in out and name in num:
             safe = np.where(den[name] > 0, den[name], 1.0)
             corr = np.where(den[name] > 0, num[name] / safe, 0.0).astype(np.float32)
+            if land is not None:
+                corr = np.where(land, corr, 0.0).astype(np.float32)
             out[name] = np.clip(out[name] - corr, lo, hi).astype(np.float32)
             changed = True
     if changed and "t2m" in out and "rh" in out:

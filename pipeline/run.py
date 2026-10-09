@@ -67,7 +67,7 @@ def process_step(fetcher, run, h):
     if fetcher.MODEL_ID == "ecmwf_ifs" and BIAS_TABLE:
         # the airport-based correction of temperature and humidity near them (see correction.py), at this step's valid time
         grid = grid_of(fetcher)
-        fields = correction.apply(fields, grid.lats(), grid.lons(), run + timedelta(hours=h), BIAS_TABLE)
+        fields = correction.apply(fields, grid.lats(), grid.lons(), run + timedelta(hours=h), BIAS_TABLE, RAIN_LAND)
     if fetcher.MODEL_ID == "ecmwf_ifs" and RAIN_BIAS:
         # the rain factor of the Tamil Nadu gauges, on land near them (see correction.apply_rain)
         grid = grid_of(fetcher)

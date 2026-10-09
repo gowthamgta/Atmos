@@ -26,8 +26,9 @@ _ifs025_bbox: tuple[float, float, float, float] | None = None
 # Bump when the way a run is built changes so that a run already live under the old way is rebuilt: v2 = the pressure levels
 # are published only with the 0.25 degree data (a run that went out with empty levels is rebuilt); v3 = the 250 hPa level and vertical velocity;
 # v4 = the airport correction of temperature and humidity (correction.py) is applied, so a run built without it is built again;
-# v5 = dew point and feels-like follow the corrected values, and the rain is scaled to the Tamil Nadu gauges on land near them.
-LIVE_FORMAT = 5
+# v5 = dew point and feels-like follow the corrected values, and the rain is scaled to the Tamil Nadu gauges on land near them;
+# v6 = the airport temperature and humidity corrections are off (no airport passed the rules over the 16-day check), and the sea is never corrected.
+LIVE_FORMAT = 6
 # Steps whose pressure levels could not be read in this process. A run with any of them is published as incomplete, so the
 # next scheduled run builds it again (see run.py) instead of the empty levels staying live for twelve hours.
 _level_gaps: set[int] = set()
