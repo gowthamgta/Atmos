@@ -1,0 +1,44 @@
+name: observations
+
+# Twice a day: the Kallakurichi district's hourly rainfall (TN-SMART) and the airport weather near it (METAR, for
+# temperature, humidity and wind). The files are committed to public/data/observations, so the app reads them from its own site.
+# A personal app: each source is fetched once per run.
+on:
+  schedule:
+    - cron: "30 3,15 * * *"     # 09:00 and 20:30 Indian time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: observations
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Rainfall (TN-SMART), the last two days
+        working-directory: pipeline
+        run: python obs_tnsmart.py --out ../public/data/observations/rain --days 2 || echo "::warning::rainfall not fetched; the saved files stay in place"
+      - name: Airport weather (METAR), the last 24 hours
+        working-directory: pipeline
+        run: python obs_metar.py --out ../public/data/observations/metar || echo "::warning::METAR not fetched; the saved file stays in place"
+      - name: Commit the changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/observations
+          if git diff --cached --quiet; then
+            echo "nothing new"
+          else
+            git commit -m "Observations: Kallakurichi rainfall and airport weather $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
