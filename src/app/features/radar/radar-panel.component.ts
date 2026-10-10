@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { IconComponent } from '../../shared/icon.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
@@ -38,6 +39,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
 @Component({
   selector: 'app-radar-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [IconComponent],
   template: `
     @if (active()) {
       <section class="panel glass-panel" [class.compact]="!expanded()" aria-label="Radar settings">
@@ -49,10 +51,10 @@ const FRESHNESS_LABEL: Record<string, string> = {
             <span class="sub compact-only" [attr.data-state]="freshness()">{{ compactStatus() }}</span>
           </div>
           <button type="button" class="icon-btn" (click)="refresh()" [disabled]="refreshing()" aria-label="Refresh radar" title="Refresh radar">
-            {{ refreshing() ? '…' : '⟳' }}
+            <app-icon name="refresh" [size]="15" />
           </button>
           <button type="button" class="icon-btn" (click)="expanded.set(!expanded())" [attr.aria-expanded]="expanded()" [attr.aria-label]="expanded() ? 'Show less' : 'Show more'" [title]="expanded() ? 'Show less' : 'Show more'">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true" [style.transform]="expanded() ? 'rotate(180deg)' : ''"><path d="m6 15 6-6 6 6"/></svg>
+            <app-icon name="chevron" [size]="14" [style.transform]="expanded() ? 'rotate(180deg)' : ''" />
           </button>
         </header>
 
@@ -78,7 +80,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <div class="loop" role="group" aria-label="Last hour of radar">
             <button type="button" class="icon-btn play" (click)="radar.togglePlay()" [disabled]="loopLoading() && frames().length === 0"
               [attr.aria-label]="playing() ? 'Pause' : 'Play the last hour'" [title]="playing() ? 'Pause' : 'Play the last hour'">
-              {{ playing() ? '❚❚' : '▶' }}
+              <app-icon [name]="playing() ? 'pause' : 'play'" [size]="14" />
             </button>
             @if (frames().length > 0) {
               <input type="range" class="scrub" min="0" [max]="frames().length" step="1" [value]="sliderValue()" (input)="onScrub($event)" aria-label="Radar time" />
@@ -127,19 +129,19 @@ const FRESHNESS_LABEL: Record<string, string> = {
     :host { display: contents; }
     .panel { position: fixed; left: 12px; bottom: 12px; z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; max-height: calc(100vh - 100px); overflow-y: auto; }
     header { display: flex; align-items: center; gap: 10px; }
-    .live { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; flex: none; }
+    .live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: none; flex: none; }
     .heading { flex: 1; min-width: 0; }
     .heading strong { display: block; font-size: 14px; }
     .sub { color: var(--text-muted); font-size: 11px; }
-    .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--text-primary); font-size: 18px; cursor: pointer; }
-    .icon-btn:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+    .icon-btn { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--surface-3); color: var(--text-primary); font-size: 18px; cursor: pointer; }
+    .icon-btn:hover:not(:disabled) { background: var(--surface-4); }
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
     .products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
-    .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
-    .prod:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
-    .prod.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
+    .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+    .prod:hover { background: var(--surface-4); color: var(--text-primary); }
+    .prod.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
     .pname { font-weight: 700; font-size: 13px; }
     .phint { font-size: 10px; opacity: 0.8; }
     .loop { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
@@ -147,18 +149,18 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .scrub { flex: 1; min-width: 0; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .loop-hint { flex: 1; color: var(--text-secondary); font-size: 11px; }
     .loop-time { flex: none; min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .loop-time.live-time { color: #4ade80; }
+    .loop-time.live-time { color: var(--ok); }
     .storm-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 6px 10px; min-height: 36px; border-radius: 10px;
-      border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; text-align: left; }
-    .storm-toggle:hover { background: rgba(255,255,255,0.1); }
-    .storm-toggle.active { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.5); color: #fde68a; }
+      border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; text-align: left; }
+    .storm-toggle:hover { background: var(--surface-4); }
+    .storm-toggle.active { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.5); color: var(--warn); }
     .cone { width: 18px; height: 12px; flex: none; background: linear-gradient(90deg, rgba(251,191,36,0.9), rgba(251,191,36,0.15)); clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 60%); }
     .storm-sub { display: block; font-weight: 400; font-size: 10px; color: var(--text-muted); }
     .panel.compact .loop { margin-top: 8px; }
-    .sub[data-state='fresh'] { color: #4ade80; }
-    .sub[data-state='recent'] { color: #facc15; }
-    .sub[data-state='stale'] { color: #fb923c; }
-    .sub[data-state='offline'] { color: #f87171; }
+    .sub[data-state='fresh'] { color: var(--ok); }
+    .sub[data-state='recent'] { color: var(--warn); }
+    .sub[data-state='stale'] { color: var(--warn); }
+    .sub[data-state='offline'] { color: var(--danger); }
     /* compact: one header line, the product buttons, the loop and a thin colour bar */
     .panel.compact { padding: 8px 10px; }
     .panel.compact .full-only { display: none; }
@@ -176,27 +178,27 @@ const FRESHNESS_LABEL: Record<string, string> = {
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 8px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
-    .age[data-state='fresh'] { color: #4ade80; }
-    .age[data-state='recent'] { color: #facc15; }
-    .age[data-state='stale'] { color: #fb923c; }
-    .age[data-state='offline'] { color: #f87171; }
+    .age[data-state='fresh'] { color: var(--ok); }
+    .age[data-state='recent'] { color: var(--warn); }
+    .age[data-state='stale'] { color: var(--warn); }
+    .age[data-state='offline'] { color: var(--danger); }
     .stations { margin-top: 10px; }
     .label { color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
     .chips { display: flex; flex-wrap: wrap; gap: 5px; }
-    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; min-height: 28px; border-radius: 14px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
-    .chip:hover { background: rgba(255,255,255,0.1); }
-    .chip.active { border-color: rgba(0,229,255,0.5); color: var(--text-primary); }
+    .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; min-height: 28px; border-radius: 14px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+    .chip:hover { background: var(--surface-4); }
+    .chip.active { border-color: var(--accent-line); color: var(--text-primary); }
     .chip-age { color: var(--text-muted); font-size: 10px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; }
-    .dot[data-state='fresh'] { background: #22c55e; }
+    .dot[data-state='fresh'] { background: var(--ok); }
     .dot[data-state='recent'] { background: #eab308; }
     .dot[data-state='stale'] { background: #f97316; }
-    .dot[data-state='offline'] { background: #ef4444; }
+    .dot[data-state='offline'] { background: var(--danger); }
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .legend { margin-top: 10px; }
-    .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, #facc15 60%, #ef4444 80%, #a855f7 100%); }
+    .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, var(--warn) 60%, #ef4444 80%, #a855f7 100%); }
     .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--text-secondary); }
     @media (max-width: 700px) { .panel { bottom: 84px; width: min(260px, calc(100vw - 24px)); } }
   `]

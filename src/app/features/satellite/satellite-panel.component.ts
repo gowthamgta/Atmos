@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, untracked } from '@angular/core';
+import { IconComponent } from '../../shared/icon.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { SATELLITE_CREDIT, SATELLITE_NAME } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
@@ -15,6 +16,7 @@ function istClock(ms: number): string {
 @Component({
   selector: 'app-satellite-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [IconComponent],
   template: `
     @if (active()) {
       <section class="panel glass-panel" aria-label="Satellite settings">
@@ -25,7 +27,7 @@ function istClock(ms: number): string {
             <span class="sub">Observed, {{ productLabel() }}</span>
           </div>
           <button type="button" class="play" (click)="sat.togglePlay()" [disabled]="count() < 2" [attr.aria-label]="sat.playing() ? 'Pause loop' : 'Play loop'">
-            {{ sat.playing() ? '❚❚' : '▶' }}
+            <app-icon [name]="sat.playing() ? 'pause' : 'play'" [size]="14" />
           </button>
         </header>
 
@@ -58,13 +60,13 @@ function istClock(ms: number): string {
     :host { display: contents; }
     .panel { position: fixed; left: 12px; bottom: 12px; z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; }
     header { display: flex; align-items: center; gap: 10px; }
-    .live { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; flex: none; }
-    .live.off { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: none; flex: none; }
+    .live.off { background: var(--danger); box-shadow: none; }
     .heading { flex: 1; min-width: 0; }
     .heading strong { display: block; font-size: 14px; }
     .sub { color: var(--text-muted); font-size: 11px; }
-    .play { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.06); color: var(--text-primary); font-size: 14px; cursor: pointer; }
-    .play:hover:not(:disabled) { background: rgba(255,255,255,0.14); }
+    .play { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--glass-border); background: var(--surface-3); color: var(--text-primary); font-size: 14px; cursor: pointer; }
+    .play:hover:not(:disabled) { background: var(--surface-4); }
     .play:disabled { opacity: 0.4; cursor: default; }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
@@ -74,9 +76,9 @@ function istClock(ms: number): string {
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
     .views { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
-    .view { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; }
-    .view:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
-    .view.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
+    .view { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; }
+    .view:hover { background: var(--surface-4); color: var(--text-primary); }
+    .view.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .note { margin: 10px 0 0; font-size: 10px; color: var(--text-muted); }

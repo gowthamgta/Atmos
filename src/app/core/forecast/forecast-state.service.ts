@@ -19,8 +19,8 @@ import {
 /** Which forecast layer is shown, at what time, and playback state. */
 @Injectable({ providedIn: 'root' })
 export class ForecastStateService {
-  /** Forecast hours advanced per real second while playing. */
-  private static readonly PLAY_HOURS_PER_SECOND = 4;
+  /** Playback speeds: forecast hours advanced per real second. */
+  static readonly SPEEDS = [2, 4, 8, 16] as const;
 
   private readonly catalog = inject(ForecastCatalogService);
   private readonly mapLayers = inject(MapLayerService);
@@ -43,6 +43,8 @@ export class ForecastStateService {
   /** Selected time in epoch ms (UTC); null until the first layer is switched on. */
   readonly timeMs = signal<number | null>(null);
   readonly playing = signal(false);
+  /** Forecast hours per real second while playing (one of SPEEDS). */
+  readonly speed = signal<number>(4);
   /** Animated wind streaks over the map; independent of the colour layer. */
   readonly windParticles = signal(true);   // on by default: the app opens on the forecast wind, not the radar
   /** Pressure lines (isobars) over the map; independent of the colour layer. */
@@ -215,6 +217,10 @@ export class ForecastStateService {
     if (t !== null) this.setTime(t + hours * 3_600_000);
   }
 
+  setSpeed(hoursPerSecond: number): void {
+    if ((ForecastStateService.SPEEDS as readonly number[]).includes(hoursPerSecond)) this.speed.set(hoursPerSecond);
+  }
+
   togglePlay(): void {
     if (this.playing()) this.pause();
     else this.play();
@@ -229,7 +235,7 @@ export class ForecastStateService {
       if (!this.playing()) return;
       const dt = Math.min(now - this.lastFrame, 100); // ignore long pauses (hidden tab)
       this.lastFrame = now;
-      const t = (this.timeMs() ?? 0) + dt * ForecastStateService.PLAY_HOURS_PER_SECOND * 3.6e3;
+      const t = (this.timeMs() ?? 0) + dt * this.speed() * 3.6e3;
       if (t >= (this.endMs() ?? 0)) {
         this.setTime(this.endMs() ?? t);
         this.pause();

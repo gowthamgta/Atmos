@@ -46,17 +46,17 @@ import { GibsHdService } from '../../core/satellite/gibs-hd.service';
     :host { display: contents; }
     .panel { position: fixed; left: 12px; bottom: 12px; z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; }
     header { display: flex; align-items: center; gap: 10px; }
-    .live { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; flex: none; }
+    .live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: none; flex: none; }
     .heading { flex: 1; min-width: 0; }
     .heading strong { display: block; font-size: 14px; }
     .sub { color: var(--text-muted); font-size: 11px; }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .days { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
     .sensors { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .chip { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; padding: 0 8px; }
+    .chip { min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; padding: 0 8px; }
     .chip.small { min-height: 30px; font-size: 11px; flex: 1 1 auto; }
-    .chip:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
-    .chip.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
+    .chip:hover { background: var(--surface-4); color: var(--text-primary); }
+    .chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
     .date { display: block; font-weight: 400; font-size: 10px; opacity: 0.8; }
     .msg { margin: 6px 0 0; color: var(--text-secondary); font-size: 11px; }
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }

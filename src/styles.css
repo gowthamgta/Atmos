@@ -1,57 +1,101 @@
 /* ============================================================
-   AtmosIQ — Global Design System
-   Futuristic dark theme with glassmorphism + neon accents
+   AtmosIQ design system
+   Interface colours are tokens on :root (dark, the default) and :root[data-theme='light'].
+   Meteorological colour scales are NOT here: they live with the layers (core/forecast/forecast-layers.ts)
+   so the interface theme never changes what a colour on the map means.
+   Surfaces, from the map outwards: --surface-1 (bars) < --surface-2 (panels) < --surface-3 (controls) < --surface-4 (hover).
    ============================================================ */
 
-/* --- CSS Custom Properties --- */
 :root {
-  /* Primary Colors */
-  --bg-primary: #060a13;
-  --bg-secondary: #0c1220;
-  --bg-tertiary: #111827;
-  --bg-card: rgba(12, 18, 32, 0.75);
+  color-scheme: dark;
 
-  /* Glass */
-  --glass-bg: rgba(15, 23, 42, 0.65);
-  --glass-border: rgba(100, 200, 255, 0.12);
-  --glass-blur: 20px;
+  /* Surfaces: deep midnight navy, in four steps */
+  --surface-0: #060b16;
+  --surface-1: #0a1224;
+  --surface-2: #101a31;
+  --surface-3: #18243f;
+  --surface-4: #22315a;
+  --scrim: rgba(3, 7, 16, 0.6);
 
-  /* Neon Accents */
-  --neon-cyan: #00e5ff;
-  --neon-blue: #2979ff;
-  --neon-purple: #b388ff;
-  --neon-green: #00e676;
-  --neon-orange: #ff9100;
-  --neon-red: #ff1744;
-  --neon-yellow: #ffea00;
+  /* Lines */
+  --line: rgba(148, 170, 214, 0.16);
+  --line-strong: rgba(148, 170, 214, 0.32);
 
   /* Text */
-  --text-primary: #e8eaf6;
-  --text-secondary: rgba(200, 210, 230, 0.7);
-  --text-muted: rgba(160, 170, 190, 0.5);
+  --text-primary: #eaf0fb;
+  --text-secondary: #aebbd6;
+  --text-muted: #8394b6;
 
-  /* Glow */
-  --glow-cyan: 0 0 20px rgba(0, 229, 255, 0.3), 0 0 60px rgba(0, 229, 255, 0.1);
-  --glow-blue: 0 0 20px rgba(41, 121, 255, 0.3);
-  --glow-soft: 0 0 15px rgba(0, 229, 255, 0.15);
+  /* Accent: cyan for "selected / live", amber for caution, red for errors, violet for model/run info */
+  --accent: #38d0e8;
+  --accent-strong: #7fe6f5;
+  --accent-soft: rgba(56, 208, 232, 0.16);
+  --accent-line: rgba(56, 208, 232, 0.55);
+  --on-accent: #04202a;
+  --warn: #f5a524;
+  --danger: #ff6b6b;
+  --ok: #3ddc97;
+  --model: #a99bff;
 
-  /* Spacing */
-  --panel-padding: 20px;
-  --panel-radius: 16px;
-  --panel-gap: 12px;
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
 
-  /* Fonts */
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-display: 'Orbitron', monospace;
+  /* Layout */
+  --bar-h: 48px;
+  --gutter: 12px;
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --tap: 44px;
 
-  /* Transitions */
-  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
-  --transition-fast: 0.2s var(--ease-out-expo);
-  --transition-medium: 0.4s var(--ease-out-expo);
-  --transition-slow: 0.6s var(--ease-out-expo);
+  /* Type: one family for the interface, tabular numbers for readouts */
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t-fast: 120ms var(--ease);
+  --t-med: 220ms var(--ease);
+
+  /* Names used by older component styles, mapped onto the tokens so every panel follows the theme */
+  --bg-primary: var(--surface-0);
+  --bg-secondary: var(--surface-1);
+  --bg-tertiary: var(--surface-2);
+  --glass-bg: var(--surface-2);
+  --glass-border: var(--line);
+  --neon-cyan: var(--accent);
+  --neon-orange: var(--warn);
+  --neon-red: var(--danger);
+  --neon-green: var(--ok);
+  --font-display: var(--font-body);
 }
 
-/* --- Reset & Base --- */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --surface-0: #e9eef7;
+  --surface-1: #ffffff;
+  --surface-2: #f6f8fc;
+  --surface-3: #e8edf6;
+  --surface-4: #d9e1f0;
+  --scrim: rgba(20, 30, 55, 0.35);
+  --line: rgba(30, 50, 100, 0.14);
+  --line-strong: rgba(30, 50, 100, 0.3);
+  --text-primary: #0f1b33;
+  --text-secondary: #38486b;
+  --text-muted: #5a6b8f;
+  --accent: #0a7f99;
+  --accent-strong: #065f74;
+  --accent-soft: rgba(10, 127, 153, 0.12);
+  --accent-line: rgba(10, 127, 153, 0.6);
+  --on-accent: #ffffff;
+  --warn: #b26a00;
+  --danger: #c62828;
+  --ok: #17803f;
+  --model: #5a49d6;
+  --shadow-1: 0 1px 2px rgba(20, 30, 60, 0.12);
+  --shadow-2: 0 8px 26px rgba(20, 30, 60, 0.2);
+}
+
 *,
 *::before,
 *::after {
@@ -60,154 +104,96 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
   overflow: hidden;
   font-family: var(--font-body);
   font-size: 14px;
   color: var(--text-primary);
-  background: var(--bg-primary);
+  background: var(--surface-0);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 a {
-  color: var(--neon-cyan);
+  color: var(--accent);
   text-decoration: none;
 }
+a:hover {
+  text-decoration: underline;
+}
 
-/* --- Scrollbars --- */
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Keyboard focus: one visible ring everywhere */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 229, 255, 0.2);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 229, 255, 0.4);
+  background: var(--line-strong);
+  border-radius: 4px;
 }
 
-/* --- Glass Panel Utility --- */
-.glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border);
-  border-radius: var(--panel-radius);
-  box-shadow: var(--glow-soft);
-}
-
+/* Panels: opaque surfaces with a hairline border (no blur: the map stays readable and cheap to draw) */
+.glass-panel,
 .glass-panel-solid {
-  background: rgba(10, 14, 26, 0.88);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--panel-radius);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-2);
+}
+.glass-panel-solid {
+  background: var(--surface-1);
 }
 
-/* --- Neon Glow Text --- */
-.neon-text {
-  color: var(--neon-cyan);
-  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6), 0 0 30px rgba(0, 229, 255, 0.2);
+/* Shared control look */
+.btn-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line);
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.btn-icon:hover:not(:disabled) {
+  background: var(--surface-4);
+  color: var(--text-primary);
+}
+.btn-icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn-icon[aria-pressed='true'],
+.btn-icon.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent-strong);
 }
 
-/* --- Animations --- */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-@keyframes glowPulse {
-  0%, 100% {
-    box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
-  }
-  50% {
-    box-shadow: 0 0 25px rgba(0, 229, 255, 0.4), 0 0 50px rgba(0, 229, 255, 0.1);
-  }
-}
-
-@keyframes scanline {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.animate-fade-in-up {
-  animation: fadeInUp 0.5s var(--ease-out-expo) both;
-}
-
-.animate-slide-in-left {
-  animation: slideInLeft 0.5s var(--ease-out-expo) both;
-}
-
-.animate-slide-in-right {
-  animation: slideInRight 0.5s var(--ease-out-expo) both;
-}
-
-.animate-slide-in-up {
-  animation: slideInUp 0.5s var(--ease-out-expo) both;
-}
-
-/* --- Utility --- */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -220,3 +206,30 @@ a {
   border-width: 0;
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Reduced motion: no transitions or entrance animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

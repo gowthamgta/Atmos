@@ -544,6 +544,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
       // 1b. Tamil Nadu boundary lines (must exist before any overlay layer is mounted)
       this.initBoundaries();
+      this.initPlaceLabels();
 
       // 2. Add Radar Range Rings GeoJSON Source & Layer
       this.initRangeRings();
@@ -785,6 +786,28 @@ export class MapComponent implements OnInit, OnDestroy {
     this.setDistrictLinesVisible(this.forecastState.districtLines()); // the effect may have run before the layers existed
   }
 
+
+  /** Place names above the weather colours, with a dark halo so they stay readable on every palette (the base map has no labels of its own). */
+  private initPlaceLabels(): void {
+    if (!this.map || this.map.getLayer('label-city')) return;
+    const font = ['Open Sans Regular', 'Arial Unicode MS Regular'];
+    const name: maplibregl.ExpressionSpecification = ['coalesce', ['get', 'name_en'], ['get', 'name']];
+    const halo = { 'text-halo-color': 'rgba(6, 11, 22, 0.92)', 'text-halo-width': 1.5, 'text-halo-blur': 0.4 };
+    const symbol = (
+      id: string, sourceLayer: string, filter: maplibregl.ExpressionSpecification, minzoom: number, maxzoom: number,
+      size: maplibregl.ExpressionSpecification | number, color: string, extra: Record<string, unknown> = {}
+    ) => this.map!.addLayer({
+      id, type: 'symbol', source: 'base-vector', 'source-layer': sourceLayer, filter, minzoom, maxzoom,
+      layout: { 'text-field': name, 'text-font': font, 'text-size': size, 'text-max-width': 7, ...extra } as maplibregl.SymbolLayerSpecification['layout'],
+      paint: { 'text-color': color, ...halo }
+    });
+    symbol('label-sea', 'water_name', ['match', ['get', 'class'], ['sea', 'ocean'], true, false], 3, 8, 11, 'rgba(150, 200, 240, 0.9)', { 'text-letter-spacing': 0.15, 'text-transform': 'uppercase' });
+    symbol('label-country', 'place', ['==', ['get', 'class'], 'country'], 3, 7, ['interpolate', ['linear'], ['zoom'], 3, 10, 6, 14], 'rgba(235, 240, 250, 0.85)', { 'text-transform': 'uppercase', 'text-letter-spacing': 0.12 });
+    symbol('label-state', 'place', ['==', ['get', 'class'], 'state'], 4.5, 8.5, ['interpolate', ['linear'], ['zoom'], 5, 10, 8, 12.5], 'rgba(214, 224, 242, 0.8)', { 'text-transform': 'uppercase', 'text-letter-spacing': 0.08 });
+    symbol('label-city', 'place', ['==', ['get', 'class'], 'city'], 4.5, 24, ['interpolate', ['linear'], ['zoom'], 5, 11, 10, 15], '#ffffff');
+    symbol('label-town', 'place', ['==', ['get', 'class'], 'town'], 7, 24, ['interpolate', ['linear'], ['zoom'], 7, 10.5, 12, 13.5], 'rgba(244, 247, 252, 0.95)');
+    symbol('label-village', 'place', ['match', ['get', 'class'], ['village', 'suburb', 'hamlet'], true, false], 9.5, 24, 11, 'rgba(226, 233, 245, 0.88)');
+  }
   // --- 2. Concentric Radar Range Rings & Station Pins ---
 
   private initRangeRings(): void {

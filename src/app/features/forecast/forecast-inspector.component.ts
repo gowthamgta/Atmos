@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject } from '@angular/core';
+import { IconComponent } from '../../shared/icon.component';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
@@ -10,6 +11,7 @@ const IST = 'Asia/Kolkata';
 @Component({
   selector: 'app-forecast-inspector',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [IconComponent],
   template: `
     @if (inspector.selected(); as sel) {
       <aside class="card glass-panel-solid" role="dialog" aria-label="Forecast at selected point">
@@ -20,7 +22,7 @@ const IST = 'Asia/Kolkata';
               <span class="sub">{{ p.state && p.district ? p.state : '' }}</span>
             }
           </div>
-          <button type="button" class="close" aria-label="Close" title="Close (Esc)" (click)="inspector.close()">×</button>
+          <button type="button" class="close" aria-label="Close" title="Close (Esc)" (click)="inspector.close()"><app-icon name="close" [size]="16" /></button>
         </header>
 
         @if (inspector.point(); as p) {
@@ -58,24 +60,24 @@ const IST = 'Asia/Kolkata';
   `,
   styles: [`
     :host { display: contents; }
-    .card { position: fixed; top: 76px; left: 12px; z-index: 950; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow-y: auto; padding: 12px 14px 10px; color: var(--text-primary); font-family: var(--font-body); }
+    .card { position: fixed; top: calc(var(--bar-h) + 12px); left: var(--gutter); z-index: 950; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow-y: auto; padding: 12px 14px 10px; color: var(--text-primary); font-family: var(--font-body); }
     header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
     .place strong { display: block; font-size: 15px; }
     .sub { font-size: 12px; color: var(--text-secondary); }
-    .close { flex: none; width: 32px; height: 32px; margin: -6px -8px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: 22px; cursor: pointer; }
-    .close:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+    .close { flex: none; display: grid; place-items: center; width: 32px; height: 32px; margin: -6px -8px 0 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+    .close:hover { background: var(--surface-4); color: var(--text-primary); }
     .close:focus-visible { outline: 2px solid var(--neon-cyan); }
     .meta { margin: 4px 0 8px; font-size: 11px; color: var(--text-muted); }
     dl { margin: 0; }
-    .heading { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,229,255,0.35); font-size: 12px; font-weight: 700; color: var(--neon-cyan); }
-    .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,0.07); font-size: 13px; }
+    .heading { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--accent-line); font-size: 12px; font-weight: 700; color: var(--neon-cyan); }
+    .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--surface-3); font-size: 13px; }
     dt { color: var(--text-secondary); }
     dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
     .adj { margin-left: 4px; font-size: 8px; color: var(--neon-cyan); vertical-align: middle; }
     footer { margin-top: 6px; font-size: 10px; color: var(--text-muted); }
     @media (max-width: 700px) {
       /* bottom sheet above the timeline so the top bar stays visible */
-      .card { top: auto; bottom: 84px; left: 12px; right: 12px; width: auto; max-height: 52vh; overflow-y: auto; }
+      .card { top: auto; bottom: 124px; left: var(--gutter); right: var(--gutter); width: auto; max-height: 46vh; overflow-y: auto; }
     }
   `]
 })

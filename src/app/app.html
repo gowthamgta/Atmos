@@ -1,7 +1,36 @@
-<!-- Full-screen map background -->
+<!-- Compact top bar: brand, forecast status, the layer panel trigger, theme, full screen, about -->
+<header class="top-bar">
+  <h1 class="brand">
+    <span class="mark" aria-hidden="true"><app-icon name="logo" [size]="18" /></span>
+    <span class="brand-name">Atmos<span class="brand-accent">IQ</span></span>
+    <span class="brand-tag">South India</span>
+  </h1>
+
+  <div class="top-actions">
+    @if (catalog.status() === 'loading') {
+      <span class="status" role="status"><span class="spinner" aria-hidden="true"></span><span class="status-text">Loading forecast…</span></span>
+    } @else if (catalog.status() === 'error') {
+      <button type="button" class="status error" (click)="retry()" title="The forecast could not be loaded. Click to try again.">
+        <app-icon name="alert" [size]="14" /><span class="status-text">Forecast offline</span><span class="retry">Retry</span>
+      </button>
+    }
+    <app-layer-menu></app-layer-menu>
+    <button type="button" class="btn-icon" (click)="theme.toggle()" [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'" [title]="theme.theme() === 'dark' ? 'Light theme' : 'Dark theme'">
+      <app-icon [name]="theme.theme() === 'dark' ? 'sun' : 'moon'" [size]="17" />
+    </button>
+    @if (fullscreenAvailable) {
+      <button type="button" class="btn-icon hide-narrow" (click)="toggleFullscreen()" [attr.aria-pressed]="fullscreen()" [attr.aria-label]="fullscreen() ? 'Leave full screen' : 'Full screen'" [title]="fullscreen() ? 'Leave full screen' : 'Full screen'">
+        <app-icon [name]="fullscreen() ? 'shrink' : 'expand'" [size]="17" />
+      </button>
+    }
+    <app-about></app-about>
+  </div>
+</header>
+
+<!-- Full-screen map under the bar -->
 <app-map></app-map>
 
-<!-- Forecast: legend, timeline and click card. Radar: its own small panel. The layer menu lives in the header. -->
+<!-- Forecast: legend, timeline and click card. Radar and satellites: their own small panels. -->
 <app-forecast-legend></app-forecast-legend>
 <app-radar-panel></app-radar-panel>
 <app-satellite-panel></app-satellite-panel>
@@ -9,32 +38,9 @@
 <app-forecast-timeline></app-forecast-timeline>
 <app-forecast-inspector></app-forecast-inspector>
 
-<header class="top-bar">
-  <h1 class="brand-name">
-    <span class="brand-icon" aria-hidden="true">⚡</span>
-    <span>Atmos</span><span class="brand-accent">IQ</span>
-  </h1>
-  <div class="top-actions">
-    <app-layer-menu></app-layer-menu>
-    <app-about></app-about>
-  </div>
-</header>
-
 <!-- Zoom and recenter -->
-<div class="zoom-controls">
-  <button class="zoom-btn" (click)="recenter()" aria-label="Show all of South India" title="Show all of South India">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-    </svg>
-  </button>
-  <button class="zoom-btn" (click)="zoomIn()" aria-label="Zoom in" title="Zoom in">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-  </button>
-  <button class="zoom-btn" (click)="zoomOut()" aria-label="Zoom out" title="Zoom out">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <line x1="5" y1="12" x2="19" y2="12"/>
-    </svg>
-  </button>
+<div class="zoom-controls" role="group" aria-label="Map zoom">
+  <button class="zoom-btn" (click)="zoomIn()" aria-label="Zoom in" title="Zoom in"><app-icon name="plus" [size]="18" /></button>
+  <button class="zoom-btn" (click)="zoomOut()" aria-label="Zoom out" title="Zoom out"><app-icon name="minus" [size]="18" /></button>
+  <button class="zoom-btn" (click)="recenter()" aria-label="Show all of South India" title="Show all of South India"><app-icon name="locate" [size]="18" /></button>
 </div>

@@ -15,70 +15,93 @@ import { ForecastStateService } from '../../core/forecast/forecast-state.service
 import { PanelService } from '../../core/ui/panel.service';
 import { SATELLITE_NAME } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
+import { IconComponent } from '../../shared/icon.component';
+import { IconName, layerIcon } from '../../shared/icons';
 
-/** Height in km of an altitude, for the ladder ("10 m" at the ground). */
+/** Height in km of an altitude, for the altitude chips ("ground" at the surface). */
 function ladderKm(level: Level): string {
-  if (level === 'surface') return 'ground';
+  if (level === 'surface') return '10 m';
   const km = LEVEL_KM[level];
   return km < 10 ? `${km} km` : `${Math.round(km)} km`;
 }
 
 /**
- * One menu for everything you can look at: the radar, the model, the altitude, the weather layers (grouped), and the
- * overlays (wind animation, pressure lines). It opens from a button in the header that always shows what is on.
+ * One panel for everything you can look at, in four separate parts so it is always clear what you are changing:
+ * the model, the observations (radar, satellites), the altitude, and the weather layers (grouped), then the overlays.
+ * It opens from a button in the top bar that always shows what is on. On phones it is a bottom sheet.
  */
 @Component({
   selector: 'app-layer-menu',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [IconComponent],
   template: `
-    <button type="button" class="trigger" [class.open]="open()" (click)="panels.toggle('layers')" [attr.aria-expanded]="open()" aria-haspopup="dialog" aria-label="Layers and altitude">
-      <span class="t-icon" aria-hidden="true">{{ triggerIcon() }}</span>
+    <button type="button" class="trigger" [class.open]="open()" (click)="panels.toggle('layers')" [attr.aria-expanded]="open()" aria-haspopup="dialog" aria-controls="layer-panel">
+      <app-icon [name]="triggerIcon()" [size]="18" />
       <span class="t-text">
         <span class="t-main">{{ triggerMain() }}</span>
         @if (triggerSub()) { <span class="t-sub">{{ triggerSub() }}</span> }
       </span>
-      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+      <app-icon class="chev" name="chevron" [size]="14" />
     </button>
 
     @if (open()) {
-      <section class="panel glass-panel-solid" role="dialog" aria-label="Layers and altitude">
-        <div class="top-row">
-          <button type="button" class="radar" [class.active]="radarActive()" [attr.aria-pressed]="radarActive()" (click)="toggleRadar()">
-            <span aria-hidden="true">📡</span> Radar <span class="radar-sub">IMD · observed</span>
-          </button>
-          <button type="button" class="radar" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Live satellite: Meteosat-9 over India, HRV by day, infrared at night">
-            <span aria-hidden="true">🛰</span> Satellite <span class="radar-sub">live · observed</span>
-          </button>
-          <button type="button" class="radar" [class.active]="gibsActive()" [attr.aria-pressed]="gibsActive()" (click)="toggleGibs()" title="High-detail true-colour picture at 250 m, one per day (NASA GIBS)">
-            <span aria-hidden="true">🌍</span> HD satellite <span class="radar-sub">250 m · daily</span>
-          </button>
-          <label class="model">
-            <span class="sr">Forecast model</span>
-            <select (change)="onModel($event)" aria-label="Forecast model">
+      <div class="scrim" (click)="panels.close('layers')" aria-hidden="true"></div>
+      <section id="layer-panel" class="panel" role="dialog" aria-label="Map layers, model and altitude">
+        <header class="sheet-head">
+          <h2 class="sheet-title">Map</h2>
+          <button type="button" class="btn-icon" (click)="panels.close('layers')" aria-label="Close layers panel" title="Close (Esc)"><app-icon name="close" [size]="16" /></button>
+        </header>
+
+        <div class="scroll">
+          <section aria-labelledby="h-model">
+            <h3 id="h-model">Forecast model</h3>
+            <div class="models" role="radiogroup" aria-label="Forecast model">
               @for (m of models; track m.id) {
-                <option [value]="m.id" [selected]="m.id === catalog.activeModelId()">{{ m.label }} · {{ m.resolution }}</option>
+                <button type="button" class="model" role="radio" [class.active]="m.id === catalog.activeModelId()" [attr.aria-checked]="m.id === catalog.activeModelId()" (click)="setModel(m.id)">
+                  <span class="m-name">{{ m.label }}</span>
+                  <span class="m-res">{{ m.resolution }}</span>
+                  @if (m.id === catalog.activeModelId()) {
+                    <span class="m-run">{{ modelStatus() }}</span>
+                  }
+                </button>
               }
-            </select>
-          </label>
-        </div>
+            </div>
+          </section>
 
-        <div class="body">
-          <nav class="ladder" aria-label="Altitude">
-            <div class="ladder-title">Altitude</div>
-            @for (lvl of allLevels(); track lvl) {
-              <button
-                type="button" class="rung" [class.active]="state.level() === lvl" [attr.aria-pressed]="state.level() === lvl"
-                [disabled]="!hasLevel(lvl)" [title]="levelTitle(lvl)" (click)="state.setLevel(lvl)"
-              >
-                <span class="rung-main">{{ levelName(lvl) }}</span>
-                <span class="rung-sub">{{ rungSub(lvl) }}</span>
+          <section aria-labelledby="h-obs">
+            <h3 id="h-obs">Observations</h3>
+            <div class="obs">
+              <button type="button" class="tile" [class.active]="radarActive()" [attr.aria-pressed]="radarActive()" (click)="toggleRadar()" title="IMD radar: what is falling now (observed, not a forecast)">
+                <app-icon name="radar" [size]="20" /><span class="tile-name">Radar</span><span class="tile-sub">IMD · observed</span>
               </button>
-            }
-          </nav>
+              <button type="button" class="tile" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Live satellite: Meteosat-9 over India, HRV by day, infrared at night">
+                <app-icon name="satellite" [size]="20" /><span class="tile-name">Satellite</span><span class="tile-sub">live · 15 min</span>
+              </button>
+              <button type="button" class="tile" [class.active]="gibsActive()" [attr.aria-pressed]="gibsActive()" (click)="toggleGibs()" title="High-detail true-colour picture at 250 m, one per day (NASA GIBS)">
+                <app-icon name="globe" [size]="20" /><span class="tile-name">HD satellite</span><span class="tile-sub">250 m · daily</span>
+              </button>
+            </div>
+          </section>
 
-          <div class="layers">
+          <section aria-labelledby="h-alt">
+            <h3 id="h-alt">Altitude</h3>
+            <div class="alts" role="group" aria-label="Altitude">
+              @for (lvl of allLevels(); track lvl) {
+                <button
+                  type="button" class="alt" [class.active]="state.level() === lvl" [attr.aria-pressed]="state.level() === lvl"
+                  [disabled]="!hasLevel(lvl)" [title]="levelTitle(lvl)" (click)="state.setLevel(lvl)"
+                >
+                  <span class="alt-main">{{ levelName(lvl) }}</span>
+                  <span class="alt-sub">{{ rungSub(lvl) }}</span>
+                </button>
+              }
+            </div>
+          </section>
+
+          <section aria-labelledby="h-layers">
+            <h3 id="h-layers">Weather layer</h3>
             @for (group of groups(); track group.name) {
-              <h2>{{ group.name }}</h2>
+              <h4>{{ group.name }}</h4>
               <div class="grid">
                 @for (layer of group.layers; track layer.id) {
                   <button
@@ -86,104 +109,119 @@ function ladderKm(level: Level): string {
                     [attr.aria-pressed]="state.activeLayerId() === layer.id" [disabled]="!available(layer)"
                     [title]="layerTitle(layer)" (click)="state.toggleLayer(layer.id)"
                   >
-                    <span class="l-icon" aria-hidden="true">{{ layer.icon }}</span>
+                    <app-icon [name]="icon(layer.id)" [size]="17" />
                     <span class="l-name">{{ layer.label }}</span>
+                    @if (state.activeLayerId() === layer.id) { <app-icon class="tick" name="check" [size]="14" /> }
                   </button>
                 }
               </div>
             }
+          </section>
 
-            <h2>Overlays</h2>
+          <section aria-labelledby="h-over">
+            <h3 id="h-over">Overlays</h3>
             <div class="grid">
               <button type="button" class="layer" [class.active]="state.windParticles()" [attr.aria-pressed]="state.windParticles()" (click)="state.toggleWindParticles()" title="Animated wind streaks at the selected altitude">
-                <span class="l-icon" aria-hidden="true">〰</span><span class="l-name">Wind animation</span>
+                <app-icon name="wind" [size]="17" /><span class="l-name">Wind animation</span>
               </button>
               <button type="button" class="layer" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
-                <span class="l-icon" aria-hidden="true">≋</span><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
+                <app-icon name="isobars" [size]="17" /><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
               </button>
               <button type="button" class="layer" [class.active]="state.cyclones()" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
-                <span class="l-icon" aria-hidden="true">🌀</span><span class="l-name">Cyclone tracks</span>
+                <app-icon name="cyclone" [size]="17" /><span class="l-name">Cyclone tracks</span>
               </button>
               <button type="button" class="layer" [class.active]="state.districtLines()" [attr.aria-pressed]="state.districtLines()" (click)="state.toggleDistrictLines()" title="Show or hide the district boundaries (state and country outlines stay)">
-                <span class="l-icon" aria-hidden="true">▦</span><span class="l-name">District boundaries</span>
+                <app-icon name="districts" [size]="17" /><span class="l-name">District lines</span>
               </button>
               <button type="button" class="layer" [class.active]="state.relief()" [attr.aria-pressed]="state.relief()" (click)="state.toggleRelief()" title="Shade the 90 m terrain into the colour layer">
-                <span class="l-icon" aria-hidden="true">⛰</span><span class="l-name">Terrain relief</span>
+                <app-icon name="mountain" [size]="17" /><span class="l-name">Terrain relief</span>
               </button>
             </div>
-          </div>
+          </section>
         </div>
       </section>
     }
   `,
   styles: [`
     :host { display: contents; }
-    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     .trigger {
-      display: flex; align-items: center; gap: 10px; min-height: 44px; max-width: min(300px, calc(100vw - 150px)); padding: 6px 12px;
-      border-radius: 12px; border: 1px solid rgba(255,255,255,0.12); background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px);
-      color: var(--text-primary); font-family: var(--font-body); cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,0.3); text-align: left;
+      display: flex; align-items: center; gap: 9px; min-height: 36px; max-width: min(320px, calc(100vw - 150px)); padding: 3px 10px 3px 11px;
+      border-radius: var(--radius-m); border: 1px solid var(--line); background: var(--surface-3); color: var(--text-primary); cursor: pointer; text-align: left;
+      transition: background var(--t-fast), border-color var(--t-fast);
     }
-    .trigger:hover, .trigger.open { border-color: rgba(0,229,255,0.45); }
-    .trigger:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
-    .t-icon { font-size: 18px; }
+    .trigger app-icon:first-child { color: var(--accent); }
+    .trigger:hover, .trigger.open { background: var(--surface-4); border-color: var(--accent-line); }
     .t-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
-    .t-main { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .t-main { font-size: 13px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .t-sub { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .chev { flex: none; color: var(--text-secondary); transition: transform 0.2s; }
+    .chev { color: var(--text-secondary); transition: transform var(--t-med); }
     .trigger.open .chev { transform: rotate(180deg); }
 
+    .scrim { display: none; }
     .panel {
-      position: fixed; z-index: 1100; top: 66px; right: 14px; width: min(400px, calc(100vw - 20px));
-      max-height: calc(100vh - 90px); max-height: calc(100dvh - 90px); overflow-y: auto; padding: 12px; color: var(--text-primary); font-family: var(--font-body);
+      position: fixed; z-index: 1100; top: calc(var(--bar-h) + 8px); right: var(--gutter); width: min(420px, calc(100vw - 24px));
+      max-height: calc(100dvh - var(--bar-h) - 20px); display: flex; flex-direction: column;
+      background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-2); color: var(--text-primary);
+      animation: sheet-in var(--t-med) both;
     }
-    .top-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-    .radar {
-      flex: none; display: flex; flex-direction: column; align-items: flex-start; min-height: 44px; padding: 6px 12px; border-radius: 12px;
-      border: 1px solid transparent; background: rgba(255,255,255,0.06); color: var(--text-primary); font: 600 13px var(--font-body); cursor: pointer;
-    }
-    .radar-sub { font-weight: 400; font-size: 10px; color: var(--text-secondary); }
-    .radar:hover { background: rgba(255,255,255,0.12); }
-    .radar.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
-    .model { flex: 1 1 100%; min-width: 0; }
-    .radar { flex: 1 1 0; }
-    select {
-      width: 100%; height: 100%; min-height: 44px; padding: 6px 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.06); color: var(--text-primary); font: 12px var(--font-body);
-    }
-    option { background: #0f172a; color: #e8eaf6; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 6px 16px; }
+    .sheet-title { font-size: 15px; font-weight: 700; }
+    .scroll { overflow-y: auto; padding: 0 16px 14px; overscroll-behavior: contain; }
+    section + section { margin-top: 14px; }
+    h3 { margin: 0 0 7px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+    h4 { margin: 10px 0 5px; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 
-    .body { display: flex; gap: 10px; }
-    .ladder { flex: none; width: 82px; display: flex; flex-direction: column; gap: 4px; }
-    .ladder-title, h2 { margin: 0 0 2px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); }
-    .rung {
-      display: flex; flex-direction: column; align-items: flex-start; min-height: 44px; padding: 5px 8px; border-radius: 10px; border: 1px solid transparent;
-      background: rgba(255,255,255,0.05); color: var(--text-secondary); cursor: pointer; text-align: left;
+    .models { display: grid; gap: 6px; }
+    .model {
+      display: grid; grid-template-columns: 1fr auto; gap: 1px 10px; align-items: baseline; text-align: left; padding: 9px 12px; border-radius: var(--radius-m);
+      border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast);
     }
-    .rung:hover:not(:disabled) { background: rgba(255,255,255,0.11); color: var(--text-primary); }
-    .rung.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
-    .rung:disabled { opacity: 0.3; cursor: not-allowed; }
-    .rung-main { font-size: 12px; font-weight: 700; }
-    .rung-sub { font-size: 10px; opacity: 0.8; }
+    .model:hover { background: var(--surface-3); }
+    .model.active { border-color: var(--model); background: color-mix(in srgb, var(--model) 14%, var(--surface-2)); box-shadow: inset 3px 0 0 var(--model); }
+    .m-name { font-weight: 650; font-size: 13px; }
+    .m-res { font-size: 12px; color: var(--text-secondary); }
+    .m-run { grid-column: 1 / -1; font-size: 11px; color: var(--model); font-variant-numeric: tabular-nums; }
 
-    .layers { flex: 1; min-width: 0; }
-    h2 { margin-top: 10px; }
-    h2:first-child { margin-top: 0; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .obs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .tile {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; min-height: var(--tap); border-radius: var(--radius-m);
+      border: 1px solid var(--line); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; text-align: left;
+      transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+    }
+    .tile:hover { background: var(--surface-3); color: var(--text-primary); }
+    .tile.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); }
+    .tile-name { font-weight: 650; font-size: 12.5px; color: var(--text-primary); }
+    .tile.active .tile-name { color: inherit; }
+    .tile-sub { font-size: 10.5px; color: var(--text-muted); }
+
+    .alts { display: flex; flex-wrap: wrap; gap: 5px; }
+    .alt {
+      display: flex; flex-direction: column; align-items: flex-start; min-width: 62px; min-height: 40px; padding: 4px 10px; border-radius: var(--radius-m);
+      border: 1px solid var(--line); background: var(--surface-2); color: var(--text-secondary); cursor: pointer; text-align: left;
+    }
+    .alt:hover:not(:disabled) { background: var(--surface-3); color: var(--text-primary); }
+    .alt.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); }
+    .alt:disabled { opacity: 0.35; cursor: not-allowed; }
+    .alt-main { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .alt-sub { font-size: 10px; opacity: 0.8; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
     .layer {
-      display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 5px 8px; border-radius: 10px; border: 1px solid transparent;
-      background: rgba(255,255,255,0.05); color: var(--text-secondary); font: 500 12px var(--font-body); cursor: pointer; text-align: left; position: relative;
+      display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 5px 10px; border-radius: var(--radius-m); border: 1px solid var(--line);
+      background: var(--surface-2); color: var(--text-secondary); font-size: 12.5px; font-weight: 500; cursor: pointer; text-align: left;
+      transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
     }
-    .layer:hover:not(:disabled) { background: rgba(255,255,255,0.11); color: var(--text-primary); }
-    .layer.active { background: rgba(0,229,255,0.16); border-color: rgba(0,229,255,0.5); color: var(--neon-cyan); }
-    .layer:disabled { opacity: 0.32; cursor: not-allowed; }
-    .l-icon { flex: none; width: 20px; text-align: center; font-size: 15px; }
-    .l-name { min-width: 0; line-height: 1.15; }
+    .layer:hover:not(:disabled) { background: var(--surface-3); color: var(--text-primary); }
+    .layer.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); font-weight: 650; }
+    .layer:disabled { opacity: 0.35; cursor: not-allowed; }
     .layer.ground-only:not(.active) { opacity: 0.6; }
+    .l-name { flex: 1; min-width: 0; line-height: 1.15; }
+    .tick { color: var(--accent); }
 
     @media (max-width: 700px) {
-      .panel { top: 60px; right: 10px; }
-      .ladder { width: 74px; }
+      .scrim { display: block; position: fixed; inset: 0; z-index: 1099; background: var(--scrim); animation: sheet-in var(--t-med) both; }
+      .panel { top: auto; right: 0; left: 0; bottom: 0; width: auto; max-height: 82dvh; border-radius: var(--radius-l) var(--radius-l) 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+      .obs { grid-template-columns: 1fr 1fr 1fr; }
     }
   `]
 })
@@ -201,13 +239,14 @@ export class LayerMenuComponent {
   protected readonly satelliteActive = computed(() => this.mapLayers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly gibsActive = computed(() => this.mapLayers.layers().some(l => l.id === 'gibs' && l.active));
 
-
   /** Layers grouped for display. */
   protected readonly groups = computed(() =>
     LAYER_GROUPS.map(name => ({ name, layers: this.state.layers.filter(l => l.group === name) })).filter(g => g.layers.length > 0)
   );
 
-  protected readonly triggerIcon = computed(() => (this.radarActive() ? '📡' : this.satelliteActive() ? '🛰' : this.gibsActive() ? '🌍' : this.state.activeLayer()?.icon ?? '☰'));
+  protected readonly triggerIcon = computed<IconName>(() =>
+    this.radarActive() ? 'radar' : this.satelliteActive() ? 'satellite' : this.gibsActive() ? 'globe' : this.state.activeLayerId() ? layerIcon(this.state.activeLayerId()) : 'layers'
+  );
   protected readonly triggerMain = computed(() => {
     if (this.radarActive()) return 'IMD radar';
     if (this.satelliteActive()) return 'Satellite';
@@ -224,6 +263,20 @@ export class LayerMenuComponent {
     const level = this.state.level();
     return `${this.catalog.model().label} · ${level === 'surface' ? 'ground' : level + ' hPa'}`;
   });
+
+  /** Run and forecast range of the model on screen, read from its manifest. */
+  protected readonly modelStatus = computed(() => {
+    const status = this.catalog.status();
+    if (status === 'loading') return 'Loading…';
+    if (status === 'error') return 'Unavailable, retrying';
+    const m = this.catalog.manifest();
+    if (!m) return '';
+    const run = /^(\d{4})(\d{2})(\d{2})T(\d{2})/.exec(m.run);
+    const last = m.steps.at(-1)?.h;
+    return `${run ? `Run ${run[3]}/${run[2]} ${run[4]}Z` : m.run}${last !== undefined ? ` · to +${last} h` : ''}`;
+  });
+
+  protected icon = layerIcon;
 
   protected levelName(level: Level): string {
     return level === 'surface' ? 'Ground' : `${level} hPa`;
@@ -270,6 +323,10 @@ export class LayerMenuComponent {
     return !vars || this.state.contour().varId in vars;
   }
 
+  protected setModel(id: string): void {
+    void this.catalog.setModel(id).then(() => this.state.reclampTime());
+  }
+
   protected toggleRadar(): void {
     if (this.radarActive()) this.mapLayers.deactivateAll();
     else this.state.selectRadar();
@@ -283,10 +340,6 @@ export class LayerMenuComponent {
   protected toggleSatellite(): void {
     if (this.satelliteActive()) this.mapLayers.deactivateAll();
     else this.state.selectSatellite();
-  }
-
-  protected onModel(event: Event): void {
-    void this.catalog.setModel((event.target as HTMLSelectElement).value).then(() => this.state.reclampTime());
   }
 
   @HostListener('window:keydown.escape')
