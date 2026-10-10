@@ -2,11 +2,13 @@ name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
 # India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
-# Runs every 30 minutes: each model exits early when its newest run is not ready, is not one it uses, or is already live.
+# Twice a day, shortly before the 00Z and 12Z runs are published (ECMWF and the Met Office both run those), and the job then
+# waits for them (tries every 10 minutes for up to 2.5 hours). A change to the pipeline also rebuilds at once.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
-    - cron: "15,45 * * * *"
+    - cron: "30 7 * * *"      # 13:00 IST: waits for the 00Z run
+    - cron: "30 19 * * *"     # 01:00 IST: waits for the 12Z run
   # a change to how the models are built rebuilds and deploys at once
   push:
     paths:
@@ -35,7 +37,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
     outputs:
       deploy: ${{ steps.build.outputs.deploy }}
     defaults:
@@ -58,11 +60,27 @@ jobs:
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
-          for model in $models; do
-            # one model failing must not stop the other
-            python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force \
-              || echo "::warning::$model failed; the live copy stays in place"
+          # a scheduled run waits for the run of its time (00Z before noon UTC, 12Z after); other triggers take what is there
+          expect=""
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            hour=$(( $(date -u +%-H) < 12 ? 0 : 12 ))
+            expect="--expect-run $(date -u +%Y%m%d)T$(printf %02d $hour)Z"
+          fi
+          pending="$models"
+          for attempt in $(seq 1 16); do
+            waiting=""
+            for model in $pending; do
+              # one model failing must not stop the other
+              python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force $expect && continue
+              echo "::notice::$model: attempt $attempt did not complete (run not published yet, or a failure)"
+              waiting="$waiting $model"
+            done
+            pending="${waiting# }"
+            [ -z "$pending" ] && break
+            [ -z "$expect" ] && break        # not a scheduled run: one try
+            sleep 600
           done
+          for model in $pending; do echo "::warning::$model failed; the live copy stays in place"; done
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"

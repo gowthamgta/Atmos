@@ -33,6 +33,9 @@ if LAND_MASK is None and (BIAS_TABLE or RAIN_BIAS):
 MODELS = {m.MODEL_ID: m for m in (fetch_ifs, *models_regular.ALL)}
 
 
+NOT_PUBLISHED_YET = 3     # exit code: the run the caller expects is not published yet (the workflow tries again later)
+
+
 def published_vars(fetcher):
     """Variables this model actually provides (the app greys out layers for the others)."""
     return [v for v in C.VARS.values() if v.id not in fetcher.UNAVAILABLE_VARS]
@@ -111,6 +114,7 @@ def main() -> int:
     ap.add_argument("--list-models", action="store_true", help="print the model ids, one per line, and exit")
     ap.add_argument("--steps", help="comma-separated forecast hours (default: all)")
     ap.add_argument("--force", action="store_true", help="ignore the run-hour and already-live checks")
+    ap.add_argument("--expect-run", help="run id (e.g. 20261010T00Z) this call is waiting for; exits with code 3 while the newest published run is older")
     ap.add_argument("--live-url", help="latest.json of the deployed model, to skip runs that are already live")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
@@ -124,6 +128,9 @@ def main() -> int:
     fetcher = MODELS[args.model]
     run = fetcher.latest_run()
     run_id = f"{run:%Y%m%dT%H}Z"
+    if args.expect_run and run_id < args.expect_run and not args.force:
+        print(f"{args.model}: newest published run is {run_id}, still waiting for {args.expect_run}")
+        return NOT_PUBLISHED_YET
     if not args.force:
         if run.hour not in fetcher.RUN_HOURS:
             print(f"{args.model}: latest run {run_id} is not one of {fetcher.RUN_HOURS}Z; nothing to do")
