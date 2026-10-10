@@ -55,3 +55,17 @@ def test_a_day_that_has_not_changed_is_not_rewritten(tmp_path):
     stations[0]["hourly_mm"]["11:30 AM"] = 2.0
     O.save_day(str(tmp_path), date(2026, 10, 8), stations)
     assert open(path, encoding="utf-8").read() != first
+
+
+def test_the_card_summary_keeps_total_and_wettest_hour_per_gauge(tmp_path):
+    from datetime import date
+    st = [{"district": "Salem", "station": "A", "lat": 11.123456, "lon": 78.5, "hourly_mm": {"09:30 AM": 0.0, "10:30 AM": 4.5, "11:30 AM": None}, "total_mm": 4.5},
+          {"district": "Salem", "station": "B", "lat": None, "lon": 78.5, "hourly_mm": {}, "total_mm": 0.0},
+          {"district": "Erode", "station": "C", "lat": 11.0, "lon": 77.7, "hourly_mm": {"09:30 AM": 0.0}, "total_mm": 0.0}]
+    s = O.summarise(st, date(2026, 10, 10))
+    assert [r["n"] for r in s["stations"]] == ["A", "C"]                         # a gauge without a position is left out
+    a = s["stations"][0]
+    assert a["t"] == 4.5 and a["pk"] == 4.5 and a["pt"] == "10:30 AM" and a["h"] == 2 and a["la"] == 11.1235
+    assert s["stations"][1]["pt"] is None                                       # a dry gauge has no wettest hour
+    assert O.save_summary(str(tmp_path), s) is not None
+    assert O.save_summary(str(tmp_path), s) is None                             # same stations: not rewritten

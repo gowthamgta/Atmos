@@ -74,6 +74,43 @@ def save_day(out_dir: str, day: date, stations: list[dict]) -> str:
     return path
 
 
+def summarise(stations: list[dict], day: date) -> dict:
+    """The compact file the app reads for its click card: every Tamil Nadu gauge with the day's total (mm) and its wettest hour.
+    A day's file is the 24 hours from 09:30 the morning before to 08:30 that morning, so this is yesterday's rain, not a live reading."""
+    rows = []
+    for st in stations:
+        if st.get("lat") is None or st.get("lon") is None:
+            continue
+        hours = {k: v for k, v in st["hourly_mm"].items() if v is not None}
+        peak = max(hours, key=hours.get) if hours else None
+        rows.append({
+            "n": st["station"], "d": st["district"], "la": round(st["lat"], 4), "lo": round(st["lon"], 4),
+            "t": st["total_mm"], "pk": hours[peak] if peak else None, "pt": peak if peak and hours[peak] > 0 else None,
+            "h": len(hours),                       # hours with a reading (24 = complete)
+        })
+    return {"source": "TN-SMART (RIMES), station-wise hourly rainfall", "date": f"{day:%Y-%m-%d}",
+            "window": "09:30 IST the day before to 08:30 IST on this date", "stations": rows}
+
+
+def save_summary(out_dir: str, summary: dict) -> str | None:
+    """Writes rain/latest.json; None (and no write) when the stations are the same as the saved ones."""
+    path = os.path.join(out_dir, "latest.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            old = json.load(f)
+        if old.get("date") == summary["date"] and old.get("stations") == summary["stations"]:
+            return None
+    except (OSError, ValueError):
+        pass
+    os.makedirs(out_dir, exist_ok=True)
+    doc = {**summary, "fetched": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    tmp = path + ".part"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
+    os.replace(tmp, path)
+    return path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="folder for the daily files")
@@ -85,12 +122,15 @@ def main() -> int:
         if os.path.exists(os.path.join(args.out, f"{day:%Y-%m-%d}.json")) and back > 0:
             continue                       # a past day, already saved: nothing new to fetch
         try:
-            stations = fetch_day(day)
+            everywhere = fetch_day(day, district=None)
+            stations = [st for st in everywhere if st["district"] == DISTRICT]
         except (requests.RequestException, ValueError) as e:
             print(f"{day}: not fetched ({e}); the saved days stay in place", file=sys.stderr)
             continue
         path = save_day(args.out, day, stations)
         print(f"{day}: {len(stations)} {DISTRICT} stations -> {path}")
+        if back == 0:
+            print("all of Tamil Nadu:", save_summary(args.out, summarise(everywhere, day)) or "unchanged")
     return 0
 
 

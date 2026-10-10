@@ -2,13 +2,13 @@ name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
 # India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
-# Twice a day, shortly before the 00Z and 12Z runs are published (ECMWF and the Met Office both run those), and the job then
-# waits for them (tries every 10 minutes for up to 2.5 hours). A change to the pipeline also rebuilds at once.
+# Twice a day, a few hours after the 00Z and 12Z runs are published (ECMWF and the Met Office both run those), and the job then
+# waits for them (tries again every 30 minutes, up to six times). A change to the pipeline also rebuilds at once.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
-    - cron: "30 7 * * *"      # 13:00 IST: waits for the 00Z run
-    - cron: "30 19 * * *"     # 01:00 IST: waits for the 12Z run
+    - cron: "0 9 * * *"       # 14:30 IST: the 00Z run
+    - cron: "0 21 * * *"      # 02:30 IST: the 12Z run
   # a change to how the models are built rebuilds and deploys at once
   push:
     paths:
@@ -67,7 +67,7 @@ jobs:
             expect="--expect-run $(date -u +%Y%m%d)T$(printf %02d $hour)Z"
           fi
           pending="$models"
-          for attempt in $(seq 1 16); do
+          for attempt in $(seq 1 6); do
             waiting=""
             for model in $pending; do
               # one model failing must not stop the other
@@ -78,7 +78,7 @@ jobs:
             pending="${waiting# }"
             [ -z "$pending" ] && break
             [ -z "$expect" ] && break        # not a scheduled run: one try
-            sleep 600
+            sleep 1800        # not published yet: try again in 30 minutes
           done
           for model in $pending; do echo "::warning::$model failed; the live copy stays in place"; done
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
