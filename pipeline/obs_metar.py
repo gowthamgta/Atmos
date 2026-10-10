@@ -83,6 +83,13 @@ def fetch(hours: int = HOURS, timeout: int = TIMEOUT_S) -> list[dict]:
 def save(out_dir: str, stations: dict[str, list[dict]]) -> str:
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, "latest.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        if saved.get("stations") == stations and saved.get("hours") == HOURS:
+            return path          # no new report since the last run: the file stays as it is (its fetch time alone is no change)
+    except (OSError, ValueError):
+        pass
     doc = {
         "source": "aviationweather.gov METAR (airport observations)",
         "hours": HOURS,

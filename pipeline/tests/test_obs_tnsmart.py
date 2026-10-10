@@ -42,3 +42,16 @@ def test_the_daily_file_address_follows_the_date():
 def test_an_empty_hour_is_missing_not_zero_rain():
     stations = O.parse_day([row("Kallakurichi", "Virugavur", **{"09:30 AM": None, "10:30 AM": 0})])
     assert stations[0]["hourly_mm"] == {"09:30 AM": None, "10:30 AM": 0.0}
+
+
+def test_a_day_that_has_not_changed_is_not_rewritten(tmp_path):
+    import time
+    stations = O.parse_day([row("Kallakurichi", "Virugavur", **{"09:30 AM": 0, "10:30 AM": 1.2})])
+    path = O.save_day(str(tmp_path), date(2026, 10, 8), stations)
+    first = open(path, encoding="utf-8").read()
+    time.sleep(1.1)
+    O.save_day(str(tmp_path), date(2026, 10, 8), stations)
+    assert open(path, encoding="utf-8").read() == first
+    stations[0]["hourly_mm"]["11:30 AM"] = 2.0
+    O.save_day(str(tmp_path), date(2026, 10, 8), stations)
+    assert open(path, encoding="utf-8").read() != first

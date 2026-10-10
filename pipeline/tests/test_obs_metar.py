@@ -34,3 +34,16 @@ def test_records_group_by_airport_oldest_first_without_duplicates():
     grouped = M.parse_all(rows)
     assert sorted(grouped) == ["VOSM", "VOTR"]
     assert [p["time"] for p in grouped["VOTR"]] == ["2026-10-09T03:00:00Z", "2026-10-09T04:00:00Z"]
+
+
+def test_a_run_with_no_new_report_leaves_the_file_alone(tmp_path):
+    stations = {"VOTR": [M.parse_record(rec())]}
+    path = M.save(str(tmp_path), stations)
+    first = open(path, encoding="utf-8").read()
+    import time
+    time.sleep(1.1)                                   # the fetch time would differ by a second
+    M.save(str(tmp_path), stations)
+    assert open(path, encoding="utf-8").read() == first            # not rewritten: nothing to commit
+    stations["VOTR"].append(M.parse_record(rec(obsTime=1791518400)))
+    M.save(str(tmp_path), stations)
+    assert open(path, encoding="utf-8").read() != first            # a new report is saved

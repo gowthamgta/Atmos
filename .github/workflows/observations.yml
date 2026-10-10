@@ -21,6 +21,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50       # enough shared history to rebase onto a main that moved while this job ran
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -40,5 +42,15 @@ jobs:
             echo "nothing new"
           else
             git commit -m "Observations: Kallakurichi rainfall and airport weather $(date -u +%Y-%m-%dT%H:%MZ)"
-            git push
+            # main may have moved while this job ran (a push, the forecast workflow): rebase onto it and try again
+            for attempt in 1 2 3 4; do
+              if git pull --rebase origin main && git push origin HEAD:main; then
+                exit 0
+              fi
+              echo "push attempt $attempt did not go through; trying again"
+              git rebase --abort 2>/dev/null || true
+              sleep $((attempt * 5))
+            done
+            echo "::error::the observations could not be pushed after four attempts"
+            exit 1
           fi

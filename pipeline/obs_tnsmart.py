@@ -54,6 +54,12 @@ def fetch_day(day: date, timeout: int = TIMEOUT_S, district: str | None = DISTRI
 def save_day(out_dir: str, day: date, stations: list[dict]) -> str:
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"{day:%Y-%m-%d}.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            if json.load(f).get("stations") == stations:
+                return path      # nothing new for this day: the file stays as it is (its fetch time alone is no change)
+    except (OSError, ValueError):
+        pass
     doc = {
         "source": "TN-SMART (RIMES), station-wise hourly rainfall",
         "district": DISTRICT,
