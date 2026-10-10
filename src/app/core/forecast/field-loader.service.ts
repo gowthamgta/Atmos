@@ -4,7 +4,7 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 /** Downloads and caches decoded-on-GPU field images (ImageBitmaps of the rg16 PNGs). */
 @Injectable({ providedIn: 'root' })
 export class FieldLoaderService {
-  private static readonly MAX_CACHED = 96; // ~160 KB each, so about 15 MB at most
+  private static readonly MAX_CACHED = 96; // ~390 KB each once decoded (296 x 326 cells x 4 bytes), so about 37 MB at most
 
   private readonly catalog = inject(ForecastCatalogService);
   private readonly cache = new Map<string, ImageBitmap>();

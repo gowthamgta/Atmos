@@ -280,3 +280,11 @@ def test_the_new_level_fields_exist_and_are_derived_from_the_level_winds():
     assert "w250" in C.VARS and "vo925" in C.VARS and "dv200" in C.VARS
     assert D.NEEDS["vo250"] == [{"wind_u_component_250hPa", "wind_v_component_250hPa"}]
     assert D.NEEDS["w500"] == [{"vertical_velocity_500hPa"}]
+
+
+def test_a_field_whose_unit_could_not_be_read_is_not_taken_for_degrees_or_pascals():
+    kelvin = np.array([300.0, 302.0], np.float32)
+    assert FR.to_si("temperature", "", kelvin)[0] == pytest.approx(26.85)            # unknown unit, Kelvin values
+    assert FR.to_si("temperature", "", np.array([28.0], np.float32))[0] == 28.0       # unknown unit, already degrees
+    assert FR.to_si("pressure", "", np.array([1012.0], np.float32))[0] == pytest.approx(101200.0)   # hPa values
+    assert FR.to_si("pressure", "", np.array([101200.0], np.float32))[0] == 101200.0               # already Pa

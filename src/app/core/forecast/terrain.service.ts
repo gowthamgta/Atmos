@@ -36,7 +36,7 @@ export interface TerrainData {
 }
 
 const M_PER_DEG = 111_200;
-/** Decoded 90 m tiles kept in memory for the click card (about 6 MB each as RGBA). */
+/** Decoded tiles kept in memory for the click card (about 6 MB each as RGBA at 90 m, less at 270 m). */
 const CPU_TILE_CACHE = 6;
 
 /** The model-ground resolution (km) closest to a model's native grid spacing. */
@@ -192,13 +192,16 @@ export class TerrainService {
     };
   }
 
-  /** Loads the 90 m tile under a point for the click card (no-op when it is loaded or is sea). */
+  /**
+   * Loads the tile under a point for the click card (no-op when it is loaded or is sea): the 90 m file where there is one,
+   * else the 270 m file, so the card reads the same ground the map draws.
+   */
   prepareAt(lat: number, lon: number): Promise<void> {
     const name = tileNameAt(lat, lon);
-    if (this.cpuTiles.has(name) || !this.presentL0.has(name)) return Promise.resolve();
+    if (this.cpuTiles.has(name) || !this.present.has(name)) return Promise.resolve();
     const running = this.cpuLoading.get(name);
     if (running) return running;
-    const load = this.tileImage(0, name)
+    const load = this.tileImage(this.presentL0.has(name) ? 0 : 1, name)
       .then(bitmap => {
         const canvas: OffscreenCanvas | HTMLCanvasElement =
           typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(bitmap.width, bitmap.height) : Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height });

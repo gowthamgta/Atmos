@@ -329,6 +329,9 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private tilePx = 1;
   private slots: TileSlots | null = null;
   private tilesPending = new Set<string>();
+  /** When a tile last failed to load: it is asked for again only after a pause (not on every frame). */
+  private tilesFailedAt = new Map<string, number>();
+  private static readonly TILE_RETRY_MS = 30_000;
   private tilesOnScreen = new Set<string>();
   private tileMapDirty = true;
   private presentCache: ReadonlySet<string> | null = null;
@@ -413,11 +416,12 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
     this.textures.clear();
-    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.tileMapTex, this.tileTex]) if (tex) gl.deleteTexture(tex);
+    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.tileMapTex, this.tileTex, this.blankTiles]) if (tex) gl.deleteTexture(tex);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     if (this.program) gl.deleteProgram(this.program);
-    this.lutTex = this.demModelTex = this.demSmoothTex = this.tileMapTex = this.tileTex = this.vbo = this.vao = this.program = null;
+    this.lutTex = this.demModelTex = this.demSmoothTex = this.tileMapTex = this.tileTex = this.blankTiles = this.vbo = this.vao = this.program = null;
+    this.tilesFailedAt.clear();
     this.slots = null;
     this.tileLevel = null;
     this.map = null;
@@ -580,6 +584,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   /** Drops the tiles on the GPU (new terrain): the next frame loads them again. */
   private resetTiles(): void {
     if (this.gl && this.tileTex) this.gl.deleteTexture(this.tileTex);
+    this.tilesFailedAt.clear();
     this.tileTex = null;
     this.tileLevel = null;
     this.slots = null;
@@ -603,7 +608,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.tilesOnScreen = new Set(visible);
     this.slots.touch(visible);
     for (const name of visible) {
-      if (this.slots.has(name) || this.tilesPending.has(name)) continue;
+      if (this.slots.has(name) || this.tilesPending.has(name) || this.recentlyFailed(name)) continue;
       this.loadTile(gl, data, name, level);
     }
     // the tiles just outside the view are loaded ahead of a pan, into free slots only: they never push out a tile on screen
@@ -611,7 +616,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     let free = this.slots.freeCount() - this.tilesPending.size;
     for (const name of ahead) {
       if (free <= 0) break;
-      if (this.tilesOnScreen.has(name) || this.slots.has(name) || this.tilesPending.has(name)) continue;
+      if (this.tilesOnScreen.has(name) || this.slots.has(name) || this.tilesPending.has(name) || this.recentlyFailed(name)) continue;
       this.loadTile(gl, data, name, level);
       free--;
     }
@@ -625,6 +630,11 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       this.presentCacheFor = data;
     }
     return this.presentCache!;
+  }
+
+  private recentlyFailed(name: string): boolean {
+    const t = this.tilesFailedAt.get(name);
+    return t !== undefined && performance.now() - t < ScalarFieldLayer.TILE_RETRY_MS;
   }
 
   /** Whether a tile has its own 90 m file (South India); the others are drawn at 90 m from their 270 m file. */
@@ -654,6 +664,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private switchTileLevel(gl: WebGL2RenderingContext, data: TerrainData, level: TerrainLevel): void {
     if (this.tileTex) gl.deleteTexture(this.tileTex);
     this.tilesPending.clear();
+    this.tilesFailedAt.clear();
     this.tileLevel = level;
     this.tileGrid = tileGridOf(data.meta.domain);
     this.tilePx = data.meta.levels.find(l => l.id === level)?.perDeg ?? 1200;
@@ -698,6 +709,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       this.map?.triggerRepaint();
     }).catch(err => {
       this.tilesPending.delete(name);
+      this.tilesFailedAt.set(name, performance.now());
       console.warn('[forecast] terrain tile unavailable', name, err);
     });
   }

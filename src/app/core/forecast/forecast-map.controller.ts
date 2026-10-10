@@ -59,6 +59,7 @@ export class ForecastMapController {
   private lastIsobarUpdate = 0;
 
   private cycloneLoadedAt = 0;
+  private cycloneLoading = false;
 
   private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
   private static readonly CYCLONE_LAYERS = ['forecast-cyclone-labels', 'forecast-cyclone-points', 'forecast-cyclone-track', 'forecast-cyclone-members'];
@@ -143,8 +144,8 @@ export class ForecastMapController {
       layer.setLayer(null);
       return;
     }
-    // 90 m terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels
-    // the terrain covers the South India box only: a field on another grid (the world model) is drawn without it
+    // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It is used on a field
+    // whose grid lines up with it and overlaps it (see terrainOnGrid); the shader leaves the cells outside its box alone
     const terrainData = this.terrain.data();
     const onTerrain = !!terrainData && terrainOnGrid(manifest.grid, terrainData.meta.grid);
     const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, this.catalog.model().gridKm).bitmap : null;
@@ -249,12 +250,14 @@ export class ForecastMapController {
     if (!map) return;
     const on = this.state.cyclones();
     for (const id of ForecastMapController.CYCLONE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-    if (!on || Date.now() - this.cycloneLoadedAt < 30 * 60_000) return;
-    this.cycloneLoadedAt = Date.now();
+    if (!on || this.cycloneLoading || Date.now() - this.cycloneLoadedAt < 30 * 60_000) return;
+    this.cycloneLoading = true;
     void loadCyclones().then(data => {
+      // the 30 minutes count from a load that worked: a failed one is tried again the next time the overlay is looked at
+      if (data) this.cycloneLoadedAt = Date.now();
       if (!this.map || !data) return;
       (this.map.getSource(ForecastMapController.CYCLONE_SOURCE) as { setData?: (d: unknown) => void } | undefined)?.setData?.(cycloneGeoJson(data));
-    });
+    }).finally(() => (this.cycloneLoading = false));
   }
 
   private removeIsobarLayers(map: MapLibreMap): void {

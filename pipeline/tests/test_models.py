@@ -130,3 +130,24 @@ def test_derive_passes_pressure_level_winds_through():
     out = derive(raw)
     assert np.allclose(out["u850"], 12) and np.allclose(out["v850"], -3)
     assert np.allclose(out["u500"], 20) and np.allclose(out["v500"], 1)
+
+
+def test_mirror_tells_a_model_that_is_not_live_from_a_copy_that_failed(tmp_path):
+    base = "https://x.github.io/Atmos"
+    assert mirror.mirror_status(str(tmp_path), base, "ukmo", get=_fake_site({})) == "absent"
+    # live (latest.json and manifest are there) but one picture is missing: failed, and nothing is left behind
+    manifest = {"vars": {"t2m": {}}, "steps": [{"h": 0}, {"h": 3}]}
+    files = {f"{base}/ukmo/latest.json": json.dumps({"run": "R1"}).encode(),
+             f"{base}/ukmo/R1/manifest.json": json.dumps(manifest).encode(),
+             f"{base}/ukmo/R1/t2m/000.png": b"ok"}
+    assert mirror.mirror_status(str(tmp_path), base, "ukmo", get=_fake_site(files)) == "failed"
+    assert not (tmp_path / "ukmo").exists()
+
+
+def test_mirror_exits_with_an_error_when_a_live_model_could_not_be_copied(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(mirror, "mirror_status", lambda site, base, model, *a, **k: "failed" if model == "ukmo" else "mirrored")
+    monkeypatch.setattr(sys, "argv", ["mirror.py", "--site", str(tmp_path), "--base-url", "https://x", "--models", "ecmwf_ifs", "ukmo"])
+    assert mirror.main() == 1
+    assert "ukmo" in capsys.readouterr().err
+    monkeypatch.setattr(mirror, "mirror_status", lambda *a, **k: "absent")
+    assert mirror.main() == 0                        # not live yet is not an error

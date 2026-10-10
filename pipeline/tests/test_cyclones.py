@@ -50,3 +50,10 @@ def test_only_storms_near_the_region_are_kept_and_members_are_attached():
     assert storm["basin"] == "Bay of Bengal" and len(storm["track"]) == 3
     assert storm["members"] == [[[0, 14.0, 88.0], [12, 17.0, 84.0]]]               # only the 12-hourly positions
     assert cy.build([far], [], RUN)["storms"] == []                                  # nothing near: an empty list, not an error
+
+
+def test_the_cyclone_region_covers_all_of_india_not_only_the_south():
+    import cyclones, config
+    south, north, west, east = cyclones.REGION
+    assert north >= config.IFS_LAT_MAX and west <= config.IFS_LON_MIN and east >= config.IFS_LON_MAX and south <= config.IFS_LAT_MIN
+    assert cyclones.in_region([{"lat": 21.0, "lon": 70.0}])         # the Arabian Sea off Gujarat

@@ -14,6 +14,10 @@ import requests
 PUBLISHED_VARS_FILE = "manifest.json"
 
 
+class NotLive(Exception):
+    """The model has no live copy (its latest.json is not on the site): nothing to carry over."""
+
+
 def _fetch(get: Callable, url: str, retries: int = 3) -> bytes:
     last = None
     for _ in range(retries):
@@ -21,17 +25,24 @@ def _fetch(get: Callable, url: str, retries: int = 3) -> bytes:
             r = get(url, timeout=60)
             if r.status_code == 200:
                 return r.content
+            if r.status_code == 404:
+                raise NotLive(url)        # nothing at that address: not a reason to try again
             last = RuntimeError(f"{r.status_code} {url}")
         except requests.RequestException as e:
             last = e
     raise last  # type: ignore[misc]
 
 
-def mirror_model(site: str, base_url: str, model: str, get: Callable = requests.get, workers: int = 16) -> bool:
-    """Download the live run of `model` into site/<model>. Returns False (and leaves nothing behind) on failure."""
+def mirror_status(site: str, base_url: str, model: str, get: Callable = requests.get, workers: int = 16) -> str:
+    """Download the live run of `model` into site/<model>. Returns "mirrored", "absent" (the model is not live yet: nothing to
+    carry over) or "failed" (it is live but could not be copied completely; nothing is left behind)."""
     root = os.path.join(site, model)
     try:
-        latest_raw = _fetch(get, f"{base_url}/{model}/latest.json")
+        try:
+            latest_raw = _fetch(get, f"{base_url}/{model}/latest.json", retries=1)
+        except NotLive:
+            print(f"{model} is not live yet: nothing to mirror")
+            return "absent"
         run = json.loads(latest_raw)["run"]
         manifest_raw = _fetch(get, f"{base_url}/{model}/{run}/manifest.json")
         manifest = json.loads(manifest_raw)
@@ -52,12 +63,16 @@ def mirror_model(site: str, base_url: str, model: str, get: Callable = requests.
         with open(os.path.join(root, "latest.json"), "wb") as f:  # last, so a partial copy is never advertised
             f.write(latest_raw)
         print(f"mirrored {model} run {run}: {len(files)} files")
-        return True
-    except Exception as e:  # a model that is not live yet (first deploy) or a transient error: skip it
+        return "mirrored"
+    except Exception as e:  # noqa: BLE001 - live but not copied completely
         print(f"could not mirror {model}: {e}")
         shutil.rmtree(root, ignore_errors=True)
-        return False
+        return "failed"
 
+
+def mirror_model(site: str, base_url: str, model: str, get: Callable = requests.get, workers: int = 16) -> bool:
+    """True when the live run of `model` was copied into site/<model>."""
+    return mirror_status(site, base_url, model, get, workers) == "mirrored"
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -65,10 +80,16 @@ def main() -> int:
     ap.add_argument("--base-url", required=True, help="live site root, e.g. https://user.github.io/repo")
     ap.add_argument("--models", nargs="+", required=True)
     args = ap.parse_args()
+    failed = []
     for model in args.models:
         if os.path.exists(os.path.join(args.site, model, "latest.json")):
             continue  # built in this run
-        mirror_model(args.site, args.base_url.rstrip("/"), model)
+        if mirror_status(args.site, args.base_url.rstrip("/"), model) == "failed":
+            failed.append(model)
+    if failed:
+        # a deploy replaces the whole site: with a live model missing it would be dropped, so the caller must not deploy
+        print(f"could not copy the live model(s): {', '.join(failed)}", file=sys.stderr)
+        return 1
     return 0
 
 

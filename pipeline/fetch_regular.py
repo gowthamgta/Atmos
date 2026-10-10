@@ -100,8 +100,13 @@ def speed_dir_to_uv(speed: np.ndarray, direction_deg: np.ndarray) -> tuple[np.nd
 def to_si(kind: str, unit: str, arr: np.ndarray) -> np.ndarray:
     """Convert one variable to the units derive.py expects: degC, m/s, Pa, mm."""
     u = unit.replace("°", "").replace("�", "").strip().lower()
+    known = bool(u)
     if kind == "temperature":
-        return arr - 273.15 if u in ("k", "kelvin") else arr
+        if u in ("k", "kelvin"):
+            return arr - 273.15
+        if not known and np.nanmean(arr) > 150:      # the unit could not be read and the values are Kelvin: they are not degC
+            return arr - 273.15
+        return arr
     if kind == "speed":
         if u in ("km/h", "kmh", "kph"):
             return arr / 3.6
@@ -109,6 +114,8 @@ def to_si(kind: str, unit: str, arr: np.ndarray) -> np.ndarray:
             return arr * 0.514444
         return arr
     if kind == "pressure":
+        if not known and np.nanmean(arr) < 2000:     # the unit could not be read and the values are hPa: they are not Pa
+            return arr * 100.0
         if u == "hpa" or u == "mbar":
             return arr * 100.0
         if u == "kpa":
