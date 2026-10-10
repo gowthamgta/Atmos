@@ -47,3 +47,18 @@ def test_a_run_with_no_new_report_leaves_the_file_alone(tmp_path):
     stations["VOTR"].append(M.parse_record(rec(obsTime=1791518400)))
     M.save(str(tmp_path), stations)
     assert open(path, encoding="utf-8").read() != first            # a new report is saved
+
+
+def test_the_archive_keeps_every_report_once_in_monthly_files(tmp_path):
+    first = M.parse_all([rec(obsTime=1791514800), rec(obsTime=1791518400)])
+    assert len(M.archive(str(tmp_path), first)) == 1
+    again = M.parse_all([rec(obsTime=1791518400), rec(obsTime=1791522000), rec(icaoId="VOSM", obsTime=1791522000)])
+    assert len(M.archive(str(tmp_path), again)) == 1
+    lines = (tmp_path / "2026-10.csv").read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("station,time,temp_c") and len(lines) == 1 + 4      # 3 times at VOTR + 1 at VOSM, no duplicates
+    assert M.archive(str(tmp_path), again) == []                                   # nothing new: the file is not touched
+
+
+def test_the_archive_splits_reports_by_month(tmp_path):
+    rows = M.parse_all([rec(obsTime=1791514800), rec(obsTime=1793500000)])          # 9 Oct and 1 Nov 2026
+    assert sorted(p.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] for p in M.archive(str(tmp_path), rows)) == ["2026-10.csv", "2026-11.csv"]

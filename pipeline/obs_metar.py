@@ -7,7 +7,7 @@ Salem (VOSM) and Puducherry (VOPC). Each record is one observation as the airpor
 Humidity is worked out from the temperature and the dew point (Magnus formula); the wind is also given in m/s.
 """
 from __future__ import annotations
-import argparse, json, math, os, sys
+import argparse, csv, json, math, os, sys
 from datetime import datetime, timezone
 
 import requests
@@ -103,12 +103,57 @@ def save(out_dir: str, stations: dict[str, list[dict]]) -> str:
     return path
 
 
+ARCHIVE_FIELDS = ("station", "time", "temp_c", "dewp_c", "rh_pct", "wind_dir", "wind_kt", "gust_kt", "visibility_km", "pressure_hpa", "weather", "raw")
+
+
+def archive(archive_dir: str, stations: dict[str, list[dict]]) -> list[str]:
+    """Adds the reports to the long-term archive: one CSV per month (data/metar-archive/YYYY-MM.csv), one row per airport and
+    time, kept sorted and without duplicates. The app's latest.json only holds a day; this is the history that lets a
+    temperature correction be tested later. A month's file is rewritten only when it gains rows."""
+    os.makedirs(archive_dir, exist_ok=True)
+    by_month: dict[str, dict[tuple, dict]] = {}
+    for rows in stations.values():
+        for r in rows:
+            by_month.setdefault(r["time"][:7], {})[(r["station"], r["time"])] = r
+    changed = []
+    for month, new in sorted(by_month.items()):
+        path = os.path.join(archive_dir, f"{month}.csv")
+        have: dict[tuple, dict] = {}
+        try:
+            with open(path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    have[(row["station"], row["time"])] = row
+        except OSError:
+            pass
+        merged = dict(have)
+        for key, r in new.items():
+            if key not in merged:
+                merged[key] = {k: ("" if r.get(k) is None else r[k]) for k in ARCHIVE_FIELDS}
+        if len(merged) == len(have):
+            continue
+        tmp = path + ".part"
+        with open(tmp, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=ARCHIVE_FIELDS, lineterminator="\n")
+            w.writeheader()
+            for key in sorted(merged, key=lambda k: (k[1], k[0])):
+                w.writerow(merged[key])
+        os.replace(tmp, path)
+        changed.append(path)
+    return changed
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="folder for latest.json")
+    ap.add_argument("--archive", help="folder of the monthly archive CSVs (data/metar-archive)")
+    ap.add_argument("--hours", type=int, default=HOURS, help="how far back to fetch for the archive (the latest.json always holds the last day)")
     args = ap.parse_args()
     try:
-        stations = parse_all(fetch())
+        fetched = parse_all(fetch(max(args.hours, HOURS) if args.archive else HOURS))
+        if args.archive:
+            archive(args.archive, fetched)
+        cutoff = datetime.now(timezone.utc).timestamp() - HOURS * 3600
+        stations = {k: [r for r in v if datetime.strptime(r["time"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp() >= cutoff] for k, v in fetched.items()}
     except (requests.RequestException, ValueError) as e:
         print(f"METAR not fetched ({e}); the saved file stays in place", file=sys.stderr)
         return 1
