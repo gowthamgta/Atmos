@@ -8,14 +8,16 @@
   "0": 0.12,
   "-1": 0.329
  },
- "land_gauges_used": 1431,
+ "land_gauges_used": 1432,
  "rain": {
-  "factor": 0.786,
+  "factor": 0.785,
   "learn_days": 24,
-  "n_test": 16581,
+  "n_test": 16594,
+  "test_days": 13,
+  "days_improved": 13,
   "mae_before": 3.381,
-  "mae_after": 2.948,
-  "gauges": 1431,
+  "mae_after": 2.946,
+  "gauges": 1432,
   "accepted": true
  },
  "gauges": [
@@ -10146,6 +10148,14 @@
   [
    13.0,
    80.1333
+  ],
+  [
+   13.0,
+   80.2
+  ],
+  [
+   13.0,
+   80.24
   ],
   [
    13.0002,

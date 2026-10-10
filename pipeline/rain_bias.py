@@ -25,6 +25,11 @@ BATCH = 120
 TIMEOUT_S = 180
 WINDOW_START_UTC_H = 4          # 09:30 IST
 WINDOW_DAY_OFFSET = -1         # the file labelled D holds 09:30 AM on D-1 to 07:30 AM on D (the model agrees best with this)
+# a factor is accepted only when the held-out days are enough and it helps on most of them (gauges on one day share the
+# weather, so the number of days matters more than the number of gauge-days)
+MIN_TEST_DAYS = 10
+MIN_DAYS_IMPROVED = 0.6
+MIN_GAIN = 0.05
 WINDOW_HOURS = 23               # 09:30 AM to 07:30 AM the next day: 23 hourly values (04:00 to 02:00 UTC)
 
 
@@ -46,12 +51,12 @@ def land_fraction(lat: float, lon: float, cache: dict) -> float | None:
         return None
     n = px.shape[0]
     col = min(n - 1, int((lon - math.floor(lon)) * n))
-    row = min(n - 1, int((math.ceil(lat) - lat) * n))
+    row = min(n - 1, int((math.floor(lat) + 1 - lat) * n))
     return px[row, col, 2] / 255.0
 
 
 def load_history(folder: str) -> list[dict]:
-    """Each day: {date, stations: [{station, district, lat, lon, window_mm (by hour index, 22 values)}]}."""
+    """Each day: {date, stations: [{station, district, lat, lon, window_mm (by hour index, 23 values)}]}."""
     days = []
     for f in sorted(os.listdir(folder)):
         if not (f.endswith(".json") and len(f) == len("2026-10-09.json") and f[:4].isdigit()):
@@ -104,7 +109,14 @@ def model_precip(points: list[tuple[float, float]], start: date, end: date, cach
         with open(cache_path, encoding="utf-8") as f:
             cache = json.load(f)
     key = lambda p: f"{p[0]:.4f},{p[1]:.4f}"
-    todo = [p for p in points if key(p) not in cache]
+    first = f"{start:%Y-%m-%d}T00:00"
+    last = f"{end:%Y-%m-%d}T23:00"
+
+    def covers(series: dict | None) -> bool:
+        # a cached series is reused only if it spans the dates asked for (a longer history needs the newer days fetched)
+        return bool(series) and min(series) <= first and max(series) >= last
+
+    todo = [p for p in points if not covers(cache.get(key(p)))]
     for i in range(0, len(todo), BATCH):
         chunk = todo[i:i + BATCH]
         params = {"latitude": ",".join(str(p[0]) for p in chunk), "longitude": ",".join(str(p[1]) for p in chunk),
@@ -113,7 +125,7 @@ def model_precip(points: list[tuple[float, float]], start: date, end: date, cach
         data = _get(params)
         blocks = data if isinstance(data, list) else [data]
         for p, blk in zip(chunk, blocks):
-            cache[key(p)] = dict(zip(blk["hourly"]["time"], [v or 0.0 for v in blk["hourly"]["precipitation"]]))
+            cache[key(p)] = dict(zip(blk["hourly"]["time"], blk["hourly"]["precipitation"]))   # a null hour stays null
         with open(cache_path + ".part", "w", encoding="utf-8") as f:
             json.dump(cache, f)
         os.replace(cache_path + ".part", cache_path)
@@ -121,15 +133,17 @@ def model_precip(points: list[tuple[float, float]], start: date, end: date, cach
     out = {}
     for p in points:
         series = cache.get(key(p))
-        if series is not None:
-            out[p] = {datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc): v for t, v in series.items()}
+        if covers(series):
+            out[p] = {datetime.strptime(t, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc): v for t, v in series.items() if v is not None}
     return out
 
 
-def window_total(series: dict[datetime, float], day: date) -> float:
-    """Model rainfall (mm) in the window of a day: 04:00 UTC on the day to 02:00 UTC the next day (23 hours)."""
+def window_total(series: dict[datetime, float], day: date) -> float | None:
+    """Model rainfall (mm) in the window of a day: 04:00 UTC on the day to 02:00 UTC the next day (23 hours).
+    None when any hour of the window is missing: a missing hour is not 0 mm of rain."""
     start = datetime(day.year, day.month, day.day, WINDOW_START_UTC_H, tzinfo=timezone.utc)
-    return sum(series.get(start + timedelta(hours=k), 0.0) for k in range(WINDOW_HOURS))
+    hours = [series.get(start + timedelta(hours=k)) for k in range(WINDOW_HOURS)]
+    return None if any(v is None for v in hours) else sum(hours)
 
 
 def build_pairs(days: list[dict], model: dict, cache: dict) -> list[dict]:
@@ -147,8 +161,11 @@ def build_pairs(days: list[dict], model: dict, cache: dict) -> list[dict]:
             series = model.get((s["lat"], s["lon"]))
             if series is None:
                 continue
+            total = window_total(series, day)
+            if total is None:
+                continue                      # the model has no value for part of this window
             rows.append({"date": label, "station": s["station"], "district": s["district"],
-                         "obs": sum(s["window_mm"]), "model": window_total(series, day)})
+                         "obs": sum(s["window_mm"]), "model": total})
     return rows
 
 
@@ -169,8 +186,11 @@ def best_window_offset(days: list[dict], model: dict, cache: dict) -> dict:
                 series = model.get((s["lat"], s["lon"]))
                 if series is None:
                     continue
+                total = window_total(series, day)
+                if total is None:
+                    continue
                 obs.append(sum(s["window_mm"]))
-                mod.append(window_total(series, day))
+                mod.append(total)
         if len(obs) > 2 and np.std(obs) > 0 and np.std(mod) > 0:
             scores[off] = round(float(np.corrcoef(obs, mod)[0, 1]), 3)
     return scores
@@ -188,13 +208,28 @@ def evaluate(rows: list[dict]) -> dict:
     k = (sum(r["obs"] for r in train) / sm) if sm > 0 else 1.0
     err_before = [abs(r["model"] - r["obs"]) for r in test]
     err_after = [abs(r["model"] * k - r["obs"]) for r in test]
+    # the error of each held-out day on its own: does the factor help on most days, not only on average?
+    per_day = defaultdict(lambda: [[], []])
+    for r, b, a in zip(test, err_before, err_after):
+        per_day[r["date"]][0].append(b)
+        per_day[r["date"]][1].append(a)
+    days_improved = sum(1 for b, a in per_day.values() if np.mean(a) < np.mean(b))
+    mae_before = round(float(np.mean(err_before)), 3) if test else None
+    mae_after = round(float(np.mean(err_after)), 3) if test else None
+    accepted = bool(
+        test and len(per_day) >= MIN_TEST_DAYS and days_improved / len(per_day) >= MIN_DAYS_IMPROVED
+        and mae_after <= mae_before * (1 - MIN_GAIN)
+    )
     return {
         "factor": round(k, 3),
         "learn_days": len({r["date"] for r in train}),
         "n_test": len(test),
-        "mae_before": round(float(np.mean(err_before)), 3) if test else None,
-        "mae_after": round(float(np.mean(err_after)), 3) if test else None,
+        "test_days": len(per_day),
+        "days_improved": days_improved,
+        "mae_before": mae_before,
+        "mae_after": mae_after,
         "gauges": len({r["station"] for r in rows}),
+        "accepted": accepted,
     }
 
 
@@ -215,14 +250,11 @@ def main() -> int:
     points = sorted({(s["lat"], s["lon"]) for d in days for s in d["stations"]
                      if s.get("lat") is not None and (land_fraction(s["lat"], s["lon"], cache) or 0) >= 0.5})
     print(f"{len(points)} land gauge points, {start}..{end}", flush=True)
-    model = model_precip(points, start, end, os.path.join(os.path.dirname(os.path.abspath(args.out)), "..", "rain_history", "model_cache.json"))
+    model = model_precip(points, start, end, os.path.join(args.history, "model_cache.json"))
     offsets = best_window_offset(days, model, cache)
     rows = build_pairs(days, model, cache)
-    rain = evaluate(rows)
-    # the same rule as for temperature and humidity (correction.py): enough held-out points, and a clear gain
-    rain["accepted"] = bool(rain and rain["n_test"] >= 50 and rain["mae_after"] <= rain["mae_before"] * 0.95)
-    gauges = sorted({(s["lat"], s["lon"]) for d in days for s in d["stations"]
-                     if s.get("lat") is not None and (land_fraction(s["lat"], s["lon"], cache) or 0) >= 0.5})
+    rain = evaluate(rows) or {"accepted": False}
+    gauges = points
     result = {
         "model": "ecmwf_ifs",
         "period": [str(min(dates)), str(max(dates))],

@@ -119,3 +119,25 @@ def test_no_rain_correction_without_an_accepted_factor(tmp_path):
     rate = np.array([[3.0]], np.float32)
     out = C.apply_rain({"precip": rate}, lats, lons, None, np.array([[True]]))["precip"]
     assert np.isclose(out[0, 0], 3.0)
+
+
+def test_one_airport_fades_with_distance_instead_of_staying_at_full_strength():
+    lats = np.array([11.0])
+    lons = np.array([78.0, 79.4, 79.75])            # 0, about 153 and about 191 km east of the airport
+    fields = {"t2m": np.full((1, 3), 30.0, np.float32)}
+    out = C.apply(fields, lats, lons, datetime(2026, 10, 9, 6, tzinfo=timezone.utc), table(temp=2.0))["t2m"][0]
+    assert np.isclose(out[0], 28.0, atol=0.01)                      # at the airport: the full 2 degrees
+    assert 28.0 < out[1] < 29.5                                     # part way: less than the full correction
+    assert out[1] < out[2] <= 30.0                                   # nearly gone near the 200 km edge
+    assert abs((30.0 - out[1]) - 2.0 * C.weight(153)) < 0.05       # the correction follows the weight
+
+
+def test_the_sea_is_left_out_of_the_airport_correction():
+    lats, lons = grid()
+    shape = (len(lats), len(lons))
+    land = np.ones(shape, bool)
+    land[:, 0] = False                                              # the first column is sea
+    fields = {"t2m": np.full(shape, 30.0, np.float32)}
+    out = C.apply(fields, lats, lons, datetime(2026, 10, 9, 6, tzinfo=timezone.utc), table(temp=2.0), land)["t2m"]
+    assert np.allclose(out[:, 0], 30.0)                             # sea: unchanged
+    assert out[:, 1:].min() < 30.0                                  # land: corrected

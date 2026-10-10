@@ -79,8 +79,8 @@ def _distance_km(lat: float, lon: float, lats: np.ndarray, lons: np.ndarray) -> 
 def apply(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray, valid: datetime, table: dict, land: np.ndarray | None = None) -> dict[str, np.ndarray]:
     """The fields with the corrections applied for this valid time (UTC). Returns new arrays; the input is not changed.
 
-    Where two airports overlap, each variable's correction is the average of the airports' corrections, weighted by how
-    near each one is (so the two never add up). The sea is left out when the land mask is given.
+    Each airport's correction fades with distance (full to FULL_KM, none from FADE_KM). Where airports overlap, the
+    corrections are averaged by weight (so they never add up). The sea is left out when the land mask is given.
     """
     if not table:
         return fields
@@ -97,8 +97,9 @@ def apply(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray, val
     changed = False
     for key, (name, lo, hi) in CORRECTED.items():
         if name in out and name in num:
-            safe = np.where(den[name] > 0, den[name], 1.0)
-            corr = np.where(den[name] > 0, num[name] / safe, 0.0).astype(np.float32)
+            # the weights fade with distance, so dividing by their sum would cancel the fade for a single airport: divide by
+            # the sum only where it is above 1 (two airports near each other average; one airport far away is a partial weight)
+            corr = (num[name] / np.maximum(den[name], 1.0)).astype(np.float32)
             if land is not None:
                 corr = np.where(land, corr, 0.0).astype(np.float32)
             out[name] = np.clip(out[name] - corr, lo, hi).astype(np.float32)

@@ -24,7 +24,10 @@ import correction
 # the bias table (bias.py) for the airports near Kallakurichi; a missing table means no correction
 BIAS_TABLE = correction.load_table(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "bias", "table.json"))
 RAIN_BIAS = correction.load_rain(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "bias", "rain.json"))
-RAIN_LAND = correction.land_mask(fetch_ifs.GRID.lats(), fetch_ifs.GRID.lons(), os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "terrain")) if RAIN_BIAS else None
+# where the grid is land (the terrain's land fraction): the corrections never change the sea
+LAND_MASK = correction.land_mask(fetch_ifs.GRID.lats(), fetch_ifs.GRID.lons(), os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "terrain"))
+if LAND_MASK is None and (BIAS_TABLE or RAIN_BIAS):
+    print("warning: the terrain land mask is missing, so the forecast corrections are not applied (they must not touch the sea)", file=sys.stderr)
 
 # modules and RegularModel instances share one interface (MODEL_ID, RUN_HOURS, latest_run(), read_step(), ...)
 MODELS = {m.MODEL_ID: m for m in (fetch_ifs, *models_regular.ALL)}
@@ -64,14 +67,14 @@ DERIVED_ACROSS_STEPS = {"rain24", "tmin24", "tmax24"}   # needs several steps, s
 def process_step(fetcher, run, h):
     """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from."""
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid_of(fetcher).lat_max)
-    if fetcher.MODEL_ID == "ecmwf_ifs" and BIAS_TABLE:
-        # the airport-based correction of temperature and humidity near them (see correction.py), at this step's valid time
+    if fetcher.MODEL_ID == "ecmwf_ifs" and LAND_MASK is not None:
         grid = grid_of(fetcher)
-        fields = correction.apply(fields, grid.lats(), grid.lons(), run + timedelta(hours=h), BIAS_TABLE, RAIN_LAND)
-    if fetcher.MODEL_ID == "ecmwf_ifs" and RAIN_BIAS:
-        # the rain factor of the Tamil Nadu gauges, on land near them (see correction.apply_rain)
-        grid = grid_of(fetcher)
-        fields = correction.apply_rain(fields, grid.lats(), grid.lons(), RAIN_BIAS, RAIN_LAND)
+        if BIAS_TABLE:
+            # the airport-based correction of temperature and humidity near them (see correction.py), at this step's valid time
+            fields = correction.apply(fields, grid.lats(), grid.lons(), run + timedelta(hours=h), BIAS_TABLE, LAND_MASK)
+        if RAIN_BIAS:
+            # the rain factor of the Tamil Nadu gauges, on land near them (see correction.apply_rain)
+            fields = correction.apply_rain(fields, grid.lats(), grid.lons(), RAIN_BIAS, LAND_MASK)
     pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS}
     return h, pngs, fields["precip"], fields["t2m"]
 
