@@ -46,8 +46,13 @@ export interface SynopRecord {
   wind_dir: number | null;
   wind_kt: number | null;
   msl_hpa: number | null;
+  stn_hpa: number | null;
+  wind_ms: number | null;
   rain_mm: number | null;
   rain_hours: number | null;
+  rain24_mm: number | null;
+  tmax_c: number | null;
+  tmin_c: number | null;
 }
 
 export interface SynopFile {
@@ -116,6 +121,16 @@ export function latestStationReports(file: SynopFile): SynopRecord[] {
     return withTemp.length ? [withTemp[withTemp.length - 1]] : [];
   });
 }
+
+/** The newest report of every station, whatever it holds (these are the station markers on the map). */
+export function latestPerStation(file: SynopFile): SynopRecord[] {
+  return Object.values(file.stations).flatMap(rows => (rows.length ? [rows[rows.length - 1]] : []));
+}
+
+/** Map layer ids of the weather station markers (see MapComponent and StationCardComponent). */
+export const STATION_SOURCE = 'obs-stations';
+export const STATION_CIRCLE_LAYER = 'obs-station-circles';
+export const STATION_LABEL_LAYER = 'obs-station-labels';
 
 /** The closest weather station with a report within the radius, or null. */
 export function nearestStation(reports: readonly SynopRecord[], lat: number, lon: number, radiusKm = STATION_RADIUS_KM): Nearest<SynopRecord> | null {

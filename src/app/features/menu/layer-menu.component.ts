@@ -127,7 +127,10 @@ function ladderKm(level: Level): string {
               <button type="button" class="layer" [class.active]="state.isobars()" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
                 <app-icon name="isobars" [size]="17" /><span class="l-name">{{ state.level() === 'surface' ? 'Isobars' : 'Height lines' }}</span>
               </button>
-              <button type="button" class="layer" [class.active]="state.cyclones()" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
+              <button type="button" class="layer" [class.active]="state.stationMarkers()" [attr.aria-pressed]="state.stationMarkers()" (click)="state.toggleStationMarkers()" title="Weather stations of Tamil Nadu (observed, last 24 h). Click a station for its readings">
+                <app-icon name="pin" [size]="17" /><span class="l-name">Weather stations</span>
+              </button>
+              <button type="button" class="layer" [class.active]="state.cyclones()" [attr.aria-pressed]="state.cyclones()" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
                 <app-icon name="cyclone" [size]="17" /><span class="l-name">Cyclone tracks</span>
               </button>
               <button type="button" class="layer" [class.active]="state.districtLines()" [attr.aria-pressed]="state.districtLines()" (click)="state.toggleDistrictLines()" title="Show or hide the district boundaries (state and country outlines stay)">

@@ -22,6 +22,7 @@ export const ICONS = {
   vertical: '<path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/>',
   vortex: '<path d="M21 12a9 9 0 1 1-9-9"/><path d="M17 12a5 5 0 1 1-5-5"/><path d="M12 11a1 1 0 1 0 1 1"/>',
   diverge: '<path d="M3 12h7M21 12h-7"/><path d="m6 9-3 3 3 3M18 9l3 3-3 3"/><path d="M12 3v7M12 21v-7"/>',
+  pin: '<path d="M12 21s-6.5-5.7-6.5-11a6.5 6.5 0 0 1 13 0c0 5.3-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.5"/>',
   radar: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12 19 5"/><circle cx="12" cy="12" r="1"/>',
   satellite: '<path d="m13 7-3 3 4 4 3-3"/><path d="m3.5 11.5 4-4M16.5 20.5l4-4M10 10 5.5 5.5M18.5 8.5l-3-3 3-3 3 3-3 3Z"/><path d="M4 20a8 8 0 0 0 8-8"/><path d="M4 16a4 4 0 0 0 4-4"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',

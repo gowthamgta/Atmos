@@ -1,5 +1,5 @@
-import { Injectable, signal } from '@angular/core';
-import { MetarRecord, MetarFile, Nearest, RainGauge, RainSummary, SynopFile, SynopRecord, latestReports, latestStationReports, nearestAirport, nearestGauge, nearestStation } from './observations';
+import { Injectable, computed, signal } from '@angular/core';
+import { MetarRecord, MetarFile, Nearest, RainGauge, RainSummary, SynopFile, SynopRecord, latestPerStation, latestReports, latestStationReports, nearestAirport, nearestGauge, nearestStation } from './observations';
 
 const BASE = '/data/observations';
 const REFRESH_MS = 30 * 60 * 1000;
@@ -8,6 +8,7 @@ interface Loaded {
   rain: RainSummary | null;
   airports: MetarRecord[];
   stations: SynopRecord[];
+  markers: SynopRecord[];
   at: number;
 }
 
@@ -16,6 +17,14 @@ interface Loaded {
 export class ObservationsService {
   private readonly data = signal<Loaded | null>(null);
   private inflight: Promise<void> | null = null;
+
+  /** The newest report of every weather station (the map markers). Empty until the files have loaded. */
+  readonly markers = computed(() => this.data()?.markers ?? []);
+
+  /** Loads the files now if they are missing or older than half an hour. */
+  refresh(): Promise<void> {
+    return this.ensureLoaded();
+  }
 
   /** Observed rain and airport weather around a point. Starts loading the files on first use; empty until they arrive. */
   near(lat: number, lon: number): { gauge: Nearest<RainGauge> | null; airport: Nearest<MetarRecord> | null; station: Nearest<SynopRecord> | null; rainDate: string | null; rainWindow: string | null } | null {
@@ -45,7 +54,7 @@ export class ObservationsService {
       this.json<SynopFile>(`${BASE}/synop/latest.json`),
     ]);
     // a file that could not be read leaves the other source working; both missing leaves the card without an observed section
-    this.data.set({ rain, airports: metar ? latestReports(metar) : [], stations: synop ? latestStationReports(synop) : [], at: Date.now() });
+    this.data.set({ rain, airports: metar ? latestReports(metar) : [], stations: synop ? latestStationReports(synop) : [], markers: synop ? latestPerStation(synop) : [], at: Date.now() });
   }
 
   private async json<T>(url: string): Promise<T | null> {

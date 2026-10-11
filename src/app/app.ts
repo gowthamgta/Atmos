@@ -10,6 +10,7 @@ import { ForecastTimelineComponent } from './features/forecast/forecast-timeline
 import { ForecastInspectorComponent } from './features/forecast/forecast-inspector.component';
 import { ForecastCatalogService } from './core/forecast/forecast-catalog.service';
 import { IconComponent } from './shared/icon.component';
+import { StationCardComponent } from './features/observations/station-card.component';
 import { ThemeService } from './shared/theme.service';
 
 @Component({
@@ -26,6 +27,7 @@ import { ThemeService } from './shared/theme.service';
     ForecastTimelineComponent,
     ForecastInspectorComponent,
     IconComponent,
+    StationCardComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',

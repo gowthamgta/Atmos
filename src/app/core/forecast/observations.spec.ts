@@ -36,7 +36,7 @@ describe('observations near a point', () => {
 
   it("uses each weather station's newest report that has a temperature, and the closest station in range", () => {
     const rec = (station: string, lat: number, lon: number, time: string, temp: number | null): SynopRecord => ({
-      station, name: station, lat, lon, time, temp_c: temp, dewp_c: null, rh_pct: null, wind_dir: null, wind_kt: null, msl_hpa: null, rain_mm: null, rain_hours: null,
+      station, name: station, lat, lon, time, temp_c: temp, dewp_c: null, rh_pct: null, wind_dir: null, wind_kt: null, msl_hpa: null, stn_hpa: null, wind_ms: null, rain_mm: null, rain_hours: null, rain24_mm: null, tmax_c: null, tmin_c: null,
     });
     const file = {
       stations: {
