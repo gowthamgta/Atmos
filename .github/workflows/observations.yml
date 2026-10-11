@@ -1,11 +1,11 @@
 name: observations
 
-# Twice a day: the Kallakurichi district's hourly rainfall (TN-SMART), the airport weather near it (METAR) and the SYNOP reports of
+# Every 3 hours: the Kallakurichi district's hourly rainfall (TN-SMART), the airport weather near it (METAR) and the SYNOP reports of
 # the Tamil Nadu weather stations (temperature, humidity, wind, pressure, rain). The files are committed to public/data/observations, so the app reads them from its own site.
-# A personal app: each source is fetched once per run.
+# A personal app: each source is fetched once per run, and a run commits only when a source has something new.
 on:
   schedule:
-    - cron: "30 3,15 * * *"     # 09:00 and 20:30 Indian time
+    - cron: "20 */3 * * *"      # every 3 hours, at 20 minutes past (the SYNOP stations report every 3 hours)
   workflow_dispatch:
 
 permissions:
