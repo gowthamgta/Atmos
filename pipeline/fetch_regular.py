@@ -225,7 +225,11 @@ class RegularModel:
     def latest_run(self) -> datetime:
         """Newest run that every dataset of the model has finished (the oldest of their latest runs)."""
         self._info = {s.dataset: dataset_info(s.dataset) for s in self.sources}
-        return min(i.reference for i in self._info.values())
+        run = min(i.reference for i in self._info.values())
+        # the newest run is often one this model does not use (an 18Z or 06Z run): then the run before it (00Z or 12Z) is the one to build
+        while run.hour not in self.RUN_HOURS:
+            run -= timedelta(hours=1)
+        return run
 
     def _offsets(self, dataset: str, run: datetime) -> list[float]:
         info = self._info.get(dataset)

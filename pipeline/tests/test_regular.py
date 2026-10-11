@@ -288,3 +288,13 @@ def test_a_field_whose_unit_could_not_be_read_is_not_taken_for_degrees_or_pascal
     assert FR.to_si("temperature", "", np.array([28.0], np.float32))[0] == 28.0       # unknown unit, already degrees
     assert FR.to_si("pressure", "", np.array([1012.0], np.float32))[0] == pytest.approx(101200.0)   # hPa values
     assert FR.to_si("pressure", "", np.array([101200.0], np.float32))[0] == 101200.0               # already Pa
+
+
+def test_the_latest_run_steps_back_to_a_run_the_model_uses(monkeypatch):
+    from datetime import datetime, timezone
+    info = lambda h: FR.DatasetInfo(reference=datetime(2026, 10, 10, h, tzinfo=timezone.utc), offsets=[0.0, 3.0], bbox=(0, 0, 1, 1))
+    ukmo = models_regular.UKMO
+    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(18))      # Open-Meteo's newest run is 18Z; the model builds 00Z and 12Z
+    assert ukmo.latest_run() == datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(12))
+    assert ukmo.latest_run() == datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
