@@ -69,11 +69,9 @@ LEVEL_SCALARS = level_scalars()                  # temperature, humidity and hei
 GFS = RegularModel(
     model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_3H, grid=COARSE_GRID,
     sources=[
-        Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"]),
-               winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"),)),
+        Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"] + SURFACE_UV)),
         Source("ncep_gfs025", _SAME(["pressure_msl", "wind_gusts_10m", "cape", "convective_inhibition", "lifted_index", "visibility"]
-                                    + LEVEL_SCALARS + level_w()),
-               winds=tuple(level_speed_dir())),
+                                    + LEVEL_SCALARS + level_w() + level_uv())),
     ],
 )
 
@@ -82,8 +80,7 @@ AIGFS = RegularModel(
     model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
     sources=[Source(
         "ncep_aigfs025",
-        _SAME(["temperature_2m", "precipitation", "cloud_cover", "pressure_msl", "wind_gusts_10m"] + LEVEL_SCALARS + level_w()),
-        winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"), *level_speed_dir()),
+        _SAME(["temperature_2m", "precipitation", "cloud_cover", "pressure_msl", "wind_gusts_10m"] + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()),
     )],
 )
 
@@ -93,8 +90,7 @@ AIFS = RegularModel(
     sources=[Source(
         "ecmwf_aifs025_single",
         _SAME(["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
-              + CLOUD_LAYERS + LEVEL_SCALARS + level_w()),
-        winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"), *level_speed_dir()),
+              + CLOUD_LAYERS + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()),
     )],
 )
 
