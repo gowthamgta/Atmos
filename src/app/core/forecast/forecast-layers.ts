@@ -140,6 +140,7 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
   { id: 'rain24', label: 'Rain, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
+  { id: 'raintot', label: 'Rain, total so far', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm since run start', min: 0, max: 300, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [10, 25, 50, 100, 200, 300], opacity: 0.9, terrain: 'rain' },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {

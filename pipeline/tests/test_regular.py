@@ -298,3 +298,21 @@ def test_the_latest_run_steps_back_to_a_run_the_model_uses(monkeypatch):
     assert ukmo.latest_run() == datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
     monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(12))
     assert ukmo.latest_run() == datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+
+
+def test_cumulative_accumulation_adds_up_the_rain_from_the_start_of_the_run():
+    z = np.zeros((2, 2), np.float32)
+    rates = {0: z + np.nan, 3: z + 1.0, 6: z + 2.0, 9: z + 0.0}
+    cum = D.cumulative_accumulation(rates, {h: 3 for h in rates})
+    assert np.allclose(cum[0], 0)                       # nothing has fallen at the start
+    assert np.allclose(cum[3], 3) and np.allclose(cum[6], 9) and np.allclose(cum[9], 9)   # rate x 3 h in each gap
+    assert all(cum[a].mean() <= cum[b].mean() for a, b in zip(sorted(cum), sorted(cum)[1:]))  # never decreases
+
+
+def test_cumulative_and_forward_accumulation_agree_over_the_same_hours():
+    z = np.zeros((1, 1), np.float32)
+    rates = {h: z + (h % 5) for h in range(0, 49, 3)}
+    windows = {h: 3 for h in rates}
+    fwd = D.forward_accumulation(rates, windows)
+    cum = D.cumulative_accumulation(rates, windows)
+    assert np.allclose(cum[24] - cum[0], fwd[0]) and np.allclose(cum[48] - cum[24], fwd[24])

@@ -38,8 +38,8 @@ const CREDITS: readonly Credit[] = [
         </header>
         <div class="scroll">
           <p>
-            A forecast map for South India and the seas around it: ECMWF IFS for all of India and the UK Met Office model for
-            South India, with temperature and humidity adjusted to the 90 m terrain. A personal, non-commercial project;
+            A forecast map for South India and the seas around it: ECMWF IFS and the UK Met Office model, both for all of
+            India, with temperature and humidity adjusted to the 90 m terrain. A personal, non-commercial project;
             forecasts are model output and not a safety warning, so follow IMD for official alerts.
           </p>
           <h2>Keyboard</h2>

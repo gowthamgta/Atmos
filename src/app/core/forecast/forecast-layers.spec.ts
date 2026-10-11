@@ -20,7 +20,7 @@ import {
 const vars = (...ids: string[]): Record<string, object> => Object.fromEntries(ids.map(id => [id, {}]));
 const levelVars = (levels: readonly number[], kinds = ['u', 'v', 't', 'rh', 'gh', 'w', 'vo', 'dv']) => levels.flatMap(l => kinds.map(k => `${k}${l}`));
 const SURFACE = ['t2m', 'rh', 'feels', 'dew', 'u10', 'v10', 'gust', 'msl', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'solar', 'cape', 'tcwv',
-  'li', 'cin', 'rain24', 'tmin24', 'tmax24'];
+  'li', 'cin', 'rain24', 'raintot', 'tmin24', 'tmax24'];
 
 describe('forecast layer registry', () => {
   it('has unique ids, sane ranges, and every layer in a known group', () => {
@@ -39,7 +39,7 @@ describe('forecast layer registry', () => {
     const inGroup = (g: string) => FORECAST_LAYERS.filter(l => l.group === g).map(l => l.id);
     expect(inGroup('Visibility')).toEqual(['vis']);
     for (const gone of ['clouds', 'cloud_low', 'cloud_mid', 'cloud_high', 'solar']) expect(forecastLayerById(gone)).toBeNull();
-    expect(inGroup('Rain and humidity')).toEqual(expect.arrayContaining(['rain', 'rain24']));
+    expect(inGroup('Rain and humidity')).toEqual(expect.arrayContaining(['rain', 'rain24', 'raintot']));
     expect(inGroup('Pressure and storms')).toEqual(expect.arrayContaining(['li', 'cin', 'cape']));
     // the unstable end of the lifted index is the warm colour
     expect(forecastLayerById('li')!.min).toBeLessThan(0);

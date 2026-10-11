@@ -17,7 +17,7 @@ import config as C
 import fetch_ifs
 import models_regular
 from fetch_regular import INDIA
-from derive import derive, forward_accumulation, forward_extreme
+from derive import cumulative_accumulation, derive, forward_accumulation, forward_extreme
 from encode import encode_field
 import correction
 
@@ -64,7 +64,7 @@ def build_manifest(fetcher, run, steps, build=None):
     }
 
 
-DERIVED_ACROSS_STEPS = {"rain24", "tmin24", "tmax24"}   # needs several steps, so it is computed after all of them (see main)
+DERIVED_ACROSS_STEPS = {"rain24", "raintot", "tmin24", "tmax24"}   # needs several steps, so it is computed after all of them (see main)
 
 
 def process_step(fetcher, run, h):
@@ -160,6 +160,10 @@ def main() -> int:
         accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
         for h, field in accumulated.items():
             write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(field, rain24.lo, rain24.hi, rain24.bits))
+        # total rain from the start of the run to each step
+        raintot = C.VARS["raintot"]
+        for h, field in cumulative_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates}).items():
+            write(os.path.join(run_dir, "raintot", f"{h:03d}.png"), encode_field(field, raintot.lo, raintot.hi, raintot.bits))
         # lowest and highest temperature over the next 24 h from each step, for the models that publish them
         for vid, reduce in (("tmin24", np.fmin), ("tmax24", np.fmax)):
             if vid in {v.id for v in published_vars(fetcher)}:

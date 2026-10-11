@@ -5,7 +5,7 @@ import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terra
 /** Fields read for the click card at the ground. */
 export const SURFACE_INSPECT_VARS = [
   't2m', 'feels', 'dew', 'rh', 'u10', 'v10', 'gust', 'precip', 'cloud', 'cloud_low', 'cloud_mid', 'cloud_high', 'vis', 'msl', 'cape',
-  'rain24', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv',
+  'rain24', 'raintot', 'tmin24', 'tmax24', 'li', 'cin', 'tcwv',
 ] as const;
 
 /** Every variable the card needs for this altitude (the ground fields, plus that level's when one is selected). */
@@ -108,6 +108,13 @@ export function buildPointRows(
       id: 'rain24', label: 'Rain, next 24 h', text: withUnit(adjust('rain', v('rain24')), v('rain24') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
+  if (!Number.isNaN(v('raintot'))) {
+    // the total since the model run began, after the 24 h row
+    const after = rows.findIndex(r => r.id === 'rain24') >= 0 ? rows.findIndex(r => r.id === 'rain24') : rows.findIndex(r => r.id === 'rain');
+    rows.splice(after + 1, 0, {
+      id: 'raintot', label: 'Rain, total so far', text: withUnit(adjust('rain', v('raintot')), v('raintot') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+    });
+  }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {
     rows.push({ id: 'cloudlayers', label: 'Low / mid / high', text: `${layers.map(x => fmt(x)).join(' / ')} %`, terrainAdjusted: false });
@@ -145,7 +152,7 @@ export function buildPointRows(
 
 /** The click-card row that shows each layer's value at the ground. */
 const LAYER_ROW: Record<string, string> = {
-  temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24',
+  temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24', raintot: 'raintot',
   tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin',
 };
 /** ...and at a pressure level (only some layers can be shown there). */

@@ -82,6 +82,7 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("tmin24", "°C", -10, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
     Var("tmax24", "°C", -10, 50),        # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
+    Var("raintot", "mm", 0, 1500),        # rain from the start of the run to this step (derived across steps, see derive.cumulative_accumulation)
     *_level_vars(),
 ]}
 

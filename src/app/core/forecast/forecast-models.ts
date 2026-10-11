@@ -20,7 +20,7 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'ecmwf_ifs', label: 'ECMWF IFS', resolution: '9 km, all India', gridKm: 9, baseUrl: `${PAGES}/ecmwf_ifs` },
-  { id: 'ukmo', label: 'UK Met Office', resolution: '10 km, South India', gridKm: 10, baseUrl: `${PAGES}/ukmo` },
+  { id: 'ukmo', label: 'UK Met Office', resolution: '10 km, all India', gridKm: 10, baseUrl: `${PAGES}/ukmo` },
 ];
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;

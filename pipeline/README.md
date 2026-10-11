@@ -55,7 +55,7 @@ sampled, e.g. one hour in three). No data where the run ends before 24 h more. C
 hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can differ by tens of mm).
 
 ## Models published
-Two models: ECMWF IFS (all of India, 9 km) and the UK Met Office (South India, 10 km). The workflow order is: the models,
+Two models: ECMWF IFS (all of India, 9 km) and the UK Met Office (all of India, 10 km). The workflow order is: the models,
 `cyclones.py`, `mirror.py` (copies a model that was not rebuilt from the live site). The all-model blend and the FY-4B
 pictures were removed; the Meteosat-9 picture is fetched by the app from EUMETView, so nothing is published for it.
 
@@ -82,13 +82,13 @@ again. A tile the bucket does not have is open sea.
 The app picks the level by zoom: 90 m from zoom 9.5, 270 m from 7.5, 1.08 km below (`src/app/core/forecast/terrain-tiles.ts`).
 
 ## Models
-Both are resampled onto their own 0.1° grid (ECMWF IFS: all of India, 5-37.5 N, 68-97.5 E; UK Met Office: the South India
-box) and published in the same format, so the app treats them alike. Sources are Open-Meteo's public `data_spatial` datasets.
+Both are resampled onto their own 0.1° grid (ECMWF IFS: all of India, 5-37.5 N, 68-97.5 E; UK Met Office: the same box) and
+published in the same format, so the app treats them alike. Sources are Open-Meteo's public `data_spatial` datasets.
 
 | id | model | grid / range | runs | rain value covers | not provided |
 |---|---|---|---|---|---|
 | `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | O1280 cut to all of India, +144 h, 3-hourly | 00Z 12Z | 1 h to +90 h, then 3 h | - |
-| `ukmo` | UK Met Office global 10 km | ~10 km, South India, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
+| `ukmo` | UK Met Office global 10 km | ~10 km, all India, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
 
 How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
 accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);

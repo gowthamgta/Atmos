@@ -100,15 +100,15 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1, lat_max: float 
     return out
 
 
-def forward_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int], hours: int = 24) -> dict[int, np.ndarray]:
-    """Rain over the next `hours` hours from each forecast step, in mm (NaN where the run does not reach that far).
+def _gap_rain(rates: dict[int, np.ndarray], windows: dict[int, int]) -> dict[int, np.ndarray]:
+    """mm that fell in the gap ending at each step (keyed by the step that ends it).
 
     `rates[h]` is the published rain rate (mm/h) at step h and `windows[h]` the hours that rate averages over. Between two
     steps the rain is rate x spacing when the rate covers the whole gap (window >= spacing: exact), otherwise it is
     estimated from the mean of the rates at both ends of the gap (the model was only sampled, e.g. one hour in three).
     """
     steps = sorted(rates)
-    gap_rain: dict[int, np.ndarray] = {}   # mm that fell in the gap ending at this step
+    gap_rain: dict[int, np.ndarray] = {}
     for prev, h in zip(steps, steps[1:]):
         spacing = h - prev
         rate = rates[h]
@@ -116,6 +116,13 @@ def forward_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int], 
             before = rates[prev]
             rate = np.where(np.isfinite(before), 0.5 * (before + rate), rate)  # step 0 has no rain field: use the later rate
         gap_rain[h] = np.nan_to_num(rate, nan=0.0) * spacing
+    return gap_rain
+
+
+def forward_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int], hours: int = 24) -> dict[int, np.ndarray]:
+    """Rain over the next `hours` hours from each forecast step, in mm (NaN where the run does not reach that far)."""
+    steps = sorted(rates)
+    gap_rain = _gap_rain(rates, windows)
     out: dict[int, np.ndarray] = {}
     for s in steps:
         end = s + hours
@@ -126,6 +133,22 @@ def forward_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int], 
             out[s] = sum(gap_rain[h] for h in needed).astype(np.float32)
         else:
             out[s] = np.full_like(rates[s], np.nan)
+    return out
+
+
+def cumulative_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int]) -> dict[int, np.ndarray]:
+    """Total rain from the start of the run (the first step) up to each step, in mm. The first step is 0.
+
+    Same gap rule as forward_accumulation (a step the run lacks is bridged with the rate of the step after it).
+    """
+    steps = sorted(rates)
+    gap_rain = _gap_rain(rates, windows)
+    out: dict[int, np.ndarray] = {}
+    total = np.zeros_like(rates[steps[0]], np.float32)
+    out[steps[0]] = total.copy()
+    for prev, h in zip(steps, steps[1:]):
+        total = total + gap_rain[h]
+        out[h] = total.astype(np.float32)
     return out
 
 

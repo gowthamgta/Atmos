@@ -4,8 +4,9 @@ Each entry lists, per dataset, the raw variables to read (keys are Open-Meteo's 
 worked out from what it lists (derive.unavailable_for), so nothing is declared twice.
 """
 from __future__ import annotations
+import config as C
 from config import LEVELS
-from fetch_regular import RegularModel, Source
+from fetch_regular import Grid, RegularModel, Source
 
 _SAME = lambda names: {n: n for n in names}  # noqa: E731 - raw key and dataset variable share a name
 
@@ -42,9 +43,12 @@ def level_speed_dir() -> tuple[tuple[str, str, str, str], ...]:
 
 STEPS_3H_144 = list(range(0, 145, 3))
 
+# all of India on the 0.1 degree grid (the same box as ECMWF IFS, so the two models line up and share the terrain's model ground)
+INDIA_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, C.STEP_DEG, C.IFS_DOMAIN)
+
 # UK Met Office global deterministic, ~10 km. Short range (about 2.5 days) and big files, so two runs a day.
 UKMO = RegularModel(
-    model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 61, 3)),
+    model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 61, 3)), grid=INDIA_GRID,
     sources=[Source(
         "ukmo_global_deterministic_10km",
         _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars() + level_w()),
