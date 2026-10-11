@@ -60,11 +60,14 @@ jobs:
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
-          # a scheduled run waits for the run of its time (00Z before noon UTC, 12Z after); other triggers take what is there
+          # a scheduled run waits for the newest 00Z or 12Z run that began at least 4 hours ago. It is worked out from the clock, not
+          # from which cron fired: GitHub often starts a scheduled job hours late, possibly after midnight UTC.
           expect=""
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            hour=$(( $(date -u +%-H) < 12 ? 0 : 12 ))
-            expect="--expect-run $(date -u +%Y%m%d)T$(printf %02d $hour)Z"
+            ref=$(date -u -d '-4 hours' +%Y%m%dT%H)
+            hour=$(( 10#${ref#*T} < 12 ? 0 : 12 ))
+            expect="--expect-run ${ref%T*}T$(printf %02d $hour)Z"
+            echo "waiting for the run $expect"
           fi
           pending="$models"
           for attempt in $(seq 1 6); do
