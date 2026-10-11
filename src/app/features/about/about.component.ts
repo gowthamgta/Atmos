@@ -11,6 +11,8 @@ interface Credit {
 const CREDITS: readonly Credit[] = [
   { name: 'ECMWF IFS', what: 'ECMWF open data (CC BY 4.0)' },
   { name: 'UK Met Office', what: 'Contains Met Office data' },
+  { name: 'NOAA GFS and AIGFS', what: 'NOAA open data (public domain), via Open-Meteo.com' },
+  { name: 'ECMWF AIFS', what: 'ECMWF open data (CC BY 4.0)' },
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
   { name: 'Satellite', what: 'Meteosat-9 over India, © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
@@ -38,8 +40,8 @@ const CREDITS: readonly Credit[] = [
         </header>
         <div class="scroll">
           <p>
-            A forecast map for South India and the seas around it: ECMWF IFS and the UK Met Office model, both for all of
-            India, with temperature and humidity adjusted to the 90 m terrain. A personal, non-commercial project;
+            A forecast map for India and the seas around it: five models (ECMWF IFS, UK Met Office, NOAA GFS and AIGFS, ECMWF
+            AIFS), with temperature and humidity adjusted to the 90 m terrain where the grid allows. A personal, non-commercial project;
             forecasts are model output and not a safety warning, so follow IMD for official alerts.
           </p>
           <h2>Keyboard</h2>

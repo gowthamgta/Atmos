@@ -21,6 +21,9 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   { id: 'ecmwf_ifs', label: 'ECMWF IFS', resolution: '9 km, all India', gridKm: 9, baseUrl: `${PAGES}/ecmwf_ifs` },
   { id: 'ukmo', label: 'UK Met Office', resolution: '10 km, all India', gridKm: 10, baseUrl: `${PAGES}/ukmo` },
+  { id: 'gfs', label: 'NOAA GFS', resolution: '13 km surface, all India', gridKm: 13, baseUrl: `${PAGES}/gfs` },
+  { id: 'aigfs', label: 'NOAA AIGFS', resolution: '25 km, all India', gridKm: 25, baseUrl: `${PAGES}/aigfs` },
+  { id: 'aifs', label: 'ECMWF AIFS', resolution: '25 km, all India', gridKm: 25, baseUrl: `${PAGES}/aifs` },
 ];
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;
