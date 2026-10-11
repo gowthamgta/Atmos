@@ -20,7 +20,17 @@ export function leadTimeLabel(timeMs: number, runMs: number): string {
   return `T${h < 0 ? '−' : '+'}${String(Math.abs(h)).padStart(2, '0')} h`;
 }
 
-/** Bottom timeline: step back / play / step forward, speed, a draggable track over the whole run with "now" and day marks (IST). */
+/** Hour of the day in IST, shown on the time bar as "12 AM", "6 AM", "12 PM", "6 PM". */
+export function istHourLabel(ms: number): string {
+  const h = new Date(ms + IST_OFFSET_MS).getUTCHours();
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * Bottom time bar, after windy.com: step back / play / step forward, speed, and a track in day blocks (each IST day labelled,
+ * with its 6-hourly ticks). The time already passed is dimmed, "now" is marked, and a tooltip shows the day and hour under the playhead.
+ */
 @Component({
   selector: 'app-forecast-timeline',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -51,22 +61,33 @@ export function leadTimeLabel(timeMs: number, runMs: number): string {
         </div>
 
         <div class="track">
+          <div class="blocks" aria-hidden="true">
+            @for (d of dayBlocks(); track d.ms) {
+              <div class="block" [style.left.%]="d.pct" [style.width.%]="d.width">
+                <span class="day">{{ d.label }}</span>
+                @for (t of d.ticks; track t.pct) {
+                  <span class="tick" [style.left.%]="t.pct" [class.major]="t.major">
+                    @if (t.major) { <span class="tick-label">{{ t.label }}</span> }
+                  </span>
+                }
+              </div>
+            }
+          </div>
           <div class="rail" aria-hidden="true">
             <div class="past" [style.width.%]="nowPct()"></div>
-            @if (nowPct() > 0 && nowPct() < 100) { <div class="now" [style.left.%]="nowPct()"><span>now</span></div> }
+            @if (nowPct() > 0 && nowPct() < 100) { <div class="now" [style.left.%]="nowPct()"></div> }
           </div>
+          @if (thumbPct() >= 0) {
+            <div class="playhead" aria-hidden="true" [style.left.%]="thumbPct()">
+              <span class="tip">{{ shortLabel() }}</span>
+            </div>
+          }
           <input
             type="range" aria-label="Forecast time" [attr.aria-valuetext]="timeLabel() + ', ' + (lead() ?? '')"
             [min]="r.start" [max]="r.end" step="600000"
             [value]="state.timeMs() ?? r.start"
-            [style.--pct]="thumbPct() + '%'"
             (input)="onScrub($event)"
           />
-          <div class="days" aria-hidden="true">
-            @for (d of dayMarks(); track d.ms) {
-              <span class="day" [style.left.%]="d.pct">{{ d.label }}</span>
-            }
-          </div>
         </div>
       </section>
     }
@@ -97,21 +118,27 @@ export function leadTimeLabel(timeMs: number, runMs: number): string {
     .speed small { font-weight: 500; color: var(--text-muted); font-size: 10px; }
     .speed:hover { background: var(--surface-4); }
 
-    .track { position: relative; margin-top: 4px; height: 44px; }
-    .rail { position: absolute; left: 0; right: 0; top: 14px; height: 6px; border-radius: 3px; background: var(--surface-4); }
+    /* the track: day blocks above, the rail and the playhead in the middle, the scrub input on top of all */
+    .track { position: relative; margin-top: 6px; height: 52px; }
+    .blocks { position: absolute; left: 0; right: 0; top: 0; height: 20px; }
+    .block { position: absolute; top: 0; height: 100%; border-left: 1px solid var(--line-strong); }
+    .day { position: absolute; left: 6px; top: 1px; font-size: 11px; font-weight: 650; color: var(--text-secondary); white-space: nowrap; }
+    .tick { position: absolute; top: 31px; width: 1px; height: 5px; background: var(--text-muted); }
+    .tick.major { top: 30px; height: 7px; background: var(--text-secondary); }
+    .tick-label { position: absolute; top: 37px; left: 3px; font-size: 9px; color: var(--text-muted); white-space: nowrap; }
+    .rail { position: absolute; left: 0; right: 0; top: 26px; height: 6px; border-radius: 3px; background: var(--surface-4); }
     .rail .past { position: absolute; inset: 0 auto 0 0; border-radius: 3px 0 0 3px; background: var(--line-strong); }
     .rail .now { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--ok); }
-    .rail .now span { position: absolute; top: 26px; left: 50%; transform: translateX(-50%); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ok); }
-    input[type=range] { position: absolute; inset: 4px 0 auto 0; width: 100%; height: 26px; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: none; }
-    input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--accent) var(--pct), transparent var(--pct)); }
-    input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; }
-    input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
-    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%; background: var(--surface-1); border: 3px solid var(--accent); box-shadow: var(--shadow-1); }
-    input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--surface-1); border: 3px solid var(--accent); }
-    input[type=range]:focus-visible { outline-offset: 4px; border-radius: 4px; }
-    .days { position: absolute; left: 0; right: 0; bottom: 0; height: 14px; pointer-events: none; }
-    .day { position: absolute; transform: translateX(-50%); font-size: 10px; color: var(--text-secondary); white-space: nowrap; }
-    .day::before { content: ''; position: absolute; left: 50%; top: -6px; width: 1px; height: 5px; background: var(--text-muted); }
+    .playhead { position: absolute; top: 14px; bottom: 6px; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+    .playhead .tip {
+      position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--radius-s);
+      background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 650; white-space: nowrap; box-shadow: var(--shadow-1);
+    }
+    input[type=range] { position: absolute; inset: 22px 0 auto 0; width: 100%; height: 22px; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: none; opacity: 0; }
+    input[type=range]:focus-visible { opacity: 0; }
+    input[type=range]::-webkit-slider-runnable-track { height: 6px; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; background: var(--accent); }
+    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 0; }
 
     @media (max-width: 700px) {
       .dock { right: var(--gutter); padding: 6px 10px 4px; }
@@ -120,7 +147,8 @@ export function leadTimeLabel(timeMs: number, runMs: number): string {
       .transport .btn-icon { width: 32px; height: 32px; }
       .play { width: 40px; height: 40px; }
       .speed { min-width: 44px; }
-      .track { height: 40px; }
+      .track { height: 50px; }
+      .tick-label { display: none; }
     }
   `]
 })
@@ -140,6 +168,14 @@ export class ForecastTimelineComponent {
     const day = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric', month: 'short' }).format(t);
     const time = new Intl.DateTimeFormat('en-IN', { timeZone: IST, hour: '2-digit', minute: '2-digit', hour12: false }).format(t);
     return `${day} · ${time} IST`;
+  });
+
+  /** The playhead tooltip: day, number and hour, as on windy.com ("Thu 15 · 11 AM"). */
+  protected readonly shortLabel = computed(() => {
+    const t = this.state.timeMs();
+    if (t === null) return '';
+    const day = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric' }).format(t);
+    return `${day} · ${istHourLabel(t)}`;
   });
 
   /** Lead time of the model run ("T+06 h"), when the run id is known. */
@@ -171,21 +207,33 @@ export class ForecastTimelineComponent {
     return r ? Math.min(Math.max(((Date.now() - r.start) / (r.end - r.start)) * 100, 0), 100) : 0;
   });
 
+  /** Where the playhead is, in percent of the run (-1 when there is no time yet). */
   protected readonly thumbPct = computed(() => {
     const r = this.range();
     const t = this.state.timeMs();
-    return r && t !== null ? Math.min(Math.max(((t - r.start) / (r.end - r.start)) * 100, 0), 100) : 0;
+    return r && t !== null ? Math.min(Math.max(((t - r.start) / (r.end - r.start)) * 100, 0), 100) : -1;
   });
 
-  /** One tick per IST midnight inside the run. */
-  protected readonly dayMarks = computed(() => {
+  /** One block per IST day inside the run, with a tick every 6 hours (the midnight, 6 AM, noon and 6 PM ticks are labelled). */
+  protected readonly dayBlocks = computed(() => {
     const r = this.range();
     if (!r) return [];
-    const fmt = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric' });
-    const marks: { ms: number; pct: number; label: string }[] = [];
-    let ms = Math.ceil((r.start + IST_OFFSET_MS) / DAY_MS) * DAY_MS - IST_OFFSET_MS; // first IST midnight
-    for (; ms < r.end; ms += DAY_MS) marks.push({ ms, pct: ((ms - r.start) / (r.end - r.start)) * 100, label: fmt.format(ms) });
-    return marks;
+    const span = r.end - r.start;
+    const pct = (ms: number) => ((ms - r.start) / span) * 100;
+    const dayFmt = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric' });
+    const blocks: { ms: number; pct: number; width: number; label: string; ticks: { pct: number; major: boolean; label: string }[] }[] = [];
+    let ms = Math.floor((r.start + IST_OFFSET_MS) / DAY_MS) * DAY_MS - IST_OFFSET_MS; // the IST midnight at or before the run's start
+    for (; ms < r.end; ms += DAY_MS) {
+      const from = Math.max(ms, r.start);
+      const to = Math.min(ms + DAY_MS, r.end);
+      const ticks: { pct: number; major: boolean; label: string }[] = [];
+      for (let k = 0; k < 4; k++) {
+        const t = ms + k * 6 * HOUR_MS;
+        if (t >= from && t < to) ticks.push({ pct: pct(t), major: true, label: istHourLabel(t) });
+      }
+      blocks.push({ ms, pct: pct(from), width: ((to - from) / span) * 100, label: dayFmt.format(from), ticks });
+    }
+    return blocks;
   });
 
   protected onScrub(event: Event): void {

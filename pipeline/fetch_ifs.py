@@ -28,8 +28,8 @@ _ifs025_bbox: tuple[float, float, float, float] | None = None
 # v4 = the airport correction of temperature and humidity (correction.py) is applied, so a run built without it is built again;
 # v5 = dew point and feels-like follow the corrected values, and the rain is scaled to the Tamil Nadu gauges on land near them;
 # v6 = the airport temperature and humidity corrections are off (no airport passed the rules over the 16-day check), and the sea is never corrected.
-# v7 = the total-rain-so-far layer (raintot).
-LIVE_FORMAT = 7
+# v7 = the total-rain-so-far layer (raintot); v8 = the IMD rain category layer (extreme).
+LIVE_FORMAT = 8
 # Steps whose pressure levels could not be read in this process. A run with any of them is published as incomplete, so the
 # next scheduled run builds it again (see run.py) instead of the empty levels staying live for twelve hours.
 _level_gaps: set[int] = set()

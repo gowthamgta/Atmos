@@ -64,7 +64,7 @@ def build_manifest(fetcher, run, steps, build=None):
     }
 
 
-DERIVED_ACROSS_STEPS = {"rain24", "raintot", "tmin24", "tmax24"}   # needs several steps, so it is computed after all of them (see main)
+DERIVED_ACROSS_STEPS = {"rain24", "raintot", "extreme", "tmin24", "tmax24"}   # needs several steps, so it is computed after all of them (see main)
 
 
 def process_step(fetcher, run, h):
@@ -160,6 +160,12 @@ def main() -> int:
         accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
         for h, field in accumulated.items():
             write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(field, rain24.lo, rain24.hi, rain24.bits))
+        # IMD rain categories of the next 24 h (0 below heavy rain; NaN where the 24 h total is not known)
+        extreme = C.VARS["extreme"]
+        for h, field in accumulated.items():
+            level = np.select([field >= 204.5, field >= 115.6, field >= 64.5], [3, 2, 1], 0).astype(np.float32)
+            level[np.isnan(field)] = np.nan
+            write(os.path.join(run_dir, "extreme", f"{h:03d}.png"), encode_field(level, extreme.lo, extreme.hi, extreme.bits))
         # total rain from the start of the run to each step
         raintot = C.VARS["raintot"]
         for h, field in cumulative_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates}).items():

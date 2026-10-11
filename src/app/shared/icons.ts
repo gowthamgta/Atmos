@@ -64,6 +64,7 @@ export const LAYER_ICONS: Record<string, IconName> = {
   humidity: 'humidity',
   rain: 'rain',
   rain24: 'rain24',
+  extreme: 'alert',
   raintot: 'raintot',
   tcwv: 'moisture',
   vis: 'eye',

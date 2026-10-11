@@ -76,6 +76,8 @@ const HUMIDITY = ['#6b4423', '#9a7b3a', '#5d8a5b', '#2f8a9a', '#2a5bb0', '#4b2d9
 const RAIN = WINDY_RAIN;
 const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
 const WIND = WINDY_WIND;
+/** IMD rain categories (heavy, very heavy, extremely heavy), in the warm colours of windy.com's extreme-rain highlights. */
+const EXTREME = ['#e0b02a', '#e0652a', '#b3262f', '#8a1f9a'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
 const DEW = ['#3a2f5c', '#2a5aa0', '#1f8a8f', '#5aa84a', '#d4b02a', '#d9622a'];
@@ -140,8 +142,9 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
     atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100] }),
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
-  { id: 'rain24', label: 'Rain, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
-  { id: 'raintot', label: 'Rain, total so far', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm since run start', min: 0, max: 300, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [10, 25, 50, 100, 200, 300], opacity: 0.9, terrain: 'rain' },
+  { id: 'rain24', label: 'Rain accumulation, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
+  { id: 'raintot', label: 'Rain accumulation, from run start', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm since run start', min: 0, max: 300, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [10, 25, 50, 100, 200, 300], opacity: 0.9, terrain: 'rain' },
+  { id: 'extreme', label: 'Extreme rain (IMD)', icon: '⚠', group: 'Rain and humidity', varId: 'extreme', unit: '1 heavy · 2 very heavy · 3 extremely heavy, 24 h', min: 0, max: 3, stops: EXTREME, gamma: 1, clearBelow: 0.5, ticks: [1, 2, 3], opacity: 0.92, terrain: null },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {
