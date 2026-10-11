@@ -48,7 +48,7 @@ INDIA_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, C.
 
 # UK Met Office global deterministic, ~10 km. Short range (about 2.5 days) and big files, so two runs a day.
 UKMO = RegularModel(
-    model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 61, 3)), grid=INDIA_GRID,
+    model_id="ukmo", label="UK Met Office", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 61, 3)), grid=INDIA_GRID,
     sources=[Source(
         "ukmo_global_deterministic_10km",
         _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars() + level_w()),
@@ -67,7 +67,7 @@ LEVEL_SCALARS = level_scalars()                  # temperature, humidity and hei
 # NOAA GFS: 13 km surface fields (ncep_gfs013) and the pressure levels, gusts, CAPE and pressure at 25 km (ncep_gfs025).
 # The 00Z and 12Z runs, every 3 hours to +120 h.
 GFS = RegularModel(
-    model_id="gfs", label="NOAA GFS", run_hours=(0, 12), step_hours=FIVE_DAYS_3H, grid=COARSE_GRID,
+    model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_3H, grid=COARSE_GRID,
     sources=[
         Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"]),
                winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"),)),
@@ -79,7 +79,7 @@ GFS = RegularModel(
 
 # NOAA AIGFS (AI forecast of NOAA): 25 km, the 00Z and 12Z runs, every 6 hours to +120 h.
 AIGFS = RegularModel(
-    model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 12), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
+    model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
     sources=[Source(
         "ncep_aigfs025",
         _SAME(["temperature_2m", "precipitation", "cloud_cover", "pressure_msl", "wind_gusts_10m"] + LEVEL_SCALARS + level_w()),
@@ -89,7 +89,7 @@ AIGFS = RegularModel(
 
 # ECMWF AIFS (single level, the open AI model): 25 km, the 00Z and 12Z runs, every 6 hours to +120 h.
 AIFS = RegularModel(
-    model_id="aifs", label="ECMWF AIFS", run_hours=(0, 12), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
+    model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
     sources=[Source(
         "ecmwf_aifs025_single",
         _SAME(["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]

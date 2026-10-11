@@ -2,13 +2,13 @@ name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
 # India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
-# Twice a day, a few hours after the 00Z and 12Z runs are published (ECMWF and the Met Office both run those), and the job then
-# waits for them (tries again every 30 minutes, up to six times). A change to the pipeline also rebuilds at once.
+# Every 3 hours. Each model is built on all four cycles (00Z, 06Z, 12Z, 18Z), which are published about 6 hours after they start, so a
+# scheduled run waits for the newest cycle that is due by now (tries again every 30 minutes, up to six times). A run with nothing
+# new exits at once. A change to the pipeline also rebuilds at once.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
-    - cron: "0 9 * * *"       # 14:30 IST: the 00Z run
-    - cron: "0 21 * * *"      # 02:30 IST: the 12Z run
+    - cron: "30 */3 * * *"    # every 3 hours, at 30 minutes past (the 00Z, 06Z, 12Z and 18Z cycles)
   # a change to how the models are built rebuilds and deploys at once
   push:
     paths:
@@ -60,14 +60,14 @@ jobs:
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
-          # a scheduled run waits for the newest 00Z or 12Z run that began at least 4 hours ago. It is worked out from the clock, not
-          # from which cron fired: GitHub often starts a scheduled job hours late, possibly after midnight UTC.
+          # a scheduled run waits for the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 4 hours ago. It is worked out from
+          # the clock, not from which cron fired: GitHub often starts a scheduled job hours late, possibly after midnight UTC.
           expect=""
           if [ "${{ github.event_name }}" = "schedule" ]; then
             ref=$(date -u -d '-4 hours' +%Y%m%dT%H)
-            hour=$(( 10#${ref#*T} < 12 ? 0 : 12 ))
-            expect="--expect-run ${ref%T*}T$(printf %02d $hour)Z"
-            echo "waiting for the run $expect"
+            h=$(( 10#${ref#*T} ))
+            expect="--expect-run ${ref%T*}T$(printf %02d $(( h - h % 6 )))Z"
+            echo "waiting for the cycle $expect"
           fi
           pending="$models"
           for attempt in $(seq 1 6); do

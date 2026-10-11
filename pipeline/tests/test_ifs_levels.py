@@ -62,10 +62,9 @@ def test_live_run_ignores_incomplete_and_old_format_runs(monkeypatch):
     assert run.live_run("u", fmt=2) is None                                    # published for another domain: built again
 
 
-def test_a_newer_run_the_model_does_not_use_steps_back_to_its_last_run(monkeypatch):
-    # the newest run is 06Z (not one of RUN_HOURS): the 00Z run before it is the one to build
-    monkeypatch.setattr(fetch_ifs.requests, "get", lambda *a, **k: _Resp(200, {"completed": True, "reference_time": "2026-10-07T06:00:00Z"}))
+def test_the_newest_cycle_is_built_all_four_cycles_of_the_day(monkeypatch):
+    # every cycle (00Z, 06Z, 12Z, 18Z) is built as soon as it is published
     monkeypatch.setattr(fetch_ifs.requests, "head", lambda url, **k: _Resp(200))
-    assert fetch_ifs.latest_run() == RUN
-    monkeypatch.setattr(fetch_ifs.requests, "get", lambda *a, **k: _Resp(200, {"completed": True, "reference_time": "2026-10-07T18:00:00Z"}))
-    assert fetch_ifs.latest_run() == datetime(2026, 10, 7, 12, tzinfo=timezone.utc)
+    for hour in (0, 6, 12, 18):
+        monkeypatch.setattr(fetch_ifs.requests, "get", lambda *a, h=hour, **k: _Resp(200, {"completed": True, "reference_time": f"2026-10-07T{h:02d}:00:00Z"}))
+        assert fetch_ifs.latest_run() == datetime(2026, 10, 7, hour, tzinfo=timezone.utc)
