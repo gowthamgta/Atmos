@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MetarRecord, RainGauge, ageLabel, compassPoint, distanceKm, latestReports, nearestAirport, nearestGauge } from './observations';
+import { MetarRecord, RainGauge, SynopRecord, ageLabel, compassPoint, distanceKm, latestReports, latestStationReports, nearestAirport, nearestGauge, nearestStation } from './observations';
 
 const gauge = (n: string, la: number, lo: number, t: number | null = 1): RainGauge => ({ n, d: 'X', la, lo, t, pk: null, pt: null, h: 24 });
 const report = (station: string, lat: number, lon: number, time = '2026-10-10T06:00:00Z'): MetarRecord => ({
@@ -32,6 +32,24 @@ describe('observations near a point', () => {
     expect(reports.map(r => r.time)).toEqual(['2026-10-10T05:00:00Z', '2026-10-10T06:00:00Z']);
     expect(nearestAirport(reports, 11.74, 78.96)?.item.station).toBe('VOSM');
     expect(nearestAirport(reports, 8.5, 77.5)).toBeNull(); // Kanyakumari: no airport in range
+  });
+
+  it("uses each weather station's newest report that has a temperature, and the closest station in range", () => {
+    const rec = (station: string, lat: number, lon: number, time: string, temp: number | null): SynopRecord => ({
+      station, name: station, lat, lon, time, temp_c: temp, dewp_c: null, rh_pct: null, wind_dir: null, wind_kt: null, msl_hpa: null, rain_mm: null, rain_hours: null,
+    });
+    const file = {
+      stations: {
+        a: [rec('a', 11.65, 78.17, '2026-10-10T03:00:00Z', 28), rec('a', 11.65, 78.17, '2026-10-10T06:00:00Z', null)], // newest is rain only
+        b: [rec('b', 8.08, 77.5, '2026-10-10T06:00:00Z', 30)],
+        c: [rec('c', 12, 79, '2026-10-10T06:00:00Z', null)],                                                            // never had a temperature
+      },
+    };
+    const reports = latestStationReports(file);
+    expect(reports.map(r => r.station)).toEqual(['a', 'b']);
+    expect(reports[0].time).toBe('2026-10-10T03:00:00Z');
+    expect(nearestStation(reports, 11.74, 78.96)?.item.station).toBe('a'); // 87 km
+    expect(nearestStation(reports, 10, 76.0)).toBeNull();                  // nothing within 100 km
   });
 
   it('names wind directions and ages', () => {

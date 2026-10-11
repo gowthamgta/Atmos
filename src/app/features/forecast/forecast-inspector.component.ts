@@ -62,8 +62,14 @@ const IST = 'Asia/Kolkata';
                 <div class="obs-sub">{{ o.airport.place }} · {{ o.airport.km }} km · {{ o.airport.age }}</div>
               </div>
             }
-            @if (!o.gauge && !o.airport) {
-              <div class="obs-sub">No rain gauge within 15 km or airport within 120 km.</div>
+            @if (o.station) {
+              <div class="obs">
+                <div class="obs-main"><span>Weather station</span><strong>{{ o.station.value }}</strong></div>
+                <div class="obs-sub">{{ o.station.place }} · {{ o.station.km }} km · {{ o.station.age }}@if (o.station.rain) { · {{ o.station.rain }} }</div>
+              </div>
+            }
+            @if (!o.gauge && !o.airport && !o.station) {
+              <div class="obs-sub">No rain gauge within 15 km, weather station within 100 km or airport within 120 km.</div>
             }
           }
           <footer>
@@ -136,6 +142,8 @@ export class ForecastInspectorComponent {
     const date = o.rainDate ? new Intl.DateTimeFormat('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(Date.parse(o.rainDate)) : '';
     const g = o.gauge;
     const a = o.airport;
+    const st = o.station;
+    const wind = (kt: number | null, dir: number | string | null) => (kt !== null ? `${(kt * 1.852).toFixed(0)} km/h ${compassPoint(dir)}`.trim() : '');
     return {
       gauge: g && {
         value: `${g.item.t!.toFixed(1)} mm`,
@@ -148,11 +156,22 @@ export class ForecastInspectorComponent {
         value: [
           a.item.temp_c !== null ? `${a.item.temp_c.toFixed(0)} °C` : '',
           a.item.rh_pct !== null ? `${a.item.rh_pct.toFixed(0)} %` : '',
-          a.item.wind_kt !== null ? `${(a.item.wind_kt * 1.852).toFixed(0)} km/h ${compassPoint(a.item.wind_dir)}`.trim() : '',
+          wind(a.item.wind_kt, a.item.wind_dir),
         ].filter(Boolean).join(' · '),
         place: a.item.name ?? a.item.station,
         km: Math.round(a.km),
         age: ageLabel(a.item.time),
+      },
+      station: st && {
+        value: [
+          st.item.temp_c !== null ? `${st.item.temp_c.toFixed(1)} °C` : '',
+          st.item.rh_pct !== null ? `${st.item.rh_pct.toFixed(0)} %` : '',
+          wind(st.item.wind_kt, st.item.wind_dir),
+        ].filter(Boolean).join(' · '),
+        place: st.item.name,
+        km: Math.round(st.km),
+        age: ageLabel(st.item.time),
+        rain: st.item.rain_mm !== null && st.item.rain_mm > 0 ? `${st.item.rain_mm} mm${st.item.rain_hours ? ` in ${st.item.rain_hours} h` : ''}` : '',
       },
     };
   });

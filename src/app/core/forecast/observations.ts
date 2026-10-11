@@ -33,6 +33,27 @@ export interface MetarRecord {
   pressure_hpa: number | null;
 }
 
+/** One SYNOP report of a Tamil Nadu weather station (synop/latest.json; see pipeline/obs_synop.py). */
+export interface SynopRecord {
+  station: string;
+  name: string;
+  lat: number;
+  lon: number;
+  time: string;
+  temp_c: number | null;
+  dewp_c: number | null;
+  rh_pct: number | null;
+  wind_dir: number | null;
+  wind_kt: number | null;
+  msl_hpa: number | null;
+  rain_mm: number | null;
+  rain_hours: number | null;
+}
+
+export interface SynopFile {
+  stations: Record<string, SynopRecord[]>;
+}
+
 export interface MetarFile {
   stations: Record<string, MetarRecord[]>;
 }
@@ -40,6 +61,7 @@ export interface MetarFile {
 /** Furthest a rain gauge may be to speak for a point, and an airport to speak for the air there. */
 export const GAUGE_RADIUS_KM = 15;
 export const AIRPORT_RADIUS_KM = 120;
+export const STATION_RADIUS_KM = 100;
 
 /** Great-circle distance in km. */
 export function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -71,15 +93,33 @@ export function latestReports(file: MetarFile): MetarRecord[] {
   return Object.values(file.stations).flatMap(rows => (rows.length ? [rows[rows.length - 1]] : []));
 }
 
-/** The closest airport with a report within the radius, or null. */
-export function nearestAirport(reports: readonly MetarRecord[], lat: number, lon: number, radiusKm = AIRPORT_RADIUS_KM): Nearest<MetarRecord> | null {
-  let best: Nearest<MetarRecord> | null = null;
+/** The closest report (of any kind with a position) within the radius, or null. */
+export function nearestReport<T extends { lat: number; lon: number }>(reports: readonly T[], lat: number, lon: number, radiusKm: number): Nearest<T> | null {
+  let best: Nearest<T> | null = null;
   for (const r of reports) {
     if (r.lat == null || r.lon == null) continue;
     const km = distanceKm(lat, lon, r.lat, r.lon);
     if (km <= radiusKm && (!best || km < best.km)) best = { item: r, km };
   }
   return best;
+}
+
+/** The closest airport with a report within the radius, or null. */
+export function nearestAirport(reports: readonly MetarRecord[], lat: number, lon: number, radiusKm = AIRPORT_RADIUS_KM): Nearest<MetarRecord> | null {
+  return nearestReport(reports, lat, lon, radiusKm);
+}
+
+/** The newest report of each weather station that has a temperature in it (the newest one can be a rain-only report). */
+export function latestStationReports(file: SynopFile): SynopRecord[] {
+  return Object.values(file.stations).flatMap(rows => {
+    const withTemp = rows.filter(r => r.temp_c !== null);
+    return withTemp.length ? [withTemp[withTemp.length - 1]] : [];
+  });
+}
+
+/** The closest weather station with a report within the radius, or null. */
+export function nearestStation(reports: readonly SynopRecord[], lat: number, lon: number, radiusKm = STATION_RADIUS_KM): Nearest<SynopRecord> | null {
+  return nearestReport(reports, lat, lon, radiusKm);
 }
 
 const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
