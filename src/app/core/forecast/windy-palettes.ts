@@ -12,3 +12,6 @@ export const WINDY_WIND = ['#6271b8', '#3d6ea3', '#4a94aa', '#4a9294', '#4d8e7c'
 
 /** Rain (Windy's rain accumulation: slate blue for the lightest, teal and green, then olive, red and magenta for the heaviest). */
 export const WINDY_RAIN = ['#3b7ca2', '#3a9aa2', '#32a66e', '#4ba439', '#81a23b', '#a2a23b', '#a23b3b', '#ab366b', '#a43a9a'];
+
+/** Relative humidity (Windy: brown for the dry end, through olive and green, to teal and blue-slate for the moistest air). */
+export const WINDY_HUMIDITY = ['#ae6e38', '#ae9338', '#69ae38', '#36af94', '#389dae', '#3884ae', '#386fa6', '#384672'];

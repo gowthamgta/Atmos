@@ -1,7 +1,7 @@
 /** Declarative registry of the scalar forecast layers. The menu and legend are generated from this list. */
 
 import type { TerrainMode } from './terrain-correction';
-import { WINDY_RAIN, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
+import { WINDY_HUMIDITY, WINDY_RAIN, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
 export type Level = 'surface' | 925 | 850 | 700 | 500 | 300 | 250 | 200;
@@ -72,7 +72,7 @@ export interface ForecastLayerDef {
 /** Dark-theme palettes: the low end sinks into the dark basemap, mid-tones stay saturated and deep,
  *  and only the extremes get bright, so overlays never glare against the dark map. */
 const TEMP = WINDY_TEMP;
-const HUMIDITY = ['#6b4423', '#9a7b3a', '#5d8a5b', '#2f8a9a', '#2a5bb0', '#4b2d9a'];
+const HUMIDITY = WINDY_HUMIDITY;
 const RAIN = WINDY_RAIN;
 const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
 const WIND = WINDY_WIND;
@@ -80,7 +80,7 @@ const WIND = WINDY_WIND;
 const EXTREME = ['#e0b02a', '#e0652a', '#b3262f', '#8a1f9a'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
-const DEW = ['#3a2f5c', '#2a5aa0', '#1f8a8f', '#5aa84a', '#d4b02a', '#d9622a'];
+const DEW = WINDY_TEMP; // Windy draws the dew point on its temperature scale
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
 const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
