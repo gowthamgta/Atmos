@@ -9,6 +9,7 @@ import { MapLayerService } from '../services/map-layer.service';
 import { OVERLAYS, ViewState, formatViewState, parseViewState } from './view-state';
 
 const WRITE_DELAY_MS = 400;
+const SAVED_KEY = 'atmosiq-view';
 
 /**
  * Keeps the address in step with the view, and applies an address when the page opens (a shared link): the layer, model, altitude, chosen place,
@@ -28,7 +29,9 @@ export class UrlStateService {
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    this.restore(parseViewState(typeof location === 'undefined' ? '' : location.hash));
+    // a link wins; with none, the view of the last visit (windy.com opens where it was left)
+    const fromLink = parseViewState(typeof location === 'undefined' ? '' : location.hash);
+    this.restore(Object.keys(fromLink).length ? fromLink : this.saved());
     effect(() => {
       // everything that goes into the address is read here, so a change to any of them writes it again
       const view: ViewState = {
@@ -68,12 +71,27 @@ export class UrlStateService {
   private scheduleWrite(view: ViewState): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
+      const text = formatViewState(view);
       try {
-        history.replaceState(null, '', `${location.pathname}${location.search}#${formatViewState(view)}`);
+        localStorage.setItem(SAVED_KEY, text);
+      } catch {
+        /* storage blocked: the view is just not remembered */
+      }
+      try {
+        history.replaceState(null, '', `${location.pathname}${location.search}#${text}`);
       } catch {
         /* an address that cannot be changed (a sandboxed frame): the view just is not in it */
       }
     }, WRITE_DELAY_MS);
+  }
+
+  /** The view of the last visit, as saved in this browser (nothing when there is none). */
+  private saved(): ViewState {
+    try {
+      return parseViewState(localStorage.getItem(SAVED_KEY) ?? '');
+    } catch {
+      return {};
+    }
   }
 
   /** Applies a view read from the address. Anything the app does not know is left out; the rest of the app starts as usual. */

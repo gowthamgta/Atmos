@@ -80,7 +80,7 @@ import { IconComponent } from '../../shared/icon.component';
     .chip small { font-size: 10px; font-weight: 500; color: var(--text-muted); }
     .chip:hover { background: var(--surface-3); }
     .chip.active { background: var(--accent); color: var(--on-accent); }
-    .chip.active small { color: rgba(255, 255, 255, 0.85); }
+    .chip.active small { color: inherit; opacity: 0.75; }
 
     @media (max-width: 700px) {
       .switches { gap: 10px; padding: 4px 10px; }

@@ -204,7 +204,7 @@ function ladderKm(level: Level): string {
     .tile-name { font-weight: 650; font-size: 12.5px; color: var(--text-primary); }
     .tile.active .tile-name { color: inherit; }
     .tile-sub { font-size: 10.5px; color: var(--text-muted); }
-    .tile.active .tile-sub { color: rgba(255, 255, 255, 0.85); }
+    .tile.active .tile-sub { color: inherit; opacity: 0.8; }
 
     .list { display: flex; flex-direction: column; }
     .layer { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 4px 8px; border: 0; border-radius: var(--radius-m); background: transparent; color: var(--text-primary); font-size: 14px; cursor: pointer; text-align: left; transition: background var(--t-fast); }

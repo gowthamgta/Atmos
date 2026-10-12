@@ -1,4 +1,5 @@
 import { STATION_CIRCLE_LAYER } from './observations';
+import { rowsForLayer } from './point-forecast';
 import { ConsensusService } from './consensus.service';
 import { INDIA_GRID, blendFields, differenceField, encodeFieldBitmap } from './derived-fields';
 import { StationSelectionService } from './station-selection.service';
@@ -58,6 +59,7 @@ export class ForecastMapController {
   private windLayer: WindParticlesLayer | null = null;
   private effects: EffectRef[] = [];
   private marker: Marker | null = null;
+  private pinLabel: HTMLSpanElement | null = null;
   /** Bumped on every update so slow downloads for an old selection are dropped. */
   private token = 0;
   private windToken = 0;
@@ -127,19 +129,36 @@ export class ForecastMapController {
 
   private syncMarker(): void {
     const sel = this.inspector.selected();
+    // read here, so the bubble follows the time, the layer, the altitude and the units
+    const point = this.inspector.point();
+    const layerId = this.state.activeLayerId();
+    const level = this.state.level();
     if (!this.map || !sel) {
       this.marker?.remove();
       this.marker = null;
+      this.pinLabel = null;
       return;
     }
     if (!this.marker) {
       const el = document.createElement('div');
       el.className = 'forecast-pin';
       el.style.cssText =
-        'width:14px;height:14px;border-radius:50%;background:#cf8a00;border:2px solid #fff;box-shadow:0 0 0 3px rgba(255,200,61,.4),0 2px 6px rgba(0,0,0,.6);';
+        'position:relative;width:14px;height:14px;border-radius:50%;background:#cf8a00;border:2px solid #fff;box-shadow:0 0 0 3px rgba(255,200,61,.4),0 2px 6px rgba(0,0,0,.6);pointer-events:none;';
+      // the value of the layer at the pin, in a bubble to its right (windy.com's picker)
+      const label = document.createElement('span');
+      label.style.cssText =
+        'position:absolute;left:20px;top:50%;transform:translateY(-50%);padding:2px 9px;border-radius:12px;background:rgba(48,50,54,.94);color:#fff;font:600 13px -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6);font-variant-numeric:tabular-nums;';
+      el.appendChild(label);
+      this.pinLabel = label;
       this.marker = new Marker({ element: el }).setLngLat([sel.lon, sel.lat]).addTo(this.map);
     } else {
       this.marker.setLngLat([sel.lon, sel.lat]);
+    }
+    if (this.pinLabel) {
+      const row = point ? rowsForLayer(point.rows, layerId, level)[0] : undefined;
+      const text = row && row.text.length <= 24 && !row.text.startsWith('–') ? row.text : '';   // a long text (the extreme-rain category) stays in the card
+      this.pinLabel.textContent = text;
+      this.pinLabel.style.display = text ? '' : 'none';
     }
   }
 
