@@ -200,7 +200,11 @@ class B2Client:
                 payload["startFileName"] = start_name
             if start_id:
                 payload["startFileId"] = start_id
-            res = self._post("b2_list_file_versions", payload)
+            try:
+                res = self._post("b2_list_file_versions", payload)
+            except requests.RequestException as e:
+                print(f"  warning: could not list old B2 files for {model_id}: {e}", flush=True)
+                break
             for f in res.get("files", []):
                 fname = f["fileName"]
                 fid = f["fileId"]

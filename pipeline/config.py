@@ -23,13 +23,13 @@ GLOBAL_DOMAIN = "global-0.25"
 GLOBAL_NY = round((GLOBAL_LAT_MAX - GLOBAL_LAT_MIN) / GLOBAL_STEP_DEG) + 1   # 721 rows, north to south
 GLOBAL_NX = round((GLOBAL_LON_MAX - GLOBAL_LON_MIN) / GLOBAL_STEP_DEG) + 1   # 1441 columns, west to east
 
-# ECMWF IFS and regular models share the global 0.25 degree lattice (the 90 m India terrain still sits inside it).
-IFS_LAT_MAX, IFS_LAT_MIN = GLOBAL_LAT_MAX, GLOBAL_LAT_MIN
-IFS_LON_MIN, IFS_LON_MAX = GLOBAL_LON_MIN, GLOBAL_LON_MAX
-IFS_STEP_DEG = GLOBAL_STEP_DEG
-IFS_DOMAIN = GLOBAL_DOMAIN
-IFS_NY = GLOBAL_NY
-IFS_NX = GLOBAL_NX
+# All of India and the seas around it (used by build_terrain.py --india and cyclones.py).
+IFS_LAT_MAX, IFS_LAT_MIN = 38.0, 5.5
+IFS_LON_MIN, IFS_LON_MAX = 68.0, 97.5
+IFS_STEP_DEG = 0.1
+IFS_DOMAIN = "india-5.5-38N-68-97.5E"
+IFS_NY = round((IFS_LAT_MAX - IFS_LAT_MIN) / IFS_STEP_DEG) + 1   # 326 rows, north to south
+IFS_NX = round((IFS_LON_MAX - IFS_LON_MIN) / IFS_STEP_DEG) + 1   # 296 columns, west to east
 
 # Each model module (fetch_ifs.py) declares its own MODEL_ID, RUN_HOURS, STEP_HOURS and rain semantics.
 

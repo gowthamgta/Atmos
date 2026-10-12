@@ -118,6 +118,7 @@ def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
     assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "ukmo", "gfs", "aigfs", "aifs"])
     for m in pipeline_run.MODELS.values():
         assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)
+        assert m.GRID.domain == C.GLOBAL_DOMAIN and m.GRID.ny == 721 and m.GRID.nx == 1441
 
 
 def test_derive_passes_pressure_level_winds_through():

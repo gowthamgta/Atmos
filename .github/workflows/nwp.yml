@@ -88,12 +88,17 @@ jobs:
               # one model failing must not stop the other
               if python run.py --model "$model" --out site --live-url "$live_base/$model/latest.json" $force $expect; then
                 if [ -n "$B2_APPLICATION_KEY" ] && [ -f "site/$model/latest.json" ]; then
-                  python b2_sync.py --site site --models "$model"
-                  built_any="true"
+                  if python b2_sync.py --site site --models "$model"; then
+                    built_any="true"
+                    continue
+                  fi
+                  echo "::warning::$model: Backblaze B2 upload failed"
                 elif [ -f "site/$model/latest.json" ]; then
                   built_any="true"
+                  continue
+                else
+                  continue
                 fi
-                continue
               fi
               echo "::notice::$model: attempt $attempt did not complete (run not published yet, or a failure)"
               waiting="$waiting $model"

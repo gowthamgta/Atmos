@@ -5,7 +5,19 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import omfiles
 import requests
-from config import BUCKET_URL, LATEST_URL, IFS_DOMAIN, IFS_LAT_MAX, IFS_LAT_MIN, IFS_LON_MAX, IFS_LON_MIN, IFS_NX, IFS_NY, IFS_STEP_DEG, SOURCE_VARS
+from config import (
+    BUCKET_URL,
+    LATEST_URL,
+    GLOBAL_DOMAIN as IFS_DOMAIN,
+    GLOBAL_LAT_MAX as IFS_LAT_MAX,
+    GLOBAL_LAT_MIN as IFS_LAT_MIN,
+    GLOBAL_LON_MAX as IFS_LON_MAX,
+    GLOBAL_LON_MIN as IFS_LON_MIN,
+    GLOBAL_NX as IFS_NX,
+    GLOBAL_NY as IFS_NY,
+    GLOBAL_STEP_DEG as IFS_STEP_DEG,
+    SOURCE_VARS,
+)
 from net import download
 import fetch_regular
 from derive import LEVEL_RAW_KEYS, unavailable_for
