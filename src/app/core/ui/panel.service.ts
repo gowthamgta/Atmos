@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 
-/** The panels that open over the map: the menu (top right), the model list (above the model button) and the about box. */
-export type PanelId = 'menu' | 'models' | 'about';
+/** The panels that open over the map: the menu (top right), the model list (above the model button), the altitude list (above the airplane button) and the about box. */
+export type PanelId = 'menu' | 'models' | 'altitude' | 'about';
 /** The tabs of the menu: the layers with the overlays and the altitude, the forecast models, and the settings. */
 export type MenuTab = 'layers' | 'models' | 'settings';
 

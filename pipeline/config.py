@@ -34,9 +34,9 @@ class Var:
     bits: int = 16     # precision actually stored: smooth upper-air fields keep 12 bits, which compresses ~25% better
 
 
-# Pressure levels offered as "altitude" (hPa) and roughly how high they are
+# Pressure levels offered as "altitude" (hPa) and how high they are in the standard atmosphere, to 100 m (the app has the same table in forecast-layers.ts)
 LEVELS = (925, 850, 700, 500, 300, 250, 200)
-LEVEL_KM = {925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 250: 10.4, 200: 12.0}
+LEVEL_KM = {925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8}
 
 # Encoding ranges per level: temperature (degC) and geopotential height (m). Generous, so no value can clip.
 _LEVEL_T = {925: (8, 36), 850: (4, 32), 700: (-8, 22), 500: (-28, 2), 300: (-58, -18), 250: (-68, -28), 200: (-78, -38)}

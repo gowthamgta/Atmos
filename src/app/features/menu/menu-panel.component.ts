@@ -1,16 +1,7 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
-import {
-  ForecastLayerDef,
-  LAYER_GROUPS,
-  LEVEL_KM,
-  Level,
-  layerAvailableAt,
-  levelLabel,
-  paletteGradientCss,
-  supportsLevels,
-} from '../../core/forecast/forecast-layers';
+import { ForecastLayerDef, LAYER_GROUPS, layerAvailableAt, paletteGradientCss, supportsLevels } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { PerfMeterService } from '../../core/ui/perf-meter.service';
@@ -22,14 +13,8 @@ import { IconComponent } from '../../shared/icon.component';
 import { RovingTabsDirective } from '../../shared/roving-tabs.directive';
 import { layerIcon } from '../../shared/icons';
 import { ThemeService } from '../../shared/theme.service';
+import { AltitudePickerComponent } from '../altitude/altitude-picker.component';
 import { ModelListComponent } from '../models/model-list.component';
-
-/** Height in km of an altitude, for the altitude buttons ("10 m" at the ground). */
-function ladderKm(level: Level): string {
-  if (level === 'surface') return '10 m';
-  const km = LEVEL_KM[level];
-  return km < 10 ? `${km} km` : `${Math.round(km)} km`;
-}
 
 const TABS: readonly { id: MenuTab; label: string }[] = [
   { id: 'layers', label: 'Layers' },
@@ -45,7 +30,7 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 @Component({
   selector: 'app-menu-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ModelListComponent, RovingTabsDirective],
+  imports: [AltitudePickerComponent, IconComponent, ModelListComponent, RovingTabsDirective],
   template: `
     @if (open()) {
       <div class="scrim" (click)="panels.close('menu')" aria-hidden="true"></div>
@@ -110,17 +95,8 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
               @if (!filter()) {
                 <section aria-labelledby="h-alt">
                   <h3 id="h-alt">Altitude</h3>
-                  <div class="alts" role="group" aria-label="Altitude">
-                    @for (lvl of allLevels; track lvl) {
-                      <button
-                        type="button" class="alt" [class.active]="state.level() === lvl" [attr.aria-pressed]="state.level() === lvl"
-                        [disabled]="!hasLevel(lvl)" [title]="levelTitle(lvl)" (click)="state.setLevel(lvl)"
-                      >
-                        <span class="alt-main">{{ levelName(lvl) }}</span>
-                        <span class="alt-sub">{{ rungSub(lvl) }}</span>
-                      </button>
-                    }
-                  </div>
+                  <app-altitude-picker inline />
+                  <p class="hint alt-hint">Heights and flight levels are for the standard atmosphere; on the day, a level can sit a few hundred metres higher or lower.</p>
                 </section>
 
                 <section aria-labelledby="h-over">
@@ -265,13 +241,7 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
     .l-palette { flex: none; width: 44px; height: 6px; border-radius: 3px; opacity: 0.9; }
     .tick { color: var(--accent-strong); }
 
-    .alts { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-    .alt { display: flex; flex-direction: column; align-items: flex-start; min-width: 64px; min-height: var(--hit); padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-m); border: 0; background: var(--surface-3); color: var(--text-secondary); cursor: pointer; text-align: left; transition: background var(--t-fast); }
-    .alt:hover:not(:disabled) { background: var(--surface-4); color: var(--text-primary); }
-    .alt.active { background: var(--accent); color: var(--on-accent); }
-    .alt:disabled { opacity: 0.35; cursor: not-allowed; }
-    .alt-main { font-size: var(--fs-s); font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; }
-    .alt-sub { font-size: var(--fs-xs); opacity: 0.85; }
+    .alt-hint { margin: var(--sp-2) var(--sp-1) 0; }
 
     .overlays { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); }
     .toggle { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-secondary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; text-align: left; transition: background var(--t-fast); }
@@ -330,7 +300,6 @@ export class MenuPanelComponent {
   protected readonly copied = signal(false);
   protected readonly fullscreen = signal(false);
   protected readonly fullscreenAvailable = typeof document !== 'undefined' && document.fullscreenEnabled === true;
-  protected readonly allLevels: readonly Level[] = ['surface', 925, 850, 700, 500, 300, 250, 200];
   protected readonly open = computed(() => this.panels.open() === 'menu');
   protected readonly tab = this.panels.menuTab;
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
@@ -359,24 +328,6 @@ export class MenuPanelComponent {
 
   protected setUnit(key: 'temp' | 'wind' | 'rain' | 'pressure', value: string): void {
     this.unitsService.set(key, value as never);
-  }
-
-  protected levelName(level: Level): string {
-    return level === 'surface' ? 'Ground' : `${level} hPa`;
-  }
-
-  protected rungSub(level: Level): string {
-    return ladderKm(level);
-  }
-
-  protected hasLevel(level: Level): boolean {
-    return this.state.levels().includes(level);
-  }
-
-  protected levelTitle(level: Level): string {
-    return this.hasLevel(level)
-      ? `${levelLabel(level)}${level === 'surface' ? ' (10 m wind, 2 m temperature)' : `, about ${LEVEL_KM[level]} km up`}`
-      : `${levelLabel(level)} is not provided by ${this.catalog.model().label}`;
   }
 
   /** A layer that only exists at the ground, while an altitude is selected: dimmed, and choosing it returns to the ground. */

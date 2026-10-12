@@ -3,8 +3,10 @@ import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.ser
 import { forecastLayerById, layerAvailableAt, supportsLevels } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapLayerService } from '../../core/services/map-layer.service';
+import { PanelService } from '../../core/ui/panel.service';
 import { IconComponent } from '../../shared/icon.component';
 import { IconName } from '../../shared/icons';
+import { AltitudePickerComponent } from '../altitude/altitude-picker.component';
 
 interface RailItem {
   id: string;
@@ -32,31 +34,40 @@ const RAIL: readonly RailItem[] = [
 /**
  * The layers used most, down the right edge under the menu button: plain round buttons. The layer on the map is the one amber button, with its
  * name beside it; the others show their name when pointed at. A layer's own colours are on the colour bar, not on the buttons, so the rail
- * does not compete with the map.
+ * does not compete with the map. Under the last layer is the altitude (the airplane button), when the layers on the map have one.
  */
 @Component({
   selector: 'app-layer-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, AltitudePickerComponent],
   template: `
-    <nav class="rail" aria-label="Map layers">
-      @for (item of items; track item.id) {
-        <button
-          type="button" class="item" [class.active]="isActive(item)" [attr.aria-pressed]="isActive(item)" [disabled]="!available(item)"
-          [attr.aria-label]="item.label" [title]="title(item)" (click)="choose(item)"
-        >
-          <span class="label" aria-hidden="true">{{ item.label }}</span>
-          <span class="thumb"><app-icon [name]="item.icon" [size]="20" /></span>
-        </button>
-      }
-    </nav>
+    <div class="stack" [class.with-alt]="altitudeShown()" [class.raised]="panels.open() === 'altitude'">
+      <nav class="rail" aria-label="Map layers">
+        @for (item of items; track item.id) {
+          <button
+            type="button" class="item" [class.active]="isActive(item)" [attr.aria-pressed]="isActive(item)" [disabled]="!available(item)"
+            [attr.aria-label]="item.label" [title]="title(item)" (click)="choose(item)"
+          >
+            <span class="label" aria-hidden="true">{{ item.label }}</span>
+            <span class="thumb"><app-icon [name]="item.icon" [size]="20" /></span>
+          </button>
+        }
+      </nav>
+      @if (altitudeShown()) { <app-altitude-picker class="altitude" /> }
+    </div>
   `,
   styles: [`
     /* --rail-top: under the menu button; --cluster-h: what the bottom right takes (the zoom buttons and the model button; on a touch screen only the latter) */
     :host { display: contents; --rail-top: calc(var(--gutter) + var(--hit) + 12px); --cluster-h: 140px; }
+    .stack { position: fixed; top: var(--rail-top); right: var(--gutter); z-index: var(--z-ui); display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2); }
+    /* the altitude button takes one more row under the layers; it is lined up with their buttons (the rail has 2 px of padding) */
+    .stack.with-alt { --alt-h: calc(var(--hit) + var(--sp-2)); }
+    /* while the altitude list is open it is above the place card too, as the model list is */
+    .stack.raised { z-index: var(--z-panel); }
+    .altitude { margin: -2px 2px 0 0; }
     .rail {
-      position: fixed; top: var(--rail-top); right: var(--gutter); z-index: var(--z-ui); display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2);
-      --room: calc(100dvh - var(--rail-top) - var(--stack-h) - var(--cluster-h) - 14px);
+      display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2);
+      --room: calc(100dvh - var(--rail-top) - var(--stack-h) - var(--cluster-h) - 14px - var(--alt-h, 0px));
       max-height: var(--room);
       /* whole buttons only: a button cut in half looks broken, and the rest are in the menu */
       max-height: calc(round(down, calc(var(--room) + var(--sp-2) - 4px), calc(var(--hit) + var(--sp-2))) - var(--sp-2) + 4px);
@@ -92,7 +103,7 @@ const RAIL: readonly RailItem[] = [
     /* a touch screen has no pointer to rest on a button: only the layer on the map is named, and the rest are in the menu */
     @media (max-width: 700px) {
       /* the meteogram fills the bottom of a phone: the rail would be a sliver above it, so it steps aside (the layers are in the menu) */
-      :host-context(html[data-sheet='open']) .rail { display: none; }
+      :host-context(html[data-sheet='open']) .stack { display: none; }
       :host { --rail-top: calc(var(--gutter) + 52px + var(--hit) + 8px); }
       .label { display: none; }
     }
@@ -100,10 +111,13 @@ const RAIL: readonly RailItem[] = [
 })
 export class LayerRailComponent {
   protected readonly state = inject(ForecastStateService);
+  protected readonly panels = inject(PanelService);
   private readonly catalog = inject(ForecastCatalogService);
   private readonly mapLayers = inject(MapLayerService);
 
   protected readonly items = RAIL;
+  /** The altitude button is for the forecast layers (the observed pictures have no height) and for a model that has more than the ground. */
+  protected readonly altitudeShown = computed(() => this.state.forecastActive() && this.state.levels().length > 1);
   private readonly observedOn = computed(() => {
     const on = (id: string) => this.mapLayers.layers().some(l => l.id === id && l.active);
     return { radar: on('radar'), satellite: on('satellite') };
