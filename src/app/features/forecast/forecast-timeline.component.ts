@@ -48,11 +48,16 @@ export function istHourLabel(ms: number): string {
           </div>
 
           <div class="readout" aria-live="off">
-            <strong class="when">{{ timeLabel() }}</strong>
-            <span class="chips">
-              @if (lead(); as l) { <span class="chip lead" title="Hours since the model run began">{{ l }}</span> }
-              <span class="chip phase" [class.past]="phase() === 'past'" [class.now]="phase() === 'now'">{{ phaseLabel() }}</span>
-            </span>
+            @if (period(); as p) {
+              <strong class="when">{{ p.fromLabel }} → {{ p.toLabel }}</strong>
+              <span class="chips"><span class="chip lead" title="Length of the period of rain accumulation">{{ p.hours }} h of rain</span></span>
+            } @else {
+              <strong class="when">{{ timeLabel() }}</strong>
+              <span class="chips">
+                @if (lead(); as l) { <span class="chip lead" title="Hours since the model run began">{{ l }}</span> }
+                <span class="chip phase" [class.past]="phase() === 'past'" [class.now]="phase() === 'now'">{{ phaseLabel() }}</span>
+              </span>
+            }
           </div>
 
           <button type="button" class="speed" (click)="cycleSpeed()" [attr.aria-label]="'Playback speed: ' + state.speed() + ' hours per second. Change speed'" title="Playback speed">
@@ -60,7 +65,7 @@ export function istHourLabel(ms: number): string {
           </button>
         </div>
 
-        <div class="track">
+        <div class="track" #track>
           <div class="blocks" aria-hidden="true">
             @for (d of dayBlocks(); track d.ms) {
               <div class="block" [style.left.%]="d.pct" [style.width.%]="d.width">
@@ -77,17 +82,28 @@ export function istHourLabel(ms: number): string {
             <div class="past" [style.width.%]="nowPct()"></div>
             @if (nowPct() > 0 && nowPct() < 100) { <div class="now" [style.left.%]="nowPct()"></div> }
           </div>
-          @if (thumbPct() >= 0) {
-            <div class="playhead" aria-hidden="true" [style.left.%]="thumbPct()">
-              <span class="tip">{{ shortLabel() }}</span>
+          @if (period(); as p) {
+            <!-- rain accumulation: the white stretch is the period; drag its ends, or the stretch itself -->
+            <div class="selection" [style.left.%]="p.fromPct" [style.width.%]="p.toPct - p.fromPct" (pointerdown)="beginDrag($event, 'move', track)" title="Drag to move the period"></div>
+            <div class="handle start" [style.left.%]="p.fromPct" (pointerdown)="beginDrag($event, 'start', track)" role="slider" aria-label="Start of the period" [attr.aria-valuetext]="p.fromLabel">
+              <span class="tip">{{ p.fromLabel }}</span>
             </div>
+            <div class="handle end" [style.left.%]="p.toPct" (pointerdown)="beginDrag($event, 'end', track)" role="slider" aria-label="End of the period" [attr.aria-valuetext]="p.toLabel">
+              <span class="tip">{{ p.toLabel }} ({{ p.hours }}h)</span>
+            </div>
+          } @else {
+            @if (thumbPct() >= 0) {
+              <div class="playhead" aria-hidden="true" [style.left.%]="thumbPct()">
+                <span class="tip">{{ shortLabel() }}</span>
+              </div>
+            }
+            <input
+              type="range" aria-label="Forecast time" [attr.aria-valuetext]="timeLabel() + ', ' + (lead() ?? '')"
+              [min]="r.start" [max]="r.end" step="600000"
+              [value]="state.timeMs() ?? r.start"
+              (input)="onScrub($event)"
+            />
           }
-          <input
-            type="range" aria-label="Forecast time" [attr.aria-valuetext]="timeLabel() + ', ' + (lead() ?? '')"
-            [min]="r.start" [max]="r.end" step="600000"
-            [value]="state.timeMs() ?? r.start"
-            (input)="onScrub($event)"
-          />
         </div>
       </section>
     }
@@ -134,6 +150,16 @@ export function istHourLabel(ms: number): string {
       position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--radius-s);
       background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 650; white-space: nowrap; box-shadow: var(--shadow-1);
     }
+    /* rain accumulation: the chosen period on the track (white, with a handle at each end and the times beside them) */
+    .selection { position: absolute; top: 24px; height: 10px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 1px var(--line-strong); cursor: grab; touch-action: none; }
+    .handle { position: absolute; top: 14px; bottom: 4px; width: 22px; margin-left: -11px; cursor: ew-resize; touch-action: none; }
+    .handle::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: #fff; }
+    .handle .tip {
+      position: absolute; bottom: calc(100% + 2px); padding: 2px 7px; border-radius: var(--radius-s); background: var(--accent); color: var(--on-accent);
+      font-size: 11px; font-weight: 650; white-space: nowrap; box-shadow: var(--shadow-1); pointer-events: none;
+    }
+    .handle.start .tip { right: 11px; }          /* the start time sits to the left of its handle, the end time to the right of its own */
+    .handle.end .tip { left: 11px; }
     input[type=range] { position: absolute; inset: 22px 0 auto 0; width: 100%; height: 22px; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: none; opacity: 0; }
     input[type=range]:focus-visible { opacity: 0; }
     input[type=range]::-webkit-slider-runnable-track { height: 6px; }
@@ -235,6 +261,54 @@ export class ForecastTimelineComponent {
     }
     return blocks;
   });
+
+  /** The chosen rain accumulation period on the track, or null when that layer is not on. */
+  protected readonly period = computed(() => {
+    const r = this.range();
+    const from = this.state.rangeStartMs();
+    const to = this.state.rangeEndMs();
+    if (!r || from === null || to === null || this.state.activeLayerId() !== 'raintot') return null;
+    const span = r.end - r.start;
+    const fmt = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric' });
+    const label = (ms: number) => `${fmt.format(ms)} · ${istHourLabel(ms)}`;
+    return {
+      fromPct: ((from - r.start) / span) * 100,
+      toPct: ((to - r.start) / span) * 100,
+      fromLabel: label(from),
+      toLabel: label(to),
+      hours: Math.round((to - from) / HOUR_MS),
+    };
+  });
+
+  /** Drags the start, the end, or the whole period along the track (the times snap to whole hours). */
+  protected beginDrag(event: PointerEvent, part: 'start' | 'end' | 'move', track: HTMLElement): void {
+    const r = this.range();
+    const origin = { from: this.state.rangeStartMs(), to: this.state.rangeEndMs() };
+    if (!r || origin.from === null || origin.to === null) return;
+    event.preventDefault();
+    const rect = track.getBoundingClientRect();
+    const msAt = (clientX: number) => r.start + ((clientX - rect.left) / rect.width) * (r.end - r.start);
+    const snap = (ms: number) => Math.round(ms / HOUR_MS) * HOUR_MS;
+    const grabbed = msAt(event.clientX);
+    const move = (e: PointerEvent) => {
+      const ms = msAt(e.clientX);
+      if (part === 'start') this.state.setRangeStart(snap(ms));
+      else if (part === 'end') this.state.setRangeEnd(snap(ms));
+      else {
+        this.state.rangeStartMs.set(origin.from!);
+        this.state.rangeEndMs.set(origin.to!);
+        this.state.shiftRange(snap(ms - grabbed));
+      }
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  }
 
   protected onScrub(event: Event): void {
     this.state.pause();

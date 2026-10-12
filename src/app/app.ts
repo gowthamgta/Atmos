@@ -11,7 +11,6 @@ import { ForecastInspectorComponent } from './features/forecast/forecast-inspect
 import { ForecastCatalogService } from './core/forecast/forecast-catalog.service';
 import { IconComponent } from './shared/icon.component';
 import { StationCardComponent } from './features/observations/station-card.component';
-import { RainRangeComponent } from './features/forecast/rain-range.component';
 import { ThemeService } from './shared/theme.service';
 
 @Component({
@@ -29,7 +28,6 @@ import { ThemeService } from './shared/theme.service';
     ForecastInspectorComponent,
     IconComponent,
     StationCardComponent,
-    RainRangeComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',

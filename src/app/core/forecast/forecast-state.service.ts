@@ -243,6 +243,18 @@ export class ForecastStateService {
     this.rangeEndMs.set(Math.max(Math.min(ms, last), from + ForecastStateService.MIN_RANGE_MS));
   }
 
+  /** Moves the whole period (its length kept), stopping where it meets either end of the run. */
+  shiftRange(deltaMs: number): void {
+    const first = this.startMs();
+    const last = this.endMs();
+    const from = this.rangeStartMs();
+    const to = this.rangeEndMs();
+    if (first === null || last === null || from === null || to === null) return;
+    const d = Math.min(Math.max(deltaMs, first - from), last - to);
+    this.rangeStartMs.set(from + d);
+    this.rangeEndMs.set(to + d);
+  }
+
   /** The first time the period is needed: from now for 24 h; after that (or after a change of model) it is only kept inside the run. */
   private ensureRainRange(): void {
     const first = this.startMs();
