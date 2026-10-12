@@ -62,9 +62,9 @@ function fmt(v: number | null, unit: string): string {
   styles: [`
     :host { display: contents; }
     .card {
-      position: fixed; z-index: 950; top: calc(var(--bar-h) + 12px); left: var(--gutter); width: min(300px, calc(100vw - 24px));
-      max-height: calc(100dvh - var(--bar-h) - 150px); overflow-y: auto; padding: 12px 14px 10px; color: var(--text-primary);
-      background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-2);
+      position: fixed; z-index: 950; top: 64px; left: var(--gutter); width: min(300px, calc(100vw - 24px));
+      max-height: calc(100dvh - 64px - var(--stack-h) - 20px); overflow-y: auto; padding: 12px 14px 10px; color: var(--text-primary);
+      background: var(--surface-solid); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-2);
       animation: sheet-in var(--t-med) both;
     }
     header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
@@ -79,7 +79,7 @@ function fmt(v: number | null, unit: string): string {
     dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
     footer { margin-top: 6px; font-size: 10px; color: var(--text-muted); }
     @media (max-width: 700px) {
-      .card { top: auto; bottom: 124px; left: var(--gutter); right: var(--gutter); width: auto; max-height: 46dvh; }
+      .card { top: auto; bottom: calc(var(--stack-h) + 10px); left: var(--gutter); right: var(--gutter); width: auto; max-height: 46dvh; }
     }
   `],
 })

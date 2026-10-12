@@ -136,7 +136,7 @@ export class ForecastMapController {
       const el = document.createElement('div');
       el.className = 'forecast-pin';
       el.style.cssText =
-        'width:14px;height:14px;border-radius:50%;background:#00e5ff;border:2px solid #fff;box-shadow:0 0 0 3px rgba(0,229,255,.35),0 2px 6px rgba(0,0,0,.6);';
+        'width:14px;height:14px;border-radius:50%;background:#cf8a00;border:2px solid #fff;box-shadow:0 0 0 3px rgba(255,200,61,.4),0 2px 6px rgba(0,0,0,.6);';
       this.marker = new Marker({ element: el }).setLngLat([sel.lon, sel.lat]).addTo(this.map);
     } else {
       this.marker.setLngLat([sel.lon, sel.lat]);

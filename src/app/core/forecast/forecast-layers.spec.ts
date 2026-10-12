@@ -69,6 +69,14 @@ describe('forecast layer registry', () => {
     expect(lut[128 * 4]).toBeLessThan(135);
   });
 
+  it('lets a palette fade to transparent with an eight-digit colour', () => {
+    const lut = buildPaletteLut(['#ffffff00', '#ffffffff']);
+    expect([...lut.slice(0, 4)]).toEqual([255, 255, 255, 0]);
+    expect([...lut.slice(-4)]).toEqual([255, 255, 255, 255]);
+    expect(lut[128 * 4 + 3]).toBeGreaterThan(120);
+    expect(lut[128 * 4 + 3]).toBeLessThan(135);
+  });
+
   it('positions legend ticks with the layer gamma and the display scale', () => {
     const rain = forecastLayerById('rain')!;
     expect(legendPosition(rain, 0)).toBe(0);

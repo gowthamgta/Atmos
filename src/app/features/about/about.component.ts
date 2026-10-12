@@ -18,6 +18,7 @@ const CREDITS: readonly Credit[] = [
   { name: 'Satellite', what: 'Meteosat-9 over India, © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
   { name: 'Terrain', what: 'Copernicus DEM GLO-30 (© DLR and Airbus), averaged to 90 m' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
+  { name: 'Place search', what: 'Open-Meteo geocoding (CC BY 4.0): only the text typed in the search box is sent' },
   { name: 'Base map', what: '© OpenFreeMap, © OpenMapTiles, © OpenStreetMap contributors; hillshade © Esri' },
 ];
 
@@ -27,10 +28,6 @@ const CREDITS: readonly Credit[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconComponent],
   template: `
-    <button type="button" class="btn-icon" (click)="panels.toggle('about')" [attr.aria-expanded]="open()" aria-haspopup="dialog" aria-label="About and data credits" title="About and data credits">
-      <app-icon name="info" [size]="17" />
-    </button>
-
     @if (open()) {
       <div class="backdrop" (click)="panels.close('about')" aria-hidden="true"></div>
       <section class="card" role="dialog" aria-label="About AtmosIQ">
@@ -65,9 +62,9 @@ const CREDITS: readonly Credit[] = [
     :host { display: contents; }
     .backdrop { position: fixed; inset: 0; z-index: 1100; background: var(--scrim); }
     .card {
-      position: fixed; z-index: 1101; top: calc(var(--bar-h) + 8px); right: var(--gutter); width: min(400px, calc(100vw - 24px));
-      max-height: calc(100dvh - var(--bar-h) - 20px); display: flex; flex-direction: column; color: var(--text-primary);
-      background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-2); animation: sheet-in var(--t-med) both;
+      position: fixed; z-index: 1101; top: 64px; right: var(--gutter); width: min(400px, calc(100vw - 24px));
+      max-height: calc(100dvh - 64px - var(--stack-h) - 10px); display: flex; flex-direction: column; color: var(--text-primary);
+      background: var(--surface-solid); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-2); animation: sheet-in var(--t-med) both;
     }
     header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px 6px 16px; }
     header strong { font-size: 15px; }

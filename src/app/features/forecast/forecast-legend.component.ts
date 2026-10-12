@@ -1,50 +1,36 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastLayerDef, legendPosition, paletteGradientCss } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
-import { IconComponent } from '../../shared/icon.component';
-import { ConsensusService } from '../../core/forecast/consensus.service';
-import { layerIcon } from '../../shared/icons';
+import { UnitsService } from '../../core/units/units.service';
+import { METRIC, Quantity, Units, legendConversion, niceTicks, quantityOf, unitChoices } from '../../core/units/units';
 
-/** Colour legend of the layer on screen, with the model and run it comes from. */
+export interface LegendTick {
+  label: string;
+  /** 0 to 1 along the bar. */
+  pos: number;
+}
+
+/** The unit text of a layer without its long explanation ("IMD 24 h rain: ..." and "mm in the chosen period" are explained in the menu). */
+export function shortUnit(unit: string): string {
+  return unit.startsWith('mm') ? 'mm' : unit.startsWith('IMD') ? 'IMD' : unit;
+}
+
+/**
+ * The colour bar along the bottom, as on windy.com: the layer's palette with its values written on it, and the unit at the left. Click the
+ * unit to change it (temperature, wind, rain and pressure layers): the values on the bar are then round numbers of the new unit.
+ */
 @Component({
   selector: 'app-forecast-legend',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
   template: `
     @if (state.activeLayer(); as layer) {
-      <div class="legend" role="img" [attr.aria-label]="layer.label + ' legend in ' + layer.unit + (state.level() === 'surface' ? '' : ' at ' + state.level() + ' hPa')">
-        <div class="title">
-          <app-icon [name]="icon(layer.id)" [size]="15" />
-          <span class="name">{{ layer.label }}</span>
-          <span class="unit">{{ layer.unit }}</span>
-        </div>
-        <div class="bar" [style.background]="gradient()"></div>
-        <div class="ticks" aria-hidden="true">
-          @for (tick of layer.ticks; track tick) {
-            <span class="tick" [style.left.%]="tickLeft(layer, tick)">{{ tick }}</span>
-          }
-        </div>
-        <div class="meta">
-          @if (catalog.status() === 'loading') {
-            <span class="state"><span class="spinner"></span>Loading forecast…</span>
-          } @else if (catalog.status() === 'error') {
-            <span class="state error">Forecast unavailable. Retrying every 10 min.</span>
-          } @else if (layer.id === 'extreme') {
-            @if (consensus.models().length) {
-              <span class="model">Compared across {{ consensus.models().length }} models</span>
-              <span class="dot">·</span>
-              <span>{{ consensus.models().join(', ') }}</span>
-            } @else {
-              <span class="state">Needs at least two models that cover this time</span>
-            }
-          } @else {
-            <span class="model">{{ catalog.model().label }}</span>
-            <span class="dot">·</span>
-            <span>{{ catalog.model().resolution }}</span>
-            <span class="dot">·</span>
-            <span>run {{ runLabel() }}</span>
-            @if (state.level() !== 'surface') { <span class="dot">·</span><span>{{ state.level() }} hPa</span> }
+      <div class="legend" role="group" [attr.aria-label]="layer.label + ' colour scale in ' + unitLabel() + (state.level() === 'surface' ? '' : ' at ' + state.level() + ' hPa')">
+        <div class="bar" [style.background]="gradient()">
+          <button type="button" class="unit" [disabled]="!choices()" (click)="cycle()" [attr.aria-label]="choices() ? 'Unit: ' + unitLabel() + '. Change unit' : 'Unit: ' + unitLabel()" [title]="choices() ? 'Click to change the unit' : layer.unit">
+            {{ unitLabel() }}
+          </button>
+          @for (t of ticks(); track t.label) {
+            <span class="tick" [style.--p]="t.pos * 100" aria-hidden="true">{{ t.label }}</span>
           }
         </div>
       </div>
@@ -52,44 +38,62 @@ import { layerIcon } from '../../shared/icons';
   `,
   styles: [`
     :host { display: contents; }
-    .legend {
-      position: fixed; left: var(--gutter); bottom: 132px; z-index: 900; width: min(300px, calc(100vw - 92px));
-      padding: 9px 12px 8px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--line);
-      border-radius: var(--radius-l); box-shadow: var(--shadow-2);
+    .legend { position: fixed; left: 0; right: 0; bottom: 0; height: var(--legend-h); z-index: 910; background: var(--surface-0); }
+    .bar { position: relative; height: 100%; box-shadow: 0 -1px 0 var(--line); }
+    .unit {
+      position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; padding: 0 12px 0 10px; border: 0; background: rgba(0, 0, 0, 0.32); color: #fff;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-shadow: var(--text-halo); cursor: pointer; white-space: nowrap; max-width: 40vw; overflow: hidden; text-overflow: ellipsis;
     }
-    .title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 650; margin-bottom: 7px; color: var(--text-primary); }
-    .title app-icon { color: var(--accent); }
-    .unit { margin-left: auto; color: var(--text-secondary); font-weight: 500; font-variant-numeric: tabular-nums; }
-    .bar { height: 10px; border-radius: 5px; box-shadow: 0 0 0 1px var(--line) inset; }
-    .ticks { position: relative; height: 16px; margin-top: 3px; }
-    .tick { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-    .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 5px; font-size: 10.5px; color: var(--text-muted); }
-    .model { color: var(--model); font-weight: 650; }
-    .dot { opacity: 0.6; }
-    .state { display: inline-flex; align-items: center; gap: 6px; }
-    .state.error { color: var(--warn); }
-    .spinner { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
-    @media (max-width: 700px) { .legend { bottom: 118px; width: min(280px, calc(100vw - 24px)); } }
+    .unit:not(:disabled):hover { background: rgba(0, 0, 0, 0.5); }
+    .unit:disabled { cursor: default; }
+    .tick {
+      position: absolute; top: 50%; left: clamp(64px, calc(var(--p) * 1%), calc(100% - 18px)); transform: translate(-50%, -50%); color: #fff; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75), 0 0 3px rgba(0, 0, 0, 0.6); white-space: nowrap; pointer-events: none;
+    }
+    @media (max-width: 700px) { .tick { font-size: 11px; } }
   `]
 })
 export class ForecastLegendComponent {
   protected readonly state = inject(ForecastStateService);
-  protected readonly catalog = inject(ForecastCatalogService);
-  protected readonly consensus = inject(ConsensusService);
+  private readonly unitsService = inject(UnitsService);
 
-  protected readonly runLabel = computed(() => {
-    // a model run is YYYYMMDDTHHZ; the blend's run is when it was assembled, YYYYMMDDTHHMMZ
-    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})?Z$/.exec(this.catalog.runLabel());
-    return m ? `${m[3]}/${m[2]} ${m[4]}${m[5] ? ':' + m[5] : ''}Z` : this.catalog.runLabel();
+  private readonly quantity = computed(() => {
+    const layer = this.state.activeLayer();
+    return layer ? quantityOf(layer.id, layer.unit) : null;
+  });
+  /** The quantity whose unit can be changed on this layer, or null. */
+  protected readonly choices = computed(() => {
+    const q = this.quantity();
+    return q && unitChoices(q).length > 1 ? q : null;
+  });
+  protected readonly unitLabel = computed(() => {
+    const layer = this.state.activeLayer();
+    const q = this.quantity();
+    return q ? legendConversion(q, this.unitsService.units()).label : layer ? shortUnit(layer.unit) : '';
   });
   protected readonly gradient = computed(() => {
     const layer = this.state.activeLayer();
     return layer ? paletteGradientCss(layer.stops) : '';
   });
+  protected readonly ticks = computed(() => {
+    const layer = this.state.activeLayer();
+    return layer ? legendTicks(layer, this.quantity(), this.unitsService.units()) : [];
+  });
 
-  protected icon = layerIcon;
-
-  protected tickLeft(layer: ForecastLayerDef, tick: number): number {
-    return legendPosition(layer, tick) * 100;
+  protected cycle(): void {
+    const q = this.choices();
+    if (q) this.unitsService.cycle(q);
   }
+}
+
+/** The values written on the bar: the layer's own ticks in its own unit, or round numbers of the unit chosen instead. */
+export function legendTicks(layer: ForecastLayerDef, quantity: Quantity | null, units: Units): LegendTick[] {
+  const own = layer.ticks.map(t => ({ label: String(t), pos: legendPosition(layer, t) }));
+  if (!quantity) return own;
+  const conv = legendConversion(quantity, units);
+  if (conv.label === legendConversion(quantity, METRIC).label) return own;
+  const scale = layer.displayScale ?? 1;
+  const a = conv.from(layer.min * scale);
+  const b = conv.from(layer.max * scale);
+  return niceTicks(Math.min(a, b), Math.max(a, b), 6, conv.integer).map(x => ({ label: String(x), pos: legendPosition(layer, conv.to(x)) }));
 }

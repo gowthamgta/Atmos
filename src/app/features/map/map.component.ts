@@ -42,6 +42,8 @@ import { ForecastInspectorService } from '../../core/forecast/forecast-inspector
 import { ObservationsService } from '../../core/forecast/observations.service';
 import { STATION_CIRCLE_LAYER, STATION_LABEL_LAYER, STATION_SOURCE, SynopRecord } from '../../core/forecast/observations';
 import { StationSelectionService } from '../../core/forecast/station-selection.service';
+import { MapHostService } from '../../core/ui/map-host.service';
+import { UrlStateService } from '../../core/ui/url-state.service';
 
 @Component({
   selector: 'app-map',
@@ -440,11 +442,16 @@ export class MapComponent implements OnInit, OnDestroy {
     this.createRingLabelMarkers(product);
   });
 
+  private readonly mapHost = inject(MapHostService);
+  private readonly urlState = inject(UrlStateService);
+
   ngOnInit(): void {
+    this.mapHost.register({ zoomIn: () => this.zoomIn(), zoomOut: () => this.zoomOut(), home: () => this.flyToMosaicCenter(), flyTo: (lat, lon, zoom) => this.flyTo(lat, lon, zoom) });
     this.initMap();
   }
 
   ngOnDestroy(): void {
+    this.mapHost.register(null);
     this.ringLabelMarkers.forEach(m => m.remove());
     this.ringLabelMarkers = [];
 
@@ -584,14 +591,21 @@ export class MapComponent implements OnInit, OnDestroy {
         ]
       },
       // Open centred on Kallakurichi; users can zoom out freely beyond the forecast area
-      center: [KALLAKURICHI.lng, KALLAKURICHI.lat],
-      zoom: HOME_ZOOM,
+      // the position of a shared link, else Kallakurichi
+      center: this.urlState.camera() ? [this.urlState.camera()!.lon, this.urlState.camera()!.lat] : [KALLAKURICHI.lng, KALLAKURICHI.lat],
+      zoom: this.urlState.camera()?.zoom ?? HOME_ZOOM,
       minZoom: 3.2,
       maxZoom: 15,
       attributionControl: false
     });
     this.map = map;
     if (isDevMode()) (window as unknown as Record<string, unknown>)['__atmosMap'] = map; // debugging handle, dev builds only
+
+    // every move goes into the address, so a link opens at the same place
+    map.on('moveend', () => {
+      const c = map.getCenter();
+      this.urlState.setCamera({ lat: c.lat, lon: c.lng, zoom: map.getZoom() });
+    });
 
     map.on('load', () => {
       this.isMapLoaded.set(true);
@@ -987,6 +1001,11 @@ export class MapComponent implements OnInit, OnDestroy {
   public flyToMosaicCenter(): void {
     if (!this.map) return;
     this.map.easeTo({ center: [KALLAKURICHI.lng, KALLAKURICHI.lat], zoom: HOME_ZOOM, essential: true });
+  }
+
+  /** Move the view to a place (a search result), at street-and-town level unless a zoom is given. */
+  public flyTo(lat: number, lon: number, zoom = 9): void {
+    this.map?.flyTo({ center: [lon, lat], zoom, essential: true });
   }
 
   public zoomIn(): void {

@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal } from '@angular/core';
+import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { DistrictLookupService } from '../geo/district-lookup.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -8,6 +8,8 @@ import { sampleRg16Bitmap } from './bitmap-sampler';
 import { PointForecast, blendTime, buildPointRows, inspectVars } from './point-forecast';
 import { TerrainService } from './terrain.service';
 import { ConsensusService } from './consensus.service';
+import { HOME } from '../geo/home';
+import { UnitsService } from '../units/units.service';
 import { INDIA_GRID, nearestValue } from './derived-fields';
 
 /** Click-to-inspect: reads every forecast variable at a point, blended to the selected time. */
@@ -19,10 +21,14 @@ export class ForecastInspectorService {
   private readonly terrain = inject(TerrainService);
   private readonly districts = inject(DistrictLookupService);
   private readonly consensus = inject(ConsensusService);
+  private readonly unitsService = inject(UnitsService);
 
   /** The clicked location, or null when nothing is selected. */
   readonly selected = signal<{ lat: number; lon: number } | null>(null);
   readonly point = signal<PointForecast | null>(null);
+  /** The name of the place when it was chosen by name (a search result); null when the point was clicked on the map. */
+  readonly label = signal<string | null>(null);
+  private homeDone = false;
   readonly busy = signal(false);
 
   private token = 0;
@@ -37,11 +43,21 @@ export class ForecastInspectorService {
       this.state.activeLayerId(); // the rain period and the all-models category are worked out only while their layer is on
       this.state.rangeStartMs();
       this.state.rangeEndMs();
+      this.unitsService.units(); // the rows are text in the chosen units
       if (!sel) {
         this.point.set(null);
         return;
       }
       void this.compute(sel.lat, sel.lon);
+    });
+    // the card opens on the home place the first time a forecast is on screen (windy.com starts on a place too), and never again after
+    // it has been closed
+    effect(() => {
+      if (this.homeDone || this.catalog.status() !== 'ready' || !this.state.forecastActive() || this.selected()) return;
+      untracked(() => {
+        this.homeDone = true;
+        this.select(HOME.lat, HOME.lon, HOME.name);
+      });
     });
     // Switching every forecast overlay off closes the card.
     effect(() => {
@@ -49,12 +65,19 @@ export class ForecastInspectorService {
     });
   }
 
-  select(lat: number, lon: number): void {
+  /** A place was chosen another way (a shared link): the card does not open on the home place as well. */
+  skipHome(): void {
+    this.homeDone = true;
+  }
+
+  select(lat: number, lon: number, label: string | null = null): void {
+    this.label.set(label);
     this.selected.set({ lat, lon });
   }
 
   close(): void {
     this.selected.set(null);
+    this.label.set(null);
   }
 
   private async compute(lat: number, lon: number): Promise<void> {
@@ -121,7 +144,8 @@ export class ForecastInspectorService {
         state: place.state,
         elevationM: ground?.fine ?? null,
         timeMs: time,
-        rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }),
+        rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }, this.unitsService.units()),
+        values: { ...values },
       });
     } catch (err) {
       console.warn('[forecast] inspect failed', err);

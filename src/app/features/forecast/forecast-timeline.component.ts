@@ -27,9 +27,24 @@ export function istHourLabel(ms: number): string {
   return `${hour12} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+/** Whether an IST day (given by its midnight) is a Saturday or a Sunday: weekends are written in amber on the bar, as on windy.com. */
+export function isWeekendIst(dayStartMs: number): boolean {
+  const d = new Date(dayStartMs + IST_OFFSET_MS + 12 * HOUR_MS).getUTCDay();
+  return d === 0 || d === 6;
+}
+
+/** The names of an IST day in three lengths, for the widths a block can have: "Monday 12", "Mon 12", "M 12". */
+export function dayNames(ms: number): { long: string; mid: string; short: string } {
+  const at = (opt: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat('en-IN', { timeZone: IST, ...opt }).format(ms);
+  const date = at({ day: 'numeric' });
+  return { long: `${at({ weekday: 'long' })} ${date}`, mid: `${at({ weekday: 'short' })} ${date}`, short: `${at({ weekday: 'narrow' })} ${date}` };
+}
+
 /**
- * Bottom time bar, after windy.com: step back / play / step forward, speed, and a track in day blocks (each IST day labelled,
- * with its 6-hourly ticks). The time already passed is dimmed, "now" is marked, and a tooltip shows the day and hour under the playhead.
+ * The bar along the bottom, after windy.com and meteoblue: a play button, then the days as blocks (their names as long as they fit, weekends
+ * in amber), the time already passed dimmed, and an amber tooltip with the time on the playhead. A dot on a day means its steps are further
+ * apart (every 6 h, not every 3 h). With the rain accumulation layer the bar carries the chosen period instead: a white stretch with a handle
+ * at each end.
  */
 @Component({
   selector: 'app-forecast-timeline',
@@ -37,51 +52,23 @@ export function istHourLabel(ms: number): string {
   imports: [IconComponent],
   template: `
     @if (state.forecastActive() && range(); as r) {
-      <section class="dock" aria-label="Forecast timeline">
-        <div class="row">
-          <div class="transport" role="group" aria-label="Playback">
-            <button type="button" class="btn-icon" (click)="state.stepHours(-1)" aria-label="Back one hour" title="Back 1 h (←)"><app-icon name="prev" [size]="16" /></button>
-            <button type="button" class="play" (click)="state.togglePlay()" [attr.aria-label]="state.playing() ? 'Pause' : 'Play'" [attr.aria-pressed]="state.playing()" [title]="state.playing() ? 'Pause (Space)' : 'Play (Space)'">
-              <app-icon [name]="state.playing() ? 'pause' : 'play'" [size]="18" />
-            </button>
-            <button type="button" class="btn-icon" (click)="state.stepHours(1)" aria-label="Forward one hour" title="Forward 1 h (→)"><app-icon name="next" [size]="16" /></button>
-          </div>
-
-          <div class="readout" aria-live="off">
-            @if (period(); as p) {
-              <strong class="when">{{ p.fromLabel }} → {{ p.toLabel }}</strong>
-              <span class="chips"><span class="chip lead" title="Length of the period of rain accumulation">{{ p.hours }} h of rain</span></span>
-            } @else {
-              <strong class="when">{{ timeLabel() }}</strong>
-              <span class="chips">
-                @if (lead(); as l) { <span class="chip lead" title="Hours since the model run began">{{ l }}</span> }
-                <span class="chip phase" [class.past]="phase() === 'past'" [class.now]="phase() === 'now'">{{ phaseLabel() }}</span>
-              </span>
-            }
-          </div>
-
-          <button type="button" class="speed" (click)="cycleSpeed()" [attr.aria-label]="'Playback speed: ' + state.speed() + ' hours per second. Change speed'" title="Playback speed">
-            {{ state.speed() }}<small> h/s</small>
-          </button>
-        </div>
+      <section class="bar" aria-label="Forecast timeline">
+        <button type="button" class="play" (click)="state.togglePlay()" [attr.aria-label]="state.playing() ? 'Pause' : 'Play'" [attr.aria-pressed]="state.playing()" [title]="state.playing() ? 'Pause (Space)' : 'Play (Space)'">
+          <app-icon [name]="state.playing() ? 'pause' : 'play'" [size]="26" />
+        </button>
 
         <div class="track" #track>
           <div class="blocks" aria-hidden="true">
-            @for (d of dayBlocks(); track d.ms) {
-              <div class="block" [style.left.%]="d.pct" [style.width.%]="d.width">
-                <span class="day">{{ d.label }}</span>
-                @for (t of d.ticks; track t.pct) {
-                  <span class="tick" [style.left.%]="t.pct" [class.major]="t.major">
-                    @if (t.major) { <span class="tick-label">{{ t.label }}</span> }
-                  </span>
-                }
+            @for (d of dayBlocks(); track d.ms; let odd = $odd) {
+              <div class="block" [class.odd]="odd" [class.weekend]="d.weekend" [style.left.%]="d.pct" [style.width.%]="d.width">
+                <span class="day"><span class="long">{{ d.names.long }}</span><span class="mid">{{ d.names.mid }}</span><span class="short">{{ d.names.short }}</span></span>
+                @if (d.coarse) { <span class="dot" title="Steps every 6 hours on this day"></span> }
+                @for (t of d.ticks; track t) { <span class="tick" [style.left.%]="t"></span> }
               </div>
             }
-          </div>
-          <div class="rail" aria-hidden="true">
             <div class="past" [style.width.%]="nowPct()"></div>
-            @if (nowPct() > 0 && nowPct() < 100) { <div class="now" [style.left.%]="nowPct()"></div> }
           </div>
+
           @if (period(); as p) {
             <!-- rain accumulation: the white stretch is the period; drag its ends, or the stretch itself -->
             <div class="selection" [style.left.%]="p.fromPct" [style.width.%]="p.toPct - p.fromPct" (pointerdown)="beginDrag($event, 'move', track)" title="Drag to move the period"></div>
@@ -93,8 +80,8 @@ export function istHourLabel(ms: number): string {
             </div>
           } @else {
             @if (thumbPct() >= 0) {
-              <div class="playhead" aria-hidden="true" [style.left.%]="thumbPct()">
-                <span class="tip">{{ shortLabel() }}</span>
+              <div class="playhead" aria-hidden="true" [style.--pct]="thumbPct()">
+                <span class="tip" [title]="lead() ?? ''">{{ shortLabel() }}</span>
               </div>
             }
             <input
@@ -105,76 +92,73 @@ export function istHourLabel(ms: number): string {
             />
           }
         </div>
+
+        <div class="tail">
+          <button type="button" class="step" (click)="state.stepHours(-1)" aria-label="Back one hour" title="Back 1 h (←)"><app-icon name="chevron" [size]="16" class="left" /></button>
+          <button type="button" class="step" (click)="state.stepHours(1)" aria-label="Forward one hour" title="Forward 1 h (→)"><app-icon name="chevron" [size]="16" class="right" /></button>
+          <button type="button" class="speed" (click)="cycleSpeed()" [attr.aria-label]="'Playback speed: ' + state.speed() + ' hours per second. Change speed'" title="Playback speed">{{ state.speed() }}×</button>
+        </div>
       </section>
     }
   `,
   styles: [`
     :host { display: contents; }
-    .dock {
-      position: fixed; left: var(--gutter); right: 68px; bottom: var(--gutter); z-index: 900;
-      padding: 8px 14px 6px; background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--radius-l); box-shadow: var(--shadow-2);
-      animation: sheet-in var(--t-med) both;
+    .bar {
+      position: fixed; left: 0; right: 0; bottom: var(--legend-h); height: var(--timeline-h); z-index: 900; display: flex; align-items: stretch;
+      background: var(--surface-1); box-shadow: 0 -1px 0 var(--line);
     }
-    .row { display: flex; align-items: center; gap: 12px; }
-    .transport { display: flex; align-items: center; gap: 6px; flex: none; }
-    .play {
-      width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--accent-line); background: var(--accent); color: var(--on-accent);
-      display: grid; place-items: center; cursor: pointer; transition: transform var(--t-fast), filter var(--t-fast);
-    }
-    .play:hover { filter: brightness(1.1); }
-    .play:active { transform: scale(0.94); }
-    .readout { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-    .when { font-size: 15px; font-weight: 650; letter-spacing: 0.005em; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .chips { display: inline-flex; gap: 6px; align-items: center; }
-    .chip { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-3); color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .chip.lead { color: var(--model); border-color: color-mix(in srgb, var(--model) 45%, transparent); }
-    .chip.phase.now { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
-    .chip.phase.past { color: var(--text-muted); }
-    .speed { flex: none; min-width: 52px; height: 32px; padding: 0 8px; border-radius: var(--radius-m); border: 1px solid var(--line); background: var(--surface-3); color: var(--text-primary); font-weight: 650; font-size: 13px; cursor: pointer; font-variant-numeric: tabular-nums; }
-    .speed small { font-weight: 500; color: var(--text-muted); font-size: 10px; }
-    .speed:hover { background: var(--surface-4); }
+    .play { flex: none; width: 54px; border: 0; background: transparent; color: var(--accent-strong); cursor: pointer; display: grid; place-items: center; transition: transform var(--t-fast), color var(--t-fast); }
+    .play:hover { color: var(--text-primary); transform: scale(1.08); }
+    .track { position: relative; flex: 1; min-width: 0; }
+    .blocks { position: absolute; inset: 0; overflow: hidden; }
+    .block { position: absolute; top: 0; bottom: 0; container-type: inline-size; background: rgba(255, 255, 255, 0.06); border-left: 1px solid var(--line-strong); display: grid; place-items: center; }
+    .block.odd { background: rgba(255, 255, 255, 0.12); }
+    :host-context(:root[data-theme='light']) .block { background: rgba(20, 40, 70, 0.04); }
+    :host-context(:root[data-theme='light']) .block.odd { background: rgba(20, 40, 70, 0.09); }
+    .day { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; max-width: 100%; padding: 0 4px; text-shadow: var(--text-halo); }
+    .block.weekend .day { color: var(--accent-strong); }
+    .day .long, .day .mid { display: none; }
+    @container (max-width: 26px) { .day { display: none; } }          /* a sliver of a day (the run starts late in it): no label */
+    @container (min-width: 64px) { .day .short { display: none; } .day .mid { display: inline; } }
+    @container (min-width: 124px) { .day .mid { display: none; } .day .long { display: inline; } }
+    .dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-strong); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); }
+    .tick { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--line-strong); }
+    .past { position: absolute; inset: 0 auto 0 0; background: rgba(0, 0, 0, 0.28); pointer-events: none; }
 
-    /* the track: day blocks above, the rail and the playhead in the middle, the scrub input on top of all */
-    .track { position: relative; margin-top: 6px; height: 52px; }
-    .blocks { position: absolute; left: 0; right: 0; top: 0; height: 20px; }
-    .block { position: absolute; top: 0; height: 100%; border-left: 1px solid var(--line-strong); }
-    .day { position: absolute; left: 6px; top: 1px; font-size: 11px; font-weight: 650; color: var(--text-secondary); white-space: nowrap; }
-    .tick { position: absolute; top: 31px; width: 1px; height: 5px; background: var(--text-muted); }
-    .tick.major { top: 30px; height: 7px; background: var(--text-secondary); }
-    .tick-label { position: absolute; top: 37px; left: 3px; font-size: 9px; color: var(--text-muted); white-space: nowrap; }
-    .rail { position: absolute; left: 0; right: 0; top: 26px; height: 6px; border-radius: 3px; background: var(--surface-4); }
-    .rail .past { position: absolute; inset: 0 auto 0 0; border-radius: 3px 0 0 3px; background: var(--line-strong); }
-    .rail .now { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; background: var(--ok); }
-    .playhead { position: absolute; top: 14px; bottom: 6px; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+    /* the playhead: an amber line and the tooltip with the time, rising out of the bar */
+    .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; left: calc(var(--pct) * 1%); background: var(--accent); pointer-events: none; }
     .playhead .tip {
-      position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--radius-s);
-      background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 650; white-space: nowrap; box-shadow: var(--shadow-1);
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 4px 12px 3px; border-radius: 9px 9px 0 0; background: var(--accent); color: var(--on-accent);
+      font-size: 15px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
     }
-    /* rain accumulation: the chosen period on the track (white, with a handle at each end and the times beside them) */
-    .selection { position: absolute; top: 24px; height: 10px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 1px var(--line-strong); cursor: grab; touch-action: none; }
-    .handle { position: absolute; top: 14px; bottom: 4px; width: 22px; margin-left: -11px; cursor: ew-resize; touch-action: none; }
-    .handle::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: #fff; }
+    input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; touch-action: none; }
+    .track:has(input:focus-visible) { outline: 2px solid var(--accent-strong); outline-offset: -2px; }
+
+    /* rain accumulation: the chosen period on the bar (white, with a handle at each end and the times above them) */
+    .selection { position: absolute; top: 0; height: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); cursor: grab; touch-action: none; }   /* a white strip along the top of the bar, so the day names stay readable */
+    .handle { position: absolute; top: 0; bottom: 0; width: 24px; margin-left: -12px; cursor: ew-resize; touch-action: none; }
+    .handle::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 3px; background: var(--accent); }
     .handle .tip {
-      position: absolute; bottom: calc(100% + 2px); padding: 2px 7px; border-radius: var(--radius-s); background: var(--accent); color: var(--on-accent);
-      font-size: 11px; font-weight: 650; white-space: nowrap; box-shadow: var(--shadow-1); pointer-events: none;
+      position: absolute; bottom: 100%; padding: 4px 10px 3px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 650; white-space: nowrap;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); pointer-events: none;
     }
-    .handle.start .tip { right: 11px; }          /* the start time sits to the left of its handle, the end time to the right of its own */
-    .handle.end .tip { left: 11px; }
-    input[type=range] { position: absolute; inset: 22px 0 auto 0; width: 100%; height: 22px; margin: 0; background: transparent; appearance: none; -webkit-appearance: none; cursor: pointer; touch-action: none; opacity: 0; }
-    input[type=range]:focus-visible { opacity: 0; }
-    input[type=range]::-webkit-slider-runnable-track { height: 6px; }
-    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border-radius: 50%; background: var(--accent); }
-    input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: 0; }
+    .handle.start .tip { right: 12px; border-radius: 9px 0 0 0; }          /* the start time sits left of its handle, the end time right of its own */
+    .handle.end .tip { left: 12px; border-radius: 0 9px 0 0; }
+
+    .tail { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 8px 0 6px; }
+    .step { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; }
+    .step:hover { background: var(--surface-3); color: var(--text-primary); }
+    .step .left { transform: rotate(90deg); }
+    .step .right { transform: rotate(-90deg); }
+    .speed { min-width: 36px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 13px; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 650; cursor: pointer; font-variant-numeric: tabular-nums; }
+    .speed:hover { background: var(--surface-3); color: var(--text-primary); }
 
     @media (max-width: 700px) {
-      .dock { right: var(--gutter); padding: 6px 10px 4px; }
-      .row { gap: 8px; }
-      .when { font-size: 13px; }
-      .transport .btn-icon { width: 32px; height: 32px; }
-      .play { width: 40px; height: 40px; }
-      .speed { min-width: 44px; }
-      .track { height: 50px; }
-      .tick-label { display: none; }
+      .play { width: 44px; }
+      .day { font-size: 12px; }
+      .playhead .tip { font-size: 13px; padding: 3px 9px 2px; }
+      .tail .step { display: none; }
+      .tail { padding: 0 6px 0 2px; }
     }
   `]
 })
@@ -196,7 +180,7 @@ export class ForecastTimelineComponent {
     return `${day} · ${time} IST`;
   });
 
-  /** The playhead tooltip: day, number and hour, as on windy.com ("Thu 15 · 11 AM"). */
+  /** The playhead tooltip: day, number and hour ("Thu 15 · 11 AM"). */
   protected readonly shortLabel = computed(() => {
     const t = this.state.timeMs();
     if (t === null) return '';
@@ -211,25 +195,10 @@ export class ForecastTimelineComponent {
     return t === null || run === null ? null : leadTimeLabel(t, run);
   });
 
-  protected readonly phase = computed<'past' | 'now' | 'forecast'>(() => {
-    const t = this.state.timeMs();
-    if (t === null) return 'forecast';
-    const d = t - Date.now();
-    return Math.abs(d) < 0.5 * HOUR_MS ? 'now' : d < 0 ? 'past' : 'forecast';
-  });
-
-  protected readonly phaseLabel = computed(() => {
-    const t = this.state.timeMs();
-    if (t === null) return '';
-    const hours = Math.round((t - Date.now()) / HOUR_MS);
-    if (this.phase() === 'now') return 'Now';
-    return hours > 0 ? `In ${hours} h` : `${-hours} h ago`;
-  });
-
   /** Where "now" is on the track, in percent (clamped to the run). */
   protected readonly nowPct = computed(() => {
     const r = this.range();
-    this.state.timeMs(); // re-evaluated as the time moves, so the marker follows the clock
+    this.state.timeMs(); // re-evaluated as the time moves, so the dimmed part follows the clock
     return r ? Math.min(Math.max(((Date.now() - r.start) / (r.end - r.start)) * 100, 0), 100) : 0;
   });
 
@@ -240,24 +209,34 @@ export class ForecastTimelineComponent {
     return r && t !== null ? Math.min(Math.max(((t - r.start) / (r.end - r.start)) * 100, 0), 100) : -1;
   });
 
-  /** One block per IST day inside the run, with a tick every 6 hours (the midnight, 6 AM, noon and 6 PM ticks are labelled). */
+  /** One block per IST day inside the run, with a tick every 6 hours; a day whose steps are 6 h apart or more is marked. */
   protected readonly dayBlocks = computed(() => {
     const r = this.range();
     if (!r) return [];
     const span = r.end - r.start;
-    const pct = (ms: number) => ((ms - r.start) / span) * 100;
-    const dayFmt = new Intl.DateTimeFormat('en-IN', { timeZone: IST, weekday: 'short', day: 'numeric' });
-    const blocks: { ms: number; pct: number; width: number; label: string; ticks: { pct: number; major: boolean; label: string }[] }[] = [];
+    const valid = this.catalog.validTimes();
+    const blocks: { ms: number; pct: number; width: number; names: ReturnType<typeof dayNames>; weekend: boolean; coarse: boolean; ticks: number[] }[] = [];
     let ms = Math.floor((r.start + IST_OFFSET_MS) / DAY_MS) * DAY_MS - IST_OFFSET_MS; // the IST midnight at or before the run's start
     for (; ms < r.end; ms += DAY_MS) {
       const from = Math.max(ms, r.start);
       const to = Math.min(ms + DAY_MS, r.end);
-      const ticks: { pct: number; major: boolean; label: string }[] = [];
-      for (let k = 0; k < 4; k++) {
+      // ticks inside the block, as a percent of the block's own width
+      const ticks: number[] = [];
+      for (let k = 1; k < 4; k++) {
         const t = ms + k * 6 * HOUR_MS;
-        if (t >= from && t < to) ticks.push({ pct: pct(t), major: true, label: istHourLabel(t) });
+        if (t > from && t < to) ticks.push(((t - from) / (to - from)) * 100);
       }
-      blocks.push({ ms, pct: pct(from), width: ((to - from) / span) * 100, label: dayFmt.format(from), ticks });
+      const inDay = valid.filter(t => t >= ms && t < ms + DAY_MS);
+      const gap = inDay.length > 1 ? Math.max(...inDay.slice(1).map((t, i) => t - inDay[i])) : 0;
+      blocks.push({
+        ms,
+        pct: ((from - r.start) / span) * 100,
+        width: ((to - from) / span) * 100,
+        names: dayNames(ms + 12 * HOUR_MS),
+        weekend: isWeekendIst(ms),
+        coarse: gap >= 6 * HOUR_MS,
+        ticks,
+      });
     }
     return blocks;
   });

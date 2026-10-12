@@ -1,4 +1,5 @@
 import { degToCompass } from '../domain/models/compass';
+import { METRIC, TEMP_LABEL, Units, formatPressure, formatRain, formatWind, tempFromC } from '../units/units';
 import { Level, LEVEL_KM } from './forecast-layers';
 import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terrain-correction';
 
@@ -43,6 +44,8 @@ export interface PointForecast {
   elevationM: number | null;
   timeMs: number;
   rows: PointRow[];
+  /** The blended raw values (°C, m/s, mm, %...) the rows were made from, for the weather picture and the big numbers of the place card. */
+  values: Record<string, number>;
 }
 
 /** Blend two time steps; if one side has no data the other is used. */
@@ -64,13 +67,12 @@ const fmt = (v: number, digits = 0): string => (Number.isNaN(v) ? '–' : v.toFi
 const withUnit = (v: number, digits: number, unit: string): string => (Number.isNaN(v) ? '–' : `${v.toFixed(digits)} ${unit}`);
 const KMH_PER_MS = 3.6;
 
-function rainText(mmPerHour: number): string {
-  return withUnit(mmPerHour, mmPerHour < 10 ? 1 : 0, 'mm/h');
-}
+/** A temperature in °C as "27.2 °C" or "81.0 °F", by the chosen units. */
+const tempText = (c: number, units: Units, digits = 1): string => (Number.isNaN(c) ? '–' : `${tempFromC(c, units.temp).toFixed(digits)} ${TEMP_LABEL[units.temp]}`);
 
-function windText(u: number, v: number, factor = 1): string {
+function windText(u: number, v: number, factor = 1, units: Units = METRIC): string {
   const w = windFromUV(u, v);
-  return Number.isNaN(w.speedMs) ? '–' : `${fmt(w.speedMs * factor * KMH_PER_MS)} km/h from ${degToCompass(w.fromDeg)}`;
+  return Number.isNaN(w.speedMs) ? '–' : `${formatWind(w.speedMs * factor, units)} from ${degToCompass(w.fromDeg)}`;
 }
 
 /**
@@ -82,6 +84,7 @@ export function buildPointRows(
   terrain: PointTerrain | null,
   level: Level = 'surface',
   where?: { timeMs: number; lat: number; lon: number },
+  units: Units = METRIC,
 ): PointRow[] {
   const v = (id: string): number => values[id] ?? NaN;
   const ctx: TerrainContext | null = terrain ? { terrain, liftWind: liftWindAt(values), ...where } : null;
@@ -89,36 +92,36 @@ export function buildPointRows(
   const adjusted = ctx !== null;
   const windFactor = Number.isNaN(v('u10')) ? 1 : adjust('wind', 1); // the same factor scales the 10 m wind and gusts
   const rows: PointRow[] = [
-    { id: 'temp', label: 'Temperature', text: withUnit(adjust('temperature', v('t2m')), 1, '°C'), terrainAdjusted: adjusted },
-    { id: 'feels', label: 'Feels like', text: withUnit(adjust('temperature', v('feels')), 1, '°C'), terrainAdjusted: adjusted },
-    { id: 'dew', label: 'Dew point', text: withUnit(adjust('dewpoint', v('dew')), 1, '°C'), terrainAdjusted: adjusted },
+    { id: 'temp', label: 'Temperature', text: tempText(adjust('temperature', v('t2m')), units), terrainAdjusted: adjusted },
+    { id: 'feels', label: 'Feels like', text: tempText(adjust('temperature', v('feels')), units), terrainAdjusted: adjusted },
+    { id: 'dew', label: 'Dew point', text: tempText(adjust('dewpoint', v('dew')), units), terrainAdjusted: adjusted },
     { id: 'humidity', label: 'Humidity', text: withUnit(adjust('humidity', v('rh')), 0, '%'), terrainAdjusted: adjusted },
-    { id: 'wind', label: 'Wind', text: windText(v('u10'), v('v10'), windFactor), terrainAdjusted: adjusted },
-    { id: 'gust', label: 'Gusts', text: withUnit(adjust('wind', v('gust')) * KMH_PER_MS, 0, 'km/h'), terrainAdjusted: adjusted },
-    { id: 'rain', label: 'Rain', text: rainText(adjust('rain', v('precip'))), terrainAdjusted: adjusted && ctx?.liftWind !== null },
+    { id: 'wind', label: 'Wind', text: windText(v('u10'), v('v10'), windFactor, units), terrainAdjusted: adjusted },
+    { id: 'gust', label: 'Gusts', text: formatWind(adjust('wind', v('gust')), units), terrainAdjusted: adjusted },
+    { id: 'rain', label: 'Rain', text: formatRain(adjust('rain', v('precip')), units, true), terrainAdjusted: adjusted && ctx?.liftWind !== null },
     { id: 'clouds', label: 'Clouds', text: withUnit(v('cloud'), 0, '%'), terrainAdjusted: false },
   ];
   // the lowest and highest temperature of the next 24 h, right under the temperature row
   const extremes: [string, string, number][] = [['tmin24', 'Lowest, next 24 h', v('tmin24')], ['tmax24', 'Highest, next 24 h', v('tmax24')]];
   rows.splice(1, 0, ...extremes.filter(([, , x]) => !Number.isNaN(x)).map(([id, label, x]) => (
-    { id, label, text: withUnit(adjust('temperature', x), 1, '°C'), terrainAdjusted: adjusted })));
+    { id, label, text: tempText(adjust('temperature', x), units), terrainAdjusted: adjusted })));
   if (!Number.isNaN(v('rain24'))) {
     // the row after the rain one: the 24 h total
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
-      id: 'rain24', label: 'Rain, next 24 h', text: withUnit(adjust('rain', v('rain24')), v('rain24') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+      id: 'rain24', label: 'Rain, next 24 h', text: formatRain(adjust('rain', v('rain24')), units), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
   if (!Number.isNaN(v('raintot'))) {
     // the total since the model run began, after the 24 h row
     const after = rows.findIndex(r => r.id === 'rain24') >= 0 ? rows.findIndex(r => r.id === 'rain24') : rows.findIndex(r => r.id === 'rain');
     rows.splice(after + 1, 0, {
-      id: 'raintot', label: 'Rain, total so far', text: withUnit(adjust('rain', v('raintot')), v('raintot') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+      id: 'raintot', label: 'Rain, total so far', text: formatRain(adjust('rain', v('raintot')), units), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
   if (!Number.isNaN(v('rainrange'))) {
     // the rain in the period chosen with the rain accumulation slider
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
-      id: 'rainrange', label: 'Rain in the chosen period', text: withUnit(adjust('rain', v('rainrange')), v('rainrange') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+      id: 'rainrange', label: 'Rain in the chosen period', text: formatRain(adjust('rain', v('rainrange')), units), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
   if (!Number.isNaN(v('extreme'))) {
@@ -133,7 +136,7 @@ export function buildPointRows(
     rows.push({ id: 'vis', label: 'Visibility', text: withUnit(v('vis'), v('vis') < 10 ? 1 : 0, 'km'), terrainAdjusted: false });
   }
   rows.push(
-    { id: 'pressure', label: 'Pressure', text: withUnit(v('msl'), 0, 'hPa'), terrainAdjusted: false },
+    { id: 'pressure', label: 'Pressure', text: formatPressure(v('msl'), units), terrainAdjusted: false },
     { id: 'cape', label: 'Thunderstorm energy', text: withUnit(v('cape'), 0, 'J/kg'), terrainAdjusted: false },
   );
   if (!Number.isNaN(v('tcwv'))) rows.push({ id: 'tcwv', label: 'Atmospheric moisture', text: withUnit(adjust('column', v('tcwv')), 0, 'kg/m²'), terrainAdjusted: adjusted });
@@ -144,9 +147,9 @@ export function buildPointRows(
     const alt = `${level} hPa · about ${LEVEL_KM[level]} km`;
     rows.push({ id: 'level-heading', label: `At ${alt}`, text: '', terrainAdjusted: false, heading: true });
     rows.push(
-      { id: 'lvl-temp', label: 'Temperature', text: withUnit(v(`t${level}`), 1, '°C'), terrainAdjusted: false },
+      { id: 'lvl-temp', label: 'Temperature', text: tempText(v(`t${level}`), units), terrainAdjusted: false },
       { id: 'lvl-humidity', label: 'Humidity', text: withUnit(v(`rh${level}`), 0, '%'), terrainAdjusted: false },
-      { id: 'lvl-wind', label: 'Wind', text: windText(v(`u${level}`), v(`v${level}`)), terrainAdjusted: false },
+      { id: 'lvl-wind', label: 'Wind', text: windText(v(`u${level}`), v(`v${level}`), 1, units), terrainAdjusted: false },
       { id: 'lvl-height', label: 'Height', text: withUnit(v(`gh${level}`), 0, 'm'), terrainAdjusted: false },
     );
     const aloft: [string, string, string, number, string][] = [

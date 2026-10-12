@@ -28,7 +28,7 @@ export class ForecastStateService {
   private readonly observations = inject(ObservationsService);
 
   readonly layers = FORECAST_LAYERS;
-  readonly activeLayerId = signal<string | null>(null);
+  readonly activeLayerId = signal<string | null>('wind');   // opens on the wind, as windy.com does: colours, legend and particles
   /** Altitude: the ground, or a pressure level. Layers that cannot be drawn aloft show the ground. */
   readonly level = signal<Level>('surface');
   /** The selected layer exactly as it is drawn at the selected altitude (variables, range, ticks, label). */
@@ -277,6 +277,11 @@ export class ForecastStateService {
   stepHours(hours: number): void {
     const t = this.timeMs();
     if (t !== null) this.setTime(t + hours * 3_600_000);
+  }
+
+  /** Show another model and keep the chosen time inside its forecast window (the model buttons and the menu both use this). */
+  selectModel(id: string): void {
+    void this.catalog.setModel(id).then(() => this.reclampTime());
   }
 
   setSpeed(hoursPerSecond: number): void {

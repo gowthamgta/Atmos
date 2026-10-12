@@ -1,47 +1,42 @@
-<!-- Compact top bar: brand, forecast status, the layer panel trigger, theme, full screen, about -->
-<header class="top-bar">
-  <h1 class="brand">
-    <span class="mark" aria-hidden="true"><app-icon name="logo" [size]="18" /></span>
-    <span class="brand-name">Atmos<span class="brand-accent">IQ</span></span>
-    <span class="brand-tag">South India</span>
-  </h1>
-
-  <div class="top-actions">
-    @if (catalog.status() === 'loading') {
-      <span class="status" role="status"><span class="spinner" aria-hidden="true"></span><span class="status-text">Loading forecast…</span></span>
-    } @else if (catalog.status() === 'error') {
-      <button type="button" class="status error" (click)="retry()" title="The forecast could not be loaded. Click to try again.">
-        <app-icon name="alert" [size]="14" /><span class="status-text">Forecast offline</span><span class="retry">Retry</span>
-      </button>
-    }
-    <app-layer-menu></app-layer-menu>
-    <button type="button" class="btn-icon" (click)="theme.toggle()" [attr.aria-label]="theme.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'" [title]="theme.theme() === 'dark' ? 'Light theme' : 'Dark theme'">
-      <app-icon [name]="theme.theme() === 'dark' ? 'sun' : 'moon'" [size]="17" />
-    </button>
-    @if (fullscreenAvailable) {
-      <button type="button" class="btn-icon hide-narrow" (click)="toggleFullscreen()" [attr.aria-pressed]="fullscreen()" [attr.aria-label]="fullscreen() ? 'Leave full screen' : 'Full screen'" [title]="fullscreen() ? 'Leave full screen' : 'Full screen'">
-        <app-icon [name]="fullscreen() ? 'shrink' : 'expand'" [size]="17" />
-      </button>
-    }
-    <app-about></app-about>
-  </div>
-</header>
-
-<!-- Full-screen map under the bar -->
+<!-- The map fills the screen; everything else floats over it, as on windy.com -->
 <app-map></app-map>
 
-<!-- Forecast: legend, timeline and click card. Radar and satellites: their own small panels. -->
-<app-forecast-legend></app-forecast-legend>
+<!-- Top left: search, and the weather of the chosen place -->
+<app-place-card></app-place-card>
+
+<!-- Top centre: the name -->
+<h1 class="brand">
+  <span class="mark" aria-hidden="true"><app-icon name="logo" [size]="16" /></span>
+  <span class="brand-name">Atmos<span class="brand-accent">IQ</span></span>
+</h1>
+
+<!-- Top right: the menu button, and the layers under it -->
+<button type="button" class="menu-btn" data-menu-toggle (click)="panels.toggle('layers')" [attr.aria-expanded]="panels.open() === 'layers'" aria-haspopup="dialog" aria-label="Menu" title="Menu">
+  <span class="menu-label">Menu</span>
+  <span class="menu-circle"><app-icon name="menu" [size]="22" /></span>
+</button>
+@if (panels.open() !== 'layers') {
+  <app-layer-rail></app-layer-rail>
+}
+<app-layer-menu></app-layer-menu>
+<app-about></app-about>
+
+<!-- The observed pictures have their own small panels; a weather station opens its readings -->
 <app-radar-panel></app-radar-panel>
 <app-satellite-panel></app-satellite-panel>
 <app-gibs-panel></app-gibs-panel>
-<app-forecast-timeline></app-forecast-timeline>
-<app-forecast-inspector></app-forecast-inspector>
 <app-station-card></app-station-card>
 
-<!-- Zoom and recenter -->
-<div class="zoom-controls" role="group" aria-label="Map zoom">
-  <button class="zoom-btn" (click)="zoomIn()" aria-label="Zoom in" title="Zoom in"><app-icon name="plus" [size]="18" /></button>
-  <button class="zoom-btn" (click)="zoomOut()" aria-label="Zoom out" title="Zoom out"><app-icon name="minus" [size]="18" /></button>
-  <button class="zoom-btn" (click)="recenter()" aria-label="Show all of South India" title="Show all of South India"><app-icon name="locate" [size]="18" /></button>
-</div>
+<!-- Bottom: the model buttons and map buttons, then the time bar, then the colour bar -->
+<app-map-controls></app-map-controls>
+<app-forecast-timeline></app-forecast-timeline>
+<app-forecast-legend></app-forecast-legend>
+
+<!-- The forecast status, when there is something to say -->
+@if (catalog.status() === 'loading') {
+  <div class="status" role="status"><span class="spinner" aria-hidden="true"></span>Loading forecast…</div>
+} @else if (catalog.status() === 'error') {
+  <button type="button" class="status error" (click)="retry()" title="The forecast could not be loaded. Click to try again.">
+    <app-icon name="alert" [size]="14" />Forecast offline<span class="retry">Retry</span>
+  </button>
+}

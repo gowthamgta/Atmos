@@ -247,8 +247,9 @@ void main() {
 
   float t = clamp((v - u_disp.x) / (u_disp.y - u_disp.x), 0.0, 1.0);
   t = pow(t, u_gamma);
-  vec3 rgb = texture(u_lut, vec2(t * (255.0 / 256.0) + 0.5 / 256.0, 0.5)).rgb;
-  float alpha = u_opacity * edgeFade;
+  vec4 lutColor = texture(u_lut, vec2(t * (255.0 / 256.0) + 0.5 / 256.0, 0.5));
+  vec3 rgb = lutColor.rgb;
+  float alpha = u_opacity * edgeFade * lutColor.a;   // a palette can fade to transparent (the clouds layer)
   if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * 1.5, v);
 
   if (onGround) {

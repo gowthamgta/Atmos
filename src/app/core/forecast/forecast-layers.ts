@@ -239,9 +239,12 @@ export function forecastLayerById(id: string | null): ForecastLayerDef | null {
   return FORECAST_LAYERS.find(l => l.id === id) ?? null;
 }
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+/** "#rrggbb" or "#rrggbbaa" as [r, g, b, a] (a is 255 when the colour has none). */
+function hexToRgb(hex: string): [number, number, number, number] {
+  const digits = hex.slice(1);
+  const n = parseInt(digits.slice(0, 6), 16);
+  const a = digits.length >= 8 ? parseInt(digits.slice(6, 8), 16) : 255;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255, a];
 }
 
 /** 256-entry RGBA lookup table (premultiplied is applied in the shader), linear between stops. */
@@ -252,8 +255,7 @@ export function buildPaletteLut(stops: readonly string[], size = 256): Uint8Arra
     const t = (i / (size - 1)) * (rgb.length - 1);
     const k = Math.min(Math.floor(t), rgb.length - 2);
     const f = t - k;
-    for (let c = 0; c < 3; c++) out[i * 4 + c] = Math.round(rgb[k][c] * (1 - f) + rgb[k + 1][c] * f);
-    out[i * 4 + 3] = 255;
+    for (let c = 0; c < 4; c++) out[i * 4 + c] = Math.round(rgb[k][c] * (1 - f) + rgb[k + 1][c] * f); // the fourth is the alpha: a palette may fade to transparent
   }
   return out;
 }

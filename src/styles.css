@@ -1,55 +1,63 @@
 /* ============================================================
-   AtmosIQ design system
-   Interface colours are tokens on :root (dark, the default) and :root[data-theme='light'].
-   Meteorological colour scales are NOT here: they live with the layers (core/forecast/forecast-layers.ts)
-   so the interface theme never changes what a colour on the map means.
-   Surfaces, from the map outwards: --surface-1 (bars) < --surface-2 (panels) < --surface-3 (controls) < --surface-4 (hover).
+   AtmosIQ design system, after windy.com (dark) and meteoblue.com (light).
+
+   Dark: neutral grey translucent panels over the map, white type, an amber accent for "selected" and for the time marker,
+   a dark red round menu button. Light: white panels, dark blue-grey type and meteoblue's orange.
+   Interface colours are tokens on :root and :root[data-theme='light']. The colours of the weather itself are NOT here: they live with
+   the layers (core/forecast/forecast-layers.ts, windy-palettes.ts), so the theme never changes what a colour on the map means.
    ============================================================ */
 
 :root {
   color-scheme: dark;
 
-  /* Surfaces: deep midnight navy, in four steps */
-  --surface-0: #060b16;
-  --surface-1: #0a1224;
-  --surface-2: #101a31;
-  --surface-3: #18243f;
-  --surface-4: #22315a;
-  --scrim: rgba(3, 7, 16, 0.6);
+  /* Surfaces: translucent greys, so the map shows through the bars (no blur: it keeps the map cheap to draw) */
+  --surface-0: #1d1e21;
+  --surface-1: rgba(48, 50, 54, 0.93);
+  --surface-2: rgba(64, 66, 71, 0.96);
+  --surface-3: rgba(255, 255, 255, 0.1);
+  --surface-4: rgba(255, 255, 255, 0.19);
+  --surface-solid: #3b3d41;
+  --scrim: rgba(0, 0, 0, 0.55);
 
   /* Lines */
-  --line: rgba(148, 170, 214, 0.16);
-  --line-strong: rgba(148, 170, 214, 0.32);
+  --line: rgba(255, 255, 255, 0.15);
+  --line-strong: rgba(255, 255, 255, 0.34);
 
   /* Text */
-  --text-primary: #eaf0fb;
-  --text-secondary: #aebbd6;
-  --text-muted: #8394b6;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.84);
+  --text-muted: rgba(255, 255, 255, 0.62);
 
-  /* Accent: cyan for "selected / live", amber for caution, red for errors, violet for model/run info */
-  --accent: #38d0e8;
-  --accent-strong: #7fe6f5;
-  --accent-soft: rgba(56, 208, 232, 0.16);
-  --accent-line: rgba(56, 208, 232, 0.55);
-  --on-accent: #04202a;
-  --warn: #f5a524;
-  --danger: #ff6b6b;
-  --ok: #3ddc97;
-  --model: #a99bff;
+  /* Accent: windy's amber for the selected layer, model and time; red for the menu button */
+  --accent: #cf8a00;
+  --accent-strong: #ffc83d;
+  --accent-soft: rgba(207, 138, 0, 0.3);
+  --accent-line: rgba(255, 200, 61, 0.8);
+  --on-accent: #ffffff;
+  --menu: #9c1c22;
+  --warn: #ffb020;
+  --danger: #ff8080;
+  --ok: #6fdca6;
+  --model: #bcc8ff;
 
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-2: 0 4px 18px rgba(0, 0, 0, 0.42);
+  --text-halo: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.7);
 
-  /* Layout */
-  --bar-h: 48px;
-  --gutter: 12px;
+  /* Layout: the map is full bleed, everything floats over it */
+  --bar-h: 0px;
+  --gutter: 10px;
   --radius-s: 6px;
   --radius-m: 10px;
-  --radius-l: 14px;
+  --radius-l: 12px;
   --tap: 44px;
+  /* the bottom stack: the colour bar (legend) under the time bar */
+  --legend-h: 26px;
+  --timeline-h: 46px;
+  --stack-h: calc(var(--legend-h) + var(--timeline-h));
 
-  /* Type: one family for the interface, tabular numbers for readouts */
-  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Type: the system font, as on windy.com; tabular numbers wherever values change */
+  --font-body: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
 
   /* Motion */
@@ -63,7 +71,7 @@
   --bg-tertiary: var(--surface-2);
   --glass-bg: var(--surface-2);
   --glass-border: var(--line);
-  --neon-cyan: var(--accent);
+  --neon-cyan: var(--accent-strong);
   --neon-orange: var(--warn);
   --neon-red: var(--danger);
   --neon-green: var(--ok);
@@ -72,28 +80,31 @@
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --surface-0: #e9eef7;
-  --surface-1: #ffffff;
-  --surface-2: #f6f8fc;
-  --surface-3: #e8edf6;
-  --surface-4: #d9e1f0;
-  --scrim: rgba(20, 30, 55, 0.35);
-  --line: rgba(30, 50, 100, 0.14);
-  --line-strong: rgba(30, 50, 100, 0.3);
-  --text-primary: #0f1b33;
-  --text-secondary: #38486b;
-  --text-muted: #5a6b8f;
-  --accent: #0a7f99;
-  --accent-strong: #065f74;
-  --accent-soft: rgba(10, 127, 153, 0.12);
-  --accent-line: rgba(10, 127, 153, 0.6);
+  --surface-0: #e8ecf0;
+  --surface-1: rgba(255, 255, 255, 0.96);
+  --surface-2: #ffffff;
+  --surface-3: #edf1f5;
+  --surface-4: #dde5ec;
+  --surface-solid: #ffffff;
+  --scrim: rgba(15, 30, 50, 0.38);
+  --line: rgba(15, 40, 70, 0.15);
+  --line-strong: rgba(15, 40, 70, 0.32);
+  --text-primary: #14283c;
+  --text-secondary: #38506a;
+  --text-muted: #62768b;
+  --accent: #dd7600;
+  --accent-strong: #a45500;
+  --accent-soft: rgba(221, 118, 0, 0.14);
+  --accent-line: rgba(221, 118, 0, 0.65);
   --on-accent: #ffffff;
-  --warn: #b26a00;
-  --danger: #c62828;
+  --menu: #0f4c81;
+  --warn: #a55a00;
+  --danger: #c0272d;
   --ok: #17803f;
-  --model: #5a49d6;
-  --shadow-1: 0 1px 2px rgba(20, 30, 60, 0.12);
-  --shadow-2: 0 8px 26px rgba(20, 30, 60, 0.2);
+  --model: #4a4fc4;
+  --shadow-1: 0 1px 2px rgba(20, 40, 70, 0.14);
+  --shadow-2: 0 4px 18px rgba(20, 40, 70, 0.22);
+  --text-halo: none;
 }
 
 *,
@@ -118,7 +129,7 @@ body {
 }
 
 a {
-  color: var(--accent);
+  color: var(--accent-strong);
   text-decoration: none;
 }
 a:hover {
@@ -137,7 +148,7 @@ button {
 
 /* Keyboard focus: one visible ring everywhere */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-strong);
   outline-offset: 2px;
 }
 
@@ -153,7 +164,7 @@ button {
   border-radius: 4px;
 }
 
-/* Panels: opaque surfaces with a hairline border (no blur: the map stays readable and cheap to draw) */
+/* Panels: translucent surfaces with a hairline border */
 .glass-panel,
 .glass-panel-solid {
   background: var(--surface-2);
@@ -172,7 +183,7 @@ button {
   width: 36px;
   height: 36px;
   flex: none;
-  border-radius: var(--radius-m);
+  border-radius: 50%;
   border: 1px solid var(--line);
   background: var(--surface-3);
   color: var(--text-secondary);
@@ -189,9 +200,56 @@ button {
 }
 .btn-icon[aria-pressed='true'],
 .btn-icon.active {
-  background: var(--accent-soft);
+  background: var(--accent);
   border-color: var(--accent-line);
-  color: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+/* Round floating button (the map controls) */
+.fab {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.fab:hover {
+  background: var(--surface-2);
+}
+
+/* Switch: the "pressure" and "particles animation" toggles */
+.switch {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  flex: none;
+  border-radius: 9px;
+  background: var(--surface-4);
+  transition: background var(--t-fast);
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-1);
+  transition: transform var(--t-fast);
+}
+.switch.on {
+  background: var(--accent);
+}
+.switch.on::after {
+  transform: translateX(16px);
 }
 
 .sr-only {
