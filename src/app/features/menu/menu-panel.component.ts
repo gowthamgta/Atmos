@@ -221,8 +221,9 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 
     .obs { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
     .tile { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: var(--sp-2) var(--sp-3); min-height: var(--tap); border-radius: var(--radius-m); border: 0; background: var(--surface-3); color: var(--text-secondary); cursor: pointer; text-align: left; transition: background var(--t-fast); }
-    .tile:hover { background: var(--surface-4); color: var(--text-primary); }
+    .tile:hover:not(.active) { background: var(--surface-4); color: var(--text-primary); }
     .tile.active { background: var(--accent); color: var(--on-accent); }
+    .tile.active:hover { background: var(--accent-strong); color: var(--on-accent); }
     .tile-name { font-weight: var(--fw-strong); font-size: var(--fs-m); color: var(--text-primary); }
     .tile.active .tile-name { color: inherit; }
     .tile-sub { font-size: var(--fs-xs); color: var(--text-muted); }
@@ -230,8 +231,8 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 
     .list { display: flex; flex-direction: column; }
     .layer { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--hit); padding: var(--sp-1) var(--sp-2); border: 0; border-radius: var(--radius-m); background: transparent; color: var(--text-primary); font-size: var(--fs-l); cursor: pointer; text-align: left; transition: background var(--t-fast); }
-    .layer:hover:not(:disabled) { background: var(--surface-3); }
-    .layer.active { background: var(--accent); color: var(--on-accent); font-weight: var(--fw-strong); }
+    .layer:hover:not(:disabled):not(.active) { background: var(--surface-3); }
+    .layer.active, .layer.active:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); font-weight: var(--fw-strong); }
     .layer:disabled { opacity: 0.4; cursor: not-allowed; }
     .layer.ground-only:not(.active) { opacity: 0.65; }
     .l-icon { color: var(--text-secondary); }
@@ -246,8 +247,8 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 
     .overlays { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); }
     .toggle { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-secondary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; text-align: left; transition: background var(--t-fast); }
-    .toggle:hover:not(:disabled) { background: var(--surface-4); color: var(--text-primary); }
-    .toggle[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
+    .toggle:hover:not(:disabled):not([aria-pressed='true']) { background: var(--surface-4); color: var(--text-primary); }
+    .toggle[aria-pressed='true'], .toggle[aria-pressed='true']:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
     .toggle:disabled { opacity: 0.4; cursor: not-allowed; }
 
     .units { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -256,8 +257,8 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); }
     .actions button { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-primary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; text-align: left; }
-    .actions button:hover:not(:disabled) { background: var(--surface-4); }
-    .actions button[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
+    .actions button:hover:not(:disabled):not([aria-pressed='true']) { background: var(--surface-4); }
+    .actions button[aria-pressed='true'], .actions button[aria-pressed='true']:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
     .actions button:disabled { opacity: 0.6; cursor: progress; }
     .report { margin-top: var(--sp-3); padding: var(--sp-3); border-radius: var(--radius-m); background: var(--surface-3); }
     .verdict { margin: 0 0 var(--sp-2); font-size: var(--fs-l); font-weight: var(--fw-strong); }

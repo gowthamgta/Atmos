@@ -78,7 +78,7 @@ describe('the altitude list', () => {
     const { rows, open, trigger, panels } = setup({ level: 500 });
     expect(rows()).toHaveLength(0);
     await open();
-    expect(rows().map(r => r.querySelector('.r-name')!.textContent)).toEqual(['200 hPa', '250 hPa', '300 hPa', '500 hPa', '700 hPa', '850 hPa', '925 hPa', 'Ground']);
+    expect(rows().map(r => r.querySelector('.r-name')!.textContent)).toEqual(['200 hPa', '250 hPa', '300 hPa', '500 hPa', '600 hPa', '700 hPa', '800 hPa', '850 hPa', '925 hPa', 'Ground']);
     expect(rows().filter(r => r.getAttribute('aria-selected') === 'true').map(r => r.querySelector('.r-name')!.textContent)).toEqual(['500 hPa']);
     expect(trigger().getAttribute('aria-expanded')).toBe('true');
     expect(panels.open()).toBe('altitude');
@@ -139,7 +139,7 @@ describe('the altitude list', () => {
     const event = key(trigger(), 'ArrowDown');
     await flush();
     expect(event.defaultPrevented).toBe(true);
-    expect(rows()).toHaveLength(8);
+    expect(rows()).toHaveLength(10);
   });
 
   it('closes on Escape without the key reaching the page, so a menu around it stays open', async () => {
@@ -174,7 +174,7 @@ describe('the altitude list', () => {
     expect(rows()).toHaveLength(0);
 
     await open();
-    expect(rows()).toHaveLength(8);
+    expect(rows()).toHaveLength(10);
     document.body.click();
     await flush();
     expect(rows()).toHaveLength(0);
@@ -183,7 +183,7 @@ describe('the altitude list', () => {
   it('in the menu it opens in place, not through the panel service', async () => {
     const { rows, open, panels } = setup({ inline: true });
     await open();
-    expect(rows()).toHaveLength(8);
+    expect(rows()).toHaveLength(10);
     expect(panels.open()).toBeNull();
   });
 

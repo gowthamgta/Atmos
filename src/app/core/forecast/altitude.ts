@@ -13,8 +13,9 @@ export function isaHeightM(hPa: number): number {
   return 11000 - 6341.62 * Math.log(hPa / P_TROPOPAUSE);                                // stratosphere: 216.65 K all the way up to 20 km
 }
 
-/** The height of a pressure level as a round number of metres (the nearest 100): "3000", "4200". */
+/** The height of a pressure level as a round number of metres (the nearest 100, with 800 hPa at its customary 2000 m): "2000", "3000", "4200". */
 export function roundedMetres(hPa: number): number {
+  if (hPa === 800) return 2000;
   return Math.round(isaHeightM(hPa) / 100) * 100;
 }
 

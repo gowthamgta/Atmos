@@ -4,12 +4,12 @@ import type { TerrainMode } from './terrain-correction';
 import { WINDY_HUMIDITY, WINDY_RAIN, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
-export type Level = 'surface' | 925 | 850 | 700 | 500 | 300 | 250 | 200;
-export const PRESSURE_LEVELS = [925, 850, 700, 500, 300, 250, 200] as const;
+export type Level = 'surface' | 925 | 850 | 800 | 700 | 600 | 500 | 300 | 250 | 200;
+export const PRESSURE_LEVELS = [925, 850, 800, 700, 600, 500, 300, 250, 200] as const;
 export const ALL_LEVELS: readonly Level[] = ['surface', ...PRESSURE_LEVELS];
 
 /** How high each pressure level is above sea level in the standard atmosphere, to 100 m (see altitude.ts, whose spec keeps this table honest). */
-export const LEVEL_KM: Record<number, number> = { 925: 0.8, 850: 1.5, 700: 3.0, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8 };
+export const LEVEL_KM: Record<number, number> = { 925: 0.8, 850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8 };
 
 export function levelLabel(level: Level): string {
   return level === 'surface' ? 'Surface' : `${level} hPa`;
@@ -93,7 +93,9 @@ const INHIBITION = ['#1c2330', '#2a4a8a', '#1f8fa8', '#4fae6a', '#e0b02a', '#e06
 const TEMP_RANGE: Record<number, [number, number, number[]]> = {
   925: [18, 34, [20, 24, 28, 32]],
   850: [12, 26, [14, 18, 22, 26]],
+  800: [8, 22, [10, 14, 18, 22]],
   700: [2, 16, [4, 8, 12, 16]],
+  600: [-6, 8, [-4, 0, 4, 8]],
   500: [-14, 0, [-12, -8, -4, 0]],
   300: [-40, -24, [-38, -34, -30, -26]],
   250: [-56, -40, [-54, -50, -46, -42]],
@@ -103,7 +105,9 @@ const TEMP_RANGE: Record<number, [number, number, number[]]> = {
 const WIND_RANGE: Record<number, [number, number[]]> = {
   925: [20, [20, 40, 60]],
   850: [25, [20, 40, 60, 80]],
+  800: [28, [20, 40, 60, 80]],
   700: [30, [20, 40, 60, 80, 100]],
+  600: [35, [25, 50, 75, 100]],
   500: [40, [30, 60, 90, 120]],
   300: [60, [50, 100, 150, 200]],
   250: [65, [50, 100, 150, 200]],
@@ -113,7 +117,9 @@ const WIND_RANGE: Record<number, [number, number[]]> = {
 const HEIGHT_RANGE: Record<number, [number, number, number[]]> = {
   925: [700, 840, [720, 760, 800, 840]],
   850: [1440, 1600, [1450, 1500, 1550, 1600]],
+  800: [1950, 2130, [1980, 2020, 2060, 2100]],
   700: [3050, 3230, [3080, 3120, 3160, 3200]],
+  600: [4250, 4430, [4280, 4320, 4360, 4400]],
   500: [5800, 5960, [5820, 5870, 5920, 5960]],
   300: [9600, 9800, [9640, 9700, 9760]],
   250: [10350, 10550, [10400, 10450, 10500]],
@@ -226,7 +232,7 @@ export interface ContourSpec {
   unit: string;
 }
 
-const CONTOUR_STEP: Record<number, number> = { 925: 5, 850: 10, 700: 10, 500: 20, 300: 20, 250: 20, 200: 20 };
+const CONTOUR_STEP: Record<number, number> = { 925: 5, 850: 10, 800: 10, 700: 10, 600: 15, 500: 20, 300: 20, 250: 20, 200: 20 };
 
 /** Contour lines: isobars of sea-level pressure at the surface, height lines of the pressure surface aloft. */
 export function contourSpec(level: Level): ContourSpec {

@@ -90,8 +90,8 @@ describe('forecast layer registry', () => {
 });
 
 describe('altitude', () => {
-  it('offers the ground and six pressure levels', () => {
-    expect(ALL_LEVELS).toEqual(['surface', 925, 850, 700, 500, 300, 250, 200]);
+  it('offers the ground and nine pressure levels', () => {
+    expect(ALL_LEVELS).toEqual(['surface', 925, 850, 800, 700, 600, 500, 300, 250, 200]);
   });
 
   it('only the upper-air layers (and temperature, humidity, wind, height) can be drawn aloft', () => {
@@ -127,7 +127,7 @@ describe('altitude', () => {
 
   it('keeps every level inside its own legend range for typical tropical values', () => {
     const typical: Record<number, { t: number; gh: number }> = {
-      925: { t: 24, gh: 790 }, 850: { t: 19, gh: 1530 }, 700: { t: 9, gh: 3170 }, 500: { t: -5, gh: 5890 }, 300: { t: -31, gh: 9725 }, 250: { t: -42, gh: 10450 }, 200: { t: -52, gh: 12470 },
+      925: { t: 24, gh: 790 }, 850: { t: 19, gh: 1530 }, 800: { t: 15, gh: 2040 }, 700: { t: 9, gh: 3170 }, 600: { t: 1, gh: 4350 }, 500: { t: -5, gh: 5890 }, 300: { t: -31, gh: 9725 }, 250: { t: -42, gh: 10450 }, 200: { t: -52, gh: 12470 },
     };
     for (const lvl of PRESSURE_LEVELS) {
       const t = resolveLayer(forecastLayerById('temp')!, lvl);

@@ -49,6 +49,13 @@ export class ForecastCatalogService implements OnDestroy {
     return `${this.model().baseUrl}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png${build ? `?b=${encodeURIComponent(build)}` : ''}`;
   }
 
+  /** Variables synthesized in the browser by log-pressure interpolation when the published run only has 850, 700 and 500 hPa. */
+  private readonly synthesizedVars = new Set<string>();
+
+  isSynthesizedVar(varId: string): boolean {
+    return this.synthesizedVars.has(varId);
+  }
+
   private async load(): Promise<void> {
     if (!this.manifest()) this.status.set('loading');
     const { baseUrl, id } = this.model();
@@ -61,6 +68,23 @@ export class ForecastCatalogService implements OnDestroy {
       }
       const manifest = await this.getJson<ForecastManifest>(`${baseUrl}/${latest.run}/manifest.json${latest.build ? `?b=${encodeURIComponent(latest.build)}` : ''}`);
       if (id !== this.activeModelId()) return;
+      this.synthesizedVars.clear();
+      const brackets: readonly { level: 800 | 600; below: number; above: number; t: [number, number]; gh: [number, number] }[] = [
+        { level: 800, below: 850, above: 700, t: [0, 28], gh: [1600, 2400] },
+        { level: 600, below: 700, above: 500, t: [-18, 12], gh: [3900, 4700] },
+      ];
+      for (const b of brackets) {
+        for (const kind of ['u', 'v', 't', 'rh', 'gh', 'w', 'vo', 'dv'] as const) {
+          const varId = `${kind}${b.level}`;
+          const belowInfo = manifest.vars[`${kind}${b.below}`];
+          const aboveInfo = manifest.vars[`${kind}${b.above}`];
+          if (!manifest.vars[varId] && belowInfo && aboveInfo) {
+            const [min, max] = kind === 't' ? b.t : kind === 'gh' ? b.gh : [belowInfo.min, belowInfo.max];
+            manifest.vars[varId] = { unit: belowInfo.unit, min, max, encoding: 'rg16' };
+            this.synthesizedVars.add(varId);
+          }
+        }
+      }
       this.manifest.set(manifest);
       this.status.set('ready');
     } catch (err) {

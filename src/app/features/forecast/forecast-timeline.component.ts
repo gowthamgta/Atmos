@@ -80,7 +80,7 @@ export function dayNames(ms: number): { long: string; mid: string; short: string
             </div>
           } @else {
             @if (thumbPct() >= 0) {
-              <div class="playhead" aria-hidden="true" [style.--pct]="thumbPct()">
+              <div class="playhead" aria-hidden="true" [style.--pct]="thumbPct()" (pointerdown)="beginPlayheadDrag($event, track)">
                 <span class="tip" [title]="lead() ?? ''">{{ shortLabel() }}</span>
               </div>
             }
@@ -126,11 +126,13 @@ export function dayNames(ms: number): { long: string; mid: string; short: string
     .past { position: absolute; inset: 0 auto 0 0; background: rgba(0, 0, 0, 0.28); pointer-events: none; }
 
     /* the playhead: an accent line and the tooltip with the time, rising out of the bar */
-    .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; left: calc(var(--pct) * 1%); background: var(--accent); pointer-events: none; }
+    .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; left: calc(var(--pct) * 1%); background: var(--accent); pointer-events: none; z-index: 2; }
     .playhead .tip {
       position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 4px 12px 3px; border-radius: 9px 9px 0 0; background: var(--accent); color: var(--on-accent);
       font-size: 15px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+      pointer-events: auto; cursor: grab; touch-action: none; user-select: none;
     }
+    .playhead .tip:active { cursor: grabbing; }
     input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; touch-action: none; }
     .track:has(input:focus-visible) { outline: 2px solid var(--accent-strong); outline-offset: -2px; }
 
@@ -140,7 +142,7 @@ export function dayNames(ms: number): { long: string; mid: string; short: string
     .handle::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 3px; background: var(--accent); }
     .handle .tip {
       position: absolute; bottom: 100%; padding: 4px 10px 3px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 650; white-space: nowrap;
-      box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); pointer-events: none;
+      box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); cursor: ew-resize; touch-action: none; user-select: none;
     }
     .handle.start .tip { right: 12px; border-radius: 9px 0 0 0; }          /* the start time sits left of its handle, the end time right of its own */
     .handle.end .tip { left: 12px; border-radius: 0 9px 0 0; }
@@ -279,6 +281,30 @@ export class ForecastTimelineComponent {
         this.state.shiftRange(snap(ms - grabbed));
       }
     };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  }
+
+  /** Drags the playhead tooltip badge directly along the track (snapping to 10-minute steps, matching the range input). */
+  protected beginPlayheadDrag(event: PointerEvent, track: HTMLElement): void {
+    const r = this.range();
+    if (!r) return;
+    event.preventDefault();
+    this.state.pause();
+    const rect = track.getBoundingClientRect();
+    const setFromX = (clientX: number) => {
+      const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      const rawMs = r.start + frac * (r.end - r.start);
+      const snapped = Math.min(r.end, Math.max(r.start, Math.round(rawMs / 600_000) * 600_000));
+      this.state.setTime(snapped);
+    };
+    const move = (e: PointerEvent) => setFromX(e.clientX);
     const stop = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', stop);

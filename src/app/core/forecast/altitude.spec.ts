@@ -4,7 +4,7 @@ import { LEVEL_KM, PRESSURE_LEVELS } from './forecast-layers';
 
 describe('the standard-atmosphere height of a pressure level', () => {
   it('matches the ICAO table (metres) at every level the app offers', () => {
-    const table: Record<number, number> = { 1013.25: 0, 925: 762, 850: 1457, 700: 3012, 500: 5574, 300: 9164, 250: 10363, 200: 11784 };
+    const table: Record<number, number> = { 1013.25: 0, 925: 762, 850: 1457, 800: 1949, 700: 3012, 600: 4206, 500: 5574, 300: 9164, 250: 10363, 200: 11784 };
     for (const [p, h] of Object.entries(table)) expect(isaHeightM(Number(p)), `${p} hPa`).toBeCloseTo(h, -0.5); // within about 1.5 m
   });
 
@@ -15,7 +15,7 @@ describe('the standard-atmosphere height of a pressure level', () => {
 
   it('only ever rises as the pressure falls', () => {
     let last = -1;
-    for (const p of [1000, 925, 850, 700, 600, 500, 400, 300, 250, 226, 200, 150, 100]) {
+    for (const p of [1000, 925, 850, 800, 700, 600, 500, 400, 300, 250, 226, 200, 150, 100]) {
       const h = isaHeightM(p);
       expect(h).toBeGreaterThan(last);
       last = h;
@@ -34,7 +34,9 @@ describe('the labels of an altitude', () => {
     expect(rows).toEqual([
       [925, '800 m', 'FL25'],
       [850, '1500 m', 'FL50'],
+      [800, '2000 m', 'FL65'],
       [700, '3000 m', 'FL100'],
+      [600, '4200 m', 'FL140'],
       [500, '5600 m', 'FL185'],
       [300, '9200 m', 'FL300'],
       [250, '10400 m', 'FL340'],

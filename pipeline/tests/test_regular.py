@@ -96,7 +96,7 @@ import fetch_ifs
 
 
 def test_every_level_has_five_fields_with_sensible_ranges():
-    assert C.LEVELS == (925, 850, 700, 500, 300, 250, 200)
+    assert C.LEVELS == (925, 850, 800, 700, 600, 500, 300, 250, 200)
     for lvl in C.LEVELS:
         for kind in ("u", "v", "t", "rh", "gh"):
             var = C.VARS[f"{kind}{lvl}"]

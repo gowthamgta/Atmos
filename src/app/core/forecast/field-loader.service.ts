@@ -1,5 +1,8 @@
 import { Injectable, inject } from '@angular/core';
+import { blendFields, encodeFieldBitmap } from './derived-fields';
+import { decodeFieldBitmap } from './field-decode';
 import { ForecastCatalogService } from './forecast-catalog.service';
+import { ForecastManifest } from './forecast.model';
 
 /** Downloads and caches decoded-on-GPU field images (ImageBitmaps of the rg16 PNGs). */
 @Injectable({ providedIn: 'root' })
@@ -39,7 +42,10 @@ export class FieldLoaderService {
     }
     let pending = this.inflight.get(key);
     if (!pending) {
-      pending = this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build), priority).then(bmp => {
+      const load = this.catalog.isSynthesizedVar?.(varId)
+        ? this.interpolateLevelBitmap(manifest, varId, stepHour, priority)
+        : this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build), priority);
+      pending = load.then(bmp => {
         this.cache.set(key, bmp);
         this.evict();
         return bmp;
@@ -53,6 +59,25 @@ export class FieldLoaderService {
   /** Warm the cache; failures are ignored. */
   prefetch(varId: string, stepHours: number[]): void {
     for (const h of stepHours) this.get(varId, h).catch(() => undefined);
+  }
+
+  /** Interpolates an 800 hPa (from 850 & 700 hPa) or 600 hPa (from 700 & 500 hPa) field bitmap linearly in ln(p). */
+  private async interpolateLevelBitmap(manifest: ForecastManifest, varId: string, stepHour: number, priority: 'auto' | 'low'): Promise<ImageBitmap> {
+    const m = /^([a-z]+)(800|600)$/.exec(varId);
+    if (!m) throw new Error(`Unsupported synthesized variable ${varId}`);
+    const [, kind, lvlStr] = m;
+    const is800 = lvlStr === '800';
+    const belowId = `${kind}${is800 ? 850 : 700}`;
+    const aboveId = `${kind}${is800 ? 700 : 500}`;
+    const mix = is800 ? Math.log(850 / 800) / Math.log(850 / 700) : Math.log(700 / 600) / Math.log(700 / 500);
+    const belowInfo = manifest.vars[belowId];
+    const aboveInfo = manifest.vars[aboveId];
+    const targetInfo = manifest.vars[varId];
+    const [bmpBelow, bmpAbove] = await Promise.all([this.get(belowId, stepHour, priority), this.get(aboveId, stepHour, priority)]);
+    const fieldBelow = decodeFieldBitmap(bmpBelow, belowInfo.min, belowInfo.max);
+    const fieldAbove = decodeFieldBitmap(bmpAbove, aboveInfo.min, aboveInfo.max);
+    const blended = blendFields(fieldBelow, fieldAbove, mix);
+    return encodeFieldBitmap(blended, manifest.grid, targetInfo.min, targetInfo.max);
   }
 
   private async fetchBitmap(url: string, priority: 'auto' | 'low'): Promise<ImageBitmap> {
