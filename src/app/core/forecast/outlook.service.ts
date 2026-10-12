@@ -110,7 +110,7 @@ export class OutlookService {
     this.busy.set(true);
     try {
       await this.terrain.ensureLoaded().then(() => this.terrain.prepareAt(lat, lon)).catch(() => null); // the ground is optional
-      const dz = this.terrain.pointTerrain(lat, lon, this.catalog.model().gridKm)?.dz ?? null;
+      const dz = this.terrain.pointTerrain(lat, lon, this.catalog.model().groundKm, manifest.grid)?.dz ?? null;
       const valid = manifest.steps.map(s => Date.parse(s.valid));
       const nearest = (t: number): number => {
         let best = -1;

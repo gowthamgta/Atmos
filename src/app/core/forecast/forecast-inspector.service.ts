@@ -189,7 +189,7 @@ export class ForecastInspectorService {
         if (agreed) values['extreme'] = nearestValue(agreed.values, INDIA_GRID, lat, lon);
       }
       if (my !== this.token) return; // a newer request replaced this one
-      const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().gridKm);
+      const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().groundKm, manifest.grid);
       this.point.set({
         lat,
         lon,

@@ -16,7 +16,7 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
 import { TerrainService } from './terrain.service';
-import { ForecastGrid, ForecastManifest, bracketSteps } from './forecast.model';
+import { ForecastManifest, bracketSteps } from './forecast.model';
 import type { ForecastLayerDef } from './forecast-layers';
 import { isPhone } from '../ui/device-profile';
 import { MeteogramService } from '../meteogram/meteogram.service';
@@ -24,21 +24,6 @@ import { PerfMeterService } from '../ui/perf-meter.service';
 
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
 const RELIEF_STRENGTH = 0.55;
-
-/**
- * Whether the terrain can be used on a field's grid: the terrain's cells line up with the field's (same spacing, offset by a
- * whole number of cells) and the two boxes overlap. Where the field goes beyond the terrain, or the terrain beyond the field,
- * the model's own ground is used (see the colour shader, which checks the terrain box per pixel).
- */
-export function terrainOnGrid(field: ForecastGrid, terrain: ForecastGrid): boolean {
-  const eps = 1e-6;
-  const cellsAcross = (field.lonMin - terrain.lonMin) / field.step;
-  const cellsDown = (field.latMax - terrain.latMax) / field.step;
-  return Math.abs(field.step - terrain.step) < eps &&
-    Math.abs(cellsAcross - Math.round(cellsAcross)) < 1e-3 && Math.abs(cellsDown - Math.round(cellsDown)) < 1e-3 &&
-    terrain.lonMin < field.lonMax - eps && terrain.lonMax > field.lonMin + eps &&
-    terrain.latMin < field.latMax - eps && terrain.latMax > field.latMin + eps;
-}
 
 /**
  * Owns the forecast GL layers on the map (colour field and wind particles): mounts them, and keeps them showing
@@ -182,16 +167,16 @@ export class ForecastMapController {
       layer.setLayer(null);
       return;
     }
-    // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It is used on a field
-    // whose grid lines up with it and overlaps it (see terrainOnGrid); the shader leaves the cells outside its box alone
+    // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It goes to every field whatever
+    // its grid (0.1 degrees, or 0.25 for GFS, AIGFS and AIFS): the shader reads the terrain by latitude and longitude, takes the ground
+    // the field stands on at the field's own nodes, and leaves the pixels outside the terrain's box alone
     const consensusLayer = def.id === 'extreme';           // drawn from every model, on the India grid of ECMWF IFS
     const rangeLayer = def.id === 'raintot';               // the rain between two chosen times
-    const layerGrid = consensusLayer ? INDIA_GRID : manifest.grid;
     const rangeStart = this.state.rangeStartMs();          // read here so the layer redraws when the slider moves
     const rangeEnd = this.state.rangeEndMs();
     const terrainData = this.terrain.data();
-    const onTerrain = !!terrainData && terrainOnGrid(layerGrid, terrainData.meta.grid);
-    const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, consensusLayer ? 9 : this.catalog.model().gridKm).bitmap : null;
+    const onTerrain = !!terrainData;
+    const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, consensusLayer ? 9 : this.catalog.model().groundKm).bitmap : null;
     layer.setTerrain(onTerrain ? terrainData : null, modelGround);
     layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
     layer.setLite(isPhone()); // phones take the cheaper relief slope; larger screens take the full one

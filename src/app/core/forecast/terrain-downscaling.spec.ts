@@ -27,6 +27,14 @@ describe('90 m downscaling registry', () => {
     expect(nearestModelKm(available, 9)).toBe(9);
     expect(nearestModelKm(available, 25)).toBe(28);
     expect(nearestModelKm(available, 70)).toBe(55);
-    for (const m of FORECAST_MODELS) expect(available).toContain(nearestModelKm(available, m.gridKm));
+    for (const m of FORECAST_MODELS) expect(available).toContain(nearestModelKm(available, m.groundKm));
+  });
+
+  it('draws every model against a ground of the size of its published picture, which the terrain has an image for', () => {
+    // pipeline/build_terrain.py writes these (MODEL_KMS); the published terrain/index.json lists the same four
+    const published = [9, 10, 13, 28];
+    const ground = Object.fromEntries(FORECAST_MODELS.map(m => [m.id, nearestModelKm(published, m.groundKm)]));
+    expect(ground).toEqual({ ecmwf_ifs: 9, ukmo: 10, gfs: 28, aigfs: 28, aifs: 28 });   // GFS, AIGFS and AIFS are published on 0.25 degrees: 28 km of ground
+    for (const m of FORECAST_MODELS) expect(m.groundKm).toBeGreaterThanOrEqual(m.gridKm);  // a picture is never finer than its model
   });
 });

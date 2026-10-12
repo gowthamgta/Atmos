@@ -16,6 +16,7 @@ import {
   WIND_FACTOR_MIN,
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
+import { sameLattice } from '../forecast/terrain-ground';
 import { isPhone } from '../ui/device-profile';
 import { TileGrid, tileSlots, TileSlots, buildTileMap, resampleTileRgb, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
 
@@ -46,7 +47,8 @@ export const TERRAIN_MODE_CODE: Record<TerrainMode, number> = {
 };
 
 /**
- * Fields are rg16 PNGs (R = high byte, G = low byte, B = 255 for "no data") on the 0.1° grid. The GPU cannot filter
+ * Fields are rg16 PNGs (R = high byte, G = low byte, B = 255 for "no data") on their own grid (0.1°, or 0.25° for GFS, AIGFS and AIFS; the
+ * terrain is read by latitude and longitude, so the grids need not match). The GPU cannot filter
  * those bytes, so texels are fetched exactly, decoded, and interpolated here, bilinearly. Each pixel is then moved from
  * the model's ground to the real terrain (see terrain-correction.ts, whose constants are inlined below), and the terrain
  * relief can be shaded into the colours.
@@ -84,6 +86,7 @@ uniform vec4 u_modelGrid;  // model ground
 uniform ivec2 u_modelSize;
 uniform vec2 u_demEnc;     // terrain value range
 uniform int u_terrainOn;   // 1 when the terrain textures are bound
+uniform int u_groundOnNodes; // 1: the field's grid is not the lattice of the model-ground picture, so the ground is read at the field's own nodes
 uniform vec4 u_terrainBox; // west, south, east, north: where the 90 m terrain is; outside it the model's own ground is used
 uniform int u_magnitude;   // 1: show hypot(first, second component) e.g. wind speed from u and v
 uniform int u_terrainMode; // 0 off, else TERRAIN_MODE_CODE
@@ -140,6 +143,23 @@ vec2 terrainAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
     vec4 c = texelFetch(tex, clamp(i0 + o, ivec2(0), size - 1), 0);
     float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
     acc += vec2(decode(c, u_demEnc), c.b) * w;
+  }
+  return acc;
+}
+
+// The ground the FIELD stands on at a pixel (metres, land fraction). On the model-ground picture's own lattice that is the picture read at the
+// pixel. On another grid (0.25 degrees) the field is only its values at its nodes, interpolated between them, so the ground it has there is the
+// model ground at those same four nodes, interpolated the same way (not the ground's own variation between the nodes, which the field lacks).
+vec2 modelGroundAt(vec2 g, float lat, float lon) {
+  if (u_groundOnNodes == 0) return terrainAt(u_demModel, u_modelGrid, u_modelSize, lat, lon);
+  vec2 fr = fract(g);
+  ivec2 i0 = ivec2(floor(g));
+  vec2 acc = vec2(0.0);
+  for (int k = 0; k < 4; k++) {
+    ivec2 o = ivec2(k & 1, k >> 1);
+    ivec2 p = clamp(i0 + o, ivec2(0), u_size - 1);
+    float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
+    acc += terrainAt(u_demModel, u_modelGrid, u_modelSize, u_grid.y - float(p.y) * u_grid.z, u_grid.x + float(p.x) * u_grid.z) * w;
   }
   return acc;
 }
@@ -214,7 +234,7 @@ void main() {
   vec2 fineSlope = vec2(0.0);
   bool needFineSlope = u_lite == 0 && onGround && u_relief > 0.0;
   if (onGround) {
-    model = terrainAt(u_demModel, u_modelGrid, u_modelSize, lat, lon);
+    model = modelGroundAt(g, lat, lon);
     vec3 tile = tileTerrain(lat, lon);
     fine = tile.z > 0.5 ? tile.xy : model;
     if (needFineSlope) {
@@ -284,7 +304,7 @@ interface Uniforms {
 const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
-  'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_terrainBox',
+  'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
@@ -501,6 +521,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform4f(u['u_grid'], grid.lonMin, grid.latMax, grid.step, 0);
     gl.uniform2i(u['u_size'], grid.nx, grid.ny);
     gl.uniform1i(u['u_terrainOn'], terrainOn ? 1 : 0);
+    gl.uniform1i(u['u_groundOnNodes'], terrainOn && this.terrain && !sameLattice(grid, this.terrain.meta.grid) ? 1 : 0);
     gl.uniform1i(u['u_terrainMode'], terrainMode);
     gl.uniform1f(u['u_relief'], terrainOn ? this.relief : 0);
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);

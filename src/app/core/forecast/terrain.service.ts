@@ -3,6 +3,7 @@ import { ForecastGrid, gridPosition } from './forecast.model';
 import { PointTerrain, terrainDelta } from './terrain-correction';
 import { TerrainLevel, sampleTile, tileNameAt } from './terrain-tiles';
 import { PAGES } from './forecast-models';
+import { groundAtFieldNodes, sameLattice } from './terrain-ground';
 
 /** The terrain files, published with the forecast data on GitHub Pages (written by pipeline/build_terrain.py). */
 export const TERRAIN_BASE = `${PAGES}/terrain`;
@@ -143,17 +144,19 @@ export class TerrainService {
     return createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   }
 
-  /** Model-ground image for a model whose native grid is `gridKm` km. */
-  modelGround(data: TerrainData, gridKm: number): { km: number; bitmap: ImageBitmap } {
-    const km = nearestModelKm([...data.models.keys()], gridKm);
+  /** Model-ground image for a field drawn against a ground of `groundKm` km (see ForecastModelDef.groundKm). */
+  modelGround(data: TerrainData, groundKm: number): { km: number; bitmap: ImageBitmap } {
+    const km = nearestModelKm([...data.models.keys()], groundKm);
     return { km, bitmap: data.models.get(km)! };
   }
 
   /**
    * The ground at a point as the corrections need it, from the 90 m tile under it. Null until the terrain and that tile
    * have loaded, or outside the domain: the model's own values are then shown (see prepareAt, which loads the tile).
+   * `field` is the grid of the picture the values come from: when it is not the lattice of the model-ground picture (0.25 degree models) the
+   * ground the picture stands on is read at its own nodes, as the map does (see groundAtFieldNodes).
    */
-  pointTerrain(lat: number, lon: number, gridKm: number): PointTerrain | null {
+  pointTerrain(lat: number, lon: number, groundKm: number, field?: ForecastGrid): PointTerrain | null {
     const t = this.data();
     if (!t) return null;
     const { domain, min, max, smooth: smoothGrid, grid } = t.meta;
@@ -164,12 +167,13 @@ export class TerrainService {
       void this.prepareAt(lat, lon);
       return null;
     }
-    const model = this.modelGround(t, gridKm).bitmap;
+    const model = this.modelGround(t, groundKm).bitmap;
     // position inside the tile: distances from its north and west edges, in degrees
     const dLat = Math.floor(lat) + 1 - lat;
     const dLon = lon - Math.floor(lon);
     const fine = sampleTile(cpu.rgba, cpu.n, dLat, dLon, max);
-    const m = sampleTerrain(model, grid, lat, lon, min, max);
+    const groundAt = (la: number, lo: number) => sampleTerrain(model, grid, la, lo, min, max);
+    const m = field && !sameLattice(field, grid) ? groundAtFieldNodes(groundAt, field, lat, lon) : groundAt(lat, lon);
     const sm = sampleTerrain(t.smooth, smoothGrid, lat, lon, min, max);
     // slope of the 90 m ground over two cells either side (a neighbour outside the tile is clamped to its edge)
     const step = 2 / cpu.n;
