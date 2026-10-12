@@ -19,6 +19,7 @@ import { MenuTab, PanelService } from '../../core/ui/panel.service';
 import { UnitsService } from '../../core/units/units.service';
 import { PRESSURE_LABEL, PRESSURE_UNITS, RAIN_LABEL, RAIN_UNITS, TEMP_LABEL, TEMP_UNITS, WIND_LABEL, WIND_UNITS } from '../../core/units/units';
 import { IconComponent } from '../../shared/icon.component';
+import { RovingTabsDirective } from '../../shared/roving-tabs.directive';
 import { layerIcon } from '../../shared/icons';
 import { ThemeService } from '../../shared/theme.service';
 import { ModelListComponent } from '../models/model-list.component';
@@ -44,15 +45,15 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 @Component({
   selector: 'app-menu-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, ModelListComponent],
+  imports: [IconComponent, ModelListComponent, RovingTabsDirective],
   template: `
     @if (open()) {
       <div class="scrim" (click)="panels.close('menu')" aria-hidden="true"></div>
       <section id="menu-panel" class="panel" role="dialog" aria-label="Menu: layers, models and settings">
         <header class="head">
-          <div class="seg tabs" role="tablist" aria-label="Menu">
+          <div class="seg tabs" role="tablist" aria-label="Menu" appRovingTabs>
             @for (t of tabs; track t.id) {
-              <button type="button" role="tab" [id]="'tab-' + t.id" [class.on]="tab() === t.id" [attr.aria-selected]="tab() === t.id" aria-controls="menu-body" (click)="panels.menuTab.set(t.id)">{{ t.label }}</button>
+              <button type="button" role="tab" [id]="'tab-' + t.id" [class.on]="tab() === t.id" [attr.aria-selected]="tab() === t.id" [attr.tabindex]="tab() === t.id ? 0 : -1" aria-controls="menu-body" (click)="panels.menuTab.set(t.id)">{{ t.label }}</button>
             }
           </div>
           <button type="button" class="btn-icon" (click)="panels.close('menu')" aria-label="Close the menu" title="Close (Esc)"><app-icon name="close" [size]="16" /></button>

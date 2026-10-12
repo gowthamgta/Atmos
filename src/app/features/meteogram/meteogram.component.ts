@@ -16,6 +16,7 @@ import { formatPressure, formatRain, formatTemp, formatWind } from '../../core/u
 import { MapHostService } from '../../core/ui/map-host.service';
 import { observeSize } from '../../shared/observe-size';
 import { IconComponent } from '../../shared/icon.component';
+import { RovingTabsDirective } from '../../shared/roving-tabs.directive';
 import { CompareTableComponent } from './compare-table.component';
 import { MeteogramChartComponent } from './meteogram-chart.component';
 
@@ -36,7 +37,7 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
 @Component({
   selector: 'app-meteogram',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent, MeteogramChartComponent, CompareTableComponent],
+  imports: [IconComponent, MeteogramChartComponent, CompareTableComponent, RovingTabsDirective],
   template: `
     @if (m.visible()) {
       <section #sheet class="sheet" role="region" [attr.aria-label]="'Meteogram, hourly forecast for ' + place().name" [class.compare]="m.view() === 'compare'">
@@ -46,9 +47,9 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
             <span class="meta">{{ place().meta }}</span>
           </div>
           <div class="controls">
-            <div class="seg" role="tablist" aria-label="Kind of chart">
-              <button type="button" role="tab" [class.on]="m.view() === 'model'" [attr.aria-selected]="m.view() === 'model'" (click)="m.view.set('model')">Forecast</button>
-              <button type="button" role="tab" [class.on]="m.view() === 'compare'" [attr.aria-selected]="m.view() === 'compare'" (click)="m.view.set('compare')">Compare<span class="long"> models</span></button>
+            <div class="seg" role="tablist" aria-label="Kind of chart" appRovingTabs>
+              <button type="button" role="tab" [class.on]="m.view() === 'model'" [attr.aria-selected]="m.view() === 'model'" [attr.tabindex]="m.view() === 'model' ? 0 : -1" (click)="m.view.set('model')">Forecast</button>
+              <button type="button" role="tab" [class.on]="m.view() === 'compare'" [attr.aria-selected]="m.view() === 'compare'" [attr.tabindex]="m.view() === 'compare' ? 0 : -1" (click)="m.view.set('compare')">Compare<span class="long"> models</span></button>
             </div>
             <div class="seg" role="group" aria-label="Days shown">
               @for (d of rangeDays; track d) {
@@ -72,7 +73,7 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
           @case ('ready') {
             @if (series.data(); as data) {
               @if (m.view() === 'model') {
-                <div class="readout" role="group" aria-label="Forecast at the time chosen" aria-live="polite" aria-atomic="true">
+                <div class="readout" role="group" aria-label="Forecast at the time chosen">
                   @if (readout(); as r) {
                     <div class="cell when" [title]="r.leadTitle">
                       <span class="label"><span class="model-dot" [class.ai]="activeModel().ai" [style.--model-color]="activeColor()"></span>{{ activeModel().short }} {{ activeModel().gridKm }} km{{ r.lead }}</span>
@@ -94,9 +95,9 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
                 </div>
               } @else {
                 <div class="toolbar">
-                  <div class="seg" role="tablist" aria-label="Quantity compared">
+                  <div class="seg" role="tablist" aria-label="Quantity compared" appRovingTabs>
                     @for (t of compareTabs; track t.id) {
-                      <button type="button" role="tab" [class.on]="m.compareVar() === t.id" [attr.aria-selected]="m.compareVar() === t.id" (click)="m.compareVar.set(t.id)">{{ t.label }}</button>
+                      <button type="button" role="tab" [class.on]="m.compareVar() === t.id" [attr.aria-selected]="m.compareVar() === t.id" [attr.tabindex]="m.compareVar() === t.id ? 0 : -1" (click)="m.compareVar.set(t.id)">{{ t.label }}</button>
                     }
                   </div>
                   <div class="legend" role="group" aria-label="Models drawn">
@@ -121,6 +122,8 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
                 </div>
               }
               <p id="meteogram-help" class="sr-only">Use the left and right arrow keys to move through the forecast. Click or drag on the chart to set the time on the map.</p>
+              <!-- said when the time on the map settles (not at every step of a drag or a play, and never for the pointer passing over the chart) -->
+              <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ announcement() }}</p>
               <footer id="meteogram-note" class="foot" [class.open]="noteOpen()">{{ footnote() }}</footer>
             }
           }
@@ -251,6 +254,21 @@ export class MeteogramComponent implements OnDestroy {
         this.stopWatching = observeSize(el, (_w, h) => this.setSheetHeight(h + this.gap()));
       });
     });
+    // a screen reader hears the readout when the time on the map has settled for a moment (not at every step of a drag or a play)
+    effect(() => {
+      const t = this.state.timeMs();
+      this.series.data();
+      this.units();
+      this.catalog.activeModelId();
+      if (!this.m.visible() || t === null) return;
+      untracked(() => {
+        if (this.announceTimer) clearTimeout(this.announceTimer);
+        this.announceTimer = setTimeout(() => {
+          const r = this.readoutAt(this.state.timeMs() ?? t);
+          this.announcement.set(r ? `${r.when}. ${r.cells.map(c => `${c.label} ${c.value}${c.sub ? `, ${c.sub}` : ''}`).join('. ')}.` : '');
+        }, 800);
+      });
+    });
     // the place stays in view above the sheet: a click near the bottom of the map would otherwise end up under it
     effect(() => {
       const sel = this.inspector.selected();
@@ -260,6 +278,7 @@ export class MeteogramComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.announceTimer) clearTimeout(this.announceTimer);
     this.stopWatching?.();
     this.setSheetHeight(0);
   }
@@ -318,11 +337,14 @@ export class MeteogramComponent implements OnDestroy {
   protected readonly table = computed(() => compareAt(this.series.data()!, FORECAST_MODELS.map(def => def.id), this.focusMs()));
   protected readonly tableWhen = computed(() => `At ${istValid(this.table().timeMs)}${this.m.hoverMs() === null ? ', the time on the map' : ''}`);
 
-  protected readonly readout = computed(() => {
+  protected readonly readout = computed(() => this.readoutAt(this.focusMs()));
+
+  /** What the readout says for a time (the hour of the series nearest it). */
+  private readoutAt(ms: number) {
     const data = this.series.data();
     const model = data?.models[this.catalog.activeModelId()];
     if (!data || !model) return null;
-    const i = indexAt(data.times, this.focusMs());
+    const i = indexAt(data.times, ms);
     const u = this.units();
     const at = (s: Series): number | null => s[i] ?? null;
     const [temp, feels, rain, wind, dir, gust, pressure, cloud, humidity] = [model.temp, model.feels, model.rain, model.wind, model.windDir, model.gust, model.pressure, model.cloud, model.humidity].map(at);
@@ -340,7 +362,11 @@ export class MeteogramComponent implements OnDestroy {
         { key: 'pressure', label: 'Pressure', color: 'var(--s-pressure)', value: formatPressure(pressure, u), sub: [humidity !== null ? `RH ${Math.round(humidity)}%` : '', cloud !== null ? `cloud ${Math.round(cloud)}%` : ''].filter(Boolean).join(' · ') },
       ],
     };
-  });
+  }
+
+  /** The sentence a screen reader gets when the time on the map settles. */
+  protected readonly announcement = signal('');
+  private announceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Where the data comes from and how current it is: the run the chart is made of, and whether the map shows another one. */
   protected readonly footnote = computed(() => {

@@ -32,9 +32,11 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
         @for (r of rows(); track r.def.id) {
           <tr [class.on-map]="r.def.id === mapModelId()" [class.off]="r.hidden" [style.--model-color]="r.color" (click)="chooseModel.emit(r.def.id)" title="Show {{ r.def.label }} on the map">
             <th scope="row" class="model">
-              <span class="model-dot" [class.ai]="r.def.ai" [style.--model-color]="r.color"></span>
-              <span class="name">{{ r.def.short }}</span>
-              @if (r.def.id === mapModelId()) { <span class="tag">on map</span> }
+              <button type="button" class="pick" (click)="$event.stopPropagation(); chooseModel.emit(r.def.id)" [attr.aria-label]="'Show ' + r.def.label + ' on the map'" [attr.aria-pressed]="r.def.id === mapModelId()">
+                <span class="model-dot" [class.ai]="r.def.ai" [style.--model-color]="r.color"></span>
+                <span class="name">{{ r.def.short }}</span>
+                @if (r.def.id === mapModelId()) { <span class="tag">on map</span> }
+              </button>
             </th>
             <td [title]="r.runTitle">{{ r.run }}</td>
             <td [class.muted]="!r.covered">{{ r.hour }}</td>
@@ -61,7 +63,8 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
     th, td { padding: 0 var(--sp-2); height: 30px; text-align: right; white-space: nowrap; }
     thead th { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); border-bottom: 1px solid var(--line); }
     .model { text-align: left; padding-left: 0; }
-    tbody th.model { display: flex; align-items: center; gap: var(--sp-2); height: 30px; font-weight: var(--fw-strong); }
+    tbody th.model { font-weight: var(--fw-strong); }
+    .pick { display: flex; align-items: center; gap: var(--sp-2); height: 30px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
     tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); transition: background var(--t-fast); }
     tbody tr:hover { background: var(--surface-3); }
     /* the model on the map is marked in its own colour (the colour of a model is the colour of choosing it) */
