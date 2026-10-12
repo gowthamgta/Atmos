@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, ElementRef, HostListener, computed,
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
+import { rowsForLayer } from '../../core/forecast/point-forecast';
 import { HOME } from '../../core/geo/home';
 import { Place, PlaceSearchService } from '../../core/geo/place-search.service';
 import { ageLabel, compassPoint } from '../../core/forecast/observations';
@@ -81,6 +82,9 @@ export function firstNumber(text: string | undefined): number | null {
                 @if (humidity(); as h) { <span>Humidity {{ h }}</span> }
               </div>
             </div>
+            @if (activeLayerReadout(); as lr) {
+              <div class="layer-readout"><span>{{ lr.label }}</span><strong>{{ lr.text }}</strong></div>
+            }
             <div class="when">{{ timeLabel() }} · {{ sel.lat.toFixed(2) }}°N, {{ sel.lon.toFixed(2) }}°E@if (p.elevationM !== null) { · {{ p.elevationM.toFixed(0) }} m }</div>
 
             @if (outlook.days().length) {
@@ -168,9 +172,9 @@ export function firstNumber(text: string | undefined): number | null {
   `,
   styles: [`
     :host { display: contents; }
-    .wrap { position: fixed; top: var(--gutter); left: var(--gutter); z-index: var(--z-card); width: min(410px, calc(100vw - 2 * var(--gutter))); display: flex; flex-direction: column; gap: var(--sp-2); max-height: calc(100dvh - var(--left-stack-h) - 56px); }   /* leaves room for the time tooltip that rises out of the bar */
+    .wrap { position: fixed; top: var(--gutter); left: var(--gutter); z-index: var(--z-card); width: min(410px, calc(100vw - 2 * var(--gutter))); display: flex; flex-direction: column; gap: var(--sp-2); max-height: calc(100dvh - var(--left-stack-h) - 56px); pointer-events: none; }   /* leaves room for the time tooltip that rises out of the bar; pointer-events: none lets taps reach the right-hand menu button on mobile */
 
-    .searchbox { position: relative; flex: none; }
+    .searchbox { position: relative; flex: none; pointer-events: auto; }
     .search { display: flex; align-items: center; gap: var(--sp-2); height: 46px; padding: 0 6px 0 14px; border-radius: 23px; background: var(--surface-1); box-shadow: var(--shadow-2); color: var(--text-secondary); flex: none; }
     .search.open { border-radius: 23px 23px 0 0; }
     .input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: var(--fs-2xl); font-weight: var(--fw-normal); text-overflow: ellipsis; }
@@ -186,7 +190,7 @@ export function firstNumber(text: string | undefined): number | null {
     .results li:hover, .results li.active { background: var(--surface-3); }
     .results li.empty { color: var(--text-muted); cursor: default; font-size: var(--fs-m); }
 
-    .card { padding: var(--sp-3) 14px var(--sp-1); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-2); overflow-y: auto; min-height: 0; animation: sheet-in var(--t-med) both; }
+    .card { padding: var(--sp-3) 14px var(--sp-1); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-2); overflow-y: auto; min-height: 0; animation: sheet-in var(--t-med) both; pointer-events: auto; }
     header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-2); }
     .where strong { display: block; font-size: var(--fs-xl); font-weight: var(--fw-strong); line-height: var(--lh-tight); }
     .sub { font-size: var(--fs-s); color: var(--text-secondary); }
@@ -198,6 +202,8 @@ export function firstNumber(text: string | undefined): number | null {
     .sky { color: var(--accent-strong); }
     .facts { display: flex; flex-direction: column; gap: 1px; margin-left: var(--sp-1); font-size: var(--fs-m); color: var(--text-secondary); min-width: 0; }
     .facts span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .layer-readout { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 4px 0 2px; padding: 4px 10px; border-radius: var(--radius-s); background: var(--accent-soft); font-size: var(--fs-s); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .layer-readout strong { color: var(--text-primary); font-weight: var(--fw-strong); }
     .when { margin: 2px 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); }
 
     .days { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 6px 0 var(--sp-1); border-top: 1px solid var(--line); }
@@ -326,8 +332,18 @@ export class PlaceCardComponent {
     const time = new Intl.DateTimeFormat('en-IN', { timeZone: IST, hour: '2-digit', minute: '2-digit', hour12: false }).format(p.timeMs);
     return `${day} ${time} IST`;
   });
-  /** The row of the layer on the map, which is lit in the full list. */
-  protected readonly layerRow = computed(() => ({ temp: 'temp', wind: 'wind', gust: 'gust', rain: 'rain', humidity: 'humidity', pressure: 'pressure', feels: 'feels', dew: 'dew', rain24: 'rain24', raintot: 'rainrange', extreme: 'extreme', clouds: 'clouds' } as Record<string, string>)[this.state.activeLayerId() ?? ''] ?? '');
+  /** The row of the layer on the map, which is lit in the full list and shown in the summary when not already in the top four facts. */
+  private readonly activeRow = computed(() => {
+    const p = this.inspector.point();
+    return p ? rowsForLayer(p.rows, this.state.activeLayerId(), this.state.level())[0] ?? null : null;
+  });
+  protected readonly layerRow = computed(() => this.activeRow()?.id ?? '');
+  protected readonly activeLayerReadout = computed(() => {
+    const r = this.activeRow();
+    if (!r || !r.text || r.text.startsWith('–')) return null;
+    if (this.state.level() === 'surface' && (r.id === 'temp' || r.id === 'feels' || r.id === 'wind' || r.id === 'humidity')) return null;
+    return r;
+  });
   protected readonly adjusted = computed(() => this.inspector.point()?.rows.some(r => r.terrainAdjusted) ?? false);
 
   // ---- which run these numbers are from

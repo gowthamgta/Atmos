@@ -150,9 +150,12 @@ export class ForecastMapController {
     }
     if (this.pinLabel) {
       const row = point ? rowsForLayer(point.rows, layerId, level)[0] : undefined;
-      const text = row && row.text.length <= 24 && !row.text.startsWith('–') ? row.text : '';   // a long text (the extreme-rain category) stays in the card
+      const text = row && row.text.length <= 28 && !row.text.startsWith('–') ? row.text : '';
       this.pinLabel.textContent = text;
       this.pinLabel.style.display = text ? '' : 'none';
+      const nearRight = this.map.project([sel.lon, sel.lat]).x > this.map.getCanvas().clientWidth - 160;
+      this.pinLabel.style.left = nearRight ? 'auto' : '20px';
+      this.pinLabel.style.right = nearRight ? '20px' : 'auto';
     }
   }
 

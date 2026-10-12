@@ -55,7 +55,7 @@ app-map {
   position: fixed;
   top: var(--gutter);
   right: var(--gutter);
-  z-index: var(--z-bars);
+  z-index: calc(var(--z-card) + 1);
   display: grid;
   place-items: center;
   width: var(--hit);
