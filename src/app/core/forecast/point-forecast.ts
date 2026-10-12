@@ -115,6 +115,16 @@ export function buildPointRows(
       id: 'raintot', label: 'Rain, total so far', text: withUnit(adjust('rain', v('raintot')), v('raintot') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
     });
   }
+  if (!Number.isNaN(v('rainrange'))) {
+    // the rain in the period chosen with the rain accumulation slider
+    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
+      id: 'rainrange', label: 'Rain in the chosen period', text: withUnit(adjust('rain', v('rainrange')), v('rainrange') < 10 ? 1 : 0, 'mm'), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+    });
+  }
+  if (!Number.isNaN(v('extreme'))) {
+    const names = ['No heavy rain agreed', 'Heavy rain (64.5 mm or more)', 'Very heavy rain (115.6 mm or more)', 'Extremely heavy rain (204.5 mm or more)'];
+    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, { id: 'extreme', label: 'Next 24 h, all models agree', text: names[Math.min(3, Math.max(0, Math.round(v('extreme'))))], terrainAdjusted: false });
+  }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {
     rows.push({ id: 'cloudlayers', label: 'Low / mid / high', text: `${layers.map(x => fmt(x)).join(' / ')} %`, terrainAdjusted: false });
@@ -152,7 +162,7 @@ export function buildPointRows(
 
 /** The click-card row that shows each layer's value at the ground. */
 const LAYER_ROW: Record<string, string> = {
-  temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24', raintot: 'raintot',
+  temp: 'temp', tmin24: 'tmin24', tmax24: 'tmax24', feels: 'feels', dew: 'dew', wind: 'wind', gust: 'gust', humidity: 'humidity', rain: 'rain', rain24: 'rain24', raintot: 'rainrange', extreme: 'extreme',
   tcwv: 'tcwv', vis: 'vis', pressure: 'pressure', cape: 'cape', li: 'li', cin: 'cin',
 };
 /** ...and at a pressure level (only some layers can be shown there). */

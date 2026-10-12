@@ -7,6 +7,8 @@ import { bracketSteps } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { PointForecast, blendTime, buildPointRows, inspectVars } from './point-forecast';
 import { TerrainService } from './terrain.service';
+import { ConsensusService } from './consensus.service';
+import { INDIA_GRID, nearestValue } from './derived-fields';
 
 /** Click-to-inspect: reads every forecast variable at a point, blended to the selected time. */
 @Injectable({ providedIn: 'root' })
@@ -16,6 +18,7 @@ export class ForecastInspectorService {
   private readonly state = inject(ForecastStateService);
   private readonly terrain = inject(TerrainService);
   private readonly districts = inject(DistrictLookupService);
+  private readonly consensus = inject(ConsensusService);
 
   /** The clicked location, or null when nothing is selected. */
   readonly selected = signal<{ lat: number; lon: number } | null>(null);
@@ -31,6 +34,9 @@ export class ForecastInspectorService {
       this.state.timeMs();
       this.state.level();
       this.catalog.manifest();
+      this.state.activeLayerId(); // the rain period and the all-models category are worked out only while their layer is on
+      this.state.rangeStartMs();
+      this.state.rangeEndMs();
       if (!sel) {
         this.point.set(null);
         return;
@@ -87,6 +93,25 @@ export class ForecastInspectorService {
           );
         })
       );
+      // the two layers worked out in the browser: the rain in the chosen period, and the category every model agrees on
+      const layerId = this.state.activeLayerId();
+      const from = this.state.rangeStartMs();
+      const to = this.state.rangeEndMs();
+      const totalInfo = manifest.vars['raintot'];
+      if (layerId === 'raintot' && totalInfo && from !== null && to !== null) {
+        const validTimes = this.catalog.validTimes();
+        const totalAt = async (t: number): Promise<number> => {
+          const s = bracketSteps(validTimes, t);
+          const [x, y] = await Promise.all([this.loader.get('raintot', manifest.steps[s.a].h), this.loader.get('raintot', manifest.steps[s.b].h)]);
+          return blendTime(sampleRg16Bitmap(x, g, lat, lon, totalInfo.min, totalInfo.max), sampleRg16Bitmap(y, g, lat, lon, totalInfo.min, totalInfo.max), s.mix);
+        };
+        const [atEnd, atStart] = await Promise.all([totalAt(to), totalAt(from)]);
+        values['rainrange'] = Math.max(0, atEnd - atStart);
+      }
+      if (layerId === 'extreme') {
+        const agreed = await this.consensus.compute(time);
+        if (agreed) values['extreme'] = nearestValue(agreed.values, INDIA_GRID, lat, lon);
+      }
       if (my !== this.token) return; // a newer request replaced this one
       const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().gridKm);
       this.point.set({

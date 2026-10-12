@@ -60,14 +60,17 @@ UKMO = RegularModel(
 # the three forecasts added for a five-day view: they are coarser (25 km), so they are drawn on a 0.25 degree grid of the same
 # box (about 15 thousand cells instead of 96 thousand: their five days of pictures stay small on the site)
 COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0.25, "india-0.25-5-37.5N-68-97.5E")
-FIVE_DAYS_3H = list(range(0, 121, 3))
-FIVE_DAYS_6H = list(range(0, 121, 6))
+# every step each forecast publishes (Open-Meteo): GFS hourly to +120 h then 3-hourly to +384 h, of which every 3 h to +120 h and every
+# 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. A run built shorter than this just publishes the steps it has.
+GFS_STEPS = list(range(0, 121, 3)) + list(range(126, 385, 6))
+AIGFS_STEPS = list(range(0, 385, 6))
+AIFS_STEPS = list(range(0, 361, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
 # NOAA GFS: 13 km surface fields (ncep_gfs013) and the pressure levels, gusts, CAPE and pressure at 25 km (ncep_gfs025).
 # The 00Z and 12Z runs, every 3 hours to +120 h.
 GFS = RegularModel(
-    model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_3H, grid=COARSE_GRID,
+    model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=GFS_STEPS, grid=COARSE_GRID,
     sources=[
         Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"] + SURFACE_UV)),
         Source("ncep_gfs025", _SAME(["pressure_msl", "wind_gusts_10m", "cape", "convective_inhibition", "lifted_index", "visibility"]
@@ -75,18 +78,18 @@ GFS = RegularModel(
     ],
 )
 
-# NOAA AIGFS (AI forecast of NOAA): 25 km, the 00Z and 12Z runs, every 6 hours to +120 h.
+# NOAA AIGFS (AI forecast of NOAA): 25 km, every 6 hours to +384 h.
 AIGFS = RegularModel(
-    model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
+    model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 6, 12, 18), step_hours=AIGFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
         "ncep_aigfs025",
         _SAME(["temperature_2m", "precipitation", "cloud_cover", "pressure_msl", "wind_gusts_10m"] + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()),
     )],
 )
 
-# ECMWF AIFS (single level, the open AI model): 25 km, the 00Z and 12Z runs, every 6 hours to +120 h.
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +360 h.
 AIFS = RegularModel(
-    model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=FIVE_DAYS_6H, grid=COARSE_GRID,
+    model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
         "ecmwf_aifs025_single",
         _SAME(["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]

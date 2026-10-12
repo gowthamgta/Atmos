@@ -3,6 +3,7 @@ import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.ser
 import { ForecastLayerDef, legendPosition, paletteGradientCss } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { IconComponent } from '../../shared/icon.component';
+import { ConsensusService } from '../../core/forecast/consensus.service';
 import { layerIcon } from '../../shared/icons';
 
 /** Colour legend of the layer on screen, with the model and run it comes from. */
@@ -29,6 +30,14 @@ import { layerIcon } from '../../shared/icons';
             <span class="state"><span class="spinner"></span>Loading forecast…</span>
           } @else if (catalog.status() === 'error') {
             <span class="state error">Forecast unavailable. Retrying every 10 min.</span>
+          } @else if (layer.id === 'extreme') {
+            @if (consensus.models().length) {
+              <span class="model">Compared across {{ consensus.models().length }} models</span>
+              <span class="dot">·</span>
+              <span>{{ consensus.models().join(', ') }}</span>
+            } @else {
+              <span class="state">Needs at least two models that cover this time</span>
+            }
           } @else {
             <span class="model">{{ catalog.model().label }}</span>
             <span class="dot">·</span>
@@ -66,6 +75,7 @@ import { layerIcon } from '../../shared/icons';
 export class ForecastLegendComponent {
   protected readonly state = inject(ForecastStateService);
   protected readonly catalog = inject(ForecastCatalogService);
+  protected readonly consensus = inject(ConsensusService);
 
   protected readonly runLabel = computed(() => {
     // a model run is YYYYMMDDTHHZ; the blend's run is when it was assembled, YYYYMMDDTHHMMZ

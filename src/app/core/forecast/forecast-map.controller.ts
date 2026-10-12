@@ -1,4 +1,6 @@
 import { STATION_CIRCLE_LAYER } from './observations';
+import { ConsensusService } from './consensus.service';
+import { INDIA_GRID, blendFields, differenceField, encodeFieldBitmap } from './derived-fields';
 import { StationSelectionService } from './station-selection.service';
 import { EffectRef, Injectable, Injector, effect, inject } from '@angular/core';
 import { Marker } from 'maplibre-gl';
@@ -13,7 +15,8 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
 import { TerrainService } from './terrain.service';
-import { ForecastGrid, bracketSteps } from './forecast.model';
+import { ForecastGrid, ForecastManifest, bracketSteps } from './forecast.model';
+import type { ForecastLayerDef } from './forecast-layers';
 import { isPhone } from '../ui/device-profile';
 
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
@@ -48,6 +51,7 @@ export class ForecastMapController {
   private readonly terrain = inject(TerrainService);
   private readonly inspector = inject(ForecastInspectorService);
   private readonly stations = inject(StationSelectionService);
+  private readonly consensus = inject(ConsensusService);
 
   private map: MapLibreMap | null = null;
   private layer: ScalarFieldLayer | null = null;
@@ -152,14 +156,28 @@ export class ForecastMapController {
     }
     // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It is used on a field
     // whose grid lines up with it and overlaps it (see terrainOnGrid); the shader leaves the cells outside its box alone
+    const consensusLayer = def.id === 'extreme';           // drawn from every model, on the India grid of ECMWF IFS
+    const rangeLayer = def.id === 'raintot';               // the rain between two chosen times
+    const layerGrid = consensusLayer ? INDIA_GRID : manifest.grid;
+    const rangeStart = this.state.rangeStartMs();          // read here so the layer redraws when the slider moves
+    const rangeEnd = this.state.rangeEndMs();
     const terrainData = this.terrain.data();
-    const onTerrain = !!terrainData && terrainOnGrid(manifest.grid, terrainData.meta.grid);
-    const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, this.catalog.model().gridKm).bitmap : null;
+    const onTerrain = !!terrainData && terrainOnGrid(layerGrid, terrainData.meta.grid);
+    const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, consensusLayer ? 9 : this.catalog.model().gridKm).bitmap : null;
     layer.setTerrain(onTerrain ? terrainData : null, modelGround);
     layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
     layer.setLite(isPhone()); // phones take the cheaper relief slope; larger screens take the full one
     if (!terrainData) {
       this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));
+    }
+
+    if (consensusLayer) {
+      void this.updateConsensus(layer, def, time, ++this.token);
+      return;
+    }
+    if (rangeLayer) {
+      void this.updateRainRange(layer, def, manifest, rangeStart, rangeEnd, ++this.token);
+      return;
     }
 
     const info = manifest.vars[def.varId];
@@ -194,6 +212,53 @@ export class ForecastMapController {
         for (const v of varIds) this.loader.prefetch(v, ahead);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
+  }
+
+  /** The rain between the two chosen times: the running total at the end minus the one at the start, each blended between its two steps. */
+  private async updateRainRange(layer: ScalarFieldLayer, def: ForecastLayerDef, manifest: ForecastManifest, start: number | null, end: number | null, my: number): Promise<void> {
+    const info = manifest.vars['raintot'];
+    if (!info || start === null || end === null) {
+      layer.setLayer(null);
+      return;
+    }
+    const validTimes = this.catalog.validTimes();
+    const totalAt = async (t: number): Promise<Float32Array> => {
+      const { a, b, mix } = bracketSteps(validTimes, t);
+      const [bmpA, bmpB] = await Promise.all([this.loader.get('raintot', manifest.steps[a].h), this.loader.get('raintot', manifest.steps[b].h)]);
+      return blendFields(decodeFieldBitmap(bmpA, info.min, info.max), decodeFieldBitmap(bmpB, info.min, info.max), mix);
+    };
+    try {
+      const [atEnd, atStart] = await Promise.all([totalAt(end), totalAt(start)]);
+      if (my !== this.token || !this.layer) return;
+      const bitmap = await encodeFieldBitmap(differenceField(atEnd, atStart), manifest.grid, info.min, info.max);
+      if (my !== this.token || !this.layer) return;
+      const frame = { key: `${manifest.model}/${manifest.run}.${manifest.build ?? ''}/raintot-range/${start}-${end}`, bitmap };
+      layer.setGrid(manifest.grid);
+      layer.setLayer(def, [info.min, info.max]);
+      layer.setFrames(frame, frame, 0);
+    } catch (err) {
+      console.warn('[forecast] rain accumulation failed', err);
+    }
+  }
+
+  /** The extreme-rain layer: the rain category of the next 24 h that every model agrees on (see ConsensusService). */
+  private async updateConsensus(layer: ScalarFieldLayer, def: ForecastLayerDef, time: number, my: number): Promise<void> {
+    try {
+      const result = await this.consensus.compute(time);
+      if (my !== this.token || !this.layer) return;
+      if (!result) {
+        layer.setLayer(null);
+        return;
+      }
+      const bitmap = await encodeFieldBitmap(result.values, INDIA_GRID, 0, 3);
+      if (my !== this.token || !this.layer) return;
+      const frame = { key: `consensus/${Math.round(time / 60_000)}/${result.models.join(',')}`, bitmap };
+      layer.setGrid(INDIA_GRID);
+      layer.setLayer(def, [0, 3]);
+      layer.setFrames(frame, frame, 0);
+    } catch (err) {
+      console.warn('[forecast] consensus failed', err);
+    }
   }
 
   private addIsobarLayers(map: MapLibreMap, beforeId?: string): void {

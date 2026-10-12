@@ -42,6 +42,9 @@ export class ForecastStateService {
   readonly windVars = computed(() => windVars(this.level()));
   /** Variable and line spacing for the pressure lines at the selected altitude. */
   readonly contour = computed(() => contourSpec(this.level()));
+  /** The period of the rain accumulation layer, in epoch ms (null until the layer is first chosen). */
+  readonly rangeStartMs = signal<number | null>(null);
+  readonly rangeEndMs = signal<number | null>(null);
   /** Selected time in epoch ms (UTC); null until the first layer is switched on. */
   readonly timeMs = signal<number | null>(null);
   readonly playing = signal(false);
@@ -211,6 +214,7 @@ export class ForecastStateService {
   reclampTime(): void {
     const t = this.timeMs();
     if (t !== null) this.setTime(t);
+    this.ensureRainRange();
   }
 
   setTime(ms: number): void {
@@ -218,6 +222,43 @@ export class ForecastStateService {
     const end = this.endMs();
     if (start === null || end === null) return;
     this.timeMs.set(Math.min(Math.max(ms, start), end));
+  }
+
+  /** The period shortest the slider allows. */
+  static readonly MIN_RANGE_MS = 3 * 3_600_000;
+
+  /** Start of the rain accumulation period (kept at least 3 h before its end and inside the run). */
+  setRangeStart(ms: number): void {
+    const start = this.startMs();
+    const end = this.rangeEndMs();
+    if (start === null || end === null) return;
+    this.rangeStartMs.set(Math.min(Math.max(ms, start), end - ForecastStateService.MIN_RANGE_MS));
+  }
+
+  /** End of the rain accumulation period (kept at least 3 h after its start and inside the run). */
+  setRangeEnd(ms: number): void {
+    const last = this.endMs();
+    const from = this.rangeStartMs();
+    if (last === null || from === null) return;
+    this.rangeEndMs.set(Math.max(Math.min(ms, last), from + ForecastStateService.MIN_RANGE_MS));
+  }
+
+  /** The first time the period is needed: from now for 24 h; after that (or after a change of model) it is only kept inside the run. */
+  private ensureRainRange(): void {
+    const first = this.startMs();
+    const last = this.endMs();
+    if (first === null || last === null) return;
+    const gap = ForecastStateService.MIN_RANGE_MS;
+    let from = this.rangeStartMs();
+    let to = this.rangeEndMs();
+    if (from === null || to === null) {
+      from = Math.min(Math.max(Date.now(), first), last - gap);
+      to = Math.min(from + 24 * 3_600_000, last);
+    }
+    from = Math.min(Math.max(from, first), last - gap);
+    to = Math.max(Math.min(to, last), from + gap);
+    this.rangeStartMs.set(from);
+    this.rangeEndMs.set(to);
   }
 
   /** Move by whole hours (keyboard shortcuts). */
@@ -270,5 +311,6 @@ export class ForecastStateService {
     const current = this.timeMs();
     if (current === null) this.timeMs.set(Math.min(Math.max(Date.now(), start), end));
     else this.setTime(current); // a newer run may have a different range
+    this.ensureRainRange();
   }
 }

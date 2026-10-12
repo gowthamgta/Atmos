@@ -214,7 +214,7 @@ class RegularModel:
         self.LABEL = label
         self.sources = sources
         self.RUN_HOURS = run_hours
-        self.LIVE_FORMAT = 1           # v1 = the IMD rain category layer (extreme); a run built without it is built again
+        self.LIVE_FORMAT = 2           # v1 = the IMD rain category layer (extreme); v2 = every published step (up to +384 h); an older run is built again
         self.STEP_HOURS = step_hours
         provided = {k for s in sources for k in s.vars} | {k for s in sources for w in s.winds for k in w[:2]}
         self.PROVIDES = frozenset(provided)
