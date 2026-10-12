@@ -82,7 +82,7 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("tmin24", "°C", -10, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
     Var("tmax24", "°C", -10, 50),        # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
-    Var("extreme", "level", 0, 3),        # IMD 24 h rain category: 1 heavy (64.5 mm), 2 very heavy (115.6 mm), 3 extremely heavy (204.5 mm); 0 below (derived from rain24)
+    Var("extreme", "%", 0, 100),          # multi-model probability of rain over the next 24 hours (0 to 100 %, derived from rain24 across models)
     Var("raintot", "mm", 0, 1500),        # rain from the start of the run to this step (derived across steps, see derive.cumulative_accumulation)
     *_level_vars(),
 ]}

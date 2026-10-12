@@ -1,6 +1,5 @@
 import { degToCompass } from '../domain/models/compass';
 import { METRIC, TEMP_LABEL, Units, formatPressure, formatRain, formatWind, tempFromC } from '../units/units';
-import { severityToRainMm } from './derived-fields';
 import { Level, LEVEL_KM } from './forecast-layers';
 import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terrain-correction';
 
@@ -146,11 +145,10 @@ export function buildPointRows(
     });
   }
   if (!Number.isNaN(v('extreme'))) {
-    const sev = v('extreme');
-    const mm = severityToRainMm(sev);
-    const cat = sev >= 2.5 ? 'Extreme' : sev >= 1.5 ? 'Very heavy' : sev >= 0.5 ? 'Heavy' : mm >= 1 ? 'Light' : '';
-    const text = cat ? `${cat} · ${formatRain(mm, units)}` : 'No heavy rain';
-    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, { id: 'extreme', label: 'Next 24 h, all models agree', text, terrainAdjusted: false });
+    const prob = Math.round(Math.min(100, Math.max(0, v('extreme'))));
+    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
+      id: 'extreme', label: 'Rain probability, next 24 h', text: `${prob} %`, terrainAdjusted: false,
+    });
   }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {

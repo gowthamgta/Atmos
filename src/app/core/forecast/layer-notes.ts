@@ -39,9 +39,9 @@ export const LAYER_NOTES: Record<string, LayerNote> = {
     time: 'The two ends of the period are blended between model steps like any other time.',
   },
   extreme: {
-    what: 'The IMD category of the rain in the next 24 hours that EVERY model reaching that far agrees on: heavy 64.5 mm, very heavy 115.6 mm, extremely heavy 204.5 mm or more.',
+    what: 'Probability of rain over the next 24 hours (0 to 100 %), worked out by comparing every forecast model whose run covers the time.',
     time: `${NEXT_24H} Each model's picture nearest the time on the bar is used.`,
-    gaps: `A colour appears only where all the models that cover the time give at least that category (the lowest of them is shown); with fewer than two models there is nothing to agree on. ${NO_PARTIAL}`,
+    gaps: `Requires at least two models covering the time to estimate multi-model probability. ${NO_PARTIAL}`,
   },
   tcwv: { what: 'Total water vapour in the whole column of air above the ground (precipitable water).', time: INSTANT },
   vis: { what: 'Horizontal visibility at the ground.', time: INSTANT },

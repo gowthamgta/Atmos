@@ -102,6 +102,17 @@ function smoothNeighbourhoodMax(field: Float32Array, nx: number, ny: number): Fl
   return out;
 }
 
+/** Maps a model's 24 h rainfall (mm) to its implied probability of rain (0 to 100 %). */
+export function rainMmToProbability(mm: number): number {
+  if (Number.isNaN(mm)) return NaN;
+  if (mm <= 0.1) return 0;
+  if (mm < 1) return ((mm - 0.1) / 0.9) * 25;
+  if (mm < 5) return 25 + ((mm - 1) / 4) * 35;
+  if (mm < 15) return 60 + ((mm - 5) / 10) * 25;
+  if (mm < 40) return 85 + ((mm - 15) / 25) * 15;
+  return 100;
+}
+
 /** Maps agreed 24 h rain (mm) onto the continuous 0..3 severity scale (0.5 = notable/moderate-heavy threshold, 1 = heavy, 2 = very heavy, 3 = extreme). */
 export function rainMmToSeverity(mm: number): number {
   if (Number.isNaN(mm)) return NaN;
@@ -125,9 +136,9 @@ export function severityToRainMm(sev: number): number {
 }
 
 /**
- * Multi-model extreme-rain consensus on `grid` from each model's 24 h rainfall (`rain24` in mm):
- * accounts for ~22 km spatial displacement of rain bands between models and requires at least two models
- * to agree in the neighbourhood (so one outlier never triggers alone, and one smooth AI model never zeroes out the rest).
+ * Multi-model probability of rain over the next 24 h (`0..100 %`) on `grid` from each model's 24 h rainfall (`rain24` in mm):
+ * accounts for ~22 km spatial displacement of rain bands between models and blends the multi-model mean probability with the
+ * second-highest model's probability so multi-model agreement boosts confidence while a single outlier stays modest.
  */
 export function extremeConsensus(rain24Fields: readonly Float32Array[], grid: ForecastGrid = INDIA_GRID): Float32Array {
   const n = grid.nx * grid.ny;
@@ -137,21 +148,20 @@ export function extremeConsensus(rain24Fields: readonly Float32Array[], grid: Fo
   const scratch = new Float64Array(envelopes.length);
   for (let i = 0; i < n; i++) {
     let count = 0;
-    let sum = 0;
+    let sumProb = 0;
     for (let m = 0; m < envelopes.length; m++) {
       const v = envelopes[m][i];
       if (!Number.isNaN(v)) {
-        scratch[count++] = v;
-        sum += v;
+        const p = rainMmToProbability(v);
+        scratch[count++] = p;
+        sumProb += p;
       }
     }
     if (count < 2) continue;
-    // Sort the valid model values at this cell in descending order
     const valid = scratch.subarray(0, count).sort();
-    const secondHighest = valid[count - 2];
-    const mean = sum / count;
-    const agreedMm = 0.75 * secondHighest + 0.25 * mean;
-    out[i] = rainMmToSeverity(agreedMm);
+    const secondHighestProb = valid[count - 2];
+    const meanProb = sumProb / count;
+    out[i] = Math.min(100, Math.max(0, 0.6 * meanProb + 0.4 * secondHighestProb));
   }
   return out;
 }

@@ -257,7 +257,7 @@ export class ForecastMapController {
     }
   }
 
-  /** The extreme-rain layer: the rain category of the next 24 h that every model agrees on (see ConsensusService). */
+  /** The multi-model 24 h rain probability layer (`0..100 %`, see ConsensusService). */
   private async updateConsensus(layer: ScalarFieldLayer, def: ForecastLayerDef, time: number, my: number): Promise<void> {
     try {
       const result = await this.consensus.compute(time);
@@ -266,11 +266,11 @@ export class ForecastMapController {
         layer.setLayer(null);
         return;
       }
-      const bitmap = await encodeFieldBitmap(result.values, INDIA_GRID, 0, 3);
+      const bitmap = await encodeFieldBitmap(result.values, INDIA_GRID, 0, 100);
       if (my !== this.token || !this.layer) return;
       const frame = { key: `consensus/${Math.round(time / 60_000)}/${result.models.join(',')}`, bitmap };
       layer.setGrid(INDIA_GRID);
-      layer.setLayer(def, [0, 3]);
+      layer.setLayer(def, [0, 100]);
       layer.setFrames(frame, frame, 0);
     } catch (err) {
       console.warn('[forecast] consensus failed', err);

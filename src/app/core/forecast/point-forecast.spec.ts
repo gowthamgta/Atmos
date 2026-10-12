@@ -205,16 +205,16 @@ describe('lowest and highest temperature rows', () => {
   });
 });
 
-describe('extreme rain row and map tooltip', () => {
-  it('formats severity with category and agreed 24 h rain in <= 24 chars so the map pin tooltip always shows it', () => {
-    const textFor = (extreme: number) => rowsForLayer(buildPointRows({ t2m: 28, extreme }, null), 'extreme')[0].text;
-    expect(textFor(0)).toBe('No heavy rain');
-    expect(textFor(0.25)).toBe('Light · 5.0 mm');
-    expect(textFor(1.0)).toBe('Heavy · 22 mm');
-    expect(textFor(2.0)).toBe('Very heavy · 50 mm');
-    expect(textFor(3.0)).toBe('Extreme · 100 mm');
-    for (const s of [0, 0.25, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]) {
-      expect(textFor(s).length).toBeLessThanOrEqual(24);
+describe('rain probability row and map tooltip', () => {
+  it('formats 24 h rain probability as percentage in <= 24 chars so the map pin tooltip always shows it', () => {
+    const rowFor = (extreme: number) => rowsForLayer(buildPointRows({ t2m: 28, extreme }, null), 'extreme')[0];
+    expect(rowFor(0).label).toBe('Rain probability, next 24 h');
+    expect(rowFor(0).text).toBe('0 %');
+    expect(rowFor(25.4).text).toBe('25 %');
+    expect(rowFor(68.7).text).toBe('69 %');
+    expect(rowFor(100).text).toBe('100 %');
+    for (const p of [0, 15, 40, 65, 85, 100]) {
+      expect(rowFor(p).text.length).toBeLessThanOrEqual(24);
     }
   });
 });

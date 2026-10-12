@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeRg16, ForecastGrid } from './forecast.model';
-import { blendFields, differenceField, encodeFieldPixels, extremeConsensus, minAcross, rainMmToSeverity, resampleField } from './derived-fields';
+import { blendFields, differenceField, encodeFieldPixels, extremeConsensus, minAcross, rainMmToProbability, resampleField } from './derived-fields';
 
 const f = (...v: number[]) => new Float32Array(v);
 
@@ -25,18 +25,19 @@ describe('derived fields', () => {
     expect(Number.isNaN(m[3])).toBe(true);
   });
 
-  it('computes continuous multi-model extreme rain consensus across neighbourhoods without letting a single smooth model zero it out', () => {
+  it('computes continuous 0–100% multi-model probability of rain for the next 24 hours across neighbourhoods', () => {
     const grid: ForecastGrid = { latMax: 11, latMin: 10, lonMin: 78, lonMax: 79, step: 0.5, nx: 3, ny: 3 };
     const m1 = f(0, 0, 0, 0, 60, 0, 0, 0, 0);
     const m2 = f(0, 0, 0, 0, 0, 50, 0, 0, 0); // slightly displaced peak
-    const m3 = f(0, 0, 0, 0, 5, 0, 0, 0, 0);  // smooth AI model with low peak
+    const m3 = f(0, 0, 0, 0, 5, 0, 0, 0, 0);  // smooth AI model with moderate rain
     const agreed = extremeConsensus([m1, m2, m3], grid);
-    expect(agreed[4]).toBeGreaterThanOrEqual(1.5);
-    expect(rainMmToSeverity(0)).toBe(0);
-    expect(rainMmToSeverity(10)).toBeCloseTo(0.5, 5);
-    expect(rainMmToSeverity(22)).toBeCloseTo(1.0, 5);
-    expect(rainMmToSeverity(50)).toBeCloseTo(2.0, 5);
-    expect(rainMmToSeverity(120)).toBe(3.0);
+    expect(agreed[4]).toBeGreaterThanOrEqual(80);
+    expect(agreed[4]).toBeLessThanOrEqual(100);
+    expect(rainMmToProbability(0)).toBe(0);
+    expect(rainMmToProbability(1)).toBeCloseTo(25, 5);
+    expect(rainMmToProbability(5)).toBeCloseTo(60, 5);
+    expect(rainMmToProbability(15)).toBeCloseTo(85, 5);
+    expect(rainMmToProbability(45)).toBe(100);
   });
 
   it('puts a coarse model on the finer grid', () => {

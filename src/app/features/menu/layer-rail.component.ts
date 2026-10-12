@@ -28,7 +28,7 @@ const RAIL: readonly RailItem[] = [
   { id: 'humidity', label: 'Humidity', icon: 'humidity', layerId: 'humidity' },
   { id: 'raintot', label: 'Rain accumulation', icon: 'raintot', layerId: 'raintot' },
   { id: 'cape', label: 'Thunderstorms', icon: 'bolt', layerId: 'cape' },
-  { id: 'extreme', label: 'Extreme rain', icon: 'alert', layerId: 'extreme' },
+  { id: 'extreme', label: 'Rain probability', icon: 'alert', layerId: 'extreme' },
 ];
 
 /**
