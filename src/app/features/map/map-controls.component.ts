@@ -42,6 +42,8 @@ import { IconComponent } from '../../shared/icon.component';
     .zoom button:focus-visible { outline-offset: -3px; }
     /* a touch screen pinches; the buttons would only take room from the map */
     @media (pointer: coarse) { .zoom { display: none; } }
+    /* a phone with the meteogram open has no room above it for the model button: the readout names the model, and the menu lists them */
+    @media (max-width: 760px) { :host-context(html[data-sheet='open']) .cluster { display: none; } }
 
     .caption { padding: 3px 12px; border-radius: 13px; background: var(--surface-1); color: var(--text-secondary); font-size: var(--fs-s); font-weight: var(--fw-medium); box-shadow: var(--shadow-1); }
   `]

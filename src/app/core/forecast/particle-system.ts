@@ -164,3 +164,62 @@ export function spawnRegion(view: ViewState, grid: ForecastGrid): SpawnRegion {
   if (west >= east || south >= north) return { west: grid.lonMin, east: lonMax, south: latMin, north: grid.latMax };
   return { west, east, south, north };
 }
+
+/**
+ * How many wind streaks to draw, kept to what the device can animate. When frames stay slow (an average over 28 ms, under 36 frames a
+ * second) for a second, 15% of the streaks go, down to a floor. When they stay fast (under 18.5 ms, near 60 frames a second) for six seconds,
+ * 8% come back, but never up to the count that was too many before: so a slow moment (a window being resized, the first pictures decoding)
+ * does not leave the animation thin for the rest of the visit, and a device that can only just keep up does not swing between two counts.
+ */
+export class AdaptiveCount {
+  static readonly SLOW_MS = 28;
+  static readonly FAST_MS = 18.5;
+  static readonly SLOW_FOR_MS = 1000;
+  static readonly FAST_FOR_MS = 6000;
+
+  private ema = 16.7;
+  private slowSince = 0;
+  private fastSince = 0;
+  private ceiling = Infinity;
+
+  constructor(readonly min: number, readonly max: number) {}
+
+  /** The smoothed time between frames (ms). */
+  get frameMs(): number {
+    return this.ema;
+  }
+
+  /** Forget what was learnt (the view changed a lot): the full count may be tried again. */
+  reset(): void {
+    this.ceiling = Infinity;
+    this.slowSince = 0;
+    this.fastSince = 0;
+  }
+
+  /** Feed one frame (`dtMs` since the last, at time `nowMs`) and the count now in use. Returns the new count, or null to keep it. */
+  update(nowMs: number, dtMs: number, count: number): number | null {
+    if (dtMs <= 0) return null;
+    this.ema = this.ema * 0.9 + dtMs * 0.1;
+    if (this.ema > AdaptiveCount.SLOW_MS) {
+      this.fastSince = 0;
+      this.slowSince ||= nowMs;
+      if (nowMs - this.slowSince > AdaptiveCount.SLOW_FOR_MS && count > this.min) {
+        this.slowSince = nowMs;
+        this.ceiling = Math.min(this.ceiling, count * 0.97);
+        return Math.max(this.min, Math.round(count * 0.85));
+      }
+    } else if (this.ema < AdaptiveCount.FAST_MS) {
+      this.slowSince = 0;
+      this.fastSince ||= nowMs;
+      const limit = Math.min(this.max, this.ceiling);
+      if (nowMs - this.fastSince > AdaptiveCount.FAST_FOR_MS && count < limit) {
+        this.fastSince = nowMs;
+        return Math.min(limit, Math.round(count * 1.08));
+      }
+    } else {
+      this.slowSince = 0;
+      this.fastSince = 0;
+    }
+    return null;
+  }
+}

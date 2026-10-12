@@ -71,7 +71,7 @@ function istClock(ms: number): string {
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
-    .ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .ends { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
     .loading, .msg { margin: 6px 0 0; color: var(--text-secondary); font-size: 11px; }
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
@@ -81,7 +81,7 @@ function istClock(ms: number): string {
     .view.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
-    .note { margin: 10px 0 0; font-size: 10px; color: var(--text-muted); }
+    .note { margin: 10px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
     /* phones: keep it to a small card (time, slider, view) so the picture stays visible */
     @media (max-width: 700px) {
       .panel { bottom: 84px; width: min(260px, calc(100vw - 24px)); padding: 8px 10px; }

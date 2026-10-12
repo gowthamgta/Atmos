@@ -77,7 +77,7 @@ function fmt(v: number | null, unit: string): string {
     .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
     dt { color: var(--text-secondary); }
     dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
-    footer { margin-top: 6px; font-size: 10px; color: var(--text-muted); }
+    footer { margin-top: 6px; font-size: var(--fs-xs); color: var(--text-muted); }
     @media (max-width: 700px) {
       .card { top: auto; bottom: calc(var(--stack-h) + 10px); left: var(--gutter); right: var(--gutter); width: auto; max-height: 46dvh; }
     }

@@ -10,12 +10,22 @@ export class FieldLoaderService {
   private readonly cache = new Map<string, ImageBitmap>();
   private readonly inflight = new Map<string, Promise<ImageBitmap>>();
 
+  /** How many pictures are held, decoded, in memory now (the performance meter shows it). */
+  get cached(): number {
+    return this.cache.size;
+  }
+
   /** Cache key; includes model, run and build so a new run, a rebuilt run or another model never reuses old pixels. */
   static key(model: string, run: string, varId: string, stepHour: number, build = ''): string {
     return `${model}/${run}${build ? `.${build}` : ''}/${varId}/${stepHour}`;
   }
 
-  get(varId: string, stepHour: number): Promise<ImageBitmap> {
+  /**
+   * One picture. `priority` is the browser's hint for the download: the map's own pictures are asked for as they are (auto), the ones the
+   * place card reads in the background as 'low', so on a slow connection the map comes first. A picture already on its way keeps the
+   * priority it was first asked for with.
+   */
+  get(varId: string, stepHour: number, priority: 'auto' | 'low' = 'auto'): Promise<ImageBitmap> {
     const manifest = this.catalog.manifest();
     if (!manifest) return Promise.reject(new Error('forecast manifest not loaded'));
     const run = manifest.run;
@@ -29,7 +39,7 @@ export class FieldLoaderService {
     }
     let pending = this.inflight.get(key);
     if (!pending) {
-      pending = this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build)).then(bmp => {
+      pending = this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build), priority).then(bmp => {
         this.cache.set(key, bmp);
         this.evict();
         return bmp;
@@ -45,8 +55,8 @@ export class FieldLoaderService {
     for (const h of stepHours) this.get(varId, h).catch(() => undefined);
   }
 
-  private async fetchBitmap(url: string): Promise<ImageBitmap> {
-    const res = await fetch(url);
+  private async fetchBitmap(url: string, priority: 'auto' | 'low'): Promise<ImageBitmap> {
+    const res = await fetch(url, priority === 'low' ? { priority: 'low' } : undefined);
     if (!res.ok) {
       // A 404 usually means a newer run replaced this one; re-read latest.json so the next call recovers.
       if (res.status === 404) void this.catalog.refresh();

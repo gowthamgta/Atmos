@@ -62,7 +62,7 @@ export class ModelRunsService implements OnDestroy {
     // the model on screen is looked at as soon as there is one (the model button shows whether it is current); a change of run looks again
     effect(() => {
       const id = this.catalog.activeModelId();
-      this.catalog.manifest();
+      if (!this.catalog.manifest()) return;       // the run on screen is not known yet: looking now would only be done again
       untracked(() => {
         // the model that was on screen before is looked up from its own latest.json from now on, and a new run is a reason to look again
         this.wanted.add(id);

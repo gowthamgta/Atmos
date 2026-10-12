@@ -67,16 +67,16 @@ export function shortUnit(unit: string): string {
     .legend { position: fixed; left: 0; right: 0; bottom: 0; height: var(--legend-h); z-index: 910; background: var(--surface-0); }
     .bar { position: relative; height: 100%; box-shadow: 0 -1px 0 var(--line); }
     .unit {
-      position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; padding: 0 12px 0 10px; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff;
+      position: absolute; left: 0; top: 0; bottom: 0; z-index: 1; min-width: var(--hit); padding: 0 12px 0 10px; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff;
       font-size: var(--fs-xs); font-weight: var(--fw-strong); letter-spacing: 0.02em; cursor: pointer; white-space: nowrap; max-width: 40vw; overflow: hidden; text-overflow: ellipsis;
     }
     .unit:not(:disabled):hover { background: rgba(0, 0, 0, 0.78); }
     .unit:disabled { cursor: default; }
     .tick {
-      position: absolute; top: 50%; left: clamp(64px, calc(var(--p) * 1%), calc(100% - 44px)); transform: translate(-50%, -50%); padding: 1px 6px; border-radius: 9px;
+      position: absolute; top: 50%; left: clamp(64px, calc(var(--p) * 1%), calc(100% - 52px)); transform: translate(-50%, -50%); padding: 1px 6px; border-radius: 9px;
       background: var(--tick-bg); color: #fff; font-size: var(--fs-s); font-weight: var(--fw-strong); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none;
     }
-    .about { position: absolute; right: 0; top: 0; bottom: 0; z-index: 1; display: grid; place-items: center; width: 34px; padding: 0; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff; cursor: pointer; }
+    .about { position: absolute; right: 0; top: 0; bottom: 0; z-index: 1; display: grid; place-items: center; width: max(34px, var(--hit)); padding: 0; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff; cursor: pointer; }
     .about:hover, .about.on { background: rgba(0, 0, 0, 0.82); }
     .about.on { color: var(--accent-strong); }
     .about:focus-visible { outline-offset: -3px; }

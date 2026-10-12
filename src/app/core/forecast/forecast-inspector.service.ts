@@ -38,6 +38,8 @@ export class ForecastInspectorService {
   readonly detail = signal(false);
   private homeDone = false;
   readonly busy = signal(false);
+  /** How many of the variables wanted for the full list have been read (the card says so while it waits). */
+  readonly progress = signal<{ done: number; total: number }>({ done: 0, total: 0 });
 
   private token = 0;
   private lastKey = '';
@@ -148,19 +150,23 @@ export class ForecastInspectorService {
       const detailed = this.detail();
       const wanted = detailed ? inspectVars(level) : summaryVars(this.state.activeLayer());
       const values: Record<string, number> = {};
+      let done = 0;
+      if (detailed) this.progress.set({ done: 0, total: wanted.length });
       await Promise.all(
         wanted.map(async id => {
           const info = manifest.vars[id];
           if (!info) {
             values[id] = NaN; // this model does not publish the variable (e.g. gusts on AIFS)
-            return;
+          } else {
+            const [bmpA, bmpB] = await Promise.all([this.loader.get(id, hA, 'low'), this.loader.get(id, hB, 'low')]);
+            values[id] = blendTime(
+              sampleRg16Bitmap(bmpA, g, lat, lon, info.min, info.max),
+              sampleRg16Bitmap(bmpB, g, lat, lon, info.min, info.max),
+              mix
+            );
           }
-          const [bmpA, bmpB] = await Promise.all([this.loader.get(id, hA), this.loader.get(id, hB)]);
-          values[id] = blendTime(
-            sampleRg16Bitmap(bmpA, g, lat, lon, info.min, info.max),
-            sampleRg16Bitmap(bmpB, g, lat, lon, info.min, info.max),
-            mix
-          );
+          done++;
+          if (detailed && my === this.token) this.progress.set({ done, total: wanted.length });
         })
       );
       // the two layers worked out in the browser: the rain in the chosen period, and the category every model agrees on

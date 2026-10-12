@@ -189,6 +189,8 @@
 @media (pointer: coarse) {
   :root {
     --hit: 44px;
+    /* the colour bar holds two buttons (the unit and "about this layer"): taller, so a finger can hit them */
+    --legend-h: 34px;
   }
 }
 

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio, over, parseColor } from './contrast';
 
@@ -94,5 +94,23 @@ describe('the type scale', () => {
   it('steps up: each size is larger than the one before it', () => {
     const sizes = ['--fs-xs', '--fs-s', '--fs-m', '--fs-l', '--fs-xl', '--fs-2xl'].map(t => parseFloat(DARK[t]));
     for (let i = 1; i < sizes.length; i++) expect(sizes[i]).toBeGreaterThan(sizes[i - 1]);
+  });
+});
+
+describe('the component styles keep to the type scale', () => {
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? files(`${dir}/${e.name}`) : e.name.endsWith('.ts') || e.name.endsWith('.css') ? [`${dir}/${e.name}`] : []));
+
+  it('sets no text below 11 px (the ▲ that marks a value moved to the 90 m terrain is a symbol, not text)', () => {
+    const small: string[] = [];
+    for (const file of files('src/app')) {
+      if (file.endsWith('.spec.ts')) continue;
+      readFileSync(file, 'utf-8').split(/\r?\n/).forEach((line, i) => {
+        for (const m of line.matchAll(/font-size:\s*([\d.]+)px/g)) {
+          if (parseFloat(m[1]) < 11 && !line.includes('.adj')) small.push(`${file}:${i + 1} ${m[0]}`);
+        }
+      });
+    }
+    expect(small).toEqual([]);
   });
 });

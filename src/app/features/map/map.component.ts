@@ -237,7 +237,7 @@ import { UrlStateService } from '../../core/ui/url-state.service';
       border: 1px solid rgba(56, 189, 248, 0.35);
       color: #93c5fd;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: 10px;
+      font-size: var(--fs-xs);
       font-weight: 700;
       padding: 1.5px 6px;
       border-radius: 4px;
@@ -263,7 +263,7 @@ import { UrlStateService } from '../../core/ui/url-state.service';
       background: rgba(15, 23, 42, 0.9);
       color: #38bdf8;
       font-family: monospace;
-      font-size: 10px;
+      font-size: var(--fs-xs);
       font-weight: 700;
       padding: 1px 5px;
       border-radius: 4px;
@@ -446,7 +446,16 @@ export class MapComponent implements OnInit, OnDestroy {
   private readonly urlState = inject(UrlStateService);
 
   ngOnInit(): void {
-    this.mapHost.register({ zoomIn: () => this.zoomIn(), zoomOut: () => this.zoomOut(), home: () => this.flyToMosaicCenter(), flyTo: (lat, lon, zoom) => this.flyTo(lat, lon, zoom) });
+    this.mapHost.register({
+      zoomIn: () => this.zoomIn(),
+      zoomOut: () => this.zoomOut(),
+      home: () => this.flyToMosaicCenter(),
+      flyTo: (lat, lon, zoom) => this.flyTo(lat, lon, zoom),
+      tour: (legs, ms) => this.tour(legs, ms),
+      view: () => (this.map ? { lat: this.map.getCenter().lat, lon: this.map.getCenter().lng, zoom: this.map.getZoom() } : null),
+      renderer: () => this.renderer(),
+      ensureVisible: (lat, lon, clear) => this.ensureVisible(lat, lon, clear),
+    });
     this.initMap();
   }
 
@@ -1006,6 +1015,50 @@ export class MapComponent implements OnInit, OnDestroy {
   /** Move the view to a place (a search result), at street-and-town level unless a zoom is given. */
   public flyTo(lat: number, lon: number, zoom = 9): void {
     this.map?.flyTo({ center: [lon, lat], zoom, essential: true });
+  }
+
+  /** Moves the camera through the views in turn (the map speed test); each leg ends when the camera stops, or a little after it should have. */
+  public async tour(legs: readonly { lat: number; lon: number; zoom: number }[], msPerLeg: number): Promise<void> {
+    const map = this.map;
+    if (!map) return;
+    for (const leg of legs) {
+      await new Promise<void>(resolve => {
+        const done = setTimeout(resolve, msPerLeg + 1500);
+        map.once('moveend', () => {
+          clearTimeout(done);
+          resolve();
+        });
+        map.easeTo({ center: [leg.lon, leg.lat], zoom: leg.zoom, duration: msPerLeg, essential: true });
+      });
+    }
+  }
+
+  /** Pans the map by the least that brings a point into the clear part of the screen (the part the meteogram, the card and the bars leave free). */
+  public ensureVisible(lat: number, lon: number, clear: { top: number; right: number; bottom: number; left: number }): void {
+    const map = this.map;
+    if (!map) return;
+    const canvas = map.getCanvas();
+    const p = map.project([lon, lat]);
+    const minX = clear.left;
+    const maxX = Math.max(minX, canvas.clientWidth - clear.right);
+    const minY = clear.top;
+    const maxY = Math.max(minY, canvas.clientHeight - clear.bottom);
+    const dx = p.x - Math.min(Math.max(p.x, minX), maxX);
+    const dy = p.y - Math.min(Math.max(p.y, minY), maxY);
+    if (Math.abs(dx) > 1 || Math.abs(dy) > 1) map.panBy([dx, dy], { duration: 350, essential: true });
+  }
+
+  /** The graphics chip the page is drawn with, as the browser reports it ("ANGLE (Qualcomm, Adreno (TM) 619...)"). */
+  public renderer(): string {
+    try {
+      const canvas = this.map?.getCanvas();
+      const gl = (canvas?.getContext('webgl2') ?? canvas?.getContext('webgl')) as WebGLRenderingContext | null | undefined;
+      if (!gl) return '';
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER)).replace(/\s+/g, ' ').slice(0, 80);
+    } catch {
+      return '';
+    }
   }
 
   public zoomIn(): void {

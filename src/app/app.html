@@ -37,6 +37,9 @@
 <app-forecast-timeline></app-forecast-timeline>
 <app-forecast-legend></app-forecast-legend>
 
+<!-- The performance meter, when it is switched on (menu, Settings) -->
+<app-perf-meter></app-perf-meter>
+
 <!-- The forecast status, when there is something to say -->
 @if (catalog.status() === 'loading') {
   <div class="status" role="status"><span class="spinner" aria-hidden="true"></span>Loading forecast…</div>

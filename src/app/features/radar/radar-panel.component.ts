@@ -143,7 +143,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .prod:hover { background: var(--surface-4); color: var(--text-primary); }
     .prod.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
     .pname { font-weight: 700; font-size: 13px; }
-    .phint { font-size: 10px; opacity: 0.8; }
+    .phint { font-size: var(--fs-xs); opacity: 0.8; }
     .loop { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
     .loop .play { width: 32px; height: 32px; font-size: 13px; }
     .scrub { flex: 1; min-width: 0; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
@@ -155,7 +155,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .storm-toggle:hover { background: var(--surface-4); }
     .storm-toggle.active { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.5); color: var(--warn); }
     .cone { width: 18px; height: 12px; flex: none; background: linear-gradient(90deg, rgba(251,191,36,0.9), rgba(251,191,36,0.15)); clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 60%); }
-    .storm-sub { display: block; font-weight: 400; font-size: 10px; color: var(--text-muted); }
+    .storm-sub { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--text-muted); }
     .panel.compact .loop { margin-top: 8px; }
     .sub[data-state='fresh'] { color: var(--ok); }
     .sub[data-state='recent'] { color: var(--warn); }
@@ -189,17 +189,17 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; min-height: 28px; border-radius: 14px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
     .chip:hover { background: var(--surface-4); }
     .chip.active { border-color: var(--accent-line); color: var(--text-primary); }
-    .chip-age { color: var(--text-muted); font-size: 10px; }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; }
+    .chip-age { color: var(--text-muted); font-size: var(--fs-xs); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
     .dot[data-state='fresh'] { background: var(--ok); }
-    .dot[data-state='recent'] { background: #eab308; }
-    .dot[data-state='stale'] { background: #f97316; }
-    .dot[data-state='offline'] { background: var(--danger); }
+    .dot[data-state='recent'] { background: var(--warn); }
+    .dot[data-state='stale'] { background: var(--danger); }
+    .dot[data-state='offline'] { background: var(--text-muted); }
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .legend { margin-top: 10px; }
     .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, var(--warn) 60%, #ef4444 80%, #a855f7 100%); }
-    .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--text-secondary); }
+    .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: var(--fs-xs); color: var(--text-secondary); }
     @media (max-width: 700px) { .panel { bottom: 84px; width: min(260px, calc(100vw - 24px)); } }
   `]
 })

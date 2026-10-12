@@ -52,11 +52,17 @@ const RAIL: readonly RailItem[] = [
     </nav>
   `,
   styles: [`
-    :host { display: contents; }
+    /* --rail-top: under the menu button; --cluster-h: what the bottom right takes (the zoom buttons and the model button; on a touch screen only the latter) */
+    :host { display: contents; --rail-top: calc(var(--gutter) + var(--hit) + 12px); --cluster-h: 140px; }
     .rail {
-      position: fixed; top: calc(var(--gutter) + var(--hit) + 12px); right: var(--gutter); z-index: var(--z-ui); display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2);
-      max-height: calc(100dvh - var(--gutter) - var(--hit) - 14px - var(--stack-h) - 14px - var(--cluster-h, 140px)); overflow-y: auto; overflow-x: hidden; padding: 2px 2px 2px 8px; scrollbar-width: none;
+      position: fixed; top: var(--rail-top); right: var(--gutter); z-index: var(--z-ui); display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2);
+      --room: calc(100dvh - var(--rail-top) - var(--stack-h) - var(--cluster-h) - 14px);
+      max-height: var(--room);
+      /* whole buttons only: a button cut in half looks broken, and the rest are in the menu */
+      max-height: calc(round(down, calc(var(--room) + var(--sp-2) - 4px), calc(var(--hit) + var(--sp-2))) - var(--sp-2) + 4px);
+      overflow-y: auto; overflow-x: hidden; padding: 2px 2px 2px 8px; scrollbar-width: none;
     }
+    @media (pointer: coarse) { :host { --cluster-h: 66px; } }
     .rail::-webkit-scrollbar { display: none; }
     .item { position: relative; display: flex; align-items: center; justify-content: flex-end; height: var(--hit); padding: 0; border: 0; background: transparent; color: var(--text-primary); cursor: pointer; flex: none; }
     .thumb {
@@ -87,7 +93,7 @@ const RAIL: readonly RailItem[] = [
     @media (max-width: 700px) {
       /* the meteogram fills the bottom of a phone: the rail would be a sliver above it, so it steps aside (the layers are in the menu) */
       :host-context(html[data-sheet='open']) .rail { display: none; }
-      .rail { top: calc(var(--gutter) + 52px + var(--hit) + 8px); }
+      :host { --rail-top: calc(var(--gutter) + 52px + var(--hit) + 8px); }
       .label { display: none; }
     }
   `]

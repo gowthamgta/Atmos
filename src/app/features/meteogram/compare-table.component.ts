@@ -73,7 +73,9 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
     td { color: var(--text-primary); }
     tfoot th, tfoot td { color: var(--text-secondary); font-weight: var(--fw-medium); border-top: 1px solid var(--line-strong); }
     tfoot th.model { font-size: var(--fs-s); }
-    @media (max-width: 700px) {
+    /* a narrower sheet: tighter columns, and the row's colour says which model is on the map */
+    @media (max-width: 1100px) {
+      .table { font-size: var(--fs-s); }
       th, td { padding: 0 6px; }
       .tag { display: none; }
     }

@@ -17,6 +17,7 @@ import { UrlStateService } from './core/ui/url-state.service';
 import { IconComponent } from './shared/icon.component';
 import { StationCardComponent } from './features/observations/station-card.component';
 import { ThemeService } from './shared/theme.service';
+import { PerfMeterComponent } from './features/perf/perf-meter.component';
 
 @Component({
   selector: 'app-root',
@@ -36,6 +37,7 @@ import { ThemeService } from './shared/theme.service';
     MapControlsComponent,
     IconComponent,
     StationCardComponent,
+    PerfMeterComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',

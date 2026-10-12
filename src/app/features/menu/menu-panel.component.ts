@@ -13,6 +13,8 @@ import {
 } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
+import { PerfMeterService } from '../../core/ui/perf-meter.service';
+import { FrameStats, Grade, gradeOf, slowShare } from '../../core/ui/perf-stats';
 import { MenuTab, PanelService } from '../../core/ui/panel.service';
 import { UnitsService } from '../../core/units/units.service';
 import { PRESSURE_LABEL, PRESSURE_UNITS, RAIN_LABEL, RAIN_UNITS, TEMP_LABEL, TEMP_UNITS, WIND_LABEL, WIND_UNITS } from '../../core/units/units';
@@ -189,6 +191,29 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                   <button type="button" (click)="about()"><app-icon name="help" [size]="16" />Help &amp; credits</button>
                 </div>
               </section>
+
+              <section aria-labelledby="h-speed">
+                <h3 id="h-speed">Speed</h3>
+                <div class="actions">
+                  <button type="button" (click)="perf.toggle()" [attr.aria-pressed]="perf.enabled()" title="A line over the map with the frame rate, the worst frames, long tasks and memory"><app-icon name="gauge" [size]="16" />Performance meter</button>
+                  <button type="button" (click)="runTest()" [disabled]="perf.testing()" title="Pans and zooms the map for ten seconds and reports how smoothly it drew"><app-icon name="clock" [size]="16" />{{ perf.testing() ? 'Testing…' : 'Test map speed' }}</button>
+                </div>
+                @if (perf.testing()) {
+                  <p class="hint" role="status">Resting, then panning and zooming, for ten seconds. Keep this page in front.</p>
+                }
+                @if (report(); as r) {
+                  <div class="report" role="group" aria-label="Map speed test result">
+                    <p class="verdict" [class.good]="r.grade === 'good'" [class.fair]="r.grade === 'fair'" [class.poor]="r.grade === 'poor'">{{ r.verdict }}</p>
+                    <table>
+                      <thead><tr><th></th><th>frames/s</th><th>95% under</th><th>stutters</th></tr></thead>
+                      <tbody>
+                        @for (row of r.rows; track row.name) { <tr><th scope="row">{{ row.name }}</th><td>{{ row.fps }}</td><td>{{ row.p95 }}</td><td>{{ row.slow }}</td></tr> }
+                      </tbody>
+                    </table>
+                    <p class="hint">{{ r.device }}</p>
+                  </div>
+                }
+              </section>
             }
           }
         </div>
@@ -259,8 +284,19 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
 
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); }
     .actions button { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-primary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; text-align: left; }
-    .actions button:hover { background: var(--surface-4); }
+    .actions button:hover:not(:disabled) { background: var(--surface-4); }
     .actions button[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
+    .actions button:disabled { opacity: 0.6; cursor: progress; }
+    .report { margin-top: var(--sp-3); padding: var(--sp-3); border-radius: var(--radius-m); background: var(--surface-3); }
+    .verdict { margin: 0 0 var(--sp-2); font-size: var(--fs-l); font-weight: var(--fw-strong); }
+    .verdict.good { color: var(--ok); }
+    .verdict.fair { color: var(--warn); }
+    .verdict.poor { color: var(--danger); }
+    .report table { width: 100%; border-collapse: collapse; font-size: var(--fs-m); font-variant-numeric: tabular-nums; }
+    .report th, .report td { padding: 3px 0; text-align: right; font-weight: var(--fw-normal); }
+    .report thead th { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); }
+    .report tbody th { text-align: left; color: var(--text-secondary); }
+    .report td { color: var(--text-primary); font-weight: var(--fw-medium); }
 
     @media (max-width: 700px) {
       .scrim { display: block; position: fixed; inset: 0; z-index: calc(var(--z-panel) - 1); background: var(--scrim); animation: sheet-in var(--t-med) both; }
@@ -274,6 +310,7 @@ export class MenuPanelComponent {
   protected readonly panels = inject(PanelService);
   protected readonly theme = inject(ThemeService);
   protected readonly mapHost = inject(MapHostService);
+  protected readonly perf = inject(PerfMeterService);
   private readonly mapLayers = inject(MapLayerService);
   private readonly unitsService = inject(UnitsService);
 
@@ -367,6 +404,33 @@ export class MenuPanelComponent {
     const vars = this.catalog.manifest()?.vars;
     return !vars || this.state.contour().varId in vars;
   }
+
+  protected runTest(): void {
+    const view = this.mapHost.view();
+    if (view) void this.perf.runTest(view);
+  }
+
+  /** The result of the map speed test in words and figures (null before one has run). */
+  protected readonly report = computed(() => {
+    const t = this.perf.test();
+    if (!t) return null;
+    const row = (name: string, s: FrameStats | null) => ({
+      name,
+      fps: s ? String(Math.round(s.fps)) : '–',
+      p95: s ? `${Math.round(s.p95Ms)} ms` : '–',
+      slow: s ? `${Math.round(slowShare(s))}%` : '–',
+    });
+    const main = t.moving ?? t.still;
+    const grade: Grade | 'none' = main ? gradeOf(main) : 'none';
+    const verdict = !main
+      ? 'No frames were drawn: the page was not on screen. Run it again with this page in front.'
+      : grade === 'good'
+        ? 'Smooth: close to 60 frames a second, and no stutter you would notice.'
+        : grade === 'fair'
+          ? 'Mostly smooth, with some stutter. Switching off Wind streaks or Terrain relief in Layers will help.'
+          : 'Rough. Switch off Wind streaks and Terrain relief in Layers, and close other tabs.';
+    return { grade, verdict, rows: [row('Animation only', t.still), row('Panning and zooming', t.moving)], device: t.device };
+  });
 
   protected toggleRadar(): void {
     if (this.radarActive()) this.mapLayers.deactivateAll();

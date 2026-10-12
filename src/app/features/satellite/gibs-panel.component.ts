@@ -57,13 +57,13 @@ import { GibsHdService } from '../../core/satellite/gibs-hd.service';
     .chip.small { min-height: 30px; font-size: 11px; flex: 1 1 auto; }
     .chip:hover { background: var(--surface-4); color: var(--text-primary); }
     .chip.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
-    .date { display: block; font-weight: 400; font-size: 10px; opacity: 0.8; }
+    .date { display: block; font-weight: 400; font-size: var(--fs-xs); opacity: 0.8; }
     .msg { margin: 6px 0 0; color: var(--text-secondary); font-size: 11px; }
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
-    .note { margin: 10px 0 0; font-size: 10px; color: var(--text-muted); }
+    .note { margin: 10px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
     @media (max-width: 700px) {
       .panel { bottom: 84px; width: min(280px, calc(100vw - 24px)); padding: 8px 10px; }
       .heading strong { font-size: 13px; }

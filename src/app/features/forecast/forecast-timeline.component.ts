@@ -150,7 +150,7 @@ export function dayNames(ms: number): { long: string; mid: string; short: string
     .step:hover { background: var(--surface-3); color: var(--text-primary); }
     .step .left { transform: rotate(90deg); }
     .step .right { transform: rotate(-90deg); }
-    .speed { min-width: 36px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 13px; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 650; cursor: pointer; font-variant-numeric: tabular-nums; }
+    .speed { min-width: max(36px, var(--hit)); height: max(26px, calc(var(--hit) - 8px)); padding: 0 6px; border: 1px solid var(--line); border-radius: 13px; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 650; cursor: pointer; font-variant-numeric: tabular-nums; }
     .speed:hover { background: var(--surface-3); color: var(--text-primary); }
 
     @media (max-width: 700px) {

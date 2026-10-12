@@ -13,6 +13,7 @@ import { PointSeriesService } from '../../core/meteogram/point-series.service';
 import { Series, indexAt, sumFrom } from '../../core/meteogram/point-series';
 import { UnitsService } from '../../core/units/units.service';
 import { formatPressure, formatRain, formatTemp, formatWind } from '../../core/units/units';
+import { MapHostService } from '../../core/ui/map-host.service';
 import { observeSize } from '../../shared/observe-size';
 import { IconComponent } from '../../shared/icon.component';
 import { CompareTableComponent } from './compare-table.component';
@@ -136,16 +137,17 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
       position: fixed; left: var(--gutter); bottom: calc(var(--bars-h) + var(--sheet-gap)); z-index: var(--z-sheet);
       /* it stops short of the right-hand column (menu, layers, zoom, model), which keeps its place and its height */
       width: min(calc(100vw - 2 * var(--gutter) - 240px), 1040px);
-      max-height: min(66dvh, 470px); overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-2) var(--sp-4) var(--sp-2);
+      max-height: min(70dvh, 600px); overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-2) var(--sp-4) var(--sp-2);
       background: var(--surface-solid); border-radius: var(--radius-l); box-shadow: var(--shadow-2); color: var(--text-primary); animation: sheet-in var(--t-med) both;
     }
-    .head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
-    .where { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; flex: 1; flex-wrap: wrap; }
-    .tools { display: flex; gap: var(--sp-1); }
+    /* name | the two choices | tools, in one row when there is room; the choices drop under the name when there is not */
+    .head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-2); }
+    .where { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; flex: 1 1 220px; flex-wrap: wrap; }
+    .tools { display: flex; gap: var(--sp-1); margin-left: auto; }
     .short { display: none; }
     .place { font-size: var(--fs-xl); font-weight: var(--fw-strong); line-height: var(--lh-tight); }
     .meta { font-size: var(--fs-s); color: var(--text-muted); }
-    .controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+    .controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; flex: 0 1 auto; }
 
     .readout { display: grid; grid-template-columns: minmax(170px, 1.5fr) repeat(4, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-4); padding: 0 0 var(--sp-2); }
     .cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
@@ -204,8 +206,11 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
       .readout .when .label { order: 2; }
       .value { font-size: var(--fs-xl); }
       .readout .sub { display: none; }
-      .label { font-size: 10px; letter-spacing: 0.04em; }
+      .label { font-size: var(--fs-xs); letter-spacing: 0.04em; }
       .chart, .chart.model { --chart-h: 186px; }
+    }
+    @media (max-width: 760px) and (max-height: 700px) {
+      .chart, .chart.model { --chart-h: 150px; }
     }
   `]
 })
@@ -218,6 +223,7 @@ export class MeteogramComponent implements OnDestroy {
   private readonly inspector = inject(ForecastInspectorService);
   private readonly unitsService = inject(UnitsService);
   private readonly document = inject(DOCUMENT);
+  private readonly mapHost = inject(MapHostService);
 
   protected readonly units = this.unitsService.units;
   protected readonly rangeDays = RANGE_DAYS;
@@ -245,11 +251,27 @@ export class MeteogramComponent implements OnDestroy {
         this.stopWatching = observeSize(el, (_w, h) => this.setSheetHeight(h + this.gap()));
       });
     });
+    // the place stays in view above the sheet: a click near the bottom of the map would otherwise end up under it
+    effect(() => {
+      const sel = this.inspector.selected();
+      if (!this.m.visible() || !this.sheet() || !sel) return;
+      untracked(() => setTimeout(() => this.keepPlaceInView(sel.lat, sel.lon), 60));   // after the sheet has been measured
+    });
   }
 
   ngOnDestroy(): void {
     this.stopWatching?.();
     this.setSheetHeight(0);
+  }
+
+  /** Pans the map, if need be, so the place is above the sheet and below the search box (and, on a phone, clear of the card). */
+  private keepPlaceInView(lat: number, lon: number): void {
+    const el = this.sheet()?.nativeElement;
+    const view = this.document.defaultView;
+    if (!el || !view) return;
+    const top = view.innerWidth <= 700 ? 118 : 70;
+    const bottom = view.innerHeight - el.getBoundingClientRect().top + 28;
+    this.mapHost.ensureVisible(lat, lon, { top, right: 60, bottom, left: 24 });
   }
 
   /** The space the sheet leaves above the bars: room for the playhead's tooltip (none on a phone, where the sheet sits on the bars). */

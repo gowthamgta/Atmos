@@ -20,6 +20,7 @@ import { ForecastGrid, ForecastManifest, bracketSteps } from './forecast.model';
 import type { ForecastLayerDef } from './forecast-layers';
 import { isPhone } from '../ui/device-profile';
 import { MeteogramService } from '../meteogram/meteogram.service';
+import { PerfMeterService } from '../ui/perf-meter.service';
 
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
 const RELIEF_STRENGTH = 0.55;
@@ -55,6 +56,7 @@ export class ForecastMapController {
   private readonly stations = inject(StationSelectionService);
   private readonly consensus = inject(ConsensusService);
   private readonly meteogram = inject(MeteogramService);
+  private readonly perf = inject(PerfMeterService);
 
   private map: MapLibreMap | null = null;
   private layer: ScalarFieldLayer | null = null;
@@ -85,6 +87,7 @@ export class ForecastMapController {
     map.addLayer(this.layer, beforeId);
     this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 1800 : 11000);
     map.addLayer(this.windLayer, beforeId); // added second, so the streaks draw over the colour field
+    this.perf.probe('streaks', () => String(this.windLayer?.particleCount ?? 0));
     this.addIsobarLayers(map, beforeId);
     this.addCycloneLayers(map);
     this.cycloneLoadedAt = 0;
@@ -99,6 +102,7 @@ export class ForecastMapController {
   }
 
   detach(): void {
+    this.perf.probe('streaks', null);
     this.effects.forEach(e => e.destroy());
     this.effects = [];
     this.map?.off('click', this.onMapClick);

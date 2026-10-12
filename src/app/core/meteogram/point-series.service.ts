@@ -23,12 +23,28 @@ export class PointSeriesService {
   readonly data = signal<PointSeries | null>(null);
   readonly status = signal<SeriesStatus>('idle');
   readonly error = signal('');
+  /** The place (to two decimals, "11.74,78.96") the last request failed for; empty when the last one worked. */
+  readonly failedFor = signal('');
 
   private readonly cache = new Map<string, { at: number; series: PointSeries }>();
   private token = 0;
+  private inflight: { key: string; promise: Promise<void> } | null = null;
 
-  async load(lat: number, lon: number, force = false): Promise<void> {
+  /**
+   * Gets the forecast of a place (from memory when it was fetched in the last 15 minutes). Two askers for the same place at once, the place
+   * card's days and the meteogram, share one request.
+   */
+  load(lat: number, lon: number, force = false): Promise<void> {
     const key = `${lat.toFixed(KEY_DIGITS)},${lon.toFixed(KEY_DIGITS)}`;
+    if (this.inflight?.key === key && !force) return this.inflight.promise;
+    const promise: Promise<void> = this.run(lat, lon, key, force).finally(() => {
+      if (this.inflight?.promise === promise) this.inflight = null;
+    });
+    this.inflight = { key, promise };
+    return promise;
+  }
+
+  private async run(lat: number, lon: number, key: string, force: boolean): Promise<void> {
     const hit = this.cache.get(key);
     if (hit && !force && Date.now() - hit.at < CACHE_MS) {
       ++this.token;
@@ -42,6 +58,7 @@ export class PointSeriesService {
     if (!current || `${current.lat.toFixed(KEY_DIGITS)},${current.lon.toFixed(KEY_DIGITS)}` !== key) this.data.set(null); // never show another place's chart while this one loads
     this.status.set('loading');
     this.error.set('');
+    this.failedFor.set('');
     try {
       let attempt = 0;
       let series: PointSeries | null = null;
@@ -71,6 +88,7 @@ export class PointSeriesService {
     } catch (err) {
       if (my !== this.token) return;
       this.error.set(err instanceof Error ? err.message : 'The forecast for this place could not be read.');
+      this.failedFor.set(key);
       this.status.set('error');
     }
   }

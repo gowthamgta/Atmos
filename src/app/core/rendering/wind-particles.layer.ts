@@ -1,5 +1,5 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
-import { INSTANCE_FLOATS, ParticleSystem, ViewState, WindFrame } from '../forecast/particle-system';
+import { AdaptiveCount, INSTANCE_FLOATS, ParticleSystem, ViewState, WindFrame } from '../forecast/particle-system';
 
 /** Each particle is an instanced quad: its head at the particle, a tail trailing against the wind. */
 const VERTEX = `#version 300 es
@@ -49,18 +49,21 @@ export class WindParticlesLayer implements CustomLayerInterface {
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private system: ParticleSystem;
   private instances: Float32Array;
-  private readonly minCount: number;
+  private readonly budget: AdaptiveCount;
   private wind: WindFrame | null = null;
   private visible = false;
   private needsReset = true;
   private lastTime = 0;
-  private slowSince = 0;
-  private emaDt = 16;
 
   constructor(maxCount = 11000) {
     this.system = new ParticleSystem(maxCount);
     this.instances = new Float32Array(maxCount * INSTANCE_FLOATS);
-    this.minCount = Math.min(MIN_COUNT, Math.max(500, Math.floor(maxCount * 0.4)));
+    this.budget = new AdaptiveCount(Math.min(MIN_COUNT, Math.max(500, Math.floor(maxCount * 0.4))), maxCount);
+  }
+
+  /** The smoothed time between frames, for the performance meter. */
+  get frameMs(): number {
+    return this.budget.frameMs;
   }
 
   /** Current particle budget (reduced automatically on slow devices). */
@@ -71,6 +74,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.lastTime = 0;
+    this.budget.reset();
     this.map?.triggerRepaint();
   }
 
@@ -127,7 +131,8 @@ export class WindParticlesLayer implements CustomLayerInterface {
     const now = performance.now();
     const dt = this.lastTime ? Math.min((now - this.lastTime) / 1000, 0.05) : 0;
     this.lastTime = now;
-    this.adaptCount(now, dt * 1000);
+    const next = this.budget.update(now, dt * 1000, this.system.count);
+    if (next !== null) this.system.setCount(next);
 
     const b = map.getBounds();
     const view: ViewState = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(), zoom: map.getZoom() };
@@ -155,21 +160,6 @@ export class WindParticlesLayer implements CustomLayerInterface {
     gl.bindVertexArray(null);
 
     map.triggerRepaint(); // keep animating
-  }
-
-  /** Drops 15% of the particles when frames stay slow for a second (never below a usable minimum). */
-  private adaptCount(now: number, dtMs: number): void {
-    if (dtMs <= 0) return;
-    this.emaDt = this.emaDt * 0.9 + dtMs * 0.1;
-    if (this.emaDt > 28) {
-      this.slowSince ||= now;
-      if (now - this.slowSince > 1000 && this.system.count > this.minCount) {
-        this.system.setCount(Math.max(this.minCount, this.system.count * 0.85));
-        this.slowSince = now;
-      }
-    } else {
-      this.slowSince = 0;
-    }
   }
 
   private link(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {

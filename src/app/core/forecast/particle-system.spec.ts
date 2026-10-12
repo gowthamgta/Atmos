@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
 import { ForecastGrid } from './forecast.model';
-import { INSTANCE_FLOATS, PX_PER_MS, ParticleSystem, ViewState, WindFrame, spawnRegion } from './particle-system';
+import { AdaptiveCount, INSTANCE_FLOATS, PX_PER_MS, ParticleSystem, ViewState, WindFrame, spawnRegion } from './particle-system';
 
 const GRID: ForecastGrid = { latMax: 22, latMin: 4, lonMin: 68, lonMax: 90, step: 0.1, nx: 221, ny: 181 };
 const VIEW: ViewState = { west: 74, south: 8, east: 80, north: 14, zoom: 6 };
@@ -186,5 +186,64 @@ describe('ParticleSystem', () => {
     });
     console.info(`particle step + pack, 9000 particles: ${msPerFrame.toFixed(2)} ms/frame (best of 5 batches)`);
     expect(msPerFrame).toBeLessThan(6); // a 60 fps frame is 16.7 ms; leave most of it for drawing
+  });
+});
+
+describe('AdaptiveCount (how many streaks the device can animate)', () => {
+  /** Runs frames of `frameMs` for `seconds`, applying each change, and returns the final count. */
+  function run(a: AdaptiveCount, start: { count: number; t: number }, frameMs: number, seconds: number): { count: number; t: number } {
+    let { count, t } = start;
+    const end = t + seconds * 1000;
+    while (t < end) {
+      t += frameMs;
+      const next = a.update(t, frameMs, count);
+      if (next !== null) count = next;
+    }
+    return { count, t };
+  }
+
+  it('leaves the count alone while frames come at about 60 per second', () => {
+    const a = new AdaptiveCount(2500, 11000);
+    expect(run(a, { count: 11000, t: 0 }, 16.7, 10).count).toBe(11000);
+  });
+
+  it('takes 15% off each second that frames stay slow, down to the floor', () => {
+    const a = new AdaptiveCount(2500, 11000);
+    const after2 = run(a, { count: 11000, t: 0 }, 40, 3);                // 25 frames a second
+    expect(after2.count).toBeLessThan(11000 * 0.85);
+    expect(after2.count).toBeGreaterThan(11000 * 0.5);
+    expect(run(a, after2, 40, 60).count).toBe(2500);                      // never below the floor
+  });
+
+  it('brings streaks back after the slow time is over, in small steps and after a steady six seconds', () => {
+    const a = new AdaptiveCount(2500, 11000);
+    const slow = run(a, { count: 11000, t: 0 }, 40, 2);
+    const fast = run(a, slow, 16.7, 4);
+    expect(fast.count).toBe(slow.count);                                  // the average has to fall under the line first, and then hold six seconds
+    const later = run(a, fast, 16.7, 12);
+    expect(later.count).toBeGreaterThan(slow.count);
+    expect(later.count).toBeLessThan(slow.count * 1.08 * 3);
+  });
+
+  it('never goes back up to the count that was too many (a device that only just keeps up does not swing)', () => {
+    const a = new AdaptiveCount(2500, 11000);
+    const slow = run(a, { count: 11000, t: 0 }, 40, 1.2);                // one cut, from 11000
+    const tooMany = 11000;
+    const long = run(a, slow, 16.7, 120);
+    expect(long.count).toBeLessThan(tooMany);
+    expect(long.count).toBeLessThanOrEqual(Math.round(tooMany * 0.97));
+  });
+
+  it('can be told to forget (the view changed a lot)', () => {
+    const a = new AdaptiveCount(2500, 11000);
+    const slow = run(a, { count: 11000, t: 0 }, 40, 1.2);
+    a.reset();
+    const long = run(a, slow, 16.7, 120);
+    expect(long.count).toBe(11000);
+  });
+
+  it('ignores a frame with no time between it and the last', () => {
+    const a = new AdaptiveCount(500, 1000);
+    expect(a.update(100, 0, 1000)).toBeNull();
   });
 });

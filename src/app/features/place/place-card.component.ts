@@ -123,7 +123,7 @@ export function firstNumber(text: string | undefined): number | null {
                   }
                 </dl>
               } @else {
-                <div class="note busy"><span class="spinner" aria-hidden="true"></span>Reading every value…</div>
+                <div class="note busy" role="status"><span class="spinner" aria-hidden="true"></span>Reading every value… {{ inspector.progress().done }} of {{ inspector.progress().total }}</div>
               }
               @if (observed(); as o) {
                 <div class="heading obs-heading">Observed nearby <span class="obs-note">not the forecast</span></div>
@@ -168,7 +168,7 @@ export function firstNumber(text: string | undefined): number | null {
   `,
   styles: [`
     :host { display: contents; }
-    .wrap { position: fixed; top: var(--gutter); left: var(--gutter); z-index: var(--z-card); width: min(410px, calc(100vw - 2 * var(--gutter))); display: flex; flex-direction: column; gap: var(--sp-2); max-height: calc(100dvh - var(--left-stack-h) - 24px); }
+    .wrap { position: fixed; top: var(--gutter); left: var(--gutter); z-index: var(--z-card); width: min(410px, calc(100vw - 2 * var(--gutter))); display: flex; flex-direction: column; gap: var(--sp-2); max-height: calc(100dvh - var(--left-stack-h) - 56px); }   /* leaves room for the time tooltip that rises out of the bar */
 
     .searchbox { position: relative; flex: none; }
     .search { display: flex; align-items: center; gap: var(--sp-2); height: 46px; padding: 0 6px 0 14px; border-radius: 23px; background: var(--surface-1); box-shadow: var(--shadow-2); color: var(--text-secondary); flex: none; }
@@ -250,9 +250,11 @@ export function firstNumber(text: string | undefined): number | null {
       .temp { font-size: 44px; }
       .days { grid-template-columns: repeat(4, 1fr); }
       .day:nth-child(5) { display: none; }
-      .wrap { max-height: calc(100dvh - var(--left-stack-h) - 20px); }
+      /* the time is on the bar and the run is on the model button: the card keeps to the weather */
+      .when, .runline { display: none; }
+      .wrap { max-height: calc(100dvh - var(--left-stack-h) - 52px); }
       /* the meteogram carries the numbers: the card keeps to the headline while it is open */
-      .tight .actions { display: none; }
+      .tight .actions, .tight .now { display: none; }
     }
     /* ...and the days and the time and place line: they are on the chart */
     .tight .days, .tight .when { display: none; }
