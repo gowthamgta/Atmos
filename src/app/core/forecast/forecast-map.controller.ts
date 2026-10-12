@@ -137,11 +137,11 @@ export class ForecastMapController {
       const el = document.createElement('div');
       el.className = 'forecast-pin';
       el.style.cssText =
-        'position:relative;width:14px;height:14px;border-radius:50%;background:#cf8a00;border:2px solid #fff;box-shadow:0 0 0 3px rgba(255,200,61,.4),0 2px 6px rgba(0,0,0,.6);pointer-events:none;';
+        'position:relative;width:14px;height:14px;border-radius:50%;background:#0ea5e9;border:2px solid #fff;box-shadow:0 0 0 3px rgba(56,189,248,.45),0 2px 6px rgba(0,0,0,.6);pointer-events:none;';
       // the value of the layer at the pin, in a bubble to its right (windy.com's picker)
       const label = document.createElement('span');
       label.style.cssText =
-        'position:absolute;left:20px;top:50%;transform:translateY(-50%);padding:2px 9px;border-radius:12px;background:rgba(48,50,54,.94);color:#fff;font:600 13px -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6);font-variant-numeric:tabular-nums;';
+        'position:absolute;left:20px;top:50%;transform:translateY(-50%);padding:2px 9px;border-radius:12px;background:rgba(26,33,46,.94);color:#fff;font:600 13px -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6);font-variant-numeric:tabular-nums;';
       el.appendChild(label);
       this.pinLabel = label;
       this.marker = new Marker({ element: el }).setLngLat([sel.lon, sel.lat]).addTo(this.map);

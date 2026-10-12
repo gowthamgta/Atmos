@@ -47,10 +47,10 @@ app-map {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .brand-accent {
-  color: #ffc83d; /* the bright amber in both themes: the name is on the map, and the light theme's dark orange would vanish on it */
+  color: #38bdf8; /* crisp sky-blue in both themes so the brand mark reads cleanly over the dark map */
 }
 
-/* Top right: one round button for the menu, as plain as the buttons under it (amber only while its panel is open) */
+/* Top right: one round button for the menu, as plain as the buttons under it (accented only while its panel is open) */
 .menu-btn {
   position: fixed;
   top: var(--gutter);

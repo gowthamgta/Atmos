@@ -116,16 +116,16 @@ export function dayNames(ms: number): { long: string; mid: string; short: string
     :host-context(:root[data-theme='light']) .block { background: rgba(20, 40, 70, 0.04); }
     :host-context(:root[data-theme='light']) .block.odd { background: rgba(20, 40, 70, 0.09); }
     .day { font-size: 14px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; max-width: 100%; padding: 0 4px; text-shadow: var(--text-halo); }
-    .block.weekend .day { color: var(--accent-strong); }
+    .block.weekend .day { color: var(--text-secondary); }
     .day .long, .day .mid { display: none; }
     @container (max-width: 26px) { .day { display: none; } }          /* a sliver of a day (the run starts late in it): no label */
     @container (min-width: 64px) { .day .short { display: none; } .day .mid { display: inline; } }
     @container (min-width: 124px) { .day .mid { display: none; } .day .long { display: inline; } }
-    .dot { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-strong); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); }
+    .dot { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); }
     .tick { position: absolute; bottom: 0; width: 1px; height: 6px; background: var(--line-strong); }
     .past { position: absolute; inset: 0 auto 0 0; background: rgba(0, 0, 0, 0.28); pointer-events: none; }
 
-    /* the playhead: an amber line and the tooltip with the time, rising out of the bar */
+    /* the playhead: an accent line and the tooltip with the time, rising out of the bar */
     .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; left: calc(var(--pct) * 1%); background: var(--accent); pointer-events: none; }
     .playhead .tip {
       position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 4px 12px 3px; border-radius: 9px 9px 0 0; background: var(--accent); color: var(--on-accent);

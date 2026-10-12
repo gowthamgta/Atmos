@@ -219,7 +219,7 @@ export function firstNumber(text: string | undefined): number | null {
     .act app-icon { transition: transform var(--t-fast); }
 
     .values { margin: var(--sp-1) 0 0; }
-    .heading { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--accent-line); font-size: var(--fs-s); font-weight: var(--fw-strong); color: var(--accent-strong); }
+    .heading { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--line-strong); font-size: var(--fs-s); font-weight: var(--fw-strong); color: var(--text-secondary); }
     .row { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 5px 0; border-top: 1px solid var(--line); font-size: var(--fs-m); }
     .row.on { background: var(--accent-soft); margin: 0 -14px; padding: 5px 14px; }
     dt { color: var(--text-secondary); }

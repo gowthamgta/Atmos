@@ -4,8 +4,8 @@
    Interface colours are tokens on :root and :root[data-theme='light']; the colours of the weather itself are NOT here: they live with the
    layers (core/forecast/forecast-layers.ts, windy-palettes.ts), so the theme never changes what a colour on the map means.
 
-   COLOUR ROLES. The interface is grey and white; colour is kept for meaning, and each meaning has one colour:
-     amber   --accent*     what you are acting on: the layer on the map, the time on the bar, the main button of a panel.
+   COLOUR ROLES. The interface is cool slate and white; colour is kept for meaning, and each meaning has one colour:
+     sky     --accent*     what you are acting on: the layer on the map, the time on the bar, the main button of a panel.
      model   --m-*         which forecast model: its dot, its line on a chart, its row. Colour is the centre that runs the model
                            (blue ECMWF, violet NOAA, green Met Office); a lighter shade is its AI model (AIFS, AIGFS), also drawn dashed.
      status  --ok --warn --danger   how fresh the data is, and nothing else.
@@ -20,33 +20,33 @@
 :root {
   color-scheme: dark;
 
-  /* Surfaces: translucent greys, so the map shows through the bars (no blur: it keeps the map cheap to draw) */
-  --surface-0: #1d1e21;
-  --surface-1: rgba(48, 50, 54, 0.93);
-  --surface-2: rgba(64, 66, 71, 0.96);
-  --surface-3: rgba(255, 255, 255, 0.1);
-  --surface-4: rgba(255, 255, 255, 0.19);
-  --surface-solid: #3b3d41;
-  --scrim: rgba(0, 0, 0, 0.55);
+  /* Surfaces: translucent cool slates, so the map shows through the bars (no blur: it keeps the map cheap to draw) */
+  --surface-0: #141923;
+  --surface-1: rgba(26, 33, 46, 0.93);
+  --surface-2: rgba(36, 45, 61, 0.96);
+  --surface-3: rgba(255, 255, 255, 0.09);
+  --surface-4: rgba(255, 255, 255, 0.17);
+  --surface-solid: #283244;
+  --scrim: rgba(8, 12, 20, 0.58);
 
   /* Lines */
-  --line: rgba(255, 255, 255, 0.15);
-  --line-strong: rgba(255, 255, 255, 0.34);
+  --line: rgba(255, 255, 255, 0.13);
+  --line-strong: rgba(255, 255, 255, 0.3);
 
   /* Text */
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.84);
-  --text-muted: rgba(255, 255, 255, 0.64);
+  --text-primary: #f8fafc;
+  --text-secondary: rgba(241, 245, 249, 0.85);
+  --text-muted: rgba(226, 232, 240, 0.66);
 
-  /* Accent (amber): the layer, the time and the main button. Dark text on it, which white text on amber does not pass (3:1 against 4.5:1) */
-  --accent: #cf8a00;
-  --accent-strong: #ffc83d;
-  --accent-soft: rgba(207, 138, 0, 0.3);
-  --accent-line: rgba(255, 200, 61, 0.8);
-  --on-accent: #231700;
+  /* Accent (blue): the layer, the time and the main button. Crisp white text on blue passes WCAG AA (>5.1:1) */
+  --accent: #2563eb;
+  --accent-strong: #60a5fa;
+  --accent-soft: rgba(37, 99, 235, 0.22);
+  --accent-line: rgba(96, 165, 250, 0.7);
+  --on-accent: #ffffff;
 
   /* Status of the data: only for how fresh it is */
-  --warn: #ffb020;
+  --warn: #fbbf24;
   --danger: #ff8a8a;
   --ok: #6fdca6;
 
@@ -146,16 +146,16 @@
   --surface-4: #dde5ec;
   --surface-solid: #ffffff;
   --scrim: rgba(15, 30, 50, 0.38);
-  --line: rgba(15, 40, 70, 0.15);
-  --line-strong: rgba(15, 40, 70, 0.32);
-  --text-primary: #14283c;
-  --text-secondary: #38506a;
-  --text-muted: #5a6e83;
-  --accent: #dd7600;
-  --accent-strong: #a45500;
-  --accent-soft: rgba(221, 118, 0, 0.14);
-  --accent-line: rgba(221, 118, 0, 0.65);
-  --on-accent: #1f1400;
+  --line: rgba(15, 40, 70, 0.14);
+  --line-strong: rgba(15, 40, 70, 0.28);
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #526378;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --accent-line: rgba(37, 99, 235, 0.55);
+  --on-accent: #ffffff;
   --warn: #a55a00;
   --danger: #c0272d;
   --ok: #17803f;
