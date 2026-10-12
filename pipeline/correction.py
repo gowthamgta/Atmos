@@ -131,17 +131,25 @@ def load_rain(path: str) -> dict | None:
 
 
 def land_mask(lats: np.ndarray, lons: np.ndarray, terrain_dir: str) -> np.ndarray | None:
-    """True where the grid is land, from the terrain's model grid (its land fraction). None if that grid is missing or of
-    another shape, in which case the rain correction is not applied anywhere."""
+    """True where the grid is land, from the terrain's model grid (its land fraction). None if that grid is missing."""
     import os
     from PIL import Image
     path = os.path.join(terrain_dir, "model-9km.png")
     if not os.path.exists(path):
         return None
     px = np.asarray(Image.open(path).convert("RGB"))
-    if px.shape[:2] != (len(lats), len(lons)):
+    if px.shape[:2] == (len(lats), len(lons)):
+        return px[..., 2] >= 128                # the land fraction (blue) at least a half
+    # Map any global/regional grid onto the India terrain box (5.0..37.5 N, 68.0..97.5 E at 0.1 deg)
+    h, w = px.shape[:2]
+    if (h, w) != (326, 296):
         return None
-    return px[..., 2] >= 128                # the land fraction (blue) at least a half
+    iy = np.round((37.5 - lats) / 0.1).astype(int)[:, None]
+    ix = np.round((lons - 68.0) / 0.1).astype(int)[None, :]
+    inside = (iy >= 0) & (iy < h) & (ix >= 0) & (ix < w)
+    yc = np.clip(iy, 0, h - 1)
+    xc = np.clip(ix, 0, w - 1)
+    return inside & (px[yc, xc, 2] >= 128)
 
 
 def apply_rain(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray, rain: dict | None, land: np.ndarray | None) -> dict[str, np.ndarray]:
@@ -150,8 +158,8 @@ def apply_rain(fields: dict[str, np.ndarray], lats: np.ndarray, lons: np.ndarray
         return fields
     from scipy.spatial import cKDTree
     g = rain["gauges"]
-    # planar kilometres around the middle latitude: accurate enough over these distances
-    kx = 111.32 * math.cos(math.radians(float(np.mean(lats))))
+    # planar kilometres around the middle latitude of the gauges: accurate enough over these distances
+    kx = 111.32 * math.cos(math.radians(float(np.mean(g[:, 0]))))
     tree = cKDTree(np.column_stack([g[:, 0] * 111.32, g[:, 1] * kx]))
     la, lo = np.meshgrid(lats, lons, indexing="ij")
     dist, _ = tree.query(np.column_stack([la.ravel() * 111.32, lo.ravel() * kx]))

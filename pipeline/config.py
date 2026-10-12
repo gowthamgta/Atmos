@@ -15,12 +15,21 @@ STEP_DEG = 0.1
 NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 91 rows, north to south
 NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 166 columns, west to east
 
-# ECMWF IFS (9 km) covers all of India, on the same 0.1 degree lattice (so the South India terrain sits inside it).
-IFS_LAT_MAX, IFS_LAT_MIN = 37.5, 5.0
-IFS_LON_MIN, IFS_LON_MAX = 68.0, 97.5
-IFS_DOMAIN = "india-5-37.5N-68-97.5E"
-IFS_NY = round((IFS_LAT_MAX - IFS_LAT_MIN) / STEP_DEG) + 1
-IFS_NX = round((IFS_LON_MAX - IFS_LON_MIN) / STEP_DEG) + 1
+# Global 0.25-degree grid (~25 km) covering the entire world, used by all published forecast models on Backblaze B2.
+GLOBAL_LAT_MAX, GLOBAL_LAT_MIN = 90.0, -90.0
+GLOBAL_LON_MIN, GLOBAL_LON_MAX = -180.0, 180.0
+GLOBAL_STEP_DEG = 0.25
+GLOBAL_DOMAIN = "global-0.25"
+GLOBAL_NY = round((GLOBAL_LAT_MAX - GLOBAL_LAT_MIN) / GLOBAL_STEP_DEG) + 1   # 721 rows, north to south
+GLOBAL_NX = round((GLOBAL_LON_MAX - GLOBAL_LON_MIN) / GLOBAL_STEP_DEG) + 1   # 1441 columns, west to east
+
+# ECMWF IFS and regular models share the global 0.25 degree lattice (the 90 m India terrain still sits inside it).
+IFS_LAT_MAX, IFS_LAT_MIN = GLOBAL_LAT_MAX, GLOBAL_LAT_MIN
+IFS_LON_MIN, IFS_LON_MAX = GLOBAL_LON_MIN, GLOBAL_LON_MAX
+IFS_STEP_DEG = GLOBAL_STEP_DEG
+IFS_DOMAIN = GLOBAL_DOMAIN
+IFS_NY = GLOBAL_NY
+IFS_NX = GLOBAL_NX
 
 # Each model module (fetch_ifs.py) declares its own MODEL_ID, RUN_HOURS, STEP_HOURS and rain semantics.
 
@@ -38,9 +47,9 @@ class Var:
 LEVELS = (925, 850, 800, 700, 600, 500, 300, 250, 200)
 LEVEL_KM = {925: 0.8, 850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8}
 
-# Encoding ranges per level: temperature (degC) and geopotential height (m). Generous, so no value can clip.
-_LEVEL_T = {925: (8, 36), 850: (4, 32), 800: (0, 28), 700: (-8, 22), 600: (-18, 12), 500: (-28, 2), 300: (-58, -18), 250: (-68, -28), 200: (-78, -38)}
-_LEVEL_GH = {925: (400, 1100), 850: (1100, 1800), 800: (1600, 2400), 700: (2600, 3300), 600: (3900, 4700), 500: (5500, 6100), 300: (9000, 10000), 250: (10200, 11200), 200: (11800, 12800)}
+# Encoding ranges per level: temperature (degC) and geopotential height (m). Generous across all latitudes, so no value can clip.
+_LEVEL_T = {925: (-45, 40), 850: (-50, 36), 800: (-52, 32), 700: (-55, 24), 600: (-60, 14), 500: (-65, 5), 300: (-75, -15), 250: (-80, -25), 200: (-85, -35)}
+_LEVEL_GH = {925: (200, 1100), 850: (900, 1800), 800: (1400, 2400), 700: (2300, 3300), 600: (3500, 4700), 500: (4700, 6100), 300: (8000, 10000), 250: (9100, 11200), 200: (10600, 12800)}
 
 
 def _level_vars() -> list[Var]:
@@ -60,14 +69,14 @@ def _level_vars() -> list[Var]:
 
 
 VARS: dict[str, Var] = {v.id: v for v in [
-    Var("t2m", "°C", -10, 50),
+    Var("t2m", "°C", -60, 55),
     Var("rh", "%", 0, 100),
-    Var("feels", "°C", -10, 60),
-    Var("dew", "°C", -20, 40),
+    Var("feels", "°C", -70, 60),
+    Var("dew", "°C", -65, 40),
     Var("u10", "m/s", -60, 60),
     Var("v10", "m/s", -60, 60),
     Var("gust", "m/s", 0, 80),
-    Var("msl", "hPa", 950, 1050),
+    Var("msl", "hPa", 920, 1070),
     Var("precip", "mm", 0, 100),
     Var("cloud", "%", 0, 100),
     Var("cloud_low", "%", 0, 100, 12),
@@ -79,8 +88,8 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("tcwv", "kg/m²", 0, 80),
     Var("li", "°C", -15, 25, 12),         # lifted index: negative means unstable air
     Var("cin", "J/kg", 0, 1000, 12),      # convective inhibition (magnitude)
-    Var("tmin24", "°C", -10, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
-    Var("tmax24", "°C", -10, 50),        # see derive.forward_extreme)
+    Var("tmin24", "°C", -60, 55),         # lowest and highest temperature in the next 24 hours from this step (derived across steps,
+    Var("tmax24", "°C", -60, 55),         # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
     Var("extreme", "%", 0, 100),          # multi-model probability of rain over the next 24 hours (0 to 100 %, derived from rain24 across models)
     Var("raintot", "mm", 0, 1500),        # rain from the start of the run to this step (derived across steps, see derive.cumulative_accumulation)

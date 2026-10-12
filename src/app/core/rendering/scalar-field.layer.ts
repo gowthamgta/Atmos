@@ -213,10 +213,10 @@ void main() {
   float lon = v_merc.x * 360.0 - 180.0;
   bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
   vec2 g = vec2((lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
-  // Fade out over the last 12 cells (about 1.2 degrees) so the data area does not end in a hard edge.
+  // Fade out over the last 12 cells (about 1.2 degrees) for regional grids; global grids wrap without an edge fade.
   vec2 toFar = vec2(u_size) - 1.0 - g;
   float edge = min(min(g.x, g.y), min(toFar.x, toFar.y));
-  float edgeFade = smoothstep(0.0, 12.0, edge);
+  float edgeFade = float(u_size.x - 1) * u_grid.z >= 359.0 ? 1.0 : smoothstep(0.0, 12.0, edge);
   g = clamp(g, vec2(0.0), vec2(u_size) - 1.0001);
 
   vec2 first = blendTime(u_a, u_b, g, u_enc);

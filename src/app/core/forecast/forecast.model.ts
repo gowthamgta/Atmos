@@ -36,6 +36,37 @@ export interface ForecastManifest {
   grid: ForecastGrid;
   steps: ForecastStep[];
   vars: Record<string, ForecastVarInfo>;
+  /** Pattern of per-variable packed files on Backblaze B2 (e.g. "{var}.pack"). */
+  pack?: string;
+  /** Byte range `[offset, length]` of each `<var>/<h:03d>.png` slice inside `<var>.pack`. */
+  packs?: Record<string, readonly [number, number]>;
+  /** Resolved base URL that served this manifest (Backblaze B2 or GitHub Pages fallback). */
+  baseUrl?: string;
+}
+
+/** Fetches one field PNG either as a byte-range slice from `<var>.pack` (when `manifest.packs` has the slice) or as `<var>/<h:03d>.png`. */
+export function fetchFieldResponse(
+  baseUrl: string,
+  manifest: ForecastManifest,
+  varId: string,
+  stepHour: number,
+  priority: 'auto' | 'low' = 'auto'
+): Promise<Response> {
+  const base = manifest.baseUrl ?? baseUrl;
+  const rel = `${varId}/${String(stepHour).padStart(3, '0')}.png`;
+  const q = manifest.build ? `?b=${encodeURIComponent(manifest.build)}` : '';
+  const slice = manifest.packs?.[rel];
+  if (slice) {
+    const [offset, length] = slice;
+    const packUrl = `${base}/${manifest.run}/${varId}.pack${q}`;
+    const init: RequestInit = {
+      headers: { Range: `bytes=${offset}-${offset + length - 1}` },
+      ...(priority === 'low' ? { priority: 'low' as RequestPriority } : {}),
+    };
+    return fetch(packUrl, init);
+  }
+  const url = `${base}/${manifest.run}/${rel}${q}`;
+  return fetch(url, priority === 'low' ? { priority: 'low' } : undefined);
 }
 
 /** Two neighbouring steps and the blend weight between them (0 = all A, 1 = all B). */

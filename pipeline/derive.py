@@ -32,11 +32,12 @@ def apparent_temperature(t_c: np.ndarray, rh: np.ndarray, wind_ms: np.ndarray) -
     return t_c + 0.33 * e - 0.70 * wind_ms - 4.00
 
 
-def vorticity_divergence(u: np.ndarray, v: np.ndarray, lat_max: float = LAT_MAX) -> tuple[np.ndarray, np.ndarray]:
+def vorticity_divergence(u: np.ndarray, v: np.ndarray, lat_max: float = LAT_MAX, step_deg: float = STEP_DEG) -> tuple[np.ndarray, np.ndarray]:
     """Relative vorticity and horizontal divergence (both in 1e-5 per second) of a wind on the pipeline grid (row 0 = north)."""
     earth_radius = 6.371e6
-    lat = np.radians(lat_max - STEP_DEG * np.arange(u.shape[0]))[:, None]
-    step = np.radians(STEP_DEG)
+    lat_deg = np.clip(lat_max - step_deg * np.arange(u.shape[0]), -89.5, 89.5)
+    lat = np.radians(lat_deg)[:, None]
+    step = np.radians(step_deg)
     dx = earth_radius * np.cos(lat) * step
     dy = earth_radius * step
     dv_dx = np.gradient(v, axis=1) / dx
@@ -50,7 +51,7 @@ def vorticity_divergence(u: np.ndarray, v: np.ndarray, lat_max: float = LAT_MAX)
     return (vo * 1e5).astype(np.float32), (dv * 1e5).astype(np.float32)
 
 
-def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1, lat_max: float = LAT_MAX) -> dict[str, np.ndarray]:
+def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1, lat_max: float = LAT_MAX, step_deg: float = STEP_DEG) -> dict[str, np.ndarray]:
     """Published variables from one model step.
 
     `precip_window_h`: the source precipitation is a total over this many hours (the model's accumulation window at this
@@ -96,7 +97,7 @@ def derive(raw: dict[str, np.ndarray], precip_window_h: int = 1, lat_max: float 
         out[f"rh{lvl}"] = raw.get(f"relative_humidity_{lvl}hPa", missing)
         out[f"gh{lvl}"] = raw.get(f"geopotential_height_{lvl}hPa", missing)
         out[f"w{lvl}"] = raw.get(f"vertical_velocity_{lvl}hPa", missing)
-        out[f"vo{lvl}"], out[f"dv{lvl}"] = vorticity_divergence(out[f"u{lvl}"], out[f"v{lvl}"], lat_max)
+        out[f"vo{lvl}"], out[f"dv{lvl}"] = vorticity_divergence(out[f"u{lvl}"], out[f"v{lvl}"], lat_max, step_deg)
     return out
 
 

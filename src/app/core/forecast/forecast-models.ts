@@ -19,6 +19,8 @@ export interface ForecastModelDef {
    */
   groundKm: number;
   baseUrl: string;
+  /** Fallback base URL (GitHub Pages) used automatically if a model run is not yet published on Backblaze B2. */
+  fallbackBaseUrl?: string;
   /** The centre that runs it: the model's colour follows this (blue ECMWF, violet NOAA, green Met Office). */
   centre: 'ECMWF' | 'NOAA' | 'Met Office';
   /** An AI model (learned from past weather) rather than a physics model: its colour is the lighter shade and its chart line is dashed. */
@@ -35,26 +37,32 @@ export interface ForecastModelDef {
 }
 
 export const PAGES = 'https://gowthamgta.github.io/Atmos';
+export const B2_BASE = 'https://f003.backblazeb2.com/file/nwp-atmos-storage';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
-    id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, all India', gridKm: 9, groundKm: 9, baseUrl: `${PAGES}/ecmwf_ifs`,
+    id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, global 0.25°', gridKm: 9, groundKm: 9,
+    baseUrl: `${B2_BASE}/ecmwf_ifs`, fallbackBaseUrl: `${PAGES}/ecmwf_ifs`,
     centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 144,
   },
   {
-    id: 'ukmo', label: 'UK Met Office', short: 'UKMO', resolution: '10 km, all India', gridKm: 10, groundKm: 10, baseUrl: `${PAGES}/ukmo`,
+    id: 'ukmo', label: 'UK Met Office', short: 'UKMO', resolution: '10 km, global 0.25°', gridKm: 10, groundKm: 10,
+    baseUrl: `${B2_BASE}/ukmo`, fallbackBaseUrl: `${PAGES}/ukmo`,
     centre: 'Met Office', ai: false, datasets: ['ukmo_global_deterministic_10km'], apiId: 'ukmo_global_deterministic_10km', reachHours: 60,
   },
   {
-    id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, all India', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/gfs`,
+    id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, global 0.25°', gridKm: 13, groundKm: 28,
+    baseUrl: `${B2_BASE}/gfs`, fallbackBaseUrl: `${PAGES}/gfs`,
     centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 384,
   },
   {
-    id: 'aigfs', label: 'NOAA AIGFS', short: 'AIGFS', resolution: '25 km, all India', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aigfs`,
+    id: 'aigfs', label: 'NOAA AIGFS', short: 'AIGFS', resolution: '25 km, global 0.25°', gridKm: 25, groundKm: 28,
+    baseUrl: `${B2_BASE}/aigfs`, fallbackBaseUrl: `${PAGES}/aigfs`,
     centre: 'NOAA', ai: true, datasets: ['ncep_aigfs025'], apiId: 'ncep_aigfs025', reachHours: 384,
   },
   {
-    id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, all India', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
+    id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, global 0.25°', gridKm: 25, groundKm: 28,
+    baseUrl: `${B2_BASE}/aifs`, fallbackBaseUrl: `${PAGES}/aifs`,
     centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 360,
   },
 ];

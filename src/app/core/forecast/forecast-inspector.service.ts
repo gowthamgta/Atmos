@@ -186,7 +186,7 @@ export class ForecastInspectorService {
       }
       if (layerId === 'extreme' || detailed) {
         const agreed = await this.consensus.compute(time);
-        if (agreed) values['extreme'] = sampleGrid(agreed.values, INDIA_GRID, lat, lon);
+        if (agreed) values['extreme'] = sampleGrid(agreed.values, agreed.grid ?? INDIA_GRID, lat, lon);
       }
       if (my !== this.token) return; // a newer request replaced this one
       const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().groundKm, manifest.grid);

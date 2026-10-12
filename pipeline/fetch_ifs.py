@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import omfiles
 import requests
-from config import BUCKET_URL, LATEST_URL, IFS_DOMAIN, IFS_LAT_MAX, IFS_LAT_MIN, IFS_LON_MAX, IFS_LON_MIN, IFS_NX, IFS_NY, SOURCE_VARS, STEP_DEG
+from config import BUCKET_URL, LATEST_URL, IFS_DOMAIN, IFS_LAT_MAX, IFS_LAT_MIN, IFS_LON_MAX, IFS_LON_MIN, IFS_NX, IFS_NY, IFS_STEP_DEG, SOURCE_VARS
 from net import download
 import fetch_regular
 from derive import LEVEL_RAW_KEYS, unavailable_for
@@ -28,8 +28,8 @@ _ifs025_bbox: tuple[float, float, float, float] | None = None
 # v4 = the airport correction of temperature and humidity (correction.py) is applied, so a run built without it is built again;
 # v5 = dew point and feels-like follow the corrected values, and the rain is scaled to the Tamil Nadu gauges on land near them;
 # v6 = the airport temperature and humidity corrections are off (no airport passed the rules over the 16-day check), and the sea is never corrected.
-# v7 = the total-rain-so-far layer (raintot); v8 = the IMD rain category layer (extreme).
-LIVE_FORMAT = 8
+# v7 = the total-rain-so-far layer (raintot); v8 = the IMD rain category layer (extreme); v9 = global 0.25 degree grid.
+LIVE_FORMAT = 9
 # Steps whose pressure levels could not be read in this process. A run with any of them is published as incomplete, so the
 # next scheduled run builds it again (see run.py) instead of the empty levels staying live for twelve hours.
 _level_gaps: set[int] = set()
@@ -42,11 +42,11 @@ def precip_window_hours(step_h: int) -> int:
 
 
 NX, NY = IFS_NX, IFS_NY
-LATS = IFS_LAT_MAX - STEP_DEG * np.arange(NY)
-LONS = IFS_LON_MIN + STEP_DEG * np.arange(NX)
+LATS = IFS_LAT_MAX - IFS_STEP_DEG * np.arange(NY)
+LONS = IFS_LON_MIN + IFS_STEP_DEG * np.arange(NX)
 R0, R1 = band_rows(IFS_LAT_MIN, IFS_LAT_MAX)
 # the output grid of this model (its manifest and live-run check; see run.py)
-GRID = fetch_regular.Grid(IFS_LAT_MIN, IFS_LAT_MAX, IFS_LON_MIN, IFS_LON_MAX, STEP_DEG, IFS_DOMAIN)
+GRID = fetch_regular.Grid(IFS_LAT_MIN, IFS_LAT_MAX, IFS_LON_MIN, IFS_LON_MAX, IFS_STEP_DEG, IFS_DOMAIN)
 A, B = int(OFFSETS[R0]), int(OFFSETS[R1])
 
 

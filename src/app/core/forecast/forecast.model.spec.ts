@@ -91,8 +91,8 @@ describe('picture addresses and builds', () => {
   it('puts the build on every picture address, so a run built again is fetched afresh', async () => {
     const { ForecastCatalogService } = await import('./forecast-catalog.service');
     const catalog = new ForecastCatalogService();
-    expect(catalog.fieldUrl('t850', 12, '20261007T00Z')).toBe('https://gowthamgta.github.io/Atmos/ecmwf_ifs/20261007T00Z/t850/012.png');
-    expect(catalog.fieldUrl('t850', 12, '20261007T00Z', '20261007T1027Z')).toBe('https://gowthamgta.github.io/Atmos/ecmwf_ifs/20261007T00Z/t850/012.png?b=20261007T1027Z');
+    expect(catalog.fieldUrl('t850', 12, '20261007T00Z')).toBe('https://f003.backblazeb2.com/file/nwp-atmos-storage/ecmwf_ifs/20261007T00Z/t850/012.png');
+    expect(catalog.fieldUrl('t850', 12, '20261007T00Z', '20261007T1027Z')).toBe('https://f003.backblazeb2.com/file/nwp-atmos-storage/ecmwf_ifs/20261007T00Z/t850/012.png?b=20261007T1027Z');
   });
 
   it('keeps the loader cache apart for two builds of one run', async () => {

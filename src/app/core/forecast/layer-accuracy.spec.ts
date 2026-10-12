@@ -57,10 +57,10 @@ const SHOWN = FORECAST_LAYERS.flatMap(layer => [
 
 describe('the pipeline list that these checks read', () => {
   it('has the variables, including every level', () => {
-    expect(PIPELINE['t2m']).toEqual({ unit: '°C', lo: -10, hi: 50 });
+    expect(PIPELINE['t2m']).toEqual({ unit: '°C', lo: -60, hi: 55 });
     expect(PIPELINE['u10']).toEqual({ unit: 'm/s', lo: -60, hi: 60 });
-    expect(PIPELINE['t500']).toEqual({ unit: '°C', lo: -28, hi: 2 });
-    expect(PIPELINE['gh850']).toEqual({ unit: 'm', lo: 1100, hi: 1800 });
+    expect(PIPELINE['t500']).toEqual({ unit: '°C', lo: -65, hi: 5 });
+    expect(PIPELINE['gh850']).toEqual({ unit: 'm', lo: 900, hi: 1800 });
     expect(PIPELINE['vo850'].unit).toContain('s');
     expect(Object.keys(PIPELINE).length).toBeGreaterThan(70);
   });

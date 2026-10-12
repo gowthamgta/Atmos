@@ -124,14 +124,23 @@ export class ModelRunsService implements OnDestroy {
   /** A model that is not on screen: its latest.json says which run is on the site, its manifest how far the run reaches. */
   private async fetchPublished(model: ForecastModelDef): Promise<PublishedRun | null> {
     try {
-      const latest = await this.getJson<{ run?: string; build?: string; complete?: boolean }>(`${model.baseUrl}/latest.json?t=${Math.floor(Date.now() / 60000)}`);
+      const q = `?t=${Math.floor(Date.now() / 60000)}`;
+      let resolvedBase = model.baseUrl;
+      let latest: { run?: string; build?: string; complete?: boolean };
+      try {
+        latest = await this.getJson<{ run?: string; build?: string; complete?: boolean }>(`${model.baseUrl}/latest.json${q}`);
+      } catch (err) {
+        if (!model.fallbackBaseUrl) throw err;
+        resolvedBase = model.fallbackBaseUrl;
+        latest = await this.getJson<{ run?: string; build?: string; complete?: boolean }>(`${resolvedBase}/latest.json${q}`);
+      }
       const initMs = runIdToMs(latest.run);
       if (!latest.run || initMs === null) return null;
       const known = this.publishedById()[model.id];
       let reachHours = known && known.run === latest.run ? known.reachHours : model.reachHours;
       if (!known || known.run !== latest.run) {
         try {
-          const manifest = await this.getJson<{ steps?: { h: number }[] }>(`${model.baseUrl}/${latest.run}/manifest.json${latest.build ? `?b=${encodeURIComponent(latest.build)}` : ''}`);
+          const manifest = await this.getJson<{ steps?: { h: number }[] }>(`${resolvedBase}/${latest.run}/manifest.json${latest.build ? `?b=${encodeURIComponent(latest.build)}` : ''}`);
           reachHours = manifest.steps?.at(-1)?.h ?? reachHours;
         } catch {
           /* the nominal reach stands */

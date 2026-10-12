@@ -46,7 +46,8 @@ export class ForecastCatalogService implements OnDestroy {
 
   /** Address of one picture. The build (when the manifest has one) is part of it, so a run built again is fetched afresh. */
   fieldUrl(varId: string, stepHour: number, run = this.manifest()?.run, build = this.manifest()?.build): string {
-    return `${this.model().baseUrl}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png${build ? `?b=${encodeURIComponent(build)}` : ''}`;
+    const base = this.manifest()?.baseUrl ?? this.model().baseUrl;
+    return `${base}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png${build ? `?b=${encodeURIComponent(build)}` : ''}`;
   }
 
   /** Variables synthesized in the browser by log-pressure interpolation when the published run only has 850, 700 and 500 hPa. */
@@ -58,20 +59,30 @@ export class ForecastCatalogService implements OnDestroy {
 
   private async load(): Promise<void> {
     if (!this.manifest()) this.status.set('loading');
-    const { baseUrl, id } = this.model();
+    const { baseUrl, fallbackBaseUrl, id } = this.model();
     try {
-      const latest = await this.getJson<{ run: string; build?: string }>(`${baseUrl}/latest.json?t=${Math.floor(Date.now() / 60000)}`);
+      const q = `?t=${Math.floor(Date.now() / 60000)}`;
+      let resolvedBase = baseUrl;
+      let latest: { run: string; build?: string };
+      try {
+        latest = await this.getJson<{ run: string; build?: string }>(`${baseUrl}/latest.json${q}`);
+      } catch (primaryErr) {
+        if (!fallbackBaseUrl) throw primaryErr;
+        resolvedBase = fallbackBaseUrl;
+        latest = await this.getJson<{ run: string; build?: string }>(`${fallbackBaseUrl}/latest.json${q}`);
+      }
       if (id !== this.activeModelId()) return; // the model was switched while this request was in flight
-      if (latest.run === this.manifest()?.run && (latest.build ?? '') === (this.manifest()?.build ?? '')) {
+      if (latest.run === this.manifest()?.run && (latest.build ?? '') === (this.manifest()?.build ?? '') && resolvedBase === (this.manifest()?.baseUrl ?? baseUrl)) {
         this.status.set('ready');
         return;
       }
-      const manifest = await this.getJson<ForecastManifest>(`${baseUrl}/${latest.run}/manifest.json${latest.build ? `?b=${encodeURIComponent(latest.build)}` : ''}`);
+      const manifest = await this.getJson<ForecastManifest>(`${resolvedBase}/${latest.run}/manifest.json${latest.build ? `?b=${encodeURIComponent(latest.build)}` : ''}`);
       if (id !== this.activeModelId()) return;
+      manifest.baseUrl = resolvedBase;
       this.synthesizedVars.clear();
       const brackets: readonly { level: 800 | 600; below: number; above: number; t: [number, number]; gh: [number, number] }[] = [
-        { level: 800, below: 850, above: 700, t: [0, 28], gh: [1600, 2400] },
-        { level: 600, below: 700, above: 500, t: [-18, 12], gh: [3900, 4700] },
+        { level: 800, below: 850, above: 700, t: [-52, 32], gh: [1400, 2400] },
+        { level: 600, below: 700, above: 500, t: [-60, 14], gh: [3500, 4700] },
       ];
       for (const b of brackets) {
         for (const kind of ['u', 'v', 't', 'rh', 'gh', 'w', 'vo', 'dv'] as const) {
