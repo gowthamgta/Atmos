@@ -231,15 +231,16 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
     .list { display: flex; flex-direction: column; }
     .layer { display: flex; align-items: center; gap: var(--sp-3); min-height: var(--hit); padding: var(--sp-1) var(--sp-2); border: 0; border-radius: var(--radius-m); background: transparent; color: var(--text-primary); font-size: var(--fs-l); cursor: pointer; text-align: left; transition: background var(--t-fast); }
     .layer:hover:not(:disabled) { background: var(--surface-3); }
-    .layer.active { background: var(--accent-soft); font-weight: var(--fw-strong); }
+    .layer.active { background: var(--accent); color: var(--on-accent); font-weight: var(--fw-strong); }
     .layer:disabled { opacity: 0.4; cursor: not-allowed; }
     .layer.ground-only:not(.active) { opacity: 0.65; }
     .l-icon { color: var(--text-secondary); }
-    .layer.active .l-icon { color: var(--accent-strong); }
+    .layer.active .l-icon { color: var(--on-accent); }
     .l-name { flex: 1; min-width: 0; line-height: var(--lh-tight); }
     /* the layer's own palette, small: this is where its colours are shown, so the buttons themselves can stay plain */
     .l-palette { flex: none; width: 44px; height: 6px; border-radius: 3px; opacity: 0.9; }
-    .tick { color: var(--accent-strong); }
+    .layer.active .l-palette { opacity: 1; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32); }
+    .tick { color: var(--on-accent); }
 
     .alt-hint { margin: var(--sp-2) var(--sp-1) 0; }
 

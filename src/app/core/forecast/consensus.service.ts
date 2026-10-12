@@ -2,7 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import { decodeFieldBitmap } from './field-decode';
 import { FORECAST_MODELS, ForecastModelDef } from './forecast-models';
 import { ForecastManifest } from './forecast.model';
-import { INDIA_GRID, minAcross, resampleField } from './derived-fields';
+import { INDIA_GRID, extremeConsensus, resampleField } from './derived-fields';
 
 /** How far from a step a time may be for a model to count (the 6-hourly models are 3 h from their nearest step at worst). */
 const MAX_GAP_MS = 3.5 * 3_600_000;
@@ -10,7 +10,7 @@ const MANIFEST_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHED_FIELDS = 40;
 
 export interface Consensus {
-  /** The rain category (0 none, 1 heavy, 2 very heavy, 3 extremely heavy) that every one of the models agrees on, on the India grid. */
+  /** The rain category (0 none, 1 heavy, 2 very heavy, 3 extremely heavy) that the models agree on, on the India grid. */
   values: Float32Array;
   /** The models that took part: the ones whose run covers the time. */
   models: string[];
@@ -24,10 +24,8 @@ interface Published {
 }
 
 /**
- * The extreme-rain layer: the IMD category of the next 24 h of rain, kept only where every model agrees on it (the smallest category
- * across the models). Each model publishes its own category picture (var "extreme", pipeline/run.py); this reads the one nearest the
- * time from each model's newest run, puts them on one grid and takes the minimum. A model that does not cover the time, or has no such
- * picture yet, does not take part; fewer than two models give no answer, as there is nothing to agree on.
+ * The extreme-rain layer: multi-model agreement on the next 24 h of rain (`rain24`), mapped continuously onto the 0..3
+ * severity scale on the India grid so heavy-rain zones render with smooth Windy-style contours.
  */
 @Injectable({ providedIn: 'root' })
 export class ConsensusService {
@@ -40,23 +38,23 @@ export class ConsensusService {
   private readonly fields = new Map<string, Float32Array>();
 
   async compute(timeMs: number): Promise<Consensus | null> {
-    const parts = await Promise.all(FORECAST_MODELS.map(m => this.categoryField(m, timeMs).catch(() => null)));
+    const parts = await Promise.all(FORECAST_MODELS.map(m => this.rain24Field(m, timeMs).catch(() => null)));
     const used = parts.flatMap((p, i) => (p ? [{ label: FORECAST_MODELS[i].label, values: p }] : []));
     if (used.length < 2) {
       this.models.set([]);
       this.last = null;
       return null;
     }
-    const result: Consensus = { values: minAcross(used.map(u => u.values)), models: used.map(u => u.label) };
+    const result: Consensus = { values: extremeConsensus(used.map(u => u.values), INDIA_GRID), models: used.map(u => u.label) };
     this.models.set(result.models);
     this.last = result;
     return result;
   }
 
-  /** One model's category field at a time on the India grid, or null when the model does not cover it. */
-  private async categoryField(model: ForecastModelDef, timeMs: number): Promise<Float32Array | null> {
+  /** One model's 24 h rainfall field (mm) at a time on the India grid, or null when the model does not cover it. */
+  private async rain24Field(model: ForecastModelDef, timeMs: number): Promise<Float32Array | null> {
     const p = await this.newest(model);
-    const info = p.manifest.vars['extreme'];
+    const info = p.manifest.vars['rain24'];
     if (!info) return null;
     let best: { h: number; gap: number } | null = null;
     for (const s of p.manifest.steps) {
@@ -64,10 +62,10 @@ export class ConsensusService {
       if (!best || gap < best.gap) best = { h: s.h, gap };
     }
     if (!best || best.gap > MAX_GAP_MS) return null;
-    const key = `${model.id}/${p.run}.${p.build ?? ''}/${best.h}`;
+    const key = `${model.id}/${p.run}.${p.build ?? ''}/rain24/${best.h}`;
     const hit = this.fields.get(key);
     if (hit) return hit;
-    const url = `${model.baseUrl}/${p.run}/extreme/${String(best.h).padStart(3, '0')}.png${p.build ? `?b=${encodeURIComponent(p.build)}` : ''}`;
+    const url = `${model.baseUrl}/${p.run}/rain24/${String(best.h).padStart(3, '0')}.png${p.build ? `?b=${encodeURIComponent(p.build)}` : ''}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
