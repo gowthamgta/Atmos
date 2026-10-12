@@ -3,14 +3,14 @@ import { DistrictLookupService } from '../geo/district-lookup.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastStateService } from './forecast-state.service';
-import { bracketSteps } from './forecast.model';
+import { bracketSteps, sampleGrid } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { PointForecast, blendTime, buildPointRows, inspectVars, summaryVars } from './point-forecast';
 import { TerrainService } from './terrain.service';
 import { ConsensusService } from './consensus.service';
 import { HOME } from '../geo/home';
 import { UnitsService } from '../units/units.service';
-import { INDIA_GRID, nearestValue } from './derived-fields';
+import { INDIA_GRID } from './derived-fields';
 
 /** How often the card is worked out again while only the time changes: dragging the time bar, and playing the forecast. */
 export const SCRUB_INTERVAL_MS = 140;
@@ -184,9 +184,9 @@ export class ForecastInspectorService {
         const [atEnd, atStart] = await Promise.all([totalAt(to), totalAt(from)]);
         values['rainrange'] = Math.max(0, atEnd - atStart);
       }
-      if (layerId === 'extreme') {
+      if (layerId === 'extreme' || detailed) {
         const agreed = await this.consensus.compute(time);
-        if (agreed) values['extreme'] = nearestValue(agreed.values, INDIA_GRID, lat, lon);
+        if (agreed) values['extreme'] = sampleGrid(agreed.values, INDIA_GRID, lat, lon);
       }
       if (my !== this.token) return; // a newer request replaced this one
       const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().groundKm, manifest.grid);

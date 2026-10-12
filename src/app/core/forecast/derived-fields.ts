@@ -113,6 +113,17 @@ export function rainMmToSeverity(mm: number): number {
   return 3.0;
 }
 
+/** Inverts `rainMmToSeverity`: agreed 24 h rain (mm) from a 0..3 severity value, for the map pin tooltip and place card. */
+export function severityToRainMm(sev: number): number {
+  if (Number.isNaN(sev)) return NaN;
+  if (sev <= 0) return 0;
+  if (sev < 0.5) return (sev / 0.5) * 10;
+  if (sev < 1.0) return 10 + ((sev - 0.5) / 0.5) * 12;
+  if (sev < 2.0) return 22 + (sev - 1.0) * 28;
+  if (sev < 3.0) return 50 + (sev - 2.0) * 50;
+  return 100;
+}
+
 /**
  * Multi-model extreme-rain consensus on `grid` from each model's 24 h rainfall (`rain24` in mm):
  * accounts for ~22 km spatial displacement of rain bands between models and requires at least two models

@@ -1,5 +1,6 @@
 import { degToCompass } from '../domain/models/compass';
 import { METRIC, TEMP_LABEL, Units, formatPressure, formatRain, formatWind, tempFromC } from '../units/units';
+import { severityToRainMm } from './derived-fields';
 import { Level, LEVEL_KM } from './forecast-layers';
 import { PointTerrain, TerrainContext, TerrainMode, applyTerrain } from './terrain-correction';
 
@@ -27,7 +28,7 @@ export const SUMMARY_VARS = ['t2m', 'feels', 'rh', 'u10', 'v10', 'precip', 'clou
 export function summaryVars(layer: { varId: string; varId2?: string; terrain: string | null } | null): string[] {
   const vars: string[] = [...SUMMARY_VARS];
   if (layer) {
-    vars.push(layer.varId);
+    if (layer.varId !== 'extreme') vars.push(layer.varId);
     if (layer.varId2) vars.push(layer.varId2);
     if (layer.terrain === 'rain') vars.push('u850', 'v850');
   }
@@ -145,8 +146,11 @@ export function buildPointRows(
     });
   }
   if (!Number.isNaN(v('extreme'))) {
-    const names = ['No heavy rain agreed', 'Heavy rain (64.5 mm or more)', 'Very heavy rain (115.6 mm or more)', 'Extremely heavy rain (204.5 mm or more)'];
-    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, { id: 'extreme', label: 'Next 24 h, all models agree', text: names[Math.min(3, Math.max(0, Math.round(v('extreme'))))], terrainAdjusted: false });
+    const sev = v('extreme');
+    const mm = severityToRainMm(sev);
+    const cat = sev >= 2.5 ? 'Extreme' : sev >= 1.5 ? 'Very heavy' : sev >= 0.5 ? 'Heavy' : mm >= 1 ? 'Light' : '';
+    const text = cat ? `${cat} · ${formatRain(mm, units)}` : 'No heavy rain';
+    rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, { id: 'extreme', label: 'Next 24 h, all models agree', text, terrainAdjusted: false });
   }
   const layers = [adjust('lowcloud', v('cloud_low')), v('cloud_mid'), v('cloud_high')];
   if (layers.some(x => !Number.isNaN(x))) {

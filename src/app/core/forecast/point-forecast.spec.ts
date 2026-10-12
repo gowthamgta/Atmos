@@ -204,3 +204,17 @@ describe('lowest and highest temperature rows', () => {
     expect(rowsForLayer(rows, 'tmin24').map(r => r.text)).toEqual(['24.3 °C']);
   });
 });
+
+describe('extreme rain row and map tooltip', () => {
+  it('formats severity with category and agreed 24 h rain in <= 24 chars so the map pin tooltip always shows it', () => {
+    const textFor = (extreme: number) => rowsForLayer(buildPointRows({ t2m: 28, extreme }, null), 'extreme')[0].text;
+    expect(textFor(0)).toBe('No heavy rain');
+    expect(textFor(0.25)).toBe('Light · 5.0 mm');
+    expect(textFor(1.0)).toBe('Heavy · 22 mm');
+    expect(textFor(2.0)).toBe('Very heavy · 50 mm');
+    expect(textFor(3.0)).toBe('Extreme · 100 mm');
+    for (const s of [0, 0.25, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]) {
+      expect(textFor(s).length).toBeLessThanOrEqual(24);
+    }
+  });
+});
