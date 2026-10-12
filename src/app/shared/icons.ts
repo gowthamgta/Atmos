@@ -57,6 +57,8 @@ export const ICONS = {
   alert: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4M12 17h.01"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  chart: '<path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
 } as const;
 
 export type IconName = keyof typeof ICONS;

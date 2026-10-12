@@ -5,14 +5,20 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastStateService } from './forecast-state.service';
 import { bracketSteps } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
-import { PointForecast, blendTime, buildPointRows, inspectVars } from './point-forecast';
+import { PointForecast, blendTime, buildPointRows, inspectVars, summaryVars } from './point-forecast';
 import { TerrainService } from './terrain.service';
 import { ConsensusService } from './consensus.service';
 import { HOME } from '../geo/home';
 import { UnitsService } from '../units/units.service';
 import { INDIA_GRID, nearestValue } from './derived-fields';
 
-/** Click-to-inspect: reads every forecast variable at a point, blended to the selected time. */
+/** How often the card is worked out again while only the time changes: dragging the time bar, and playing the forecast. */
+export const SCRUB_INTERVAL_MS = 140;
+export const PLAY_INTERVAL_MS = 900;
+/** The full list of values is much bigger (every variable at two steps), so it follows the time bar more slowly. */
+export const DETAIL_INTERVAL_MS = 350;
+
+/** Click-to-inspect: reads the forecast variables at a point, blended to the selected time. */
 @Injectable({ providedIn: 'root' })
 export class ForecastInspectorService {
   private readonly catalog = inject(ForecastCatalogService);
@@ -28,27 +34,38 @@ export class ForecastInspectorService {
   readonly point = signal<PointForecast | null>(null);
   /** The name of the place when it was chosen by name (a search result); null when the point was clicked on the map. */
   readonly label = signal<string | null>(null);
+  /** The full list of values is wanted (the place card has "All values" open). Otherwise only the summary is read. */
+  readonly detail = signal(false);
   private homeDone = false;
   readonly busy = signal(false);
 
   private token = 0;
+  private lastKey = '';
+  private lastRunAt = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Recompute whenever the point, the time or the model run changes (e.g. while scrubbing).
     effect(() => {
       const sel = this.selected();
-      this.state.timeMs();
-      this.state.level();
-      this.catalog.manifest();
-      this.state.activeLayerId(); // the rain period and the all-models category are worked out only while their layer is on
-      this.state.rangeStartMs();
+      const time = this.state.timeMs();
+      const level = this.state.level();
+      const manifest = this.catalog.manifest();
+      const layerId = this.state.activeLayerId(); // the rain period and the all-models category are worked out only while their layer is on
+      this.state.rangeStartMs(); // dragging the ends of the period moves the card like the time does: rate-limited, not in the key
       this.state.rangeEndMs();
-      this.unitsService.units(); // the rows are text in the chosen units
+      const detail = this.detail();
+      const units = Object.values(this.unitsService.units()).join(','); // the rows are text in the chosen units
       if (!sel) {
+        this.cancelPending();
         this.point.set(null);
         return;
       }
-      void this.compute(sel.lat, sel.lon);
+      // anything but the time is a new question and is answered at once; the time alone moves a lot (a drag, a play) and is rate-limited
+      const key = [sel.lat, sel.lon, level, manifest?.run, manifest?.build, layerId, detail, units].join('|');
+      const onlyTime = key === this.lastKey && time !== null;
+      this.lastKey = key;
+      untracked(() => this.request(onlyTime));
     });
     // the card opens on the home place the first time a forecast is on screen (windy.com starts on a place too), and never again after
     // it has been closed
@@ -78,6 +95,34 @@ export class ForecastInspectorService {
   close(): void {
     this.selected.set(null);
     this.label.set(null);
+    this.detail.set(false);
+  }
+
+  /** Works out the card now, or (when only the time has moved and it was worked out a moment ago) once the interval is over. */
+  private request(onlyTime: boolean): void {
+    const interval = this.state.playing() ? PLAY_INTERVAL_MS : this.detail() ? DETAIL_INTERVAL_MS : SCRUB_INTERVAL_MS;
+    const due = this.lastRunAt + interval - performance.now();
+    if (!onlyTime || due <= 0) {
+      this.cancelPending();
+      this.run();
+    } else if (this.timer === null) {
+      // one trailing run is enough: it reads the time as it is when it runs
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        this.run();
+      }, due);
+    }
+  }
+
+  private cancelPending(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  private run(): void {
+    const sel = this.selected();
+    this.lastRunAt = performance.now();
+    if (sel) void this.compute(sel.lat, sel.lon);
   }
 
   private async compute(lat: number, lon: number): Promise<void> {
@@ -100,9 +145,11 @@ export class ForecastInspectorService {
         this.terrain.ensureLoaded().then(() => this.terrain.prepareAt(lat, lon)).catch(() => null), // terrain is optional; values fall back to model resolution
       ]);
       const level = this.state.level();
+      const detailed = this.detail();
+      const wanted = detailed ? inspectVars(level) : summaryVars(this.state.activeLayer());
       const values: Record<string, number> = {};
       await Promise.all(
-        inspectVars(level).map(async id => {
+        wanted.map(async id => {
           const info = manifest.vars[id];
           if (!info) {
             values[id] = NaN; // this model does not publish the variable (e.g. gusts on AIFS)
@@ -146,6 +193,7 @@ export class ForecastInspectorService {
         timeMs: time,
         rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }, this.unitsService.units()),
         values: { ...values },
+        detailed,
       });
     } catch (err) {
       console.warn('[forecast] inspect failed', err);

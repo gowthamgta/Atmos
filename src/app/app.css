@@ -22,13 +22,13 @@ app-map {
   top: 14px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 800;
+  z-index: var(--z-ui);
   display: flex;
   align-items: center;
   gap: 7px;
   margin: 0;
-  font-size: 19px;
-  font-weight: 700;
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-strong);
   letter-spacing: 0.01em;
   user-select: none;
   white-space: nowrap;
@@ -47,55 +47,34 @@ app-map {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .brand-accent {
-  color: var(--accent-strong);
+  color: #ffc83d; /* the bright amber in both themes: the name is on the map, and the light theme's dark orange would vanish on it */
 }
 
-/* Top right: the round red menu button with its name beside it */
+/* Top right: one round button for the menu, as plain as the buttons under it (amber only while its panel is open) */
 .menu-btn {
   position: fixed;
   top: var(--gutter);
   right: var(--gutter);
-  z-index: 900;
-  display: flex;
-  align-items: center;
-  height: 46px;
+  z-index: var(--z-bars);
+  display: grid;
+  place-items: center;
+  width: var(--hit);
+  height: var(--hit);
   padding: 0;
   border: 0;
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-}
-.menu-label {
-  height: 30px;
-  display: grid;
-  place-items: center;
-  padding: 0 28px 0 14px;
-  margin-right: -22px;
-  border-radius: 15px 0 0 15px;
-  background: var(--surface-1);
-  font-size: 14px;
-  font-weight: 600;
-  box-shadow: var(--shadow-1);
-  color: var(--text-primary);
-}
-.menu-circle {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
   border-radius: 50%;
-  background: var(--menu);
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
-  transition: transform var(--t-fast);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
 }
-.menu-btn:hover .menu-circle {
-  transform: scale(1.05);
+.menu-btn:hover {
+  background: var(--surface-2);
 }
-.menu-btn[aria-expanded='true'] .menu-circle {
+.menu-btn[aria-expanded='true'] {
   background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* The forecast status: a small pill above the bars, only when there is something to say */
@@ -104,18 +83,18 @@ app-map {
   left: 50%;
   bottom: calc(var(--stack-h) + 12px);
   transform: translateX(-50%);
-  z-index: 880;
+  z-index: var(--z-ui);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   height: 30px;
   padding: 0 14px;
   border-radius: 15px;
   border: 0;
   background: var(--surface-1);
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-m);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   box-shadow: var(--shadow-2);
 }
@@ -124,7 +103,7 @@ app-map {
   cursor: pointer;
 }
 .status .retry {
-  padding-left: 8px;
+  padding-left: var(--sp-2);
   border-left: 1px solid var(--line-strong);
   color: var(--text-primary);
 }
@@ -143,16 +122,9 @@ app-map {
     display: none;
   }
 }
+/* a phone: the search box runs across the top, so the menu button goes under it */
 @media (max-width: 700px) {
-  .menu-label {
-    display: none;
-  }
-  .menu-circle {
-    width: 42px;
-    height: 42px;
-  }
   .menu-btn {
-    height: 42px;
-    top: 62px;
+    top: calc(var(--gutter) + 52px);
   }
 }

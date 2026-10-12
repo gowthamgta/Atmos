@@ -1,10 +1,20 @@
 /* ============================================================
    AtmosIQ design system, after windy.com (dark) and meteoblue.com (light).
 
-   Dark: neutral grey translucent panels over the map, white type, an amber accent for "selected" and for the time marker,
-   a dark red round menu button. Light: white panels, dark blue-grey type and meteoblue's orange.
-   Interface colours are tokens on :root and :root[data-theme='light']. The colours of the weather itself are NOT here: they live with
-   the layers (core/forecast/forecast-layers.ts, windy-palettes.ts), so the theme never changes what a colour on the map means.
+   Interface colours are tokens on :root and :root[data-theme='light']; the colours of the weather itself are NOT here: they live with the
+   layers (core/forecast/forecast-layers.ts, windy-palettes.ts), so the theme never changes what a colour on the map means.
+
+   COLOUR ROLES. The interface is grey and white; colour is kept for meaning, and each meaning has one colour:
+     amber   --accent*     what you are acting on: the layer on the map, the time on the bar, the main button of a panel.
+     model   --m-*         which forecast model: its dot, its line on a chart, its row. Colour is the centre that runs the model
+                           (blue ECMWF, violet NOAA, green Met Office); a lighter shade is its AI model (AIFS, AIGFS), also drawn dashed.
+     status  --ok --warn --danger   how fresh the data is, and nothing else.
+     series  --s-*         the lines of the meteogram when one model is shown (temperature, rain, wind, gusts, pressure).
+   Nothing else is coloured: no red menu button, no rainbow layer buttons (a layer's palette is in the colour bar and the layer list).
+
+   TYPE. Five steps and no size below 11 px: --fs-xs captions and units, --fs-s secondary lines, --fs-m controls, --fs-l body and list rows,
+   --fs-xl panel titles; --fs-2xl for the search box. Weights are three: normal, medium, strong. Numbers that change are tabular.
+   SPACE. A 4 px scale (--sp-1..5). SIZE. --hit is the height of a control: 36 px with a mouse, 44 px on a touch screen.
    ============================================================ */
 
 :root {
@@ -26,39 +36,88 @@
   /* Text */
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.84);
-  --text-muted: rgba(255, 255, 255, 0.62);
+  --text-muted: rgba(255, 255, 255, 0.64);
 
-  /* Accent: windy's amber for the selected layer, model and time; red for the menu button */
+  /* Accent (amber): the layer, the time and the main button. Dark text on it, which white text on amber does not pass (3:1 against 4.5:1) */
   --accent: #cf8a00;
   --accent-strong: #ffc83d;
   --accent-soft: rgba(207, 138, 0, 0.3);
   --accent-line: rgba(255, 200, 61, 0.8);
   --on-accent: #231700;
-  --menu: #9c1c22;
+
+  /* Status of the data: only for how fresh it is */
   --warn: #ffb020;
-  --danger: #ff8080;
+  --danger: #ff8a8a;
   --ok: #6fdca6;
-  --model: #bcc8ff;
+
+  /* Forecast models: the centre that runs it gives the colour, an AI model is the lighter shade (and dashed on charts) */
+  --m-ecmwf_ifs: #5aa9ff;
+  --m-aifs: #92d2ff;
+  --m-ukmo: #4ddba9;
+  --m-gfs: #b794ff;
+  --m-aigfs: #dcc0ff;
+  --model: var(--m-ecmwf_ifs);
+
+  /* Meteogram series, when a single model is shown */
+  --s-temp: #ff8a65;
+  --s-feels: rgba(255, 138, 101, 0.6);
+  --s-rain: #5fb8ff;
+  --s-wind: #6fdcbc;
+  --s-gust: #b8f0dd;
+  --s-pressure: #c4b5fd;
+  --s-cloud: rgba(255, 255, 255, 0.2);
+  --s-night: rgba(0, 0, 0, 0.22);
+  --s-grid: rgba(255, 255, 255, 0.12);
 
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.45);
   --shadow-2: 0 4px 18px rgba(0, 0, 0, 0.42);
   --text-halo: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.7);
 
-  /* Layout: the map is full bleed, everything floats over it */
-  --bar-h: 0px;
+  /* Type */
+  --font-body: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --fs-xs: 11px;
+  --fs-s: 12px;
+  --fs-m: 13px;
+  --fs-l: 14px;
+  --fs-xl: 16px;
+  --fs-2xl: 19px;
+  --fw-normal: 450;
+  --fw-medium: 560;
+  --fw-strong: 680;
+  --lh-tight: 1.2;
+  --lh-normal: 1.4;
+  --ls-caps: 0.07em;
+
+  /* Space (4 px scale), radii and control size */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
   --gutter: 10px;
   --radius-s: 6px;
   --radius-m: 10px;
   --radius-l: 12px;
+  --hit: 36px;
   --tap: 44px;
-  /* the bottom stack: the colour bar (legend) under the time bar */
+
+  /* Layout: the map is full bleed, everything floats over it */
+  --bar-h: 0px;
+  /* the bottom stack: the colour bar (legend) under the time bar, and over them the meteogram while it is open (it sets --sheet-h) */
   --legend-h: 26px;
   --timeline-h: 46px;
-  --stack-h: calc(var(--legend-h) + var(--timeline-h));
+  --bars-h: calc(var(--legend-h) + var(--timeline-h));
+  --sheet-h: 0px;
+  --stack-h: var(--bars-h);
+  --left-stack-h: calc(var(--bars-h) + var(--sheet-h));
 
-  /* Type: the system font, as on windy.com; tabular numbers wherever values change */
-  --font-body: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  /* Layers of the screen, lowest first */
+  --z-ui: 880;
+  --z-bars: 900;
+  --z-card: 950;
+  --z-sheet: 960;
+  --z-panel: 1100;
 
   /* Motion */
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -91,20 +150,46 @@
   --line-strong: rgba(15, 40, 70, 0.32);
   --text-primary: #14283c;
   --text-secondary: #38506a;
-  --text-muted: #62768b;
+  --text-muted: #5a6e83;
   --accent: #dd7600;
   --accent-strong: #a45500;
   --accent-soft: rgba(221, 118, 0, 0.14);
   --accent-line: rgba(221, 118, 0, 0.65);
   --on-accent: #1f1400;
-  --menu: #0f4c81;
   --warn: #a55a00;
   --danger: #c0272d;
   --ok: #17803f;
-  --model: #4a4fc4;
+  --m-ecmwf_ifs: #0b63c9;
+  --m-aifs: #3f93e6;
+  --m-ukmo: #0a8f65;
+  --m-gfs: #6c3fd0;
+  --m-aigfs: #9a72e8;
+  --s-temp: #d9480f;
+  --s-feels: rgba(217, 72, 15, 0.55);
+  --s-rain: #1c7ed6;
+  --s-wind: #0c8f6e;
+  --s-gust: #5cb89d;
+  --s-pressure: #7048e8;
+  --s-cloud: rgba(20, 40, 70, 0.16);
+  --s-night: rgba(20, 40, 70, 0.08);
+  --s-grid: rgba(15, 40, 70, 0.12);
   --shadow-1: 0 1px 2px rgba(20, 40, 70, 0.14);
   --shadow-2: 0 4px 18px rgba(20, 40, 70, 0.22);
   --text-halo: none;
+}
+
+/* On a phone the meteogram spans the screen, so everything that sits above the bars sits above it too; wider, it leaves the right-hand column alone */
+@media (max-width: 760px) {
+  :root {
+    --stack-h: calc(var(--bars-h) + var(--sheet-h));
+  }
+}
+
+/* A touch screen: controls are 44 px (the least a finger hits reliably) */
+@media (pointer: coarse) {
+  :root {
+    --hit: 44px;
+  }
 }
 
 *,
@@ -180,8 +265,8 @@ button {
 .btn-icon {
   display: inline-grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--hit);
+  height: var(--hit);
   flex: none;
   border-radius: 50%;
   border: 1px solid var(--line);
@@ -209,8 +294,8 @@ button {
 .fab {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: var(--hit);
+  height: var(--hit);
   border-radius: 50%;
   border: 0;
   background: var(--surface-1);
@@ -250,6 +335,79 @@ button {
 }
 .switch.on::after {
   transform: translateX(16px);
+}
+
+/* Segmented control: units, theme, the meteogram's tabs and ranges. The chosen one is amber, like every chosen thing */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: calc(var(--hit) / 2);
+  background: var(--surface-3);
+}
+.seg button {
+  min-height: calc(var(--hit) - 8px);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: calc(var(--hit) / 2 - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--fs-m);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.seg button:hover:not(.on):not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-3);
+}
+.seg button.on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.seg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.seg.wide {
+  display: flex;
+}
+.seg.wide button {
+  flex: 1;
+}
+
+/* Status of the data: a small dot and a word, in the status colours */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.status-dot.ok {
+  background: var(--ok);
+}
+.status-dot.warn {
+  background: var(--warn);
+}
+.status-dot.bad {
+  background: var(--danger);
+}
+
+/* A model's colour: a dot (a short dash for an AI model, as on the charts) */
+.model-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--model-color, var(--text-muted));
+  box-shadow: 0 0 0 1.5px var(--surface-solid);
+}
+.model-dot.ai {
+  border-radius: 3px;
 }
 
 .sr-only {

@@ -16,6 +16,24 @@ export function inspectVars(level: Level): string[] {
   return [...new Set(vars)];
 }
 
+/** What the closed place card shows: the temperature with its feels-like, the wind, the humidity, and the sky (rain and cloud). */
+export const SUMMARY_VARS = ['t2m', 'feels', 'rh', 'u10', 'v10', 'precip', 'cloud'] as const;
+
+/**
+ * The few variables worth downloading before anyone opens "All values": the summary, plus whatever the layer on the map needs (its value is
+ * in the bubble beside the pin). A layer whose rain is corrected for the hills also needs the 850 hPa wind that lifts the air. Every picture
+ * costs about 100 KB, so a place card that asked for the full list on every click and every step of the time bar fetched some 70 of them.
+ */
+export function summaryVars(layer: { varId: string; varId2?: string; terrain: string | null } | null): string[] {
+  const vars: string[] = [...SUMMARY_VARS];
+  if (layer) {
+    vars.push(layer.varId);
+    if (layer.varId2) vars.push(layer.varId2);
+    if (layer.terrain === 'rain') vars.push('u850', 'v850');
+  }
+  return [...new Set(vars)];
+}
+
 /** The wind used for orographic lift at a point: 850 hPa when available, else 10 m (same choice as the map). */
 export function liftWindAt(values: Record<string, number>): [number, number] | null {
   const ok = (a: number | undefined, b: number | undefined) => a !== undefined && b !== undefined && !Number.isNaN(a) && !Number.isNaN(b);
@@ -46,6 +64,8 @@ export interface PointForecast {
   rows: PointRow[];
   /** The blended raw values (°C, m/s, mm, %...) the rows were made from, for the weather picture and the big numbers of the place card. */
   values: Record<string, number>;
+  /** True when every variable was read (the full list of values); false when only the summary was, and rows beyond it are empty. */
+  detailed: boolean;
 }
 
 /** Blend two time steps; if one side has no data the other is used. */

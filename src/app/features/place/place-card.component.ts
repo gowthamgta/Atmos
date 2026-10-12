@@ -8,7 +8,11 @@ import { ageLabel, compassPoint } from '../../core/forecast/observations';
 import { ObservationsService } from '../../core/forecast/observations.service';
 import { OutlookService } from '../../core/forecast/outlook.service';
 import { currentIcon, temperatureBar } from '../../core/forecast/outlook';
+import { runLines } from '../../core/forecast/model-runs';
+import { ModelRunsService } from '../../core/forecast/model-runs.service';
+import { MeteogramService } from '../../core/meteogram/meteogram.service';
 import { MapHostService } from '../../core/ui/map-host.service';
+import { PanelService } from '../../core/ui/panel.service';
 import { UnitsService } from '../../core/units/units.service';
 import { formatRain, formatTemp, formatWind } from '../../core/units/units';
 import { IconComponent } from '../../shared/icon.component';
@@ -25,15 +29,17 @@ export function firstNumber(text: string | undefined): number | null {
 
 /**
  * The card at the top left, after windy.com: a search box (the name of the place is in it), and under it the place's weather at the time on the
- * bar: the temperature in big figures with a picture of the sky, wind and humidity, and the next days as a strip. "All values" opens the full list
- * of values at that place and the observations nearby (rain gauge, weather station, airport). Click anywhere on the map to choose another place.
+ * bar: the temperature in big figures with a picture of the sky, wind and humidity, and the next days as a strip. "Meteogram" opens the hourly
+ * chart; "All values" opens the full list of values at that place and the observations nearby (rain gauge, weather station, airport), which are
+ * only read from the forecast when it is opened. The last line says which run of which model the numbers are from. Click anywhere on the map to
+ * choose another place.
  */
 @Component({
   selector: 'app-place-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconComponent],
   template: `
-    <div class="wrap">
+    <div class="wrap" [class.tight]="meteogram.visible()">
       <div class="searchbox">
       <div class="search" [class.open]="showResults()">
         <app-icon name="search" [size]="18" />
@@ -93,23 +99,32 @@ export function firstNumber(text: string | undefined): number | null {
               <div class="note">Loading the next days…</div>
             }
 
-            <button type="button" class="expand" (click)="expanded.set(!expanded())" [attr.aria-expanded]="expanded()">
-              All values and observations <app-icon name="chevron" [size]="14" [style.transform]="expanded() ? 'rotate(180deg)' : ''" />
-            </button>
+            <div class="actions">
+              <button type="button" class="act" (click)="meteogram.toggle()" [attr.aria-pressed]="meteogram.visible()" title="Hourly chart of temperature, rain, wind and gusts, and the models side by side (M)">
+                <app-icon name="chart" [size]="16" />Meteogram
+              </button>
+              <button type="button" class="act" (click)="toggleValues()" [attr.aria-expanded]="expanded()" title="Every value at this place, and the observations nearby">
+                All values <app-icon name="chevron" [size]="14" [style.transform]="expanded() ? 'rotate(180deg)' : ''" />
+              </button>
+            </div>
 
             @if (expanded()) {
-              <dl class="values">
-                @for (row of p.rows; track row.id) {
-                  @if (row.heading) {
-                    <div class="heading">{{ row.label }}</div>
-                  } @else {
-                    <div class="row" [class.on]="row.id === layerRow()">
-                      <dt>{{ row.label }}</dt>
-                      <dd>{{ row.text }}@if (row.terrainAdjusted) { <span class="adj" title="Adjusted to 90 m terrain">▲</span> }</dd>
-                    </div>
+              @if (p.detailed) {
+                <dl class="values">
+                  @for (row of p.rows; track row.id) {
+                    @if (row.heading) {
+                      <div class="heading">{{ row.label }}</div>
+                    } @else {
+                      <div class="row" [class.on]="row.id === layerRow()">
+                        <dt>{{ row.label }}</dt>
+                        <dd>{{ row.text }}@if (row.terrainAdjusted) { <span class="adj" title="Adjusted to 90 m terrain">▲</span> }</dd>
+                      </div>
+                    }
                   }
-                }
-              </dl>
+                </dl>
+              } @else {
+                <div class="note busy"><span class="spinner" aria-hidden="true"></span>Reading every value…</div>
+              }
               @if (observed(); as o) {
                 <div class="heading obs-heading">Observed nearby <span class="obs-note">not the forecast</span></div>
                 @if (o.gauge) {
@@ -134,11 +149,14 @@ export function firstNumber(text: string | undefined): number | null {
                   <div class="obs-sub">No rain gauge within 15 km, weather station within 100 km or airport within 120 km.</div>
                 }
               }
-              <footer>
-                @if (adjusted()) { ▲ adjusted to 90 m terrain. }
-                Model: {{ catalog.model().label }}, {{ catalog.model().resolution }}.
-              </footer>
+              @if (adjusted()) { <p class="footer">▲ adjusted to 90 m terrain.</p> }
             }
+
+            <button type="button" class="runline" (click)="panels.toggle('models')" [attr.aria-expanded]="panels.open() === 'models'" aria-haspopup="dialog" [title]="runTitle()">
+              <span class="status-dot" [class.ok]="runTone() === 'ok'" [class.warn]="runTone() === 'warn'" [class.bad]="runTone() === 'bad'"></span>
+              <span class="run-text">{{ catalog.model().short }} {{ catalog.model().gridKm }} km · {{ runText() }}</span>
+              <span class="run-badge">{{ runBadge() }}</span>
+            </button>
           } @else if (inspector.busy()) {
             <div class="note busy"><span class="spinner" aria-hidden="true"></span>Loading…</div>
           } @else {
@@ -150,94 +168,112 @@ export function firstNumber(text: string | undefined): number | null {
   `,
   styles: [`
     :host { display: contents; }
-    .wrap { position: fixed; top: var(--gutter); left: var(--gutter); z-index: 950; width: min(410px, calc(100vw - 2 * var(--gutter))); display: flex; flex-direction: column; gap: 8px; max-height: calc(100dvh - var(--stack-h) - 24px); }
+    .wrap { position: fixed; top: var(--gutter); left: var(--gutter); z-index: var(--z-card); width: min(410px, calc(100vw - 2 * var(--gutter))); display: flex; flex-direction: column; gap: var(--sp-2); max-height: calc(100dvh - var(--left-stack-h) - 24px); }
 
     .searchbox { position: relative; flex: none; }
-    .search { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 6px 0 14px; border-radius: 23px; background: var(--surface-1); box-shadow: var(--shadow-2); color: var(--text-secondary); flex: none; }
+    .search { display: flex; align-items: center; gap: var(--sp-2); height: 46px; padding: 0 6px 0 14px; border-radius: 23px; background: var(--surface-1); box-shadow: var(--shadow-2); color: var(--text-secondary); flex: none; }
     .search.open { border-radius: 23px 23px 0 0; }
-    .input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: 19px; font-weight: 450; text-overflow: ellipsis; }
-    .input::placeholder { color: var(--text-muted); font-weight: 400; }
+    .input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: var(--fs-2xl); font-weight: var(--fw-normal); text-overflow: ellipsis; }
+    .input::placeholder { color: var(--text-muted); }
     .search:focus-within { box-shadow: 0 0 0 2px var(--accent-strong), var(--shadow-2); }
-    .home { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; flex: none; }
+    .home { display: grid; place-items: center; width: var(--hit); height: var(--hit); border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; flex: none; }
     .home:hover { background: var(--surface-3); color: var(--text-primary); }
 
-    .results { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px 0 6px; border-radius: 0 0 14px 14px; background: var(--surface-solid); box-shadow: var(--shadow-2); max-height: 55dvh; overflow-y: auto; }
-    .results li { display: flex; flex-direction: column; gap: 0; padding: 7px 16px; cursor: pointer; }
-    .results li strong { font-size: 15px; font-weight: 600; }
-    .results li span { font-size: 12px; color: var(--text-muted); }
+    .results { position: absolute; top: 100%; left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: var(--sp-1) 0 6px; border-radius: 0 0 14px 14px; background: var(--surface-solid); box-shadow: var(--shadow-2); max-height: 55dvh; overflow-y: auto; }
+    .results li { display: flex; flex-direction: column; gap: 0; padding: 8px var(--sp-4); min-height: var(--hit); justify-content: center; cursor: pointer; }
+    .results li strong { font-size: var(--fs-l); font-weight: var(--fw-strong); }
+    .results li span { font-size: var(--fs-s); color: var(--text-muted); }
     .results li:hover, .results li.active { background: var(--surface-3); }
-    .results li.empty { color: var(--text-muted); cursor: default; font-size: 13px; }
+    .results li.empty { color: var(--text-muted); cursor: default; font-size: var(--fs-m); }
 
-    .card { padding: 10px 14px 8px; border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-2); overflow-y: auto; min-height: 0; animation: sheet-in var(--t-med) both; }
-    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-    .where strong { display: block; font-size: 16px; line-height: 1.2; }
-    .sub { font-size: 12px; color: var(--text-secondary); }
-    .x { flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin: -4px -6px 0 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; }
+    .card { padding: var(--sp-3) 14px var(--sp-1); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-2); overflow-y: auto; min-height: 0; animation: sheet-in var(--t-med) both; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-2); }
+    .where strong { display: block; font-size: var(--fs-xl); font-weight: var(--fw-strong); line-height: var(--lh-tight); }
+    .sub { font-size: var(--fs-s); color: var(--text-secondary); }
+    .x { flex: none; display: grid; place-items: center; width: var(--hit); height: var(--hit); margin: -8px -10px 0 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-secondary); cursor: pointer; }
     .x:hover { background: var(--surface-3); color: var(--text-primary); }
 
     .now { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
     .temp { font-size: 52px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
     .sky { color: var(--accent-strong); }
-    .facts { display: flex; flex-direction: column; gap: 1px; margin-left: 4px; font-size: 12.5px; color: var(--text-secondary); min-width: 0; }
+    .facts { display: flex; flex-direction: column; gap: 1px; margin-left: var(--sp-1); font-size: var(--fs-m); color: var(--text-secondary); min-width: 0; }
     .facts span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .when { margin: 2px 0 8px; font-size: 11px; color: var(--text-muted); }
+    .when { margin: 2px 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); }
 
-    .days { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 6px 0 4px; border-top: 1px solid var(--line); }
-    .day { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .days { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 6px 0 var(--sp-1); border-top: 1px solid var(--line); }
+    .day { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 2px; font-size: var(--fs-s); font-variant-numeric: tabular-nums; }
     .day + .day { border-left: 1px solid var(--line); }
-    .wd { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-muted); }
+    .wd { font-size: var(--fs-xs); font-weight: var(--fw-strong); letter-spacing: var(--ls-caps); color: var(--text-muted); }
     .day app-icon { color: var(--text-primary); }
     .range { white-space: nowrap; }
-    .range strong { font-weight: 650; }
+    .range strong { font-weight: var(--fw-strong); }
     .slash { margin: 0 2px; color: var(--text-muted); }
     .bar { width: calc(100% - 6px); height: 4px; border-radius: 2px; }
-    .rain { font-size: 11px; font-weight: 600; color: #8fcaff; min-height: 14px; }
-    .rain.dry { color: var(--text-muted); font-weight: 400; }
-    :host-context(:root[data-theme='light']) .rain { color: #1d6fb8; }
+    .rain { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--s-rain); min-height: 14px; }
+    .rain.dry { color: var(--text-muted); font-weight: var(--fw-normal); }
 
-    .expand { display: flex; align-items: center; gap: 4px; width: 100%; margin-top: 2px; padding: 6px 0 2px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--accent-strong); font-size: 12.5px; font-weight: 600; cursor: pointer; }
-    .expand app-icon { transition: transform var(--t-fast); }
-    .values { margin: 4px 0 0; }
-    .heading { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--accent-line); font-size: 12px; font-weight: 700; color: var(--accent-strong); }
-    .row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+    .actions { display: flex; gap: var(--sp-2); padding: var(--sp-2) 0; border-top: 1px solid var(--line); }
+    .act { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: calc(var(--hit) / 2); background: var(--surface-3); color: var(--text-primary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; transition: background var(--t-fast), color var(--t-fast); }
+    .act:hover { background: var(--surface-4); }
+    .act[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
+    .act app-icon { transition: transform var(--t-fast); }
+
+    .values { margin: var(--sp-1) 0 0; }
+    .heading { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--accent-line); font-size: var(--fs-s); font-weight: var(--fw-strong); color: var(--accent-strong); }
+    .row { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 5px 0; border-top: 1px solid var(--line); font-size: var(--fs-m); }
     .row.on { background: var(--accent-soft); margin: 0 -14px; padding: 5px 14px; }
     dt { color: var(--text-secondary); }
-    dd { margin: 0; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
-    .adj { margin-left: 4px; font-size: 8px; color: var(--accent-strong); vertical-align: middle; }
+    dd { margin: 0; font-weight: var(--fw-strong); text-align: right; font-variant-numeric: tabular-nums; }
+    .adj { margin-left: var(--sp-1); font-size: 8px; color: var(--accent-strong); vertical-align: middle; }
     .obs-heading { display: flex; align-items: baseline; justify-content: space-between; }
-    .obs-note { font-size: 10px; font-weight: 500; color: var(--text-muted); }
+    .obs-note { font-size: var(--fs-xs); font-weight: var(--fw-normal); color: var(--text-muted); }
     .obs { padding: 5px 0; border-top: 1px solid var(--line); }
-    .obs-main { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--text-secondary); }
+    .obs-main { display: flex; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-m); color: var(--text-secondary); }
     .obs-main strong { color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; }
-    .obs-sub { margin-top: 1px; font-size: 10.5px; color: var(--text-muted); }
-    footer { margin-top: 6px; font-size: 10px; color: var(--text-muted); }
-    .note { padding: 8px 0; font-size: 12px; color: var(--text-muted); }
-    .busy { display: flex; align-items: center; gap: 8px; }
+    .obs-sub { margin-top: 1px; font-size: var(--fs-xs); color: var(--text-muted); }
+    .footer { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+
+    /* which run of which model these numbers are from, and whether it is the newest */
+    .runline { display: flex; align-items: center; gap: var(--sp-2); width: calc(100% + 28px); margin: var(--sp-1) -14px 0; padding: 0 14px; min-height: 34px; border: 0; border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; background: transparent; color: var(--text-secondary); font-size: var(--fs-xs); text-align: left; cursor: pointer; font-variant-numeric: tabular-nums; }
+    .runline:hover { background: var(--surface-3); color: var(--text-primary); }
+    .run-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .run-badge { flex: none; font-weight: var(--fw-medium); }
+
+    .note { padding: var(--sp-2) 0; font-size: var(--fs-s); color: var(--text-muted); }
+    .busy { display: flex; align-items: center; gap: var(--sp-2); }
     .spinner { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent-strong); animation: spin 0.8s linear infinite; }
 
     @media (max-width: 700px) {
       /* the right-hand column (menu button and layer buttons) stays clear of the card */
-      .card { margin-right: 52px; }
-      .input { font-size: 17px; }
+      .card { margin-right: calc(var(--hit) + 8px); }
+      .input { font-size: var(--fs-xl); }
       .temp { font-size: 44px; }
       .days { grid-template-columns: repeat(4, 1fr); }
       .day:nth-child(5) { display: none; }
-      .wrap { max-height: calc(100dvh - var(--stack-h) - 20px); }
+      .wrap { max-height: calc(100dvh - var(--left-stack-h) - 20px); }
+      /* the meteogram carries the numbers: the card keeps to the headline while it is open */
+      .tight .actions { display: none; }
     }
+    /* ...and the days and the time and place line: they are on the chart */
+    .tight .days, .tight .when { display: none; }
   `]
 })
 export class PlaceCardComponent {
   protected readonly inspector = inject(ForecastInspectorService);
   protected readonly catalog = inject(ForecastCatalogService);
   protected readonly outlook = inject(OutlookService);
+  protected readonly meteogram = inject(MeteogramService);
+  protected readonly panels = inject(PanelService);
   private readonly state = inject(ForecastStateService);
+  private readonly runs = inject(ModelRunsService);
   private readonly search = inject(PlaceSearchService);
   private readonly mapHost = inject(MapHostService);
   private readonly observations = inject(ObservationsService);
   private readonly unitsService = inject(UnitsService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  protected readonly expanded = signal(false);
+  /** The full list of values is open: only then are all of them read from the forecast. */
+  protected readonly expanded = this.inspector.detail;
 
   // ---- search
   protected readonly query = signal('');
@@ -291,6 +327,27 @@ export class PlaceCardComponent {
   /** The row of the layer on the map, which is lit in the full list. */
   protected readonly layerRow = computed(() => ({ temp: 'temp', wind: 'wind', gust: 'gust', rain: 'rain', humidity: 'humidity', pressure: 'pressure', feels: 'feels', dew: 'dew', rain24: 'rain24', raintot: 'rainrange', extreme: 'extreme', clouds: 'clouds' } as Record<string, string>)[this.state.activeLayerId() ?? ''] ?? '');
   protected readonly adjusted = computed(() => this.inspector.point()?.rows.some(r => r.terrainAdjusted) ?? false);
+
+  // ---- which run these numbers are from
+  private readonly runInfo = computed(() => this.runs.active());
+  protected readonly runTone = computed(() => this.runInfo()?.tone ?? 'none');
+  protected readonly runBadge = computed(() => this.runInfo()?.badge ?? '');
+  protected readonly runText = computed(() => {
+    const info = this.runInfo();
+    if (!info?.published) return 'run not known';
+    const lines = runLines(info, this.state.timeMs(), this.runs.nowMs());
+    return `${lines.run.split(' · ')[0]} · ${lines.hour}`;
+  });
+  protected readonly runTitle = computed(() => {
+    const info = this.runInfo();
+    if (!info?.published) return 'Forecast model';
+    const lines = runLines(info, this.state.timeMs(), this.runs.nowMs());
+    return `${this.catalog.model().label}. ${lines.run}. ${lines.published}. ${info.detail} Click for all the models.`;
+  });
+
+  protected toggleValues(): void {
+    this.inspector.detail.update(on => !on);
+  }
 
   protected temp(c: number | null): string {
     return formatTemp(c, this.unitsService.units(), 0, false);
@@ -402,9 +459,10 @@ export class PlaceCardComponent {
     this.mapHost.home();
   }
 
-  @HostListener('window:keydown.escape')
-  protected onEscape(): void {
-    if (!this.editing()) this.inspector.close();
+  @HostListener('window:keydown.escape', ['$event'])
+  protected onEscape(event: Event): void {
+    // a panel over the map (the menu, the model list, the about box) takes the key first
+    if (this.editing() || event.defaultPrevented || this.panels.open() !== null) return;
+    this.inspector.close();
   }
 }
-

@@ -87,8 +87,10 @@ export class AboutComponent {
   protected readonly panels = inject(PanelService);
   protected readonly open = computed(() => this.panels.open() === 'about');
 
-  @HostListener('window:keydown.escape')
-  protected onEscape(): void {
+  @HostListener('window:keydown.escape', ['$event'])
+  protected onEscape(event: Event): void {
+    if (!this.open()) return;
     this.panels.close('about');
+    event.preventDefault();
   }
 }

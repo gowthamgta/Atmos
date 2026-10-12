@@ -10,15 +10,17 @@
   <span class="brand-name">Atmos<span class="brand-accent">IQ</span></span>
 </h1>
 
-<!-- Top right: the menu button, and the layers under it -->
-<button type="button" class="menu-btn" data-menu-toggle (click)="panels.toggle('layers')" [attr.aria-expanded]="panels.open() === 'layers'" aria-haspopup="dialog" aria-label="Menu" title="Menu">
-  <span class="menu-label">Menu</span>
-  <span class="menu-circle"><app-icon name="menu" [size]="22" /></span>
+<!-- Top right: the menu button, and the layers used most under it -->
+<button type="button" class="menu-btn" data-menu-toggle (click)="panels.toggle('menu')" [attr.aria-expanded]="panels.open() === 'menu'" aria-haspopup="dialog" aria-controls="menu-panel" aria-label="Menu: layers, models and settings" title="Menu">
+  <app-icon name="menu" [size]="22" />
 </button>
-@if (panels.open() !== 'layers') {
+@if (panels.open() !== 'menu') {
   <app-layer-rail></app-layer-rail>
 }
-<app-layer-menu></app-layer-menu>
+<!-- the menu and the meteogram are code only needed once they are opened: they load when the browser is idle, after the first picture -->
+@defer (on idle) {
+  <app-menu-panel></app-menu-panel>
+}
 <app-about></app-about>
 
 <!-- The observed pictures have their own small panels; a weather station opens its readings -->
@@ -27,7 +29,10 @@
 <app-gibs-panel></app-gibs-panel>
 <app-station-card></app-station-card>
 
-<!-- Bottom: the model buttons and map buttons, then the time bar, then the colour bar -->
+<!-- Bottom: the meteogram when it is open, the model button, then the time bar, then the colour bar -->
+@defer (on idle) {
+  <app-meteogram></app-meteogram>
+}
 <app-map-controls></app-map-controls>
 <app-forecast-timeline></app-forecast-timeline>
 <app-forecast-legend></app-forecast-legend>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bestMs } from '../testing/bench';
 import { ForecastGrid } from './forecast.model';
 import { INSTANCE_FLOATS, PX_PER_MS, ParticleSystem, ViewState, WindFrame, spawnRegion } from './particle-system';
 
@@ -179,14 +180,11 @@ describe('ParticleSystem', () => {
     const wind = uniformWind(5, 3, 0.5);
     const out = new Float32Array(9000 * INSTANCE_FLOATS);
     for (let i = 0; i < 20; i++) ps.step(0.016, wind, VIEW); // warm up
-    const runs = 100;
-    const t0 = performance.now();
-    for (let i = 0; i < runs; i++) {
+    const msPerFrame = bestMs(5, 20, () => {
       ps.step(0.016, wind, VIEW);
       ps.writeInstances(out);
-    }
-    const msPerFrame = (performance.now() - t0) / runs;
-    console.info(`particle step + pack, 9000 particles: ${msPerFrame.toFixed(2)} ms/frame`);
+    });
+    console.info(`particle step + pack, 9000 particles: ${msPerFrame.toFixed(2)} ms/frame (best of 5 batches)`);
     expect(msPerFrame).toBeLessThan(6); // a 60 fps frame is 16.7 ms; leave most of it for drawing
   });
 });

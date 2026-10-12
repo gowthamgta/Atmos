@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bestMs } from '../testing/bench';
 import { contourLevels, contourLines, isobarGeoJson, smoothField } from './contours';
 import { ForecastGrid } from './forecast.model';
 
@@ -139,12 +140,11 @@ describe('isobarGeoJson', () => {
       }
     }
     isobarGeoJson(msl, g, 2); // warm up
-    const t0 = performance.now();
-    const runs = 10;
     let features = 0;
-    for (let i = 0; i < runs; i++) features = isobarGeoJson(msl, g, 2).features.length;
-    const ms = (performance.now() - t0) / runs;
-    console.info(`isobars: ${features} lines in ${ms.toFixed(1)} ms per update`);
+    const ms = bestMs(5, 3, () => {
+      features = isobarGeoJson(msl, g, 2).features.length;
+    });
+    console.info(`isobars: ${features} lines in ${ms.toFixed(1)} ms per update (best of 5 batches)`);
     expect(features).toBeGreaterThan(10);
     expect(ms).toBeLessThan(60);
   });

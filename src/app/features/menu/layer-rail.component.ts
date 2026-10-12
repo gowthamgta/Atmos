@@ -3,7 +3,6 @@ import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.ser
 import { forecastLayerById, layerAvailableAt, supportsLevels } from '../../core/forecast/forecast-layers';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapLayerService } from '../../core/services/map-layer.service';
-import { PanelService } from '../../core/ui/panel.service';
 import { IconComponent } from '../../shared/icon.component';
 import { IconName } from '../../shared/icons';
 
@@ -15,18 +14,12 @@ interface RailItem {
   layerId?: string;
   /** Radar and satellite are observed pictures with their own panels. */
   observed?: 'radar' | 'satellite';
-  /** Colours of the round button: the layer's own palette, so each button hints at what the layer looks like. */
-  colors?: readonly string[];
 }
 
-/** The IMD radar and Meteosat legends, as on windy.com's radar and satellite layers. */
-const RADAR_COLORS = ['#28109f', '#182ca8', '#009193', '#00af81', '#48cd5f', '#c7db24', '#f5ca09', '#f49d22', '#de6445', '#bc335f'];
-const SATELLITE_COLORS = ['#4143a8', '#4470e6', '#28c0e8', '#35f591', '#a9fb3b', '#efcb38', '#f9791f', '#cb2d04'];
-
-/** The layers shown on the rail, in the order of windy.com's: the observed pictures first, then the main forecast layers. */
+/** The layers on the rail, the ones used most: the observed pictures first, then the main forecast layers. The rest are in the menu. */
 const RAIL: readonly RailItem[] = [
-  { id: 'radar', label: 'Weather radar', icon: 'radar', observed: 'radar', colors: RADAR_COLORS },
-  { id: 'satellite', label: 'Satellite', icon: 'satellite', observed: 'satellite', colors: SATELLITE_COLORS },
+  { id: 'radar', label: 'Weather radar', icon: 'radar', observed: 'radar' },
+  { id: 'satellite', label: 'Satellite', icon: 'satellite', observed: 'satellite' },
   { id: 'wind', label: 'Wind', icon: 'wind', layerId: 'wind' },
   { id: 'rain', label: 'Rain', icon: 'rain', layerId: 'rain' },
   { id: 'temp', label: 'Temperature', icon: 'thermometer', layerId: 'temp' },
@@ -37,8 +30,9 @@ const RAIL: readonly RailItem[] = [
 ];
 
 /**
- * The vertical list of layers down the right edge, as on windy.com: a name in a dark pill and a round button coloured like the layer. The
- * layer on the map is amber. "More layers…" opens the full menu (every layer, the model, the altitude, the overlays).
+ * The layers used most, down the right edge under the menu button: plain round buttons. The layer on the map is the one amber button, with its
+ * name beside it; the others show their name when pointed at. A layer's own colours are on the colour bar, not on the buttons, so the rail
+ * does not compete with the map.
  */
 @Component({
   selector: 'app-layer-rail',
@@ -49,59 +43,57 @@ const RAIL: readonly RailItem[] = [
       @for (item of items; track item.id) {
         <button
           type="button" class="item" [class.active]="isActive(item)" [attr.aria-pressed]="isActive(item)" [disabled]="!available(item)"
-          [title]="title(item)" (click)="choose(item)"
+          [attr.aria-label]="item.label" [title]="title(item)" (click)="choose(item)"
         >
-          <span class="label">{{ item.label }}</span>
-          <span class="thumb" [style.background]="thumb(item)"><app-icon [name]="item.icon" [size]="20" /></span>
+          <span class="label" aria-hidden="true">{{ item.label }}</span>
+          <span class="thumb"><app-icon [name]="item.icon" [size]="20" /></span>
         </button>
       }
-      <button type="button" class="item more" data-menu-toggle (click)="panels.toggle('layers')" [attr.aria-expanded]="panels.open() === 'layers'" aria-haspopup="dialog" title="Every layer, the model, the altitude and the overlays">
-        <span class="label">More layers…</span>
-        <span class="thumb plain"><app-icon name="more" [size]="20" /></span>
-      </button>
     </nav>
   `,
   styles: [`
     :host { display: contents; }
     .rail {
-      position: fixed; top: 64px; right: var(--gutter); z-index: 880; display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
-      max-height: calc(100dvh - 66px - var(--stack-h) - 14px - var(--cluster-h, 150px)); overflow-y: auto; overflow-x: hidden; padding: 2px 2px 2px 8px; scrollbar-width: none;
+      position: fixed; top: calc(var(--gutter) + var(--hit) + 12px); right: var(--gutter); z-index: var(--z-ui); display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2);
+      max-height: calc(100dvh - var(--gutter) - var(--hit) - 14px - var(--stack-h) - 14px - var(--cluster-h, 140px)); overflow-y: auto; overflow-x: hidden; padding: 2px 2px 2px 8px; scrollbar-width: none;
     }
     .rail::-webkit-scrollbar { display: none; }
-    .item { position: relative; display: flex; align-items: center; justify-content: flex-end; height: 38px; padding: 0; border: 0; background: transparent; color: var(--text-primary); cursor: pointer; flex: none; }
-    .label {
-      height: 30px; display: grid; place-items: center; padding: 0 30px 0 14px; margin-right: -22px; border-radius: 15px; background: var(--surface-1);
-      font-size: 14px; font-weight: 600; white-space: nowrap; box-shadow: var(--shadow-1); transition: background var(--t-fast);
-    }
+    .item { position: relative; display: flex; align-items: center; justify-content: flex-end; height: var(--hit); padding: 0; border: 0; background: transparent; color: var(--text-primary); cursor: pointer; flex: none; }
     .thumb {
-      position: relative; z-index: 1; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: #fff; flex: none;
-      border: 2px solid rgba(255, 255, 255, 0.9); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); transition: transform var(--t-fast);
+      position: relative; z-index: 1; width: var(--hit); height: var(--hit); border-radius: 50%; display: grid; place-items: center; flex: none;
+      background: var(--surface-1); color: var(--text-primary); box-shadow: var(--shadow-1); transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
     }
-    .thumb app-icon { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
-    .thumb.plain { background: var(--surface-2); color: var(--text-primary); border-color: var(--line-strong); }
-    .item:hover:not(:disabled) .label { background: var(--surface-2); }
-    .item:hover:not(:disabled) .thumb { transform: scale(1.06); }
-    .item.active .label { background: var(--accent); color: var(--on-accent); }
-    .item.active .thumb { border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--accent), 0 1px 4px rgba(0, 0, 0, 0.5); }
-    .item:disabled { opacity: 0.45; cursor: not-allowed; }
+    .label {
+      height: calc(var(--hit) - 8px); display: grid; place-items: center; padding: 0 calc(var(--hit) / 2 + 4px) 0 var(--sp-3); margin-right: calc(var(--hit) / -2 - 2px); border-radius: calc(var(--hit) / 2);
+      background: var(--surface-1); font-size: var(--fs-l); font-weight: var(--fw-medium); white-space: nowrap; box-shadow: var(--shadow-1);
+      opacity: 0; transform: translateX(8px); pointer-events: none; transition: opacity var(--t-fast), transform var(--t-fast);
+    }
+    @media (hover: hover) {
+      .item:hover:not(:disabled) .label { opacity: 1; transform: none; }
+      .item:hover:not(:disabled) .thumb { background: var(--surface-2); }
+    }
+    .item:focus-visible .label { opacity: 1; transform: none; }
     .item:focus-visible { outline-offset: 0; border-radius: 22px; }
+    /* the layer on the map: the one amber button, named */
+    .item.active .thumb { background: var(--accent); color: var(--on-accent); }
+    .item.active .label { opacity: 1; transform: none; background: var(--accent); color: var(--on-accent); }
+    .item:disabled { opacity: 0.45; cursor: not-allowed; }
 
-    /* short screens: the layers that matter most stay, and "More layers…" is always in view */
-    @media (max-height: 760px) { .item:nth-last-child(2), .item:nth-last-child(3) { display: none; } }
-    @media (max-height: 600px) { .item:nth-last-child(4), .item:nth-last-child(5) { display: none; } }
+    /* short screens: the layers that matter most stay */
+    @media (max-height: 760px) { .item:nth-last-child(1), .item:nth-last-child(2) { display: none; } }
+    @media (max-height: 600px) { .item:nth-last-child(3), .item:nth-last-child(4) { display: none; } }
 
-    /* phones: the round buttons alone, so the map stays visible */
+    /* a touch screen has no pointer to rest on a button: only the layer on the map is named, and the rest are in the menu */
     @media (max-width: 700px) {
+      /* the meteogram fills the bottom of a phone: the rail would be a sliver above it, so it steps aside (the layers are in the menu) */
+      :host-context(html[data-sheet='open']) .rail { display: none; }
+      .rail { top: calc(var(--gutter) + 52px + var(--hit) + 8px); }
       .label { display: none; }
-      .rail { gap: 6px; top: 62px; }
-      .thumb { width: 38px; height: 38px; }
-      .item { height: 38px; }
     }
   `]
 })
 export class LayerRailComponent {
   protected readonly state = inject(ForecastStateService);
-  protected readonly panels = inject(PanelService);
   private readonly catalog = inject(ForecastCatalogService);
   private readonly mapLayers = inject(MapLayerService);
 
@@ -127,12 +119,6 @@ export class LayerRailComponent {
 
   protected title(item: RailItem): string {
     return this.available(item) ? item.label : `${item.label} is not provided by ${this.catalog.model().label}`;
-  }
-
-  /** The round button's colours: a slanted gradient of the layer's palette. */
-  protected thumb(item: RailItem): string {
-    const colors = item.colors ?? (item.layerId ? forecastLayerById(item.layerId)?.stops : undefined) ?? ['#666'];
-    return `linear-gradient(135deg, ${colors.join(', ')})`;
   }
 
   protected choose(item: RailItem): void {

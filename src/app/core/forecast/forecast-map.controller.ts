@@ -19,6 +19,7 @@ import { TerrainService } from './terrain.service';
 import { ForecastGrid, ForecastManifest, bracketSteps } from './forecast.model';
 import type { ForecastLayerDef } from './forecast-layers';
 import { isPhone } from '../ui/device-profile';
+import { MeteogramService } from '../meteogram/meteogram.service';
 
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
 const RELIEF_STRENGTH = 0.55;
@@ -53,6 +54,7 @@ export class ForecastMapController {
   private readonly inspector = inject(ForecastInspectorService);
   private readonly stations = inject(StationSelectionService);
   private readonly consensus = inject(ConsensusService);
+  private readonly meteogram = inject(MeteogramService);
 
   private map: MapLibreMap | null = null;
   private layer: ScalarFieldLayer | null = null;
@@ -124,7 +126,10 @@ export class ForecastMapController {
     // a click on a weather station opens its card instead (see MapComponent)
     if (this.map?.getLayer(STATION_CIRCLE_LAYER) && this.map.queryRenderedFeatures(e.point, { layers: [STATION_CIRCLE_LAYER] }).length) return;
     this.stations.close();
-    if (this.state.forecastActive()) this.inspector.select(e.lngLat.lat, e.lngLat.lng);
+    if (this.state.forecastActive()) {
+      this.inspector.select(e.lngLat.lat, e.lngLat.lng);
+      this.meteogram.noteMapClick();   // the first click on the map opens the meteogram of the place (once; after that it stays as the visitor left it)
+    }
   };
 
   private syncMarker(): void {

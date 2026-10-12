@@ -21,6 +21,15 @@
       ],
       "port": 4300,
       "autoPort": false
+    },
+    {
+      "name": "prod",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/preview.js"
+      ],
+      "port": 8080,
+      "autoPort": false
     }
   ]
 }

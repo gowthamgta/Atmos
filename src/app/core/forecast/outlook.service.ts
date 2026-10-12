@@ -9,6 +9,7 @@ import { applyTerrain } from './terrain-correction';
 import { TerrainService } from './terrain.service';
 
 const DAYS = 5;
+const OUTLOOK_DELAY_MS = 600;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 /** A step further than this from the wanted time is not used (the 6-hourly models are 3 h from their nearest step at worst). */
@@ -30,17 +31,38 @@ export class OutlookService {
   readonly busy = signal(false);
 
   private token = 0;
+  private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     effect(() => {
       const sel = this.inspector.selected();
       const manifest = this.catalog.manifest();
       if (!sel || !manifest) {
+        this.cancel();
+        this.busy.set(false);
         this.days.set([]);
         return;
       }
-      untracked(() => void this.compute(sel.lat, sel.lon, manifest));
+      untracked(() => this.schedule(sel.lat, sel.lon, manifest));
     });
+  }
+
+  /**
+   * The strip costs twenty pictures, and it is not what the visitor is looking at first (the map and the numbers of the card are). It waits a
+   * moment, and waits again when the place changes, so clicking about the map does not queue a download for every place passed over.
+   */
+  private schedule(lat: number, lon: number, manifest: ForecastManifest): void {
+    this.cancel();
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.compute(lat, lon, manifest);
+    }, OUTLOOK_DELAY_MS);
+  }
+
+  private cancel(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.token++; // a download already on its way is dropped when it ends
   }
 
   private async compute(lat: number, lon: number, manifest: ForecastManifest): Promise<void> {
