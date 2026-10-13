@@ -34,7 +34,7 @@ function bitmap(width: number, height: number, px: Uint8ClampedArray): FakeBitma
  * the test gave for that variable, and a bitmap is just its packed pixels. The manifest lists the variables the pictures are given for, each
  * with its own range. `asked` lists what was downloaded ("u800/3": variable/hour).
  */
-function setup(pictures: Record<string, Picture>) {
+function setup(pictures: Record<string, Picture>, outcome: (attempt: number) => 'ok' | 'network' | number = () => 'ok') {
   let manifest: ForecastManifest = {
     model: 'ecmwf_ifs',
     run: '20261013T00Z',
@@ -44,11 +44,16 @@ function setup(pictures: Record<string, Picture>) {
     vars: Object.fromEntries(Object.entries(pictures).map(([id, p]) => [id, { unit: '', min: p.min, max: p.max, encoding: 'rg16' as const }])),
   };
   const asked: string[] = [];
+  let attempts = 0;
   vi.stubGlobal('fetch', async (url: string) => {
     const [, id, hour] = /\/([a-z0-9]+)\/(\d+)\.png/.exec(url)!;
     asked.push(`${id}/${Number(hour)}`);
+    const result = outcome(++attempts);
+    if (result === 'network') throw new TypeError('Failed to fetch');
+    if (result !== 'ok') return { ok: false, status: result, blob: async () => new Blob() };
     return { ok: true, status: 200, blob: async () => pictures[id] };
   });
+  const refresh = vi.fn();
   vi.stubGlobal('createImageBitmap', async (source: Picture | { data: Uint8ClampedArray; width: number; height: number }) => {
     if ('values' in source) return bitmap(GRID.nx, GRID.ny, encodeFieldPixels(Float32Array.from(source.values, v => v ?? NaN), source.min, source.max));
     return bitmap(source.width, source.height, source.data);
@@ -69,19 +74,56 @@ function setup(pictures: Record<string, Picture>) {
         manifest: () => manifest,
         fieldUrl: (id: string, hour: number) => `https://pages.example/ecmwf_ifs/20261013T00Z/${id}/${String(hour).padStart(3, '0')}.png`,
         isSynthesizedVar: () => false,
-        refresh: vi.fn(),
+        refresh,
       },
     }],
   });
   const loader = TestBed.inject(FieldLoaderService);
   const cells = async (id: string, hour: number, range = WIND_RANGE) =>
     [...decodeFieldBitmap((await loader.get(id, hour)) as unknown as ImageBitmap, range.min, range.max)];
-  return { loader, asked, cells, rebuild: (build: string) => (manifest = { ...manifest, build }) };
+  return { loader, asked, cells, refresh, attempts: () => attempts, rebuild: (build: string) => (manifest = { ...manifest, build }) };
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   TestBed.resetTestingModule();
+});
+
+describe('FieldLoaderService, a download that fails', () => {
+  it('is tried once more when the connection fails, so a hiccup does not leave the old numbers on the card', async () => {
+    vi.useFakeTimers();
+    const { cells, attempts } = setup({ t2m: same(30) }, n => (n === 1 ? 'network' : 'ok'));
+    const got = cells('t2m', 0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await got).every(v => Math.abs(v - 30) < 0.1)).toBe(true);
+    expect(attempts()).toBe(2);
+  });
+
+  it('is tried once more when the server answers with an error of its own', async () => {
+    vi.useFakeTimers();
+    const { cells, attempts } = setup({ t2m: same(30) }, n => (n === 1 ? 503 : 'ok'));
+    const got = cells('t2m', 0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await got).length).toBeGreaterThan(0);
+    expect(attempts()).toBe(2);
+  });
+
+  it('gives up after the second failure, and says why', async () => {
+    vi.useFakeTimers();
+    const { loader, attempts } = setup({ t2m: same(30) }, () => 500);
+    const failed = loader.get('t2m', 0).then(() => 'loaded', (e: Error) => e.message);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(await failed).toMatch(/^500 /);
+    expect(attempts()).toBe(2);
+  });
+
+  it('is not tried again when the picture is not there (a newer run replaced it): the catalog is asked to look again', async () => {
+    const { loader, attempts, refresh } = setup({ t2m: same(30) }, () => 404);
+    await expect(loader.get('t2m', 0)).rejects.toThrow(/^404 /);
+    expect(attempts()).toBe(1);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('FieldLoaderService, the levels between two others', () => {

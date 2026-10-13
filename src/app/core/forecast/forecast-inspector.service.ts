@@ -17,6 +17,8 @@ export const SCRUB_INTERVAL_MS = 140;
 export const PLAY_INTERVAL_MS = 900;
 /** The full list of values is much bigger (every variable at two steps), so it follows the time bar more slowly. */
 export const DETAIL_INTERVAL_MS = 350;
+/** How long new values may take before the old ones are said to be out of date (pictures still downloading): until then a quick update is not announced. */
+export const STALE_AFTER_MS = 450;
 
 /** Click-to-inspect: reads the forecast variables at a point, blended to the selected time. */
 @Injectable({ providedIn: 'root' })
@@ -38,6 +40,12 @@ export class ForecastInspectorService {
   readonly detail = signal(false);
   private homeDone = false;
   readonly busy = signal(false);
+  /**
+   * The values on the card and in the bubble beside the pin belong to an earlier time or period: the new ones are slow to arrive
+   * (the pictures are still downloading) or could not be read. Showing the old number as if it were current is a wrong value, so
+   * the card and the bubble say so (see the place card and the map pin).
+   */
+  readonly stale = signal(false);
   /** How many of the variables wanted for the full list have been read (the card says so while it waits). */
   readonly progress = signal<{ done: number; total: number }>({ done: 0, total: 0 });
 
@@ -45,6 +53,7 @@ export class ForecastInspectorService {
   private lastKey = '';
   private lastRunAt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private staleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Recompute whenever the point, the time or the model run changes (e.g. while scrubbing).
@@ -61,6 +70,7 @@ export class ForecastInspectorService {
       if (!sel) {
         this.cancelPending();
         this.point.set(null);
+        this.settle(false);
         return;
       }
       // anything but the time is a new question and is answered at once; the time alone moves a lot (a drag, a play) and is rate-limited
@@ -121,6 +131,22 @@ export class ForecastInspectorService {
     this.timer = null;
   }
 
+  /** Starts the clock on a newer answer: if it is not in by then, the numbers on show are marked out of date. */
+  private armStale(my: number): void {
+    if (this.staleTimer !== null) clearTimeout(this.staleTimer);
+    this.staleTimer = setTimeout(() => {
+      this.staleTimer = null;
+      if (my === this.token) this.stale.set(true);
+    }, STALE_AFTER_MS);
+  }
+
+  /** The answer is in (not stale), or could not be had (stale: the numbers on show stay marked until a later one succeeds). */
+  private settle(stale: boolean): void {
+    if (this.staleTimer !== null) clearTimeout(this.staleTimer);
+    this.staleTimer = null;
+    this.stale.set(stale);
+  }
+
   private run(): void {
     const sel = this.selected();
     this.lastRunAt = performance.now();
@@ -134,10 +160,13 @@ export class ForecastInspectorService {
     const g = manifest.grid;
     if (lat > g.latMax || lat < g.latMin || lon < g.lonMin || lon > g.lonMax) {
       this.point.set(null); // outside the forecast domain
+      this.settle(false);
       return;
     }
     const my = ++this.token;
     this.busy.set(true);
+    this.armStale(my);
+    let answered = false;
     try {
       const { a, b, mix } = bracketSteps(this.catalog.validTimes(), time);
       const hA = manifest.steps[a].h;
@@ -201,10 +230,14 @@ export class ForecastInspectorService {
         values: { ...values },
         detailed,
       });
+      answered = true;
     } catch (err) {
       console.warn('[forecast] inspect failed', err);
     } finally {
-      if (my === this.token) this.busy.set(false);
+      if (my === this.token) {
+        this.busy.set(false);
+        this.settle(!answered);
+      }
     }
   }
 }

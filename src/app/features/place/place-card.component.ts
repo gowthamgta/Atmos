@@ -91,7 +91,7 @@ export function firstNumber(text: string | undefined): number | null {
               </div>
             }
             @if (activeLayerReadout(); as lr) {
-              <div class="layer-readout"><span>{{ lr.label }}</span><strong>{{ lr.text }}</strong></div>
+              <div class="layer-readout" [class.stale]="inspector.stale()"><span>{{ lr.label }}</span><strong [title]="inspector.stale() ? 'Working out the new value' : ''">{{ inspector.stale() ? '…' : lr.text }}</strong></div>
             }
             <div class="when">{{ timeLabel() }} · {{ sel.lat.toFixed(2) }}°N, {{ sel.lon.toFixed(2) }}°E@if (p.elevationM !== null) { · {{ p.elevationM.toFixed(0) }} m }</div>
 
@@ -122,7 +122,7 @@ export function firstNumber(text: string | undefined): number | null {
 
             @if (expanded()) {
               @if (p.detailed) {
-                <dl class="values">
+                <dl class="values" [class.stale]="inspector.stale()">
                   @for (row of p.rows; track row.id) {
                     @if (row.heading) {
                       <div class="heading">{{ row.label }}</div>
@@ -237,7 +237,8 @@ export function firstNumber(text: string | undefined): number | null {
     .act[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); }
     .act app-icon { transition: transform var(--t-fast); }
 
-    .values { margin: var(--sp-1) 0 0; }
+    .values { margin: var(--sp-1) 0 0; transition: opacity var(--t-fast); }
+    .values.stale { opacity: 0.4; }   /* the numbers are for an earlier time or period while the new ones arrive */
     .heading { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--line-strong); font-size: var(--fs-s); font-weight: var(--fw-strong); color: var(--text-secondary); }
     .row { display: flex; justify-content: space-between; gap: var(--sp-3); padding: 5px 0; border-top: 1px solid var(--line); font-size: var(--fs-m); }
     .row.on { background: var(--accent-soft); margin: 0 -14px; padding: 5px 14px; }

@@ -16,6 +16,10 @@ function levelNeighbours(varId: string): { belowId: string; aboveId: string; mix
   };
 }
 
+/** The longest one picture may take to arrive, and the pause before the one more try of a download that failed. */
+const DOWNLOAD_TIMEOUT_MS = 30_000;
+const RETRY_PAUSE_MS = 400;
+
 /** Downloads and caches decoded-on-GPU field images (ImageBitmaps of the rg16 PNGs). */
 @Injectable({ providedIn: 'root' })
 export class FieldLoaderService {
@@ -110,8 +114,29 @@ export class FieldLoaderService {
     return encodeFieldBitmap(blended, manifest.grid, targetInfo.min, targetInfo.max);
   }
 
+  /**
+   * One download, tried once more when the connection failed or timed out, or the server answered with an error of its own (a 5xx).
+   * A picture that never comes leaves whatever is worked out from it on the numbers of the time or period before.
+   */
+  private async download(url: string, priority: 'auto' | 'low'): Promise<Response> {
+    const attempt = () => {
+      const init: RequestInit = {};
+      if (priority === 'low') init.priority = 'low';
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') init.signal = AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS);
+      return fetch(url, init);
+    };
+    try {
+      const res = await attempt();
+      if (res.status < 500) return res;
+    } catch {
+      // the second try below
+    }
+    await new Promise(resolve => setTimeout(resolve, RETRY_PAUSE_MS));
+    return attempt();
+  }
+
   private async fetchBitmap(url: string, priority: 'auto' | 'low'): Promise<ImageBitmap> {
-    const res = await fetch(url, priority === 'low' ? { priority: 'low' } : undefined);
+    const res = await this.download(url, priority);
     if (!res.ok) {
       // A 404 usually means a newer run replaced this one; re-read latest.json so the next call recovers.
       if (res.status === 404) void this.catalog.refresh();

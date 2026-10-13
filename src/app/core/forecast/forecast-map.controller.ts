@@ -125,6 +125,7 @@ export class ForecastMapController {
     const sel = this.inspector.selected();
     // read here, so the bubble follows the time, the layer, the altitude and the units
     const point = this.inspector.point();
+    const stale = this.inspector.stale();
     const layerId = this.state.activeLayerId();
     const level = this.state.level();
     if (!this.map || !sel) {
@@ -150,7 +151,8 @@ export class ForecastMapController {
     }
     if (this.pinLabel) {
       const row = point ? rowsForLayer(point.rows, layerId, level)[0] : undefined;
-      const text = row && row.text.length <= 28 && !row.text.startsWith('–') ? row.text : '';
+      // an out-of-date number (the new one is slow to arrive) is not shown as if it were current
+      const text = row && row.text.length <= 28 && !row.text.startsWith('–') ? (stale ? '…' : row.text) : '';
       this.pinLabel.textContent = text;
       this.pinLabel.style.display = text ? '' : 'none';
       const nearRight = this.map.project([sel.lon, sel.lat]).x > this.map.getCanvas().clientWidth - 160;
