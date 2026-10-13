@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import { isPhone } from '../ui/device-profile';
+import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
   SATELLITE_IR,
   SATELLITE_NATURAL_LAYER,
@@ -41,6 +42,8 @@ const HOLD_MS = 1800;
 /** How often to ask the service whether a newer picture exists (a tiny request; a picture is fetched only when there is one). */
 const CHECK_MS = 2 * 60_000;
 const LOAD_CONCURRENCY = 3;
+/** The switch for the enhanced full picture (see satellite-enhance.ts), remembered between visits. */
+const ENHANCE_KEY = 'atmosiq.satellite.enhance';
 
 /**
  * Loads the last hour of Meteosat-9 pictures (HRV by day, infrared at night, or water vapour) and plays them as a
@@ -63,6 +66,8 @@ export class SatelliteService {
   readonly view = signal<SatelliteView>('picture');
   readonly channelMode = signal<SatelliteChannelMode>('auto');
   readonly hoverReading = signal<SatelliteHoverReading | null>(null);
+  /** The full picture is enhanced: natural colour sharpened by the HRV by day, infrared and water vapour without their pixel steps. */
+  readonly enhance = signal(readFlag(ENHANCE_KEY, true));
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -241,17 +246,19 @@ export class SatelliteService {
    * build the same frame twice, or one would release a picture the map is still showing.
    */
   private frameFor(rawKey: string, view: SatelliteView): Promise<SatelliteFrame | null> {
-    const key = `${view}|${rawKey}`;
+    const key = `${this.lookKey(view)}|${rawKey}`;
     let pending = this.built.get(key);
     if (!pending) {
       const raw = this.raws.get(rawKey)!;
+      const enhance = view === 'picture' && this.enhance();
       pending = this.process(
         raw.blob,
         raw.product,
         view,
-        view === 'clouds' ? raw.natural : undefined,
+        view === 'clouds' || enhance ? raw.natural : undefined, // the cloud-only view finds low cloud with it; the enhanced picture takes its colours
         raw.twilightIr,
         raw.timeMs,
+        enhance,
       ).then(res => {
         if (!res) {
           this.built.delete(key); // try again on the next refresh
@@ -267,12 +274,12 @@ export class SatelliteService {
 
   /** Release pictures of other views/channels or of frames that have left the hour. */
   private prune(activeRawKeys: readonly string[]): void {
-    const view = this.view();
+    const look = this.lookKey();
     for (const [key, pending] of this.built) {
       const sep = key.indexOf('|');
       const v = key.slice(0, sep);
       const rk = key.slice(sep + 1);
-      if (v === view && activeRawKeys.includes(rk)) continue;
+      if (v === look && activeRawKeys.includes(rk)) continue;
       this.built.delete(key);
       void pending.then(f => f && URL.revokeObjectURL(f.url));
     }
@@ -281,9 +288,10 @@ export class SatelliteService {
   /** List the overlay pictures of every downloaded frame, oldest first. */
   private async publish(plan: readonly PlanItem[], token: number, following: boolean): Promise<void> {
     const view = this.view();
+    const look = this.lookKey();
     const seq = ++this.publishSeq;
     const built = await Promise.all(plan.filter(p => this.raws.has(p.rawKey)).map(p => this.frameFor(p.rawKey, view)));
-    if (token !== this.loadToken || view !== this.view()) return; // a newer refresh or view took over
+    if (token !== this.loadToken || view !== this.view() || look !== this.lookKey()) return; // a newer refresh, view or enhancement setting took over
     if (seq < this.publishApplied) return;                         // a later publish (with more pictures) is already shown
     this.publishApplied = seq;
     const list = built.filter((f): f is SatelliteFrame => f !== null);
@@ -306,6 +314,31 @@ export class SatelliteService {
     if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
   }
 
+  /** What a built picture is filed under: its view, and for the full picture whether it is enhanced (one download builds both). */
+  private lookKey(view: SatelliteView = this.view()): string {
+    return view === 'picture' && this.enhance() ? 'picture+' : view;
+  }
+
+  /** Turn the enhancement of the full picture on or off (remembered); the full pictures are rebuilt from what is already downloaded. */
+  async setEnhance(on: boolean): Promise<void> {
+    if (on === this.enhance()) return;
+    this.enhance.set(on);
+    writeFlag(ENHANCE_KEY, on);
+    if (this.view() !== 'picture') return; // only the full picture is enhanced: the other views are as they were
+    const look = this.lookKey();
+    const activeRawKeys = this.frames().map(f => `${f.product.id}|${f.timeMs}`);
+    const wasLoading = this.loading();
+    this.loading.set(true); // a few seconds on a phone: the old pictures stay on the map meanwhile
+    const rebuilt = await Promise.all(activeRawKeys.filter(rk => this.raws.has(rk)).map(rk => this.frameFor(rk, 'picture')));
+    if (look !== this.lookKey()) return; // changed again while rebuilding
+    if (!wasLoading) this.loading.set(false);
+    const list = rebuilt.filter((f): f is SatelliteFrame => f !== null);
+    this.frames.set(list);
+    this.position.update(p => Math.min(p, Math.max(list.length - 1, 0)));
+    this.prune(activeRawKeys);
+    if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
+  }
+
   /** Switch between Auto (HRV day / IR night), Infrared (10.8 µm), and Water Vapour (6.2 µm). */
   async setChannelMode(mode: SatelliteChannelMode): Promise<void> {
     if (mode === this.channelMode()) return;
@@ -321,6 +354,7 @@ export class SatelliteService {
     natural?: Blob,
     twilightIr?: Blob,
     timeMs?: number,
+    enhance = false,
   ): Promise<{ url: string; lumaGrid?: Uint8Array } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
@@ -328,7 +362,7 @@ export class SatelliteService {
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, view, natural, twilightIr, timeMs } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, view, natural, twilightIr, timeMs, enhance } satisfies SatelliteWorkerRequest);
     });
   }
 

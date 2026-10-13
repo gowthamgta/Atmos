@@ -55,6 +55,14 @@ function istClock(ms: number): string {
           <button type="button" class="view" [class.active]="sat.view() === 'picture'" [attr.aria-pressed]="sat.view() === 'picture'" (click)="sat.setView('picture')" title="The whole satellite picture, land and sea included">Full</button>
         </div>
 
+        @if (sat.view() === 'picture') {
+          <button type="button" class="enhance" [class.active]="sat.enhance()" [attr.aria-pressed]="sat.enhance()" (click)="sat.setEnhance(!sat.enhance())"
+            title="By day the natural colours, sharpened with the detail of the high-resolution visible channel (and no empty patches in the north and east); infrared and water vapour with their pixel steps smoothed. Off: the pictures as EUMETSAT sends them">
+            <app-icon name="eye" [size]="16" />
+            <span class="enhance-text">Enhance picture <span class="enhance-sub">{{ enhanceNote() }}</span></span>
+          </button>
+        }
+
         @if (sat.view() === 'thermal') {
           <div class="thermal-legend" role="img" aria-label="Cloud-Top Temperature (°C)">
             <div class="label">Cloud-top temperature (°C)</div>
@@ -104,6 +112,10 @@ function istClock(ms: number): string {
     .view { min-height: 32px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 11.5px var(--font-body); cursor: pointer; padding: 0 4px; }
     .view:hover { background: var(--surface-4); color: var(--text-primary); }
     .view.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
+    .enhance { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 8px; padding: 6px 10px; min-height: 36px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 11.5px var(--font-body); cursor: pointer; text-align: left; }
+    .enhance:hover { background: var(--surface-4); color: var(--text-primary); }
+    .enhance.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
+    .enhance-sub { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--text-muted); }
     .thermal-legend { margin-top: 8px; }
     .thermal-bar { height: 6px; border-radius: 3px; background: linear-gradient(to right, #38bdf8 0%, #06b6d4 18%, #10b981 35%, #facc15 55%, #f97316 70%, #ef4444 82%, #d946ef 92%, #ffffff 100%); }
     .thermal-scale { display: flex; justify-content: space-between; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-secondary); }
@@ -122,6 +134,8 @@ function istClock(ms: number): string {
       .scan { margin: 6px 0 4px; }
       .ends, .note, .opacity { display: none; }
       .channels, .views { margin-top: 6px; gap: 4px; }
+      .enhance { margin-top: 6px; min-height: 28px; padding: 3px 8px; }
+      .enhance-sub { display: none; }
       .view { min-height: 28px; font-size: 11px; }
     }
   `]
@@ -141,6 +155,12 @@ export class SatellitePanelComponent {
     if (f.product.id === 'wv') return 'water vapour 6.2 µm';
     if (f.product.id === 'ir') return 'infrared 10.8 µm';
     return isTwilightTime(f.timeMs) ? 'twilight HRV + IR' : 'daylight, HRV';
+  });
+  protected readonly enhanceNote = computed(() => {
+    if (!this.sat.enhance()) return 'Off: as EUMETSAT sends it';
+    const f = this.sat.current();
+    if (!f) return '';
+    return f.product.id === 'hrv' ? 'Natural colour, sharpened by the HRV' : 'Pixel steps smoothed';
   });
   protected readonly sourceLabel = SATELLITE_NAME;
   protected readonly note = `Last hour, every 15 minutes. HRV by day (blended with IR at dawn/dusk), IR 10.8 µm and WV 6.2 µm 24/7. ${SATELLITE_CREDIT}`;
