@@ -1,4 +1,4 @@
-import { Injectable, signal, computed, effect, inject, OnDestroy } from '@angular/core';
+import { Injectable, signal, computed, effect, inject, untracked, OnDestroy } from '@angular/core';
 import { GifReader } from 'omggif';
 import {
   IMD_RADAR_STATIONS,
@@ -30,6 +30,13 @@ export interface RadarDisplayFrame {
   height: number;
   coordinates: [[number, number], [number, number], [number, number], [number, number]];
   timeMs: number | null;
+}
+
+/** One step of the nowcast: the live picture slid ahead along the motion of the rain (see radar-nowcast.ts). It is a guess, not an observation. */
+export interface NowcastFrame extends RadarDisplayFrame {
+  timeMs: number;
+  /** Minutes after the live picture. */
+  leadMin: number;
 }
 
 /** One step of the one-hour loop: its picture and the intensity on the ~4 km storm-tracking grid. */
@@ -127,13 +134,24 @@ export class RadarService implements OnDestroy {
   /** Loop position: an index into `history`, or null for the live picture. */
   readonly playIndex = signal<number | null>(null);
   readonly playing = signal(false);
+  /** The nowcast, ten minutes apart from ten minutes ahead (set by RadarNowcastService); empty until it has been worked out. */
+  readonly nowcast = signal<NowcastFrame[]>([]);
+  /** Position in `nowcast` while one of its pictures is on the map, else null (`playIndex` is the loop's; both null is the live picture). */
+  readonly leadIndex = signal<number | null>(null);
+  /** Where the radar's clock is, as one number along the whole strip: the loop's frames, then the live picture, then the nowcast. */
+  readonly cursor = computed(() => {
+    const h = this.history().length;
+    const p = this.playIndex();
+    if (p !== null) return p;
+    const l = this.leadIndex();
+    return l !== null ? h + 1 + l : h;
+  });
+  /** The last position of the strip (the live picture when there is no nowcast). */
+  readonly cursorMax = computed(() => this.history().length + this.nowcast().length);
   /** IMD publishes animations for the max-reflectivity (CAZ) and rain-rate (SRI) products only. */
   readonly historyAvailable = computed(() => animationFile('x', this.activeProduct()) !== null);
-  /** The picture on the map: the loop frame while playing or scrubbing, otherwise the live composite. */
-  readonly displayed = computed<RadarDisplayFrame | null>(() => {
-    const i = this.playIndex();
-    const frame = i === null ? null : this.history()[i];
-    if (frame) return this.withoutFaintFar(frame);
+  /** The live picture as it is drawn (see withoutFaintFar), or null when there is none or even its newest scan is too old to show. */
+  readonly liveFrame = computed<RadarDisplayFrame | null>(() => {
     const live = this.compositeMosaic();
     // the whole picture goes when even its newest scan is older than MAX_SCAN_AGE_MIN (the clock ticks between refreshes)
     const stale = !!live?.timing?.epochMs && this.liveClock() - live.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000;
@@ -146,6 +164,16 @@ export class RadarService implements OnDestroy {
           timeMs: live.timing?.epochMs ?? null,
         })
       : null;
+  });
+  /** The picture on the map: a step of the nowcast or a loop frame while one is chosen, otherwise the live composite. */
+  readonly displayed = computed<RadarDisplayFrame | null>(() => {
+    const ahead = this.leadIndex();
+    const guess = ahead === null ? null : this.nowcast()[ahead];
+    if (guess) return this.withoutFaintFar(guess);
+    const i = this.playIndex();
+    const frame = i === null ? null : this.history()[i];
+    if (frame) return this.withoutFaintFar(frame);
+    return this.liveFrame();
   });
   /** Fixed ~4 km grid over every radar's coverage, for storm tracking (the same for every loop frame). */
   readonly trackGrid = computed<TrackingGrid>(() => {
@@ -216,6 +244,39 @@ export class RadarService implements OnDestroy {
     this.startAutoRefresh();
     this.startLiveClock();
     effect(() => writeFlag('atmosiq.radar.hideFaint', this.hideFaintFar()));
+    // each new live picture pushes the one before it into the loop, so the last hour keeps up without downloading the animations again
+    effect(() => {
+      this.compositeMosaic();
+      untracked(() => this.rollHistory());
+    });
+  }
+
+  /** The live picture before the newest, kept so it can join the loop when the next one arrives. */
+  private previousLive: ProcessedRadarResult | null = null;
+
+  private rollHistory(): void {
+    const live = this.compositeMosaic();
+    const t = live?.timing?.epochMs;
+    if (!live?.displayField || !t) return;
+    const prev = this.previousLive;
+    this.previousLive = live;
+    const frames = this.history();
+    if (!prev || prev === live || frames.length === 0 || !prev.displayField || !prev.timing?.epochMs) return;
+    const prevMs = prev.timing.epochMs;
+    if (t <= prevMs || prevMs - frames[frames.length - 1].timeMs < 8 * 60_000) return;
+    const next: RadarHistoryFrame = {
+      field: prev.displayField,
+      width: prev.fieldData.cropW,
+      height: prev.fieldData.cropH,
+      coordinates: prev.coordinates,
+      timeMs: prevMs,
+      track: this.toTrack(prev.fieldData),
+    };
+    const kept = [...frames, next].filter(f => t - f.timeMs <= 70 * 60_000);
+    const dropped = frames.length + 1 - kept.length;
+    const at = this.playIndex();
+    this.history.set(kept);
+    if (at !== null) this.playIndex.set(Math.min(Math.max(at - dropped, 0), kept.length - 1));
   }
 
   toggleHideFaintFar(): void {
@@ -958,35 +1019,56 @@ export class RadarService implements OnDestroy {
     this.historyLoading.set(false);
     this.pause();
     this.playIndex.set(null);
+    this.leadIndex.set(null);
+    this.nowcast.set([]);
     this.replaceHistory([]);
   }
 
   /** Show a loop frame (or null for live). */
   setPlayIndex(i: number | null): void {
     const n = this.history().length;
+    this.leadIndex.set(null);
     this.playIndex.set(i === null || n === 0 ? null : Math.min(Math.max(Math.round(i), 0), n - 1));
   }
 
-  /** Play the hour; the loop ends on the live picture and holds there a moment before starting again. */
+  /** Put the radar's clock at a position of the strip: a loop frame, the live picture (the position after the last loop frame) or a nowcast step. */
+  setCursor(position: number): void {
+    const h = this.history().length;
+    const i = Math.min(Math.max(Math.round(position), 0), h + this.nowcast().length);
+    if (i < h) {
+      this.leadIndex.set(null);
+      this.playIndex.set(i);
+    } else if (i === h) {
+      this.leadIndex.set(null);
+      this.playIndex.set(null);
+    } else {
+      this.playIndex.set(null);
+      this.leadIndex.set(i - h - 1);
+    }
+  }
+
+  /** Play the last hour, the live picture and the nowcast; it holds on the last picture a moment before starting again. */
   async togglePlay(): Promise<void> {
     if (this.playing()) {
       this.pause();
       return;
     }
     if (this.history().length === 0) await this.loadHistory();
-    const n = this.history().length;
-    if (n < 2) return;
+    if (this.history().length < 2) return;
     this.playing.set(true);
     let hold = 0;
-    if (this.playIndex() === null) this.playIndex.set(0);
+    if (this.cursor() === this.history().length) this.setCursor(0);
     this.playTimer = setInterval(() => {
-      const i = this.playIndex();
-      if (i === null) {
-        if (++hold >= 2) this.playIndex.set(0); // hold on live, then restart
+      const c = this.cursor();
+      if (c >= this.cursorMax()) {
+        if (++hold >= 2) {
+          hold = 0;
+          this.setCursor(0);
+        }
         return;
       }
       hold = 0;
-      this.playIndex.set(i + 1 < this.history().length ? i + 1 : null);
+      this.setCursor(c + 1);
     }, 700);
   }
 

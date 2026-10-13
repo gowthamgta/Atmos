@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { ConsensusService } from '../../core/forecast/consensus.service';
+import { MapLayerService } from '../../core/services/map-layer.service';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { PanelService } from '../../core/ui/panel.service';
@@ -15,7 +16,7 @@ import { IconComponent } from '../../shared/icon.component';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IconComponent, ModelPillComponent],
   template: `
-    <div class="cluster" [class.lifted]="state.forecastActive()" [class.raised]="panels.open() === 'models'">
+    <div class="cluster" [class.lifted]="state.forecastActive() || radarBars()" [class.raised]="panels.open() === 'models'">
       <div class="zoom" role="group" aria-label="Zoom">
         <button type="button" (click)="map.zoomIn()" aria-label="Zoom in" title="Zoom in"><app-icon name="plus" [size]="18" /></button>
         <button type="button" (click)="map.zoomOut()" aria-label="Zoom out" title="Zoom out"><app-icon name="minus" [size]="18" /></button>
@@ -53,6 +54,10 @@ export class MapControlsComponent {
   protected readonly map = inject(MapHostService);
   protected readonly panels = inject(PanelService);
   private readonly consensus = inject(ConsensusService);
+  private readonly layers = inject(MapLayerService);
+
+  /** The radar has its own time bar and colour bar along the bottom, so the corner lifts over them as it does for the forecast layers. */
+  protected readonly radarBars = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
   /** The models taking part in the extreme-rain comparison (only while that layer is on). */
   protected readonly comparing = computed(() => (this.state.activeLayerId() === 'extreme' ? this.consensus.models() : []));

@@ -5,6 +5,7 @@ import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { COVERAGE_LEGEND, HAZE_RGB, hazeAlpha } from '../../core/services/radar-coverage';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
+import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
 interface ProductOption {
@@ -22,12 +23,6 @@ const PRODUCTS: readonly ProductOption[] = [
   { key: 'ppz', name: 'PPZ', hint: 'Reflectivity', scan: 'reflectivity sweep (PPZ)', title: 'Plan Position Indicator reflectivity (PPZ): the radar sweep, out to its longer range (up to 500 km), shown on its own' },
   { key: 'ppi', name: 'PPI', hint: 'Base scan', scan: 'PPI sweep', title: 'Plan Position Indicator (lowest base reflectivity sweep), shown on its own' },
 ];
-
-/** "14:45" (IST) for a time in epoch ms. */
-function istClock(ms: number): string {
-  const d = new Date(ms + 5.5 * 3_600_000);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
-}
 
 const FRESHNESS_LABEL: Record<string, string> = {
   fresh: 'Fresh',
@@ -49,8 +44,8 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <span class="live" aria-hidden="true"></span>
           <div class="heading">
             <strong>IMD radar</strong>
-            <span class="sub full-only">Observed now, not a forecast</span>
-            <span class="sub compact-only" [attr.data-state]="freshness()">{{ compactStatus() }}</span>
+            <span class="sub full-only" [attr.data-state]="guess() ? 'guess' : null">{{ guess() ?? 'Observed now, not a forecast' }}</span>
+            <span class="sub compact-only" [attr.data-state]="guess() ? 'guess' : freshness()">{{ guess() ?? compactStatus() }}</span>
           </div>
           <button type="button" class="icon-btn" (click)="refresh()" [disabled]="refreshing()" aria-label="Refresh radar" title="Refresh radar">
             <app-icon name="refresh" [size]="15" />
@@ -78,26 +73,15 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
-        @if (historyAvailable()) {
-          <div class="loop" role="group" aria-label="Last hour of radar">
-            <button type="button" class="icon-btn play" (click)="radar.togglePlay()" [disabled]="loopLoading() && frames().length === 0"
-              [attr.aria-label]="playing() ? 'Pause' : 'Play the last hour'" [title]="playing() ? 'Pause' : 'Play the last hour'">
-              <app-icon [name]="playing() ? 'pause' : 'play'" [size]="14" />
-            </button>
-            @if (frames().length > 0) {
-              <input type="range" class="scrub" min="0" [max]="frames().length" step="1" [value]="sliderValue()" (input)="onScrub($event)" aria-label="Radar time" />
-            } @else {
-              <span class="loop-hint">{{ loopLoading() ? 'Building last hour… ' + progressPercent() + '%' : 'Last hour' }}</span>
-            }
-            <span class="loop-time" [class.live-time]="radar.playIndex() === null">{{ loopLabel() }}</span>
-          </div>
-        }
-
         <button type="button" class="storm-toggle full-only" [class.active]="storms.enabled()" [attr.aria-pressed]="storms.enabled()" (click)="storms.toggle()"
           title="Storm cells with the area they are expected to cross in the next hour">
           <span class="cone" aria-hidden="true"></span>
           <span class="storm-text">Storm tracks <span class="storm-sub">{{ stormSummary() }}</span></span>
         </button>
+
+        @if (nowcastLine(); as line) {
+          <p class="nowcast full-only" role="status">{{ line }}</p>
+        }
 
         <button type="button" class="storm-toggle full-only" [class.active]="coverage.enabled()" [attr.aria-pressed]="coverage.enabled()" (click)="coverage.toggle()"
           title="A faint haze where the radars see little: far from a radar, or behind mountains. A blank there says nothing about rain">
@@ -148,7 +132,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
   `,
   styles: [`
     :host { display: contents; }
-    .panel { position: fixed; left: 12px; bottom: 12px; z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; max-height: calc(100vh - 100px); overflow-y: auto; }
+    .panel { position: fixed; left: 12px; bottom: calc(var(--bars-h) + 12px); z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; max-height: calc(100vh - 100px); overflow-y: auto; }
     header { display: flex; align-items: center; gap: 10px; }
     .live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: none; flex: none; }
     .heading { flex: 1; min-width: 0; }
@@ -165,12 +149,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .prod.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
     .pname { font-weight: 700; font-size: 13px; }
     .phint { font-size: var(--fs-xs); opacity: 0.8; }
-    .loop { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-    .loop .play { width: 32px; height: 32px; font-size: 13px; }
-    .scrub { flex: 1; min-width: 0; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
-    .loop-hint { flex: 1; color: var(--text-secondary); font-size: 11px; }
-    .loop-time { flex: none; min-width: 64px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
-    .loop-time.live-time { color: var(--ok); }
+    .nowcast { margin: 8px 2px 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-secondary); }
     .storm-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 6px 10px; min-height: 36px; border-radius: 10px;
       border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; text-align: left; }
     .storm-toggle:hover { background: var(--surface-4); }
@@ -185,7 +164,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .haze-key { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 6px 0 0; padding: 0 2px; list-style: none; font-size: var(--fs-xs); color: var(--text-secondary); }
     .haze-key li { display: flex; align-items: center; gap: 6px; }
     .haze-key .swatch { width: 14px; height: 10px; flex: none; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line-strong); }
-    .panel.compact .loop { margin-top: 8px; }
+    .sub[data-state='guess'] { color: var(--warn); font-weight: 600; }
     .sub[data-state='fresh'] { color: var(--ok); }
     .sub[data-state='recent'] { color: var(--warn); }
     .sub[data-state='stale'] { color: var(--warn); }
@@ -229,7 +208,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .legend { margin-top: 10px; }
     .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, var(--warn) 60%, #ef4444 80%, #a855f7 100%); }
     .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: var(--fs-xs); color: var(--text-secondary); }
-    @media (max-width: 700px) { .panel { bottom: 84px; width: min(260px, calc(100vw - 24px)); } }
+    @media (max-width: 700px) { .panel { width: min(260px, calc(100vw - 24px)); } }
   `]
 })
 export class RadarPanelComponent {
@@ -245,15 +224,21 @@ export class RadarPanelComponent {
   }));
   protected readonly frames = this.radar.history;
   protected readonly playing = this.radar.playing;
-  protected readonly loopLoading = this.radar.historyLoading;
-  protected readonly historyAvailable = this.radar.historyAvailable;
-  protected readonly progressPercent = computed(() => Math.round(this.radar.historyProgress() * 100));
-  /** Slider: one notch per loop frame, and the last notch is the live picture. */
-  protected readonly sliderValue = computed(() => this.radar.playIndex() ?? this.frames().length);
-  protected readonly loopLabel = computed(() => {
-    const i = this.radar.playIndex();
-    const t = i === null ? this.radar.compositeMosaic()?.timing?.epochMs : this.frames()[i]?.timeMs;
-    return t ? `${i === null ? 'Live ' : ''}${istClock(t)}` : i === null ? 'Live' : '';
+  protected readonly nowcast = inject(RadarNowcastService);
+  /** While a picture of the nowcast is on the map, the panel says it is a guess (empty otherwise). */
+  protected readonly guess = computed(() => {
+    const i = this.radar.leadIndex();
+    const frame = i === null ? null : this.radar.nowcast()[i];
+    return frame ? `Nowcast +${frame.leadMin} min: a guess, not observed` : null;
+  });
+  /** What the nowcast rests on, and how it did on the last hour (nothing until there is something to say). */
+  protected readonly nowcastLine = computed(() => {
+    const motion = this.nowcast.motion();
+    if (!motion || this.radar.nowcast().length === 0) return '';
+    const how = motion.source === 'radar' ? `rain followed over the last ${Math.round(motion.minutes ?? 30)} minutes` : 'no earlier picture yet: moved with the forecast wind';
+    const skill = this.nowcast.skill();
+    const check = skill ? ` On the last hour a ${skill.leadMin}-minute guess matched ${Math.round(skill.nowcast * 100)}% of the rain area (a picture that did not move: ${Math.round(skill.still * 100)}%).` : '';
+    return `Nowcast: ${how}.${check}`;
   });
   protected readonly stormSummary = computed(() => {
     const { count, source } = this.storms.summary();
@@ -296,7 +281,7 @@ export class RadarPanelComponent {
 
   constructor() {
     // On larger screens the last hour is built as soon as the radar is shown (phones wait for the play button, since
-    // the animations are several megabytes), and refreshed every 10 minutes while the radar stays on.
+    // the animations are several megabytes), and rebuilt every hour while the radar stays on (each new live picture joins it in between).
     effect(() => {
       const on = this.active();
       const product = this.product();
@@ -310,14 +295,8 @@ export class RadarPanelComponent {
     });
     const timer = setInterval(() => {
       if (this.active() && this.frames().length > 0 && !this.playing()) void this.radar.loadHistory();
-    }, 10 * 60_000);
+    }, 60 * 60_000);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
-  }
-
-  protected onScrub(event: Event): void {
-    this.radar.pause();
-    const v = Number((event.target as HTMLInputElement).value);
-    this.radar.setPlayIndex(v >= this.frames().length ? null : v);
   }
 
   protected shortName(name: string): string {
