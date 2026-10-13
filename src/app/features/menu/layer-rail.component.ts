@@ -62,7 +62,7 @@ const RAIL: readonly RailItem[] = [
     .stack { position: fixed; top: var(--rail-top); right: var(--gutter); z-index: var(--z-ui); display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-2); }
     /* the altitude button takes one more row under the layers; it is lined up with their buttons (the rail has 2 px of padding) */
     .stack.with-alt { --alt-h: calc(var(--hit) + var(--sp-2)); }
-    /* while the altitude list is open it is above the place card too, as the model list is */
+    /* while the altitude slider is open it is above the place card too, as the model list is */
     .stack.raised { z-index: var(--z-panel); }
     .altitude { margin: -2px 2px 0 0; }
     .rail {

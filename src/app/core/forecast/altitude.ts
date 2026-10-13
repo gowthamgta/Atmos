@@ -47,3 +47,14 @@ export function altitudeSubline(level: Level): string {
   const { metres, flight } = altitudeLabels(level);
   return flight ? `${metres} · ${flight}` : metres;
 }
+
+/** The pressure altitude of a pressure level in feet, to the nearest 500 (its flight level times 100): 850 hPa is 5000 ft. */
+export function altitudeFeet(hPa: number): number {
+  return flightLevel(hPa) * 100;
+}
+
+/** The second line of the altitude slider, in metres and feet as windy.com writes it: "1500 m · 5000 ft", or "2–10 m" at the ground. */
+export function altitudeFeetLine(level: Level): string {
+  const { metres } = altitudeLabels(level);
+  return level === 'surface' ? metres : `${metres} · ${altitudeFeet(level)} ft`;   // a fixed space, as in "1500 m": the unit never wraps away from its number
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { altitudeLabels, altitudeSubline, flightLevel, isaHeightM, roundedMetres } from './altitude';
+import { altitudeFeet, altitudeFeetLine, altitudeLabels, altitudeSubline, flightLevel, isaHeightM, roundedMetres } from './altitude';
 import { LEVEL_KM, PRESSURE_LEVELS } from './forecast-layers';
 
 describe('the standard-atmosphere height of a pressure level', () => {
@@ -52,6 +52,29 @@ describe('the labels of an altitude', () => {
   it('writes the pressure with a fixed space, so a narrow button never breaks "700 hPa" across two lines', () => {
     expect(altitudeLabels(700).name).toBe('700 hPa');
     expect(altitudeSubline(700)).toBe('3000 m · FL100');
+  });
+
+  it('gives the slider\'s second line in metres and feet, as windy.com writes it ("1500 m · 5000 ft")', () => {
+    expect(PRESSURE_LEVELS.map(l => altitudeFeetLine(l).replace(/ /g, ' '))).toEqual([
+      '800 m · 2500 ft',
+      '1500 m · 5000 ft',
+      '2000 m · 6500 ft',
+      '3000 m · 10000 ft',
+      '4200 m · 14000 ft',
+      '5600 m · 18500 ft',
+      '9200 m · 30000 ft',
+      '10400 m · 34000 ft',
+      '11800 m · 38500 ft',
+    ]);
+    expect(altitudeFeetLine('surface')).toBe('2–10 m');
+  });
+
+  it('keeps each number with its unit on the slider\'s line, with a fixed space, so a narrow pill never wraps it', () => {
+    expect(altitudeFeetLine(850)).toBe('1500 m · 5000 ft');
+  });
+
+  it('counts the feet from the flight level, so the two never disagree', () => {
+    for (const l of PRESSURE_LEVELS) expect(altitudeFeet(l)).toBe(flightLevel(l) * 100);
   });
 
   it('keeps flight levels in 500 ft steps, rising with height', () => {
