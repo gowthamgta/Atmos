@@ -14,11 +14,12 @@ void main() {
 /**
  * The satellite picture is far coarser than a zoomed-in screen (one satellite pixel is 1-3 km), and the browser's own
  * bilinear magnification turns that into square, blobby patches. Here the picture is magnified with a bicubic
- * (Catmull-Rom) filter and enhanced with AMD FidelityFX CAS (Contrast Adaptive Sharpening).
+ * (Catmull-Rom) filter and sharpened with AMD FidelityFX CAS (Contrast Adaptive Sharpening).
  *
- * AMD FidelityFX CAS analyzes local contrast per texel: in flat areas (open sea, smooth sky) it applies zero sharpening
- * to prevent amplifying JPEG noise, while on high-contrast edges (cloud boundaries, convective cores, coastlines) it dynamically
- * applies sub-pixel sharpening without overshoot, dark fringes or halo ringing.
+ * CAS looks at the contrast around each point: in flat areas (open sea, smooth sky) it adds no sharpening, so JPEG noise is not
+ * amplified; on high-contrast edges (cloud boundaries, convective cores, coastlines) it sharpens as far as the picture's own
+ * range allows, without overshoot, dark fringes or halos. The four neighbours it compares with are read one picture pixel from
+ * the point being drawn (bilinear), so the sharpening follows the point and does not snap to the nearest picture pixel.
  *
  * Pictures are premultiplied RGBA, so cloud edges (transparent land and sea) blend without dark or bright fringes.
  *
@@ -35,10 +36,8 @@ uniform vec4 u_box;       // mercator x0, y0 (top), x1, y1 (bottom) of the pictu
 uniform ivec2 u_size;
 uniform float u_mixB;     // 0..1: how much of picture B is faded in over A
 uniform float u_opacity;
-uniform float u_sharpen;
-uniform float u_soft;      // 0..1: how much of a smoother (half-resolution) read is mixed in, to hide the satellite's pixels
+uniform float u_sharpen;  // 0..1 CAS sharpness
 uniform int u_hasB;
-uniform float u_wide;      // weight of the wider (4 picture pixel) blur scale in the sharpening; 0 = one scale only
 uniform float u_feather;   // > 0: fade the picture out over this much (map units) inside its own edge (a window over the main picture)
 uniform vec4 u_hole;       // mercator box of a window drawn over this picture, which this picture fades out inside
 uniform float u_holeFeather; // > 0 when there is a window to make room for
@@ -67,60 +66,27 @@ vec4 bicubic(sampler2D tex, vec2 px) {
   return clamp(sum, 0.0, 1.0);
 }
 
-// Bicubic read of one mip level (the picture blurred and halved \`lod\` times), smooth like the main read.
-vec4 bicubicLod(sampler2D tex, vec2 px, int lod) {
-  ivec2 size = max(u_size >> lod, ivec2(1));
-  vec2 p = px / float(1 << lod) - 0.5;
-  ivec2 i1 = ivec2(floor(p));
-  vec2 f = p - vec2(i1);
-  vec4 wx = weights(f.x);
-  vec4 wy = weights(f.y);
-  vec4 sum = vec4(0.0);
-  for (int j = 0; j < 4; j++) {
-    for (int i = 0; i < 4; i++) {
-      ivec2 q = clamp(i1 + ivec2(i - 1, j - 1), ivec2(0), size - 1);
-      sum += texelFetch(tex, q, lod) * (wx[i] * wy[j]);
-    }
-  }
-  return clamp(sum, 0.0, 1.0);
-}
-
-// AMD FidelityFX CAS (Contrast Adaptive Sharpening):
-// Adapts sharpening to local contrast so edges are crisp while flat areas (ocean, sky) add zero noise.
-vec3 casSharpen(sampler2D tex, vec2 px, vec3 c, float sharpness) {
-  ivec2 ip = ivec2(floor(px));
-  ivec2 maxCoord = u_size - 1;
-  vec3 b = texelFetch(tex, clamp(ip + ivec2(0, -1), ivec2(0), maxCoord), 0).rgb;
-  vec3 d = texelFetch(tex, clamp(ip + ivec2(-1, 0), ivec2(0), maxCoord), 0).rgb;
-  vec3 f = texelFetch(tex, clamp(ip + ivec2(1, 0), ivec2(0), maxCoord), 0).rgb;
-  vec3 h = texelFetch(tex, clamp(ip + ivec2(0, 1), ivec2(0), maxCoord), 0).rgb;
-
-  // Local contrast bounds over cross neighborhood
-  vec3 mn = min(min(min(b, d), min(f, h)), c);
-  vec3 mx = max(max(max(b, d), max(f, h)), c);
-
-  // AMD CAS contrast adaptation:
-  // In flat regions (mn ≈ mx), amp approaches 0.
-  // In high contrast regions, amp scales to prevent saturation clipping and ringing.
-  vec3 amp = clamp(min(mn, 1.0 - mx) / max(mx, vec3(1e-4)), 0.0, 1.0);
-  vec3 w = sqrt(amp) * (-0.16 * sharpness);
-
-  // Filter: center + cross neighbors weighted by w, normalized by (1 + 4w)
-  vec3 num = (b + d + f + h) * w + c;
-  vec3 den = 1.0 + 4.0 * w;
-  return clamp(num / den, 0.0, 1.0);
+// AMD FidelityFX CAS on the premultiplied colour c at px (picture pixels): the neighbours are one picture pixel away, so the
+// weight is the contrast of what is around this very point; it falls to zero in flat or saturated areas (premultiplied, so the
+// headroom is the alpha, not 1) and rises on real edges. The result never leaves the range of the neighbourhood.
+vec4 cas(sampler2D tex, vec2 px, vec4 c, float sharpness) {
+  vec2 inv = 1.0 / vec2(u_size);
+  vec4 b = textureLod(tex, (px + vec2(0.0, -1.0)) * inv, 0.0);
+  vec4 d = textureLod(tex, (px + vec2(-1.0, 0.0)) * inv, 0.0);
+  vec4 f = textureLod(tex, (px + vec2(1.0, 0.0)) * inv, 0.0);
+  vec4 h = textureLod(tex, (px + vec2(0.0, 1.0)) * inv, 0.0);
+  vec3 mn = min(min(min(b.rgb, d.rgb), min(f.rgb, h.rgb)), c.rgb);
+  vec3 mx = max(max(max(b.rgb, d.rgb), max(f.rgb, h.rgb)), c.rgb);
+  vec3 amp = sqrt(clamp(min(mn, c.a - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
+  vec3 w = amp * (-1.0 / mix(8.0, 5.0, clamp(sharpness, 0.0, 1.0)));
+  vec3 sharp = ((b.rgb + d.rgb + f.rgb + h.rgb) * w + c.rgb) / (1.0 + 4.0 * w);
+  return vec4(clamp(sharp, mn, mx), c.a);
 }
 
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
   if (!magnifying) return textureGrad(tex, uv, gx, gy); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
-  if (u_soft > 0.0) c = mix(c, bicubicLod(tex, px, 1), u_soft);
-  if (u_sharpen > 0.0 && c.a > 0.001) {
-    // Un-premultiply alpha so contrast-adaptive math operates in true linear color space
-    vec3 straight = c.rgb / c.a;
-    vec3 sharpened = casSharpen(tex, px, straight, u_sharpen);
-    c.rgb = sharpened * c.a;
-  }
+  if (u_sharpen > 0.0 && c.a > 0.001) c = cas(tex, px, c, u_sharpen);
   return c;
 }
 
@@ -189,8 +155,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private bounds: GeoBounds = SATELLITE_BOUNDS;
   private position = 0;
   private opacity = 0.9;
-  private look: 'picture' | 'clouds' | 'thermal' = 'clouds';
-  private lite = false;
+  private sharpness = 0.5;
   private readonly featherFraction: number;
   /** A closer window drawn over this picture: this picture makes room for it while it can be drawn. */
   private window: SatelliteImageLayer | null = null;
@@ -229,19 +194,10 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  /**
-   * What is being shown. The full picture is the satellite's own image, so it only gets a gentle lift (smooth bicubic
-   * magnification and mild sharpening). The cloud-only view is smoothed (and its texture restored) when the cloud is picked,
-   * so it gets no sharpening on top.
-   */
-  setLook(look: 'picture' | 'clouds' | 'thermal'): void {
-    this.look = look;
-    this.map?.triggerRepaint();
-  }
-
-  /** Phone mode: one blur scale instead of two in the sharpening (about half the texture reads when zoomed in). */
-  setLite(lite: boolean): void {
-    this.lite = lite;
+  /** How hard the sharpening works on the edges of the picture (0..1): the HRV takes more than the soft infrared. */
+  setSharpness(sharpness: number): void {
+    if (sharpness === this.sharpness) return;
+    this.sharpness = sharpness;
     this.map?.triggerRepaint();
   }
 
@@ -295,7 +251,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_soft', 'u_hasB', 'u_wide', 'u_feather', 'u_hole', 'u_holeFeather']) {
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_sharpen', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.vao = gl.createVertexArray();
@@ -404,10 +360,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
-    gl.uniform1f(u['u_sharpen'], this.look === 'clouds' ? 0.35 : (this.lite ? 0.45 : 0.65));
-    gl.uniform1f(u['u_soft'], 0);
+    gl.uniform1f(u['u_sharpen'], this.sharpness);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
-    gl.uniform1f(u['u_wide'], 0);
     gl.uniform1f(u['u_feather'], this.featherFraction > 0 ? this.featherFraction * Math.abs(mercatorUnitX(bounds.east) - mercatorUnitX(bounds.west)) : 0);
     const hole = this.window?.windowBox() ?? null;
     if (hole) gl.uniform4f(u['u_hole'], hole.box[0], hole.box[1], hole.box[2], hole.box[3]);

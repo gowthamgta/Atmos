@@ -1,25 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CLOUD_TOP_STOPS,
   DEBLOCK_MAX_STEP,
-  blurField,
-  blurFieldWide,
+  JPEG_BLOCK,
+  LUMA_GRID_SIZE,
   buildLumaGrid,
   classifyCloudTop,
-  cloudCover,
-  shadeCloudLayer,
+  cloudTopColor,
+  cloudTopGradient,
+  deblockJpeg,
+  hrvBackground,
   irLumaToTempC,
   irTempToHeightKm,
-  JPEG_BLOCK,
-  deblockJpeg,
   latFromMercatorY,
   mercatorHeight,
   mercatorRowMap,
-  hrvBackground,
   mercatorY,
   sampleLumaGrid,
-  shadePixel,
   satelliteCoordinates,
-  thermalColorRamp,
+  shadePixel,
   toOverlayPixels,
 } from './satellite-image';
 
@@ -53,44 +52,112 @@ describe('mercatorRowMap', () => {
   });
 });
 
-function shade(kind: 'hrv' | 'ir', view: 'clouds' | 'picture', r: number, g: number, b: number, bg = 58): number[] {
+function shade(kind: 'hrv' | 'ir', r: number, g: number, b: number, bg = 58): number[] {
   const out = new Uint8ClampedArray(4);
-  shadePixel(kind, view, r, g, b, bg, out, 0);
+  shadePixel(kind, r, g, b, bg, out, 0);
   return Array.from(out);
 }
 
-describe('shadePixel: HRV clouds view', () => {
-  it('makes land and sea see-through and cloud opaque and white', () => {
-    expect(shade('hrv', 'clouds', 123, 122, 60)[3]).toBe(0); // yellow land
-    expect(shade('hrv', 'clouds', 57, 57, 58)[3]).toBe(0); // sea
-    const [r, g, b, a] = shade('hrv', 'clouds', 247, 247, 204); // thick cloud
-    expect(a).toBeGreaterThan(230);
-    expect(Math.min(r, g, b)).toBeGreaterThan(200);
+describe('shadePixel: the HRV picture by day', () => {
+  it('keeps the picture as the service draws it, and only true black (the empty edge) is see-through', () => {
+    expect(shade('hrv', 0, 0, 0)[3]).toBe(0);
+    expect(shade('hrv', 123, 122, 60)).toEqual([123, 122, 60, 255]); // yellow land
+    expect(shade('hrv', 247, 247, 204)).toEqual([247, 247, 204, 255]); // thick cloud
+    expect(shade('hrv', 40, 41, 52)[3]).toBe(255); // dark sea is drawn, not cleared
   });
 
-  it('shows thin lavender cloud faintly rather than dropping it', () => {
-    const a = shade('hrv', 'clouds', 117, 114, 160)[3];
-    expect(a).toBeGreaterThan(40);
+  it('draws the infrared where the HRV has no data (only the blue): warm ground clear, cloud see-through white', () => {
+    expect(shade('hrv', 0, 0, 60)[3]).toBe(0); // warm ground in the no-data patch
+    const [r, g, b, a] = shade('hrv', 0, 0, 200); // cold cloud in it
+    expect(a).toBeGreaterThan(200);
+    expect(Math.min(r, g, b)).toBeGreaterThan(220);
+    expect(Math.abs(r - g)).toBeLessThanOrEqual(1);
+    expect(b).toBeGreaterThanOrEqual(r);
+  });
+
+  it('makes that cloud more solid and brighter the colder it is, and never violet', () => {
+    const faint = shade('hrv', 0, 0, 110);
+    const solid = shade('hrv', 0, 0, 220);
+    expect(solid[3]).toBeGreaterThan(faint[3]);
+    expect(solid[0]).toBeGreaterThanOrEqual(faint[0]);
+    for (const b of [60, 110, 160, 220, 255]) {
+      const [r, g, bb, a] = shade('hrv', 0, 0, b);
+      if (a > 0) expect(bb - r).toBeLessThan(20); // blue is never far above red: no violet patch
+    }
+  });
+
+  it('measures the cloud against the typical land and sea, so the same blue shows more in dim morning light than at noon', () => {
+    expect(shade('hrv', 0, 0, 100, 45)[3]).toBeGreaterThan(shade('hrv', 0, 0, 100, 95)[3]);
+  });
+
+  it('clears the violet line along the edge of the HRV data, but keeps a real lavender cloud as served', () => {
+    // an antialiased edge pixel: bright red and green mixed with the violet of no data, far more blue than red
+    const [r, , b, a] = shade('hrv', 45, 45, 130);
+    expect(b - r).toBeLessThan(25);
     expect(a).toBeLessThan(255);
+    expect(shade('hrv', 117, 114, 160)).toEqual([117, 114, 160, 255]); // thin lavender cloud: blue above red, but not by that much
+    expect(shade('hrv', 150, 150, 70)).toEqual([150, 150, 70, 255]);
   });
 
-  it('follows the background, so dim morning light still finds cloud', () => {
-    // the same cloud brightness relative to the background gives the same opacity
-    expect(shade('hrv', 'clouds', 90, 90, 100, 30)[3]).toBe(shade('hrv', 'clouds', 150, 150, 160, 90)[3]);
+  it('mixes the two where the HRV fades out, so the edge of its data has no seam', () => {
+    // red and green around 4: between "no data" and a real, dark picture
+    const edge = shade('hrv', 4, 5, 200);
+    expect(edge[3]).toBeGreaterThan(150);
+    const full = shade('hrv', 60, 60, 200);
+    const none = shade('hrv', 0, 0, 200);
+    expect(edge[0]).toBeGreaterThanOrEqual(Math.min(full[0], none[0]) - 1);
+    expect(edge[0]).toBeLessThanOrEqual(Math.max(full[0], none[0]) + 1);
   });
 });
 
-describe('shadePixel: other cases', () => {
-  it('keeps the whole HRV picture in picture view except true black', () => {
-    expect(shade('hrv', 'picture', 0, 0, 0)[3]).toBe(0);
-    expect(shade('hrv', 'picture', 123, 122, 60)).toEqual([123, 122, 60, 255]);
+describe('cloud tops: the infrared by night', () => {
+  it('leaves the warm ground and sea see-through, and true black (no data) too', () => {
+    expect(shade('ir', 25, 25, 25)[3]).toBe(0); // about +18 C: ground at night
+    expect(shade('ir', 0, 0, 0)[3]).toBe(0);
   });
 
-  it('draws only bright cloud in infrared cloud view, and everything in picture view', () => {
-    expect(shade('ir', 'clouds', 20, 20, 20)[3]).toBe(0);
-    expect(shade('ir', 'clouds', 255, 255, 255)[3]).toBeGreaterThan(200);
-    expect(shade('ir', 'clouds', 140, 140, 140)[3]).toBeGreaterThan(shade('ir', 'clouds', 80, 80, 80)[3]);
-    expect(shade('ir', 'picture', 20, 20, 20)[3]).toBeGreaterThan(200);
+  it('shows middle cloud as a soft white-grey, so it still reads as cloud', () => {
+    const [r, g, b, a] = shade('ir', 130, 130, 130); // about -29 C
+    expect(a).toBeGreaterThan(150);
+    expect(a).toBeLessThan(235);
+    expect(Math.min(r, g, b)).toBeGreaterThan(200);
+  });
+
+  it('picks the high cold tops out in colour and solid', () => {
+    const [r, g, b, a] = shade('ir', 232, 232, 232); // about -75 C
+    expect(a).toBeGreaterThan(240);
+    expect(r).toBeGreaterThan(220);
+    expect(b).toBeLessThan(120); // orange or red, not grey
+    const mid = shade('ir', 170, 170, 170); // about -50 C: cyan
+    expect(mid[2]).toBeGreaterThan(mid[0]);
+  });
+
+  it('gets more opaque with every degree colder', () => {
+    let last = -1;
+    for (let luma = 0; luma <= 255; luma += 5) {
+      const a = shade('ir', luma, luma, luma)[3];
+      expect(a).toBeGreaterThanOrEqual(last);
+      last = a;
+    }
+  });
+
+  it('has a ramp that starts clear at the warm end and ends solid white at the coldest', () => {
+    expect(cloudTopColor(30)[3]).toBe(0);
+    expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[3]).toBe(0);
+    expect(cloudTopColor(-85)).toEqual([255, 255, 255, 255]);
+    expect(cloudTopColor(-120)).toEqual([255, 255, 255, 255]);
+    // halfway between two stops is halfway in every channel
+    const a = CLOUD_TOP_STOPS[3];
+    const b = CLOUD_TOP_STOPS[4];
+    const mid = cloudTopColor((a[0] + b[0]) / 2);
+    expect(mid[3]).toBe(Math.round((a[4] + b[4]) / 2));
+  });
+
+  it('draws the colour bar from the same ramp: clear on the left, solid and white on the right', () => {
+    const css = cloudTopGradient();
+    expect(css.startsWith('linear-gradient(to right, rgba(')).toBe(true);
+    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.1\d\) 0\.0%/); // +5 C: all but clear
+    expect(css).toMatch(/rgba\(255, 255, 255, 1\.00\) 100\.0%\)$/);
   });
 });
 
@@ -111,7 +178,7 @@ describe('toOverlayPixels', () => {
   for (let y = 0; y < srcHeight; y++) for (let x = 0; x < width; x++) src.set([y * 30, 100, 50, 255], (y * width + x) * 4);
 
   it('returns a picture of the requested size with values taken from the source', () => {
-    const out = toOverlayPixels(src, width, srcHeight, 'hrv', 'picture', 10);
+    const out = toOverlayPixels(src, width, srcHeight, 'hrv', 10);
     expect(out.length).toBe(width * 10 * 4);
     for (let r = 0; r < 10; r++) {
       expect(out[r * width * 4]).toBeLessThanOrEqual(7 * 30);
@@ -120,7 +187,7 @@ describe('toOverlayPixels', () => {
   });
 
   it('blends between rows rather than copying, and keeps rows in order', () => {
-    const out = toOverlayPixels(src, width, srcHeight, 'hrv', 'picture', 20);
+    const out = toOverlayPixels(src, width, srcHeight, 'hrv', 20);
     let last = -1;
     for (let r = 0; r < 20; r++) {
       const v = out[r * width * 4];
@@ -134,8 +201,16 @@ describe('toOverlayPixels', () => {
   it('makes black see-through', () => {
     const black = new Uint8ClampedArray(width * 2 * 4);
     for (let i = 0; i < black.length; i += 4) black[i + 3] = 255;
-    const out = toOverlayPixels(black, width, 2, 'hrv', 'picture', 3);
+    const out = toOverlayPixels(black, width, 2, 'hrv', 3);
     for (let i = 3; i < out.length; i += 4) expect(out[i]).toBe(0);
+  });
+
+  it('draws an infrared picture in cloud-top colours', () => {
+    const cold = new Uint8ClampedArray(width * 2 * 4);
+    for (let i = 0; i < cold.length; i += 4) cold.set([232, 232, 232, 255], i);
+    const out = toOverlayPixels(cold, width, 2, 'ir', 3);
+    expect(out[3]).toBeGreaterThan(240);
+    expect(out[2]).toBeLessThan(120);
   });
 });
 
@@ -197,194 +272,7 @@ describe('deblockJpeg', () => {
   });
 });
 
-describe('cloud extraction', () => {
-  const px = (r: number, g: number, b: number) => Uint8ClampedArray.from([r, g, b, 255]);
-  const cover = (r: number, g: number, b: number, kind: 'hrv' | 'ir' = 'hrv') => cloudCover(px(r, g, b), 1, 1, kind, 58)[0];
-
-  it('finds very bright yellow (low) cloud without the natural-colour picture, and any yellow it calls white', () => {
-    expect(cover(222, 220, 95)).toBeGreaterThan(0.5);    // low cloud
-    const white = Float32Array.from([1]);
-    expect(cloudCover(px(160, 158, 70), 1, 1, 'hrv', 58, white)[0]).toBeGreaterThan(0.9);
-    expect(cloudCover(px(160, 158, 70), 1, 1, 'hrv', 58, Float32Array.from([0]))[0]).toBe(0);
-  });
-
-  it('finds white and lavender cloud but not sea, yellow land or bright sunlit land', () => {
-    expect(cover(244, 245, 203)).toBeGreaterThan(0.9); // thick cloud
-    expect(cover(116, 113, 160)).toBeGreaterThan(0.5); // thin lavender cloud
-    expect(cover(57, 57, 58)).toBe(0); // sea
-    expect(cover(103, 102, 38)).toBe(0); // land
-    expect(cover(159, 158, 76)).toBe(0); // bright, sunlit land: a high blue value is not enough, it is yellow
-  });
-
-  it('reads cold, high cloud as bright in infrared', () => {
-    expect(cover(250, 250, 250, 'ir')).toBeGreaterThan(0.9);
-    expect(cover(40, 40, 40, 'ir')).toBe(0);
-  });
-
-  it('blurs without changing the total and spreads a spike evenly', () => {
-    const size = 21;
-    const f = new Float32Array(size * size);
-    f[10 * size + 10] = 100;
-    const out = blurField(f, size, size, 1.5);
-    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 1);
-    expect(out[10 * size + 11]).toBeCloseTo(out[10 * size + 9], 6);
-    expect(out[11 * size + 10]).toBeCloseTo(out[9 * size + 10], 6);
-    expect(out[10 * size + 10]).toBeLessThan(100);
-  });
-});
-
-describe('shadeCloudLayer (cloud only)', () => {
-  const W = 40, H = 10;
-  /** A row picture: sea, yellow land, yellow low cloud, white high cloud, and a 1-pixel bright line of cloud. */
-  function scene(): Uint8ClampedArray {
-    const px = new Uint8ClampedArray(W * H * 4);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const c = x < 8 ? [57, 57, 58] : x < 16 ? [110, 108, 42] : x < 24 ? [214, 210, 92] : x < 32 ? [246, 246, 236] : x === 36 ? [246, 246, 236] : [110, 108, 42];
-      px.set([...c, 255], (y * W + x) * 4);
-    }
-    return px;
-  }
-  /** The natural-colour picture of the same scene: dark sea, green land, white low and high cloud. */
-  function naturalScene(): Uint8ClampedArray {
-    const px = new Uint8ClampedArray(W * H * 4);
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const c = x < 8 ? [20, 40, 90] : x < 16 ? [70, 120, 60] : x < 32 ? [225, 228, 230] : [70, 120, 60];
-      px.set([...c, 255], (y * W + x) * 4);
-    }
-    return px;
-  }
-  const at = (out: Uint8ClampedArray, x: number) => Array.from(out.slice((5 * W + x) * 4, (5 * W + x) * 4 + 4));
-
-  it('clears land and sea and keeps the cloud pixels as they are', () => {
-    const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
-    expect(at(out, 3)[3]).toBe(0);                      // sea
-    expect(at(out, 9)[3]).toBeLessThan(25);             // land (a little of the smoothing reaches it at the cloud's edge)
-    const high = at(out, 28);                           // high cloud: its own colour
-    expect(Math.abs(high[0] - 246)).toBeLessThan(25);
-    expect(Math.abs(high[2] - 236)).toBeLessThan(40);
-    expect(high[3]).toBeGreaterThan(220);
-  });
-
-  it('shows low (yellow) cloud, found with the natural-colour picture', () => {
-    const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
-    const low = at(out, 20);                                    // still yellow, so it reads as low cloud
-    expect(Math.abs(low[0] - 214)).toBeLessThan(35);
-    expect(low[2]).toBeLessThan(120);
-    expect(low[3]).toBeGreaterThan(200);
-    const without = shadeCloudLayer(scene(), W, H, 'hrv', 58);  // no natural colour: very bright yellow still counts
-    expect(at(without, 20)[3]).toBeGreaterThan(80);
-    expect(at(without, 9)[3]).toBeLessThan(25);
-  });
-
-  it('smooths the picked cloud and puts its texture back: no hard edge, no dark fringe, the colour code kept', () => {
-    const out = shadeCloudLayer(scene(), W, H, 'hrv', 58, naturalScene());
-    const alphas = Array.from({ length: W }, (_, x) => at(out, x)[3]);
-    let step = 0;
-    for (let x = 1; x < W; x++) step = Math.max(step, Math.abs(alphas[x] - alphas[x - 1]));
-    expect(step).toBeLessThan(110);                                // the 8-pixel cloud blocks fade over several pixels
-    expect(at(out, 24)[0]).toBeGreaterThan(200);                   // where yellow meets white: not darkened towards the cleared neighbours
-    expect(at(out, 20)[2]).toBeLessThan(at(out, 28)[2]);          // low cloud still yellower than high cloud
-  });
-
-  it('restores texture: a bright core in a wide cloud stays brighter than its surroundings', () => {
-    const w = 60, h = 40;
-    const px = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const core = Math.hypot(x - 30, y - 20) < 4;
-      px.set(core ? [250, 250, 225, 255] : x > 8 && x < 52 && y > 6 && y < 34 ? [200, 200, 170, 255] : [57, 57, 58, 255], (y * w + x) * 4);
-    }
-    const out = shadeCloudLayer(px, w, h, 'hrv', 58);
-    const at2 = (x: number, y: number) => out[(y * w + x) * 4];
-    expect(at2(30, 20)).toBeGreaterThan(at2(18, 20) + 10);
-    expect(out[(20 * w + 30) * 4 + 3]).toBeGreaterThan(200);
-  });
-});
-
-describe('picture view', () => {
-  it('keeps the picture in the full view and makes true black (no data) see-through in the infrared one', () => {
-    const out = new Uint8ClampedArray(4);
-    shadePixel('hrv', 'picture', 60, 110, 70, 0, out, 0);
-    expect(Array.from(out.slice(0, 3))).toEqual([60, 110, 70]);
-    expect(out[3]).toBeGreaterThan(200);
-    shadePixel('ir', 'picture', 0, 0, 0, 0, out, 0);
-    expect(out[3]).toBe(0);
-    shadePixel('ir', 'picture', 40, 40, 40, 0, out, 0);
-    expect(out[3]).toBeGreaterThan(200);
-  });
-});
-
-describe('blurField (the fast version) and blurFieldWide', () => {
-  /** The plain convolution the fast version replaces: every tap clamped at the edges. */
-  function referenceBlur(field: Float32Array, width: number, height: number, sigma: number): Float32Array {
-    const radius = Math.max(1, Math.ceil(sigma * 3));
-    const kernel = new Float32Array(2 * radius + 1);
-    let sum = 0;
-    for (let i = -radius; i <= radius; i++) sum += (kernel[i + radius] = Math.exp(-(i * i) / (2 * sigma * sigma)));
-    for (let i = 0; i < kernel.length; i++) kernel[i] /= sum;
-    const tmp = new Float32Array(field.length);
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      let acc = 0;
-      for (let k = -radius; k <= radius; k++) acc += field[y * width + Math.min(width - 1, Math.max(0, x + k))] * kernel[k + radius];
-      tmp[y * width + x] = acc;
-    }
-    const out = new Float32Array(field.length);
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      let acc = 0;
-      for (let k = -radius; k <= radius; k++) acc += tmp[Math.min(height - 1, Math.max(0, y + k)) * width + x] * kernel[k + radius];
-      out[y * width + x] = acc;
-    }
-    return out;
-  }
-
-  /** Blobs of cloud with ragged edges, values 0..1, touching the borders. */
-  function clouds(w: number, h: number): Float32Array {
-    const f = new Float32Array(w * h);
-    let s = 11;
-    const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
-    const cells = Array.from({ length: 9 }, () => ({ x: rnd() * w, y: rnd() * h, r: 8 + rnd() * 24 }));
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      let v = 0;
-      for (const c of cells) v = Math.max(v, 1 - Math.hypot(x - c.x, y - c.y) / c.r);
-      f[y * w + x] = Math.max(0, v) > 0.15 ? Math.min(1, Math.max(0, v) + (rnd() - 0.5) * 0.3) : 0;
-    }
-    return f;
-  }
-
-  it('matches the plain convolution to float rounding', () => {
-    const w = 90, h = 70;
-    const f = clouds(w, h);
-    for (const sigma of [0.7, 1.5, 2.5, 5.5]) {
-      const a = blurField(f, w, h, sigma);
-      const b = referenceBlur(f, w, h, sigma);
-      let worst = 0;
-      for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - b[i]));
-      expect(worst).toBeLessThan(2e-5);
-    }
-  });
-
-  it('the half-resolution blur of a wide sigma stays within a percent of the exact one', () => {
-    const w = 128, h = 96;
-    const f = clouds(w, h);
-    for (const sigma of [2.5, 5.5]) {
-      const a = blurFieldWide(f, w, h, sigma);
-      const b = blurField(f, w, h, sigma);
-      let worst = 0;
-      let mean = 0;
-      for (let i = 0; i < a.length; i++) { const d = Math.abs(a[i] - b[i]); worst = Math.max(worst, d); mean += d; }
-      expect(worst).toBeLessThan(0.03);
-      expect(mean / a.length).toBeLessThan(0.003);
-      expect(a.reduce((x, y) => x + y, 0)).toBeCloseTo(b.reduce((x, y) => x + y, 0), -1);   // the total cloud is the same
-    }
-    // narrow blurs and tiny pictures are done exactly
-    expect(blurFieldWide(f, w, h, 1)).toEqual(blurField(f, w, h, 1));
-  });
-});
-
-import {
-  LUMA_GRID_SIZE,
-} from './satellite-image';
-
-describe('thermal IR temperature, height, and color ramp', () => {
+describe('infrared temperature, height and kind of cloud', () => {
   it('maps normalized luma 0..1 monotonically from warm (+30C) to cold (-85C)', () => {
     expect(irLumaToTempC(0)).toBeCloseTo(30, 1);
     expect(irLumaToTempC(1)).toBeCloseTo(-85, 1);
@@ -406,40 +294,29 @@ describe('thermal IR temperature, height, and color ramp', () => {
     expect(classifyCloudTop(-58).label).toBe('Deep convection');
     expect(classifyCloudTop(-75).label).toBe('Overshooting top / Severe');
   });
-
-  it('renders warm pixels transparent and cold convective pixels with high alpha in thermal view', () => {
-    expect(thermalColorRamp(20)[3]).toBe(0);
-    const cold = thermalColorRamp(-65);
-    expect(cold[3]).toBeGreaterThan(220);
-    expect(cold[0]).toBeGreaterThan(180); // bright red/magenta core
-
-    const out = new Uint8ClampedArray(4);
-    shadePixel('ir', 'thermal', 230, 230, 230, 0, out, 0);
-    expect(out[3]).toBeGreaterThan(220);
-    shadePixel('ir', 'thermal', 20, 20, 20, 0, out, 0);
-    expect(out[3]).toBe(0);
-  });
 });
 
 describe('twilight terminator blending and luma hover grid', () => {
-  it('blends daytime HRV with nighttime IR across the dawn terminator', () => {
+  it('blends daytime HRV with nighttime infrared across the dawn terminator', () => {
     const w = 16, h = 8;
     const hrv = new Uint8ClampedArray(w * h * 4);
     const ir = new Uint8ClampedArray(w * h * 4);
     for (let i = 0; i < w * h; i++) {
-      // HRV: dark everywhere (simulating night side in visible channel)
-      hrv.set([20, 20, 20, 255], i * 4);
-      // IR: cold bright cloud everywhere
-      ir.set([220, 220, 220, 255], i * 4);
+      hrv.set([20, 20, 20, 255], i * 4); // a dim, real picture everywhere
+      ir.set([220, 220, 220, 255], i * 4); // cold bright cloud everywhere
     }
     // 00:45 UTC on equinox: sun is rising in the east (97.5E ~ +11 deg) and still dark in the west (68E ~ -16 deg)
     const dawnMs = Date.parse('2026-03-21T00:45:00Z');
-    const blended = toOverlayPixels(hrv, w, h, 'hrv', 'clouds', 8, undefined, ir, dawnMs);
-    const westAlpha = blended[(4 * w + 1) * 4 + 3];
-    const eastAlpha = blended[(4 * w + (w - 2)) * 4 + 3];
-    // West is in darkness -> takes IR cloud alpha (high); East is in daylight -> takes dark HRV alpha (0)
-    expect(westAlpha).toBeGreaterThan(150);
-    expect(eastAlpha).toBeLessThan(30);
+    const blended = toOverlayPixels(hrv, w, h, 'hrv', 8, ir, dawnMs);
+    const west = Array.from(blended.slice((4 * w + 1) * 4, (4 * w + 1) * 4 + 4));
+    const east = Array.from(blended.slice((4 * w + (w - 2)) * 4, (4 * w + (w - 2)) * 4 + 4));
+    // West is in darkness: it shows the infrared's cloud-top colours (orange for this cold)
+    expect(west[3]).toBeGreaterThan(200);
+    expect(west[0]).toBeGreaterThan(200);
+    expect(west[2]).toBeLessThan(120);
+    // East is in daylight: it is the HRV picture, with at most a trace of the infrared where the sun is still low
+    expect(east[3]).toBe(255);
+    for (let c = 0; c < 3; c++) expect(Math.abs(east[c] - 20)).toBeLessThan(15);
   });
 
   it('builds and samples the compact luma grid accurately by lat/lon', () => {
@@ -461,4 +338,3 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(sampleLumaGrid(grid, LUMA_GRID_SIZE, 2, 72)).toBeNull(); // outside bounds
   });
 });
-

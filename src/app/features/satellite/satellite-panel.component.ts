@@ -4,6 +4,7 @@ import { MapLayerService } from '../../core/services/map-layer.service';
 import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
+import { cloudTopGradient } from '../../core/satellite/satellite-image';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
 
@@ -13,7 +14,10 @@ function istClock(ms: number): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} IST`;
 }
 
-/** Controls for the live satellite picture (Meteosat-9): channel, view mode, frame loop, Cloud-Top hover readout, and opacity. */
+/** Where the labels of the cloud-top colour bar sit along it: the bar runs from +5 °C on the left to -85 °C on the right. */
+const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((5 - t) / 90) * 100 }));
+
+/** Controls for the live satellite picture (Meteosat-9): the frame loop, the Cloud-Top hover readout, and opacity. */
 @Component({
   selector: 'app-satellite-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -59,24 +63,12 @@ function istClock(ms: number): string {
           @if (sat.loading()) { <div class="loading">Loading pictures…</div> }
         }
 
-        <div class="channels" role="group" aria-label="Satellite channel">
-          <button type="button" class="view" [class.active]="sat.channelMode() === 'auto'" [attr.aria-pressed]="sat.channelMode() === 'auto'" (click)="sat.setChannelMode('auto')" title="HRV by day, Infrared at night, blended across dawn and dusk">Auto</button>
-          <button type="button" class="view" [class.active]="sat.channelMode() === 'ir'" [attr.aria-pressed]="sat.channelMode() === 'ir'" (click)="sat.setChannelMode('ir')" title="Thermal Infrared 10.8 µm (cloud-top temperature, 24 hours)">IR 10.8</button>
-          <button type="button" class="view" [class.active]="sat.channelMode() === 'wv'" [attr.aria-pressed]="sat.channelMode() === 'wv'" (click)="sat.setChannelMode('wv')" title="Upper-level Water Vapour 6.2 µm (jet streams, dry intrusions and deep moisture)">WV 6.2</button>
-        </div>
-
-        <div class="views" role="group" aria-label="What to show">
-          <button type="button" class="view" [class.active]="sat.view() === 'clouds'" [attr.aria-pressed]="sat.view() === 'clouds'" (click)="sat.setView('clouds')" title="Only the clouds, with the land and sea cleared">Clouds</button>
-          <button type="button" class="view" [class.active]="sat.view() === 'thermal'" [attr.aria-pressed]="sat.view() === 'thermal'" (click)="sat.setView('thermal')" title="Colorized Cloud-Top Temperature (Dvorak scale highlighting deep convection)">Thermal IR</button>
-          <button type="button" class="view" [class.active]="sat.view() === 'picture'" [attr.aria-pressed]="sat.view() === 'picture'" (click)="sat.setView('picture')" title="The whole satellite picture, land and sea included">Full</button>
-        </div>
-
-        @if (sat.view() === 'thermal') {
-          <div class="thermal-legend" role="img" aria-label="Cloud-Top Temperature (°C)">
+        @if (nightLegend()) {
+          <div class="cloud-legend" role="img" aria-label="Cloud-top temperature (°C): the colder the top, the brighter the colour">
             <div class="label">Cloud-top temperature (°C)</div>
-            <div class="thermal-bar"></div>
-            <div class="thermal-scale">
-              <span>0°</span><span>-20°</span><span>-45°</span><span>-65°</span><span>-80°C</span>
+            <div class="cloud-bar" [style.background]="gradient"></div>
+            <div class="cloud-scale">
+              @for (m of marks; track m.label) { <span [style.left.%]="m.left">{{ m.label }}</span> }
             </div>
           </div>
         }
@@ -106,7 +98,7 @@ function istClock(ms: number): string {
     .heading { flex: 1; min-width: 0; }
     .title-row { display: flex; align-items: center; gap: 6px; }
     .heading strong { display: block; font-size: 14px; white-space: nowrap; }
-    .hd-badge { display: inline-flex; align-items: center; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(6, 182, 212, 0.16); border: 1px solid rgba(6, 182, 212, 0.45); color: var(--neon-cyan); letter-spacing: 0.02em; white-space: nowrap; line-height: 1.3; }
+    .hd-badge { display: inline-flex; align-items: center; font-size: var(--fs-xs); font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(6, 182, 212, 0.16); border: 1px solid rgba(6, 182, 212, 0.45); color: var(--neon-cyan); letter-spacing: 0.02em; white-space: nowrap; line-height: 1.3; }
     .hd-badge.loading { animation: pulse-glow 1.4s ease-in-out infinite alternate; opacity: 0.85; }
     @keyframes pulse-glow { from { opacity: 0.55; } to { opacity: 1; } }
     .sub { color: var(--text-muted); font-size: 11px; }
@@ -124,13 +116,10 @@ function istClock(ms: number): string {
     .loading, .msg { margin: 6px 0 0; color: var(--text-secondary); font-size: 11px; }
     .label { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
-    .channels, .views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
-    .view { min-height: 32px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 11.5px var(--font-body); cursor: pointer; padding: 0 4px; }
-    .view:hover { background: var(--surface-4); color: var(--text-primary); }
-    .view.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
-    .thermal-legend { margin-top: 8px; }
-    .thermal-bar { height: 6px; border-radius: 3px; background: linear-gradient(to right, #38bdf8 0%, #06b6d4 18%, #10b981 35%, #facc15 55%, #f97316 70%, #ef4444 82%, #d946ef 92%, #ffffff 100%); }
-    .thermal-scale { display: flex; justify-content: space-between; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-secondary); }
+    .cloud-legend { margin-top: 8px; }
+    .cloud-bar { height: 8px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line-strong); }
+    .cloud-scale { position: relative; height: 14px; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .cloud-scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
     .hover-readout { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 5px 8px; border-radius: 8px; background: var(--surface-3); font-size: 11px; }
     .hover-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
     .hover-type { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
@@ -138,7 +127,7 @@ function istClock(ms: number): string {
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .note { margin: 10px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
-    /* phones: keep it to a small card (time, slider, view) so the picture stays visible */
+    /* phones: keep it to a small card (time, slider) so the picture stays visible */
     @media (max-width: 700px) {
       .panel { bottom: 84px; width: min(280px, calc(100vw - 24px)); padding: 8px 10px; }
       .heading strong { font-size: 13px; }
@@ -147,8 +136,6 @@ function istClock(ms: number): string {
       .btn-step { width: 24px; height: 28px; }
       .scan { margin: 6px 0 4px; }
       .ends, .note, .opacity { display: none; }
-      .channels, .views { margin-top: 6px; gap: 4px; }
-      .view { min-height: 28px; font-size: 11px; }
     }
   `]
 })
@@ -157,6 +144,8 @@ export class SatellitePanelComponent {
   private readonly detail = inject(SatelliteDetailService);
   private readonly layers = inject(MapLayerService);
   protected readonly Math = Math;
+  protected readonly gradient = cloudTopGradient();
+  protected readonly marks = LEGEND_MARKS;
 
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly count = computed(() => this.sat.frames().length);
@@ -164,15 +153,19 @@ export class SatellitePanelComponent {
   protected readonly detailActive = computed(() => this.detail.shown() !== null);
   protected readonly detailLoading = this.detail.loading;
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
+  /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */
+  protected readonly nightLegend = computed(() => {
+    const f = this.sat.current();
+    return !!f && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
+  });
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
     if (!f) return 'loading';
-    if (f.product.id === 'wv') return 'water vapour 6.2 µm';
-    if (f.product.id === 'ir') return 'infrared 10.8 µm';
-    return isTwilightTime(f.timeMs) ? 'twilight HRV + IR' : 'daylight, HRV';
+    if (f.product.id === 'ir') return 'night infrared, cloud tops';
+    return isTwilightTime(f.timeMs) ? 'twilight HRV + infrared' : 'daylight, HRV';
   });
   protected readonly sourceLabel = SATELLITE_NAME;
-  protected readonly note = `Last hour, every 15 minutes. HRV by day (blended with IR at dawn/dusk), IR 10.8 µm and WV 6.2 µm 24/7. ${SATELLITE_CREDIT}`;
+  protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
     return f ? istClock(f.timeMs) : '';

@@ -3,7 +3,6 @@ import {
   EUMETVIEW_WMS,
   SATELLITE_HRV,
   SATELLITE_IR,
-  SATELLITE_WV,
   SATELLITE_LAG_MIN,
   SATELLITE_FRAME_COUNT,
   frameTimes,
@@ -70,12 +69,6 @@ describe('sunElevationDeg, productForTime and isTwilightTime', () => {
     expect(productForTime(T('2026-10-05T14:00:00Z'))).toBe(SATELLITE_IR); // 19:30 IST, dark
   });
 
-  it('locks to Infrared or Water Vapour when a manual channel mode is chosen', () => {
-    expect(productForTime(T('2026-10-05T06:45:00Z'), 'ir')).toBe(SATELLITE_IR);
-    expect(productForTime(T('2026-10-05T06:45:00Z'), 'wv')).toBe(SATELLITE_WV);
-    expect(productForTime(T('2026-10-05T20:00:00Z'), 'wv')).toBe(SATELLITE_WV);
-  });
-
   it('switches to HRV after sunrise and back to infrared by evening, and detects dawn/dusk twilight across the domain', () => {
     // in early October the sun rises near 06:00 IST (00:30 UTC) and sets near 18:00 IST (12:30 UTC)
     expect(productForTime(T('2026-10-05T00:00:00Z'))).toBe(SATELLITE_IR); // 05:30 IST
@@ -101,9 +94,15 @@ describe('satelliteFrameUrl', () => {
     expect(url.searchParams.get('format')).toBe('image/jpeg');
   });
 
-  it('uses the infrared layer for night frames and wv062 for water vapour', () => {
+  it('uses the infrared layer for night frames', () => {
     expect(new URL(satelliteFrameUrl(SATELLITE_IR, T('2026-10-05T20:00:00Z'))).searchParams.get('layers')).toBe('msg_iodc:ir108');
-    expect(new URL(satelliteFrameUrl(SATELLITE_WV, T('2026-10-05T20:00:00Z'))).searchParams.get('layers')).toBe('msg_iodc:wv062');
+  });
+
+  it('asks for a closer window when given its box, still south, west, north, east', () => {
+    const closer = new URL(satelliteFrameUrl(SATELLITE_HRV, T('2026-10-05T05:30:00Z'), SATELLITE_HRV.layer, { width: 640, height: 600 }, { west: 77, east: 81, south: 10, north: 14 }));
+    expect(closer.searchParams.get('bbox')).toBe('10,77,14,81');
+    expect(closer.searchParams.get('width')).toBe('640');
+    expect(closer.searchParams.get('height')).toBe('600');
   });
 
   it('orders the box south, west, north, east as WMS 1.3.0 needs for EPSG:4326', () => {
@@ -112,7 +111,7 @@ describe('satelliteFrameUrl', () => {
   });
 
   it('never contains a key, token or secret', () => {
-    for (const p of [SATELLITE_HRV, SATELLITE_IR, SATELLITE_WV]) {
+    for (const p of [SATELLITE_HRV, SATELLITE_IR]) {
       expect(satelliteFrameUrl(p, T('2026-10-05T05:30:00Z')).toLowerCase()).not.toMatch(/key|token|secret|auth/);
     }
   });
@@ -138,6 +137,5 @@ describe('parseNewestTime', () => {
   it('asks the capabilities of the layer being shown', () => {
     expect(satelliteCapabilitiesUrl(SATELLITE_IR)).toContain('/msg_iodc/ir108/ows?');
     expect(satelliteCapabilitiesUrl(SATELLITE_HRV)).toContain('/msg_iodc/rgb_eview/ows?');
-    expect(satelliteCapabilitiesUrl(SATELLITE_WV)).toContain('/msg_iodc/wv062/ows?');
   });
 });

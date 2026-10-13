@@ -20,7 +20,7 @@ import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer'
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
 import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
-import { SATELLITE_BOUNDS, SatelliteView } from '../../core/satellite/satellite.config';
+import { SATELLITE_BOUNDS, SatelliteChannel } from '../../core/satellite/satellite.config';
 import { SatelliteDetailService, ShownWindow } from '../../core/satellite/satellite-detail.service';
 import type { MapView } from '../../core/satellite/satellite-window';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
@@ -50,6 +50,12 @@ import { STATION_CIRCLE_LAYER, STATION_LABEL_LAYER, STATION_SOURCE, SynopRecord 
 import { StationSelectionService } from '../../core/forecast/station-selection.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
+
+/** How hard the satellite layer sharpens edges: the sharp HRV takes more (a phone a little less), the soft night infrared less. */
+function satelliteSharpness(kind: SatelliteChannel | undefined): number {
+  if (kind === 'ir') return 0.35;
+  return isPhone() ? 0.45 : 0.65;
+}
 
 @Component({
   selector: 'app-map',
@@ -344,10 +350,10 @@ export class MapComponent implements OnInit, OnDestroy {
     const frames = this.satellite.frames();
     const position = this.satellite.position();
     const opacity = this.satellite.opacity();
-    const view = this.satellite.view();
+    const kind = this.satellite.current()?.product.id;
     if (!this.map || !this.isMapLoaded()) return;
     this.updateSatelliteOverlay(on, frames, position, opacity);
-    this.satelliteLayer?.setLook(view);
+    this.satelliteLayer?.setSharpness(satelliteSharpness(kind));
   });
 
   // Reactive Effect: the closer window of the satellite picture at HRV's finer pixel (see satellite-detail.service.ts)
@@ -355,9 +361,9 @@ export class MapComponent implements OnInit, OnDestroy {
     const shown = this.satelliteDetail.shown();
     const position = this.satellite.position();
     const opacity = this.satellite.opacity();
-    const view = this.satellite.view();
+    const kind = this.satellite.current()?.product.id;
     if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteDetailLayer(shown, position, opacity, view);
+    this.updateSatelliteDetailLayer(shown, position, opacity, kind);
   });
 
   // Reactive Effect: high-detail (250 m) true-colour satellite tiles from NASA GIBS
@@ -726,6 +732,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const sendView = () => this.satelliteDetail.setView(this.mapView());
     map.on('moveend', sendView);
     map.on('resize', sendView);
+    map.on('load', sendView); // a map that opens where it is looking (a shared link, the last visit) gets its closer picture without a first move
   }
 
   // --- 1. IMD Doppler Weather Radar Unified Merged Composite Mosaic ---
@@ -798,7 +805,6 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteLayer = new SatelliteImageLayer();
       // above the boundary lines, under the place names
       this.map.addLayer(this.satelliteLayer, this.observationAnchorId());
-      this.satelliteLayer.setLite(isPhone());
     }
     const keys = frames.map(f => f.url).join('|');
     if (keys !== this.satelliteKeys) {
@@ -813,7 +819,7 @@ export class MapComponent implements OnInit, OnDestroy {
    * GPU layer that fades in at its edge; the main layer makes a hole of the same size (see `setWindow`), so the two blend
    * seamlessly and the window shows no frame.
    */
-  private updateSatelliteDetailLayer(shown: ShownWindow | null, position: number, opacity: number, view: SatelliteView): void {
+  private updateSatelliteDetailLayer(shown: ShownWindow | null, position: number, opacity: number, kind: SatelliteChannel | undefined): void {
     if (!this.map || !this.satelliteLayer) return;
     if (!shown || shown.frames.every(f => f === null)) {
       if (this.satelliteDetailLayer) {
@@ -828,11 +834,10 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteDetailLayer = new SatelliteImageLayer({ id: 'satellite-detail-layer', featherFraction: 0.06 });
       // right above the main satellite layer
       this.map.addLayer(this.satelliteDetailLayer, this.observationAnchorId());
-      this.satelliteDetailLayer.setLite(isPhone());
       this.satelliteLayer.setWindow(this.satelliteDetailLayer);
     }
     this.satelliteDetailLayer.setBounds(shown.window.bounds);
-    this.satelliteDetailLayer.setLook(view);
+    this.satelliteDetailLayer.setSharpness(satelliteSharpness(kind));
     // Build the frame list aligned to the main loop's times: null where the window has no picture yet
     const mainFrames = this.satellite.frames();
     const detailFrames = mainFrames.map(mf => {

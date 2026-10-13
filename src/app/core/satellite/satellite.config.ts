@@ -2,8 +2,8 @@
  * Meteosat-9 imagery over all of India (EUMETSAT's Indian Ocean Data Coverage service, 45.5 E) from EUMETView, EUMETSAT's
  * public map service. It needs no key or login, allows cross-origin requests, and has a new image every 15 minutes.
  *
- * The overlay shows the European HRV RGB (high-resolution visible) by day and the infrared channel by night,
- * when the visible picture goes dark.
+ * The overlay shows the European HRV RGB (high-resolution visible) by day and, when the visible picture goes dark, one
+ * infrared picture by night that picks out the cold cloud tops and high cloud.
  *
  * Two quirks shaped this module:
  *  - Asking for a time the server does not have yet silently returns the newest image, which can still be
@@ -30,27 +30,14 @@ export const SATELLITE_BOUNDS: GeoBounds = { west: 68, east: 97.5, south: 5, nor
 /** Pixels requested: a square picture of the box (about 1.6 km per pixel on desktop, 3 km on a phone). */
 export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
-/**
- * EUMETSAT's "enhanced natural colour" picture: true colour (green land, blue sea, white cloud), built from 3 km channels.
- * By day it helps the cloud-only view find low cloud (white in it, yellow like the land in the HRV picture).
- */
-export const SATELLITE_NATURAL_LAYER = 'rgb_naturalenhncd';
-/**
- * Its size: half the width and height of the main picture. Its pixels are 3 km, so this is still finer than the
- * data, and the server renders it much faster (the full-size request often failed with a 500 when several came at once).
- */
-export const SATELLITE_NATURAL_SIZE = { width: Math.round(SATELLITE_SIZE.width / 2), height: Math.round(SATELLITE_SIZE.height / 2) };
-
 export const SATELLITE_STEP_MIN = 15;
 /** Fallback only: how old a frame must be to be safe when the service's own newest time is not known. */
 export const SATELLITE_LAG_MIN = 25;
 /** Frames in the loop: 5 x 15 min = the last hour (the first frame is exactly 60 minutes before the newest). */
 export const SATELLITE_FRAME_COUNT = 5;
 
-/** The pictures shown: Meteosat's HRV by day, infrared at night, or upper-level water vapour (6.2 µm). */
-export type SatelliteChannel = 'hrv' | 'ir' | 'wv';
-/** Channel selection mode: 'auto' switches HRV by day / IR by night (and blends across twilight); 'ir' or 'wv' locks that channel. */
-export type SatelliteChannelMode = 'auto' | 'ir' | 'wv';
+/** The pictures shown: Meteosat's HRV by day and infrared (10.8 µm) at night. */
+export type SatelliteChannel = 'hrv' | 'ir';
 
 export interface SatelliteProduct {
   id: SatelliteChannel;
@@ -61,18 +48,10 @@ export interface SatelliteProduct {
 
 export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview' };
 export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108' };
-export const SATELLITE_WV: SatelliteProduct = { id: 'wv', label: 'Water Vapour', layer: 'wv062' };
 
 /** The satellite's name and credit, as shown in the menus and the panel. */
 export const SATELLITE_NAME = 'Meteosat-9';
 export const SATELLITE_CREDIT = '© EUMETSAT';
-
-/**
- * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
- * `thermal`: colorized Cloud-Top Temperature (Dvorak RBTOP color scale highlighting deep convective cores).
- * `picture`: the whole satellite picture (HRV keeps its land and sea colours).
- */
-export type SatelliteView = 'clouds' | 'thermal' | 'picture';
 
 /** Centre of India, used to decide whether it is day or night over the area. */
 const CENTRE = { lat: 20, lon: 79 };
@@ -103,10 +82,8 @@ export function sunElevationDeg(timeMs: number, latDeg: number, lonDeg: number):
   return Math.asin(Math.max(-1, Math.min(1, sinElevation))) / rad;
 }
 
-/** The picture for a frame: HRV while the sun is up over India, infrared otherwise (unless locked to IR or WV). */
-export function productForTime(timeMs: number, mode: SatelliteChannelMode = 'auto'): SatelliteProduct {
-  if (mode === 'wv') return SATELLITE_WV;
-  if (mode === 'ir') return SATELLITE_IR;
+/** The picture for a frame: HRV while the sun is up over India, infrared otherwise. */
+export function productForTime(timeMs: number): SatelliteProduct {
   return sunElevationDeg(timeMs, CENTRE.lat, CENTRE.lon) >= DAYLIGHT_MIN_ELEVATION_DEG ? SATELLITE_HRV : SATELLITE_IR;
 }
 

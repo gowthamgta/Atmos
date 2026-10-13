@@ -1,15 +1,10 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import { isPhone } from '../ui/device-profile';
-import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
   GeoBounds,
   SATELLITE_IR,
-  SATELLITE_NATURAL_LAYER,
-  SATELLITE_NATURAL_SIZE,
-  SatelliteChannelMode,
   SatelliteProduct,
-  SatelliteView,
   frameTimes,
   isTwilightTime,
   latestFrameTime,
@@ -25,7 +20,7 @@ interface PlanItem {
   timeMs: number;
   product: SatelliteProduct;
   rawKey: string;
-  fetch: () => Promise<{ blob: Blob; natural?: Blob; twilightIr?: Blob } | null>;
+  fetch: () => Promise<{ blob: Blob; twilightIr?: Blob } | null>;
 }
 
 export interface SatelliteFrame {
@@ -43,13 +38,11 @@ const HOLD_MS = 1800;
 /** How often to ask the service whether a newer picture exists (a tiny request; a picture is fetched only when there is one). */
 const CHECK_MS = 2 * 60_000;
 const LOAD_CONCURRENCY = 3;
-/** The switch for the enhanced full picture (see satellite-enhance.ts), remembered between visits. */
-const ENHANCE_KEY = 'atmosiq.satellite.enhance';
 
 /**
- * Loads the last hour of Meteosat-9 pictures (HRV by day, infrared at night, or water vapour) and plays them as a
- * loop that fades smoothly from one picture to the next. It asks the service for its newest picture time, so the
- * loop is as recent as the service allows, and checks again every couple of minutes. Nothing here needs a key.
+ * Loads the last hour of Meteosat-9 pictures (the HRV by day, one infrared picture by night) and plays them as a loop that
+ * fades smoothly from one picture to the next. It asks the service for its newest picture time, so the loop is as recent as
+ * the service allows, and checks again every couple of minutes. Nothing here needs a key.
  */
 @Injectable({ providedIn: 'root' })
 export class SatelliteService {
@@ -62,15 +55,10 @@ export class SatelliteService {
   readonly playing = signal(false);
   readonly loading = signal(false);
   readonly failed = signal(false);
-  // Start with the complete, true-to-source scene. Alternative diagnostic views remain available in the panel.
   readonly opacity = signal(1);
-  readonly view = signal<SatelliteView>('picture');
-  readonly channelMode = signal<SatelliteChannelMode>('auto');
   readonly hoverReading = signal<SatelliteHoverReading | null>(null);
   /** The satellite layer is on (the pictures are being kept fresh). */
   readonly active = signal(false);
-  /** The full picture is enhanced: natural colour sharpened by the HRV by day, infrared and water vapour without their pixel steps. */
-  readonly enhance = signal(readFlag(ENHANCE_KEY, true));
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -85,9 +73,9 @@ export class SatelliteService {
   private turn = 0;
   private nextRequest = 1;
   private readonly pending = new Map<number, (r: SatelliteWorkerResponse) => void>();
-  /** The downloaded pictures as served, keyed by "channel|timeMs" so switching views or channels reuses downloads. */
-  private readonly raws = new Map<string, { timeMs: number; product: SatelliteProduct; blob: Blob; natural?: Blob; twilightIr?: Blob; lumaGrid?: Uint8Array }>();
-  /** Overlay pictures being built or built, by "view|channel|timeMs". */
+  /** The downloaded pictures as served, keyed by "channel|timeMs". */
+  private readonly raws = new Map<string, { timeMs: number; product: SatelliteProduct; blob: Blob; twilightIr?: Blob; lumaGrid?: Uint8Array }>();
+  /** Overlay pictures being built or built, by "channel|timeMs". */
   private readonly built = new Map<string, Promise<SatelliteFrame | null>>();
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
@@ -138,7 +126,7 @@ export class SatelliteService {
     const fallback = latestFrameTime(nowMs);
     try {
       // both layers are updated together, so either one says how recent the data is
-      const res = await fetch(satelliteCapabilitiesUrl(productForTime(fallback, this.channelMode())));
+      const res = await fetch(satelliteCapabilitiesUrl(productForTime(fallback)));
       if (!res.ok) return fallback;
       const newest = parseNewestTime(await res.text());
       // never trust a time in the future or one that is hours old
@@ -150,14 +138,13 @@ export class SatelliteService {
 
   /**
    * What to show: the frames of the last hour, oldest first, each with a way to fetch it. The times come from the service's
-   * newest time and the picture from EUMETView (by day also the natural-colour one to find low cloud, and during dawn/dusk
-   * also the infrared picture so the solar terminator blends smoothly without a dark band).
+   * newest time and the picture from EUMETView (during dawn and dusk also the infrared picture, so the solar terminator
+   * blends smoothly without a dark band).
    */
   private async plan(nowMs: number): Promise<PlanItem[]> {
     const newest = await this.newestTime(nowMs);
-    const mode = this.channelMode();
     return frameTimes(newest).map(t => {
-      const product = productForTime(t, mode);
+      const product = productForTime(t);
       const rawKey = `${product.id}|${t}`;
       const needTwilightIr = product.id === 'hrv' && isTwilightTime(t);
       return {
@@ -165,12 +152,11 @@ export class SatelliteService {
         product,
         rawKey,
         fetch: async () => {
-          const [blob, natural, twilightIr] = await Promise.all([
+          const [blob, twilightIr] = await Promise.all([
             this.download(product, t),
-            product.id === 'hrv' ? this.download(product, t, SATELLITE_NATURAL_LAYER, SATELLITE_NATURAL_SIZE) : Promise.resolve(null),
             needTwilightIr ? this.download(SATELLITE_IR, t) : Promise.resolve(null),
           ]);
-          return blob ? { blob, natural: natural ?? undefined, twilightIr: twilightIr ?? undefined } : null;
+          return blob ? { blob, twilightIr: twilightIr ?? undefined } : null;
         },
       };
     });
@@ -196,13 +182,7 @@ export class SatelliteService {
         const got = await item.fetch();
         if (token !== this.loadToken) return;
         if (got) {
-          this.raws.set(item.rawKey, {
-            timeMs: item.timeMs,
-            product: item.product,
-            blob: got.blob,
-            natural: got.natural,
-            twilightIr: got.twilightIr,
-          });
+          this.raws.set(item.rawKey, { timeMs: item.timeMs, product: item.product, blob: got.blob, twilightIr: got.twilightIr });
           void this.publish(plan, token, following); // the next picture downloads while this one is built
         }
       }
@@ -242,49 +222,35 @@ export class SatelliteService {
     return null;
   }
 
-  private async download(product: SatelliteProduct, timeMs: number, layer?: string, size?: { width: number; height: number }): Promise<Blob | null> {
-    return this.downloadUrl(satelliteFrameUrl(product, timeMs, layer, size));
+  private async download(product: SatelliteProduct, timeMs: number): Promise<Blob | null> {
+    return this.downloadUrl(satelliteFrameUrl(product, timeMs));
   }
 
   /**
-   * The overlay picture for a downloaded frame in a view, built once and shared: overlapping refreshes must never
-   * build the same frame twice, or one would release a picture the map is still showing.
+   * The overlay picture for a downloaded frame, built once and shared: overlapping refreshes must never build the same
+   * frame twice, or one would release a picture the map is still showing.
    */
-  private frameFor(rawKey: string, view: SatelliteView): Promise<SatelliteFrame | null> {
-    const key = `${this.lookKey(view)}|${rawKey}`;
-    let pending = this.built.get(key);
+  private frameFor(rawKey: string): Promise<SatelliteFrame | null> {
+    let pending = this.built.get(rawKey);
     if (!pending) {
       const raw = this.raws.get(rawKey)!;
-      const enhance = view === 'picture' && this.enhance();
-      pending = this.process(
-        raw.blob,
-        raw.product,
-        view,
-        view === 'clouds' || enhance ? raw.natural : undefined, // the cloud-only view finds low cloud with it; the enhanced picture takes its colours
-        raw.twilightIr,
-        raw.timeMs,
-        enhance,
-      ).then(res => {
+      pending = this.process(raw.blob, raw.product, raw.twilightIr, raw.timeMs).then(res => {
         if (!res) {
-          this.built.delete(key); // try again on the next refresh
+          this.built.delete(rawKey); // try again on the next refresh
           return null;
         }
         if (res.lumaGrid) raw.lumaGrid = res.lumaGrid;
         return { timeMs: raw.timeMs, product: raw.product, url: res.url, lumaGrid: raw.lumaGrid };
       });
-      this.built.set(key, pending);
+      this.built.set(rawKey, pending);
     }
     return pending;
   }
 
-  /** Release pictures of other views/channels or of frames that have left the hour. */
+  /** Release the pictures of frames that have left the hour. */
   private prune(activeRawKeys: readonly string[]): void {
-    const look = this.lookKey();
     for (const [key, pending] of this.built) {
-      const sep = key.indexOf('|');
-      const v = key.slice(0, sep);
-      const rk = key.slice(sep + 1);
-      if (v === look && activeRawKeys.includes(rk)) continue;
+      if (activeRawKeys.includes(key)) continue;
       this.built.delete(key);
       void pending.then(f => f && URL.revokeObjectURL(f.url));
     }
@@ -292,63 +258,15 @@ export class SatelliteService {
 
   /** List the overlay pictures of every downloaded frame, oldest first. */
   private async publish(plan: readonly PlanItem[], token: number, following: boolean): Promise<void> {
-    const view = this.view();
-    const look = this.lookKey();
     const seq = ++this.publishSeq;
-    const built = await Promise.all(plan.filter(p => this.raws.has(p.rawKey)).map(p => this.frameFor(p.rawKey, view)));
-    if (token !== this.loadToken || view !== this.view() || look !== this.lookKey()) return; // a newer refresh, view or enhancement setting took over
-    if (seq < this.publishApplied) return;                         // a later publish (with more pictures) is already shown
+    const built = await Promise.all(plan.filter(p => this.raws.has(p.rawKey)).map(p => this.frameFor(p.rawKey)));
+    if (token !== this.loadToken) return; // a newer refresh took over
+    if (seq < this.publishApplied) return; // a later publish (with more pictures) is already shown
     this.publishApplied = seq;
     const list = built.filter((f): f is SatelliteFrame => f !== null);
     this.frames.set(list);
     this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));
     if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
-  }
-
-  /** Switch between cloud-only, thermal IR, and the full picture; the pictures are rebuilt from what is already downloaded. */
-  async setView(view: SatelliteView): Promise<void> {
-    if (view === this.view()) return;
-    this.view.set(view);
-    const activeRawKeys = this.frames().map(f => `${f.product.id}|${f.timeMs}`);
-    const rebuilt = await Promise.all(activeRawKeys.filter(rk => this.raws.has(rk)).map(rk => this.frameFor(rk, view)));
-    if (view !== this.view()) return; // changed again while rebuilding
-    const list = rebuilt.filter((f): f is SatelliteFrame => f !== null);
-    this.frames.set(list);
-    this.position.update(p => Math.min(p, Math.max(list.length - 1, 0)));
-    this.prune(activeRawKeys);
-    if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
-  }
-
-  /** What a built picture is filed under: its view, and for the full picture whether it is enhanced (one download builds both). */
-  private lookKey(view: SatelliteView = this.view()): string {
-    return view === 'picture' && this.enhance() ? 'picture+' : view;
-  }
-
-  /** Turn the enhancement of the full picture on or off (remembered); the full pictures are rebuilt from what is already downloaded. */
-  async setEnhance(on: boolean): Promise<void> {
-    if (on === this.enhance()) return;
-    this.enhance.set(on);
-    writeFlag(ENHANCE_KEY, on);
-    if (this.view() !== 'picture') return; // only the full picture is enhanced: the other views are as they were
-    const look = this.lookKey();
-    const activeRawKeys = this.frames().map(f => `${f.product.id}|${f.timeMs}`);
-    const wasLoading = this.loading();
-    this.loading.set(true); // a few seconds on a phone: the old pictures stay on the map meanwhile
-    const rebuilt = await Promise.all(activeRawKeys.filter(rk => this.raws.has(rk)).map(rk => this.frameFor(rk, 'picture')));
-    if (look !== this.lookKey()) return; // changed again while rebuilding
-    if (!wasLoading) this.loading.set(false);
-    const list = rebuilt.filter((f): f is SatelliteFrame => f !== null);
-    this.frames.set(list);
-    this.position.update(p => Math.min(p, Math.max(list.length - 1, 0)));
-    this.prune(activeRawKeys);
-    if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
-  }
-
-  /** Switch between Auto (HRV day / IR night), Infrared (10.8 µm), and Water Vapour (6.2 µm). */
-  async setChannelMode(mode: SatelliteChannelMode): Promise<void> {
-    if (mode === this.channelMode()) return;
-    this.channelMode.set(mode);
-    await this.load();
   }
 
   /**
@@ -358,11 +276,8 @@ export class SatelliteService {
   process(
     jpeg: Blob,
     product: SatelliteProduct,
-    view: SatelliteView,
-    natural?: Blob,
     twilightIr?: Blob,
     timeMs?: number,
-    enhance = false,
     bounds?: GeoBounds,
   ): Promise<{ url: string; lumaGrid?: Uint8Array } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
@@ -371,7 +286,7 @@ export class SatelliteService {
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, view, natural, twilightIr, timeMs, enhance, bounds } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds } satisfies SatelliteWorkerRequest);
     });
   }
 

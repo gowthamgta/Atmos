@@ -3,7 +3,6 @@ import { isPhone } from '../ui/device-profile';
 import {
   SATELLITE_BOUNDS,
   SATELLITE_IR,
-  SATELLITE_NATURAL_LAYER,
   SATELLITE_SIZE,
   SatelliteProduct,
   isTwilightTime,
@@ -23,7 +22,6 @@ export interface ShownWindow {
 /** A window's pictures as EUMETView sent them. */
 interface WindowRaw {
   blob: Blob;
-  natural?: Blob;
   twilightIr?: Blob;
 }
 
@@ -44,9 +42,9 @@ const SETTLE_MS = 250;
  * than the high-resolution visible channel's detail (about 0.8 km), so a window of the same pictures at that finer pixel is fetched
  * for the part of the map in view (see satellite-window.ts for how it is chosen) and the map draws it over the main picture.
  *
- * It follows the main loop: one picture per frame, the same times, the same view (full, clouds, thermal) and enhancement, built in
- * the same worker. Only the HRV by day has anything finer to give; infrared and water vapour pictures are 4 to 6 km a pixel, no
- * finer than the main picture, so by night, or in those channels, there is no window.
+ * It follows the main loop: one picture per frame, the same times, built in the same worker. Only the HRV by day has anything
+ * finer to give; the infrared picture of the night is 4 to 6 km a pixel, no finer than the main picture, so by night there is
+ * no window.
  */
 @Injectable({ providedIn: 'root' })
 export class SatelliteDetailService {
@@ -67,10 +65,8 @@ export class SatelliteDetailService {
 
   constructor() {
     effect(() => {
-      // whatever changes which closer pictures are wanted: the main loop, what it shows, whether it is on
+      // whatever changes which closer pictures are wanted: the main loop, whether it is on
       this.sat.frames();
-      this.sat.view();
-      this.sat.enhance();
       this.sat.active();
       this.sat.loading();
       untracked(() => this.schedule());
@@ -154,50 +150,38 @@ export class SatelliteDetailService {
     }
   }
 
-  /** The look the pictures are built for: the view, and for the full picture whether it is enhanced (as in SatelliteService). */
-  private look(): { view: ReturnType<SatelliteService['view']>; enhance: boolean; key: string } {
-    const view = this.sat.view();
-    const enhance = view === 'picture' && this.sat.enhance();
-    return { view, enhance, key: `${view}${enhance ? '+' : ''}` };
-  }
-
   private async download(win: SatelliteWindow, item: Item): Promise<WindowRaw | null> {
     const half = { width: Math.max(64, Math.round(win.size.width / 2)), height: Math.max(64, Math.round(win.size.height / 2)) };
-    const url = (product: SatelliteProduct, layer: string, size: { width: number; height: number }) =>
-      satelliteFrameUrl(product, item.timeMs, layer, size, win.bounds);
-    // the colour picture's pixels are 4-6 km: half the pixels of the HRV's hold all it has
-    const [blob, natural, twilightIr] = await Promise.all([
-      this.sat.downloadUrl(url(item.product, item.product.layer, win.size)),
-      this.sat.downloadUrl(url(item.product, SATELLITE_NATURAL_LAYER, half)),
-      isTwilightTime(item.timeMs) ? this.sat.downloadUrl(url(SATELLITE_IR, SATELLITE_IR.layer, half)) : Promise.resolve(null),
+    const url = (product: SatelliteProduct, size: { width: number; height: number }) =>
+      satelliteFrameUrl(product, item.timeMs, product.layer, size, win.bounds);
+    // the infrared picture's pixels are 4-6 km: half the pixels of the HRV's hold all it has
+    const [blob, twilightIr] = await Promise.all([
+      this.sat.downloadUrl(url(item.product, win.size)),
+      isTwilightTime(item.timeMs) ? this.sat.downloadUrl(url(SATELLITE_IR, half)) : Promise.resolve(null),
     ]);
-    return blob ? { blob, natural: natural ?? undefined, twilightIr: twilightIr ?? undefined } : null;
+    return blob ? { blob, twilightIr: twilightIr ?? undefined } : null;
   }
 
-  /** The overlay picture of a window's frame in the current look, built once and shared. */
+  /** The overlay picture of a window's frame, built once and shared. */
   private frameFor(win: SatelliteWindow, item: Item): Promise<SatelliteFrame | null> {
-    const { view, enhance, key: lookKey } = this.look();
-    const key = `${lookKey}|${item.rawKey}`;
-    let pending = this.built.get(key);
+    let pending = this.built.get(item.rawKey);
     if (!pending) {
       const raw = this.raws.get(item.rawKey)!;
-      pending = this.sat
-        .process(raw.blob, item.product, view, view === 'clouds' || enhance ? raw.natural : undefined, raw.twilightIr, item.timeMs, enhance, win.bounds)
-        .then(res => {
-          if (!res) {
-            this.built.delete(key); // try again on the next refresh
-            return null;
-          }
-          return { timeMs: item.timeMs, product: item.product, url: res.url };
-        });
-      this.built.set(key, pending);
+      pending = this.sat.process(raw.blob, item.product, raw.twilightIr, item.timeMs, win.bounds).then(res => {
+        if (!res) {
+          this.built.delete(item.rawKey); // try again on the next refresh
+          return null;
+        }
+        return { timeMs: item.timeMs, product: item.product, url: res.url };
+      });
+      this.built.set(item.rawKey, pending);
     }
     return pending;
   }
 
-  /** Release the built pictures that are not for this window (null: all of them) in this look. */
+  /** Release the built pictures that are not for this window (null: all of them). */
   private prune(win: SatelliteWindow | null): void {
-    const prefix = win ? `${this.look().key}|${win.id}|` : null;
+    const prefix = win ? `${win.id}|` : null;
     for (const [key, pending] of this.built) {
       if (prefix && key.startsWith(prefix)) continue;
       this.built.delete(key);
