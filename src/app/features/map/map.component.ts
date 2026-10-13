@@ -603,7 +603,7 @@ export class MapComponent implements OnInit, OnDestroy {
       // the position of a shared link, else Kallakurichi
       center: this.urlState.camera() ? [this.urlState.camera()!.lon, this.urlState.camera()!.lat] : [KALLAKURICHI.lng, KALLAKURICHI.lat],
       zoom: this.urlState.camera()?.zoom ?? HOME_ZOOM,
-      minZoom: 1.5,
+      minZoom: 3.2,
       maxZoom: 15,
       attributionControl: false
     });

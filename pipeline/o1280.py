@@ -56,6 +56,6 @@ def regrid_band(flat: np.ndarray, r0: int, r1: int, lats: np.ndarray, lons: np.n
     idx = np.searchsorted(-band_lat, -lats)       # band_lat is descending
     idx = np.clip(idx, 1, len(band_lat) - 1)
     la, lb = band_lat[idx - 1], band_lat[idx]
-    w = np.clip((la - lats) / (la - lb), 0.0, 1.0).astype(np.float32)[:, None]
+    w = ((la - lats) / (la - lb)).astype(np.float32)[:, None]
     out[:] = rows[idx - 1] * (1 - w) + rows[idx] * w
     return out

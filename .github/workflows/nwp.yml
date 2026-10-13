@@ -20,7 +20,6 @@ on:
       - "pipeline/config.py"
       - "pipeline/derive.py"
       - "pipeline/encode.py"
-      - "pipeline/b2_sync.py"
       - "pipeline/requirements.txt"
       - ".github/workflows/nwp.yml"
       - "pipeline/cyclones.py"
@@ -55,20 +54,10 @@ jobs:
       - run: python -m pytest -q tests
       - name: Fetch and encode
         id: build
-        env:
-          B2_KEY_ID: ${{ secrets.B2_KEY_ID || '0030521106176d60000000001' }}
-          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
-          B2_BUCKET: ${{ secrets.B2_BUCKET || 'nwp-atmos-storage' }}
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           repo="${GITHUB_REPOSITORY#*/}"
           base="https://${owner}.github.io/${repo}"
-          b2_base="https://f003.backblazeb2.com/file/${B2_BUCKET}"
-          if [ -n "$B2_APPLICATION_KEY" ]; then
-            live_base="$b2_base"
-          else
-            live_base="$base"
-          fi
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
           # a scheduled run waits for the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 4 hours ago. It is worked out from
@@ -81,25 +70,11 @@ jobs:
             echo "waiting for the cycle $expect"
           fi
           pending="$models"
-          built_any="false"
           for attempt in $(seq 1 6); do
             waiting=""
             for model in $pending; do
               # one model failing must not stop the other
-              if python run.py --model "$model" --out site --live-url "$live_base/$model/latest.json" $force $expect; then
-                if [ -n "$B2_APPLICATION_KEY" ] && [ -f "site/$model/latest.json" ]; then
-                  if python b2_sync.py --site site --models "$model"; then
-                    built_any="true"
-                    continue
-                  fi
-                  echo "::warning::$model: Backblaze B2 upload failed"
-                elif [ -f "site/$model/latest.json" ]; then
-                  built_any="true"
-                  continue
-                else
-                  continue
-                fi
-              fi
+              python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force $expect && continue
               echo "::notice::$model: attempt $attempt did not complete (run not published yet, or a failure)"
               waiting="$waiting $model"
             done
@@ -109,24 +84,20 @@ jobs:
             sleep 1800        # not published yet: try again in 30 minutes
           done
           for model in $pending; do echo "::warning::$model failed; the live copy stays in place"; done
-          mkdir -p site
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
-          if [ -z "$B2_APPLICATION_KEY" ]; then
-            echo "::warning::B2_APPLICATION_KEY secret is not set; skipping Backblaze B2 upload"
-            if ! python mirror.py --site site --base-url "$base" --models $models; then
-              echo "::warning::a live model could not be copied; not deploying, so that it is not dropped from the site"
-              echo "deploy=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
+          # models that were not rebuilt come over from the live site (always: a deploy replaces the whole site)
+          if ! python mirror.py --site site --base-url "$base" --models $models; then
+            echo "::warning::a live model could not be copied; not deploying, so that it is not dropped from the site"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
           cp -r data/terrain site/terrain
-          touch site/.nojekyll
-          # deploy Pages when cyclones or terrain changed (models are hosted on Backblaze B2 when B2_APPLICATION_KEY is set)
+          # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
-          if [ "$built_any" = "true" ] || [ -f site/cyclones/tracks.json ] || ! cmp -s data/terrain/index.json live-terrain-index.json; then
+          if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"

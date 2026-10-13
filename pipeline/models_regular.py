@@ -43,13 +43,12 @@ def level_speed_dir() -> tuple[tuple[str, str, str, str], ...]:
 
 STEPS_3H_144 = list(range(0, 145, 3))
 
-# Global 0.25-degree grid covering the entire world (the same grid as ECMWF IFS on Backblaze B2)
-GLOBAL_GRID = Grid(C.GLOBAL_LAT_MIN, C.GLOBAL_LAT_MAX, C.GLOBAL_LON_MIN, C.GLOBAL_LON_MAX, C.GLOBAL_STEP_DEG, C.GLOBAL_DOMAIN)
-INDIA_GRID = GLOBAL_GRID
+# all of India on the 0.1 degree grid (the same box as ECMWF IFS, so the two models line up and share the terrain's model ground)
+INDIA_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, C.STEP_DEG, C.IFS_DOMAIN)
 
-# UK Met Office global deterministic, ~10 km, published on the global 0.25-degree grid.
+# UK Met Office global deterministic, ~10 km. Short range (about 2.5 days) and big files, so two runs a day.
 UKMO = RegularModel(
-    model_id="ukmo", label="UK Met Office", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 61, 3)), grid=GLOBAL_GRID,
+    model_id="ukmo", label="UK Met Office", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 61, 3)), grid=INDIA_GRID,
     sources=[Source(
         "ukmo_global_deterministic_10km",
         _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars() + level_w()),
@@ -58,8 +57,9 @@ UKMO = RegularModel(
 )
 
 
-# the three 25 km forecasts also use the global 0.25 degree grid
-COARSE_GRID = GLOBAL_GRID
+# the three forecasts added for a five-day view: they are coarser (25 km), so they are drawn on a 0.25 degree grid of the same
+# box (about 15 thousand cells instead of 96 thousand: their five days of pictures stay small on the site)
+COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0.25, "india-0.25-5-37.5N-68-97.5E")
 # every step each forecast publishes (Open-Meteo): GFS hourly to +120 h then 3-hourly to +384 h, of which every 3 h to +120 h and every
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. A run built shorter than this just publishes the steps it has.
 GFS_STEPS = list(range(0, 121, 3)) + list(range(126, 385, 6))

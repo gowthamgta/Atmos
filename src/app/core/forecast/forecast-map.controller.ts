@@ -266,11 +266,10 @@ export class ForecastMapController {
         layer.setLayer(null);
         return;
       }
-      const grid = result.grid ?? INDIA_GRID;
-      const bitmap = await encodeFieldBitmap(result.values, grid, 0, 100);
+      const bitmap = await encodeFieldBitmap(result.values, INDIA_GRID, 0, 100);
       if (my !== this.token || !this.layer) return;
       const frame = { key: `consensus/${Math.round(time / 60_000)}/${result.models.join(',')}`, bitmap };
-      layer.setGrid(grid);
+      layer.setGrid(INDIA_GRID);
       layer.setLayer(def, [0, 100]);
       layer.setFrames(frame, frame, 0);
     } catch (err) {

@@ -69,9 +69,9 @@ DERIVED_ACROSS_STEPS = {"rain24", "raintot", "extreme", "tmin24", "tmax24"}   # 
 
 def process_step(fetcher, run, h):
     """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from."""
-    grid = grid_of(fetcher)
-    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid.lat_max, grid.step)
+    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid_of(fetcher).lat_max)
     if fetcher.MODEL_ID == "ecmwf_ifs" and LAND_MASK is not None:
+        grid = grid_of(fetcher)
         if BIAS_TABLE:
             # the airport-based correction of temperature and humidity near them (see correction.py), at this step's valid time
             fields = correction.apply(fields, grid.lats(), grid.lons(), run + timedelta(hours=h), BIAS_TABLE, LAND_MASK)

@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { blendFields, encodeFieldBitmap } from './derived-fields';
 import { decodeFieldBitmap } from './field-decode';
 import { ForecastCatalogService } from './forecast-catalog.service';
-import { ForecastManifest, fetchFieldResponse } from './forecast.model';
+import { ForecastManifest } from './forecast.model';
 
 /** Downloads and caches decoded-on-GPU field images (ImageBitmaps of the rg16 PNGs). */
 @Injectable({ providedIn: 'root' })
@@ -42,12 +42,9 @@ export class FieldLoaderService {
     }
     let pending = this.inflight.get(key);
     if (!pending) {
-      const rel = `${varId}/${String(stepHour).padStart(3, '0')}.png`;
       const load = this.catalog.isSynthesizedVar?.(varId)
         ? this.interpolateLevelBitmap(manifest, varId, stepHour, priority)
-        : manifest.packs?.[rel]
-          ? this.fetchPackedBitmap(manifest, varId, stepHour, priority)
-          : this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build), priority);
+        : this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build), priority);
       pending = load.then(bmp => {
         this.cache.set(key, bmp);
         this.evict();
@@ -81,15 +78,6 @@ export class FieldLoaderService {
     const fieldAbove = decodeFieldBitmap(bmpAbove, aboveInfo.min, aboveInfo.max);
     const blended = blendFields(fieldBelow, fieldAbove, mix);
     return encodeFieldBitmap(blended, manifest.grid, targetInfo.min, targetInfo.max);
-  }
-
-  private async fetchPackedBitmap(manifest: ForecastManifest, varId: string, stepHour: number, priority: 'auto' | 'low'): Promise<ImageBitmap> {
-    const res = await fetchFieldResponse(this.catalog.model().baseUrl, manifest, varId, stepHour, priority);
-    if (!res.ok) {
-      if (res.status === 404) void this.catalog.refresh();
-      throw new Error(`${res.status} ${varId}/${stepHour}`);
-    }
-    return createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   }
 
   private async fetchBitmap(url: string, priority: 'auto' | 'low'): Promise<ImageBitmap> {
