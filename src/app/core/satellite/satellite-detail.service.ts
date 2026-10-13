@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, InjectionToken, effect, inject, signal, untracked } from '@angular/core';
 import { isPhone } from '../ui/device-profile';
 import {
   SATELLITE_BOUNDS,
@@ -9,7 +9,7 @@ import {
   satelliteFrameUrl,
 } from './satellite.config';
 import { SatelliteFrame, SatelliteService } from './satellite.service';
-import { MapView, SatelliteWindow, WindowLimits, chooseWindow, kmPerPixel } from './satellite-window';
+import { MapView, SatelliteWindow, WINDOW_LOSSLESS_MAX_PX, WindowLimits, chooseWindow, kmPerPixel } from './satellite-window';
 
 /** The closer window the map draws over the whole-India picture, with one picture for each frame of the main loop. */
 export interface ShownWindow {
@@ -23,6 +23,8 @@ export interface ShownWindow {
 interface WindowRaw {
   blob: Blob;
   twilightIr?: Blob;
+  /** The picture came as a PNG, so it has no JPEG blocks to smooth. */
+  lossless: boolean;
 }
 
 interface Item {
@@ -31,6 +33,12 @@ interface Item {
   rawKey: string;
 }
 
+/** What a window may be, set once from the device: the biggest picture to ask for, and how fine the whole-India picture already is. */
+export const SATELLITE_WINDOW_LIMITS = new InjectionToken<WindowLimits>('SATELLITE_WINDOW_LIMITS', {
+  providedIn: 'root',
+  factory: () => ({ maxPx: isPhone() ? 1024 : 1600, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, SATELLITE_SIZE.width) }),
+});
+
 const DOWNLOAD_CONCURRENCY = 3;
 /** Windows whose downloads are kept, so going back to a place does not fetch it again. */
 const KEEP_WINDOWS = 3;
@@ -38,9 +46,10 @@ const KEEP_WINDOWS = 3;
 const SETTLE_MS = 250;
 
 /**
- * The closer pictures of the satellite loop. When the map is zoomed in, the whole-India picture's pixels (1.5 to 3 km) are coarser
- * than the high-resolution visible channel's detail (about 0.8 km), so a window of the same pictures at that finer pixel is fetched
- * for the part of the map in view (see satellite-window.ts for how it is chosen) and the map draws it over the main picture.
+ * The closer pictures of the satellite loop. A phone's whole-India picture has 3 km pixels, but the high-resolution visible channel
+ * is built from pixels about 1.3 km wide, so when the map is zoomed in a window of the same pictures at that pixel is fetched for
+ * the part of the map in view (see satellite-window.ts for how it is chosen) and the map draws it over the main picture. A small
+ * window comes as a lossless PNG, so the service's hard JPEG does not show its blocks when it is magnified.
  *
  * It follows the main loop: one picture per frame, the same times, built in the same worker. Only the HRV by day has anything
  * finer to give; the infrared picture of the night is 4 to 6 km a pixel, no finer than the main picture, so by night there is
@@ -49,6 +58,7 @@ const SETTLE_MS = 250;
 @Injectable({ providedIn: 'root' })
 export class SatelliteDetailService {
   private readonly sat = inject(SatelliteService);
+  private readonly limits = inject(SATELLITE_WINDOW_LIMITS);
 
   /** What to draw over the main picture (null: nothing, the main picture is fine or the window is not ready). */
   readonly shown = signal<ShownWindow | null>(null);
@@ -103,8 +113,7 @@ export class SatelliteDetailService {
       return;
     }
     if (this.sat.loading()) return; // the whole-India pictures first; this runs again when they are in
-    const limits: WindowLimits = { maxPx: isPhone() ? 1024 : 1600, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, SATELLITE_SIZE.width) };
-    const win = chooseWindow(view, limits, this.wanted);
+    const win = chooseWindow(view, this.limits, this.wanted);
     this.wanted = win;
     const items: Item[] = main.map(f => ({ timeMs: f.timeMs, product: f.product, rawKey: `${win?.id}|${f.product.id}|${f.timeMs}` }));
     const hrv = items.filter(i => i.product.id === 'hrv');
@@ -152,14 +161,21 @@ export class SatelliteDetailService {
 
   private async download(win: SatelliteWindow, item: Item): Promise<WindowRaw | null> {
     const half = { width: Math.max(64, Math.round(win.size.width / 2)), height: Math.max(64, Math.round(win.size.height / 2)) };
-    const url = (product: SatelliteProduct, size: { width: number; height: number }) =>
-      satelliteFrameUrl(product, item.timeMs, product.layer, size, win.bounds);
-    // the infrared picture's pixels are 4-6 km: half the pixels of the HRV's hold all it has
-    const [blob, twilightIr] = await Promise.all([
-      this.sat.downloadUrl(url(item.product, win.size)),
+    const url = (product: SatelliteProduct, size: { width: number; height: number }, lossless = false) =>
+      satelliteFrameUrl(product, item.timeMs, product.layer, size, win.bounds, lossless);
+    // a small window is magnified a lot, where the service's hard JPEG shows its blocks: that one is asked for as a PNG (and as a
+    // JPEG if the service cannot make it). The infrared picture's pixels are 4-6 km: half the pixels of the HRV's hold all it has.
+    const wantLossless = win.size.width * win.size.height <= WINDOW_LOSSLESS_MAX_PX;
+    const [hrv, twilightIr] = await Promise.all([
+      (async () => {
+        const png = wantLossless ? await this.sat.downloadUrl(url(item.product, win.size, true)) : null;
+        if (png) return { blob: png, lossless: true };
+        const jpeg = await this.sat.downloadUrl(url(item.product, win.size));
+        return jpeg ? { blob: jpeg, lossless: false } : null;
+      })(),
       isTwilightTime(item.timeMs) ? this.sat.downloadUrl(url(SATELLITE_IR, half)) : Promise.resolve(null),
     ]);
-    return blob ? { blob, twilightIr: twilightIr ?? undefined } : null;
+    return hrv ? { blob: hrv.blob, lossless: hrv.lossless, twilightIr: twilightIr ?? undefined } : null;
   }
 
   /** The overlay picture of a window's frame, built once and shared. */
@@ -167,7 +183,7 @@ export class SatelliteDetailService {
     let pending = this.built.get(item.rawKey);
     if (!pending) {
       const raw = this.raws.get(item.rawKey)!;
-      pending = this.sat.process(raw.blob, item.product, raw.twilightIr, item.timeMs, win.bounds).then(res => {
+      pending = this.sat.process(raw.blob, item.product, raw.twilightIr, item.timeMs, win.bounds, raw.lossless).then(res => {
         if (!res) {
           this.built.delete(item.rawKey); // try again on the next refresh
           return null;

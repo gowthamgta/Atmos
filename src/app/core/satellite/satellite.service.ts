@@ -279,6 +279,7 @@ export class SatelliteService {
     twilightIr?: Blob,
     timeMs?: number,
     bounds?: GeoBounds,
+    lossless = false,
   ): Promise<{ url: string; lumaGrid?: Uint8Array } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
@@ -286,7 +287,7 @@ export class SatelliteService {
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless } satisfies SatelliteWorkerRequest);
     });
   }
 

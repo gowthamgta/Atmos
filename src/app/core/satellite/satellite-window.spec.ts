@@ -4,7 +4,7 @@ import {
   REFERENCE_KM_PER_PX,
   SatelliteWindow,
   WINDOW_KM_PER_PX,
-  WINDOW_MIN_GAIN,
+  WINDOW_LOSSLESS_MAX_PX,
   chooseWindow,
   kmPerPixel,
   metresPerPixel,
@@ -29,11 +29,17 @@ describe('the scale of the map and of the pictures', () => {
     expect(PHONE.globalKmPerPx).toBeCloseTo(2 * REFERENCE_KM_PER_PX, 6);
   });
 
-  it('scales the picture processing by how fine the pixels are: 1 for the desktop picture, a half for the phone, about 2 for a window', () => {
+  it('scales the picture processing by how fine the pixels are: 1 for the desktop picture, a half for the phone, a little over 1 for a window', () => {
     expect(pictureScale(SATELLITE_BOUNDS, 2000)).toBeCloseTo(1, 6);
     expect(pictureScale(SATELLITE_BOUNDS, 1000)).toBeCloseTo(0.5, 6);
     const w = chooseWindow(view(11.2, 78.4, 7.5), PHONE)!;
-    expect(pictureScale(w.bounds, w.size.width)).toBeGreaterThan(1.7);
+    expect(pictureScale(w.bounds, w.size.width)).toBeGreaterThan(1);
+    expect(pictureScale(w.bounds, w.size.width)).toBeLessThan(1.5);
+  });
+
+  it('asks for no finer pixel than the satellite has: the service pads a finer picture with repeated pixels, which show as streaks', () => {
+    expect(WINDOW_KM_PER_PX).toBeGreaterThanOrEqual(1.2);
+    expect(WINDOW_KM_PER_PX).toBeLessThanOrEqual(1.5);
   });
 });
 
@@ -44,26 +50,26 @@ describe('chooseWindow', () => {
     expect(chooseWindow(view(20, 80, 5), DESKTOP, null)).toBeNull();
   });
 
-  it('wants none on a desktop until the zoom is such that a window beats its 1.5 km picture by a third, then gives one that does', () => {
-    expect(chooseWindow(view(11.2, 78.4, 6, 1400, 800), DESKTOP)).toBeNull();
-    expect(chooseWindow(view(11.2, 78.4, 6.5, 1400, 800), DESKTOP)).toBeNull();
-    for (const z of [7, 8.5]) {
-      const w = chooseWindow(view(11.2, 78.4, z, 1400, 800), DESKTOP);
-      expect(w).not.toBeNull();
-      expect(DESKTOP.globalKmPerPx / w!.kmPerPx).toBeGreaterThanOrEqual(WINDOW_MIN_GAIN);
-      expect(w!.size.width).toBeLessThanOrEqual(DESKTOP.maxPx);
-    }
+  it('never gives a desktop a window: its 1.5 km picture is already as fine as the satellite is', () => {
+    for (const z of [4, 6, 7, 8.5, 10, 12]) expect(chooseWindow(view(11.2, 78.4, z, 1400, 800), DESKTOP)).toBeNull();
   });
 
-  it('gives a phone a window at the zoom of a state, at about the pixel the HRV keeps its detail to', () => {
+  it('gives a phone a window at the zoom of a state, at about the satellite pixel', () => {
     const w = chooseWindow(view(11.2, 78.4, 7.5), PHONE)!;
     expect(w).not.toBeNull();
-    expect(w.kmPerPx).toBeLessThan(1.1);
+    expect(w.kmPerPx).toBeLessThan(WINDOW_KM_PER_PX * 1.15);
     expect(w.kmPerPx).toBeGreaterThanOrEqual(WINDOW_KM_PER_PX - 0.01);
     expect(w.size.width).toBeLessThanOrEqual(PHONE.maxPx);
     expect(w.size.height).toBeLessThanOrEqual(PHONE.maxPx * 1.05);
-    // far finer than the 3 km of the phone's main picture
-    expect(PHONE.globalKmPerPx / w.kmPerPx).toBeGreaterThan(2.5);
+    // finer than the 3 km of the phone's main picture by more than twice
+    expect(PHONE.globalKmPerPx / w.kmPerPx).toBeGreaterThan(2.2);
+  });
+
+  it('keeps a deep-zoom window small enough to come as a lossless PNG, and a state-sized one is a JPEG', () => {
+    const deep = chooseWindow(view(11.7, 79, 10), PHONE)!;
+    expect(deep.size.width * deep.size.height).toBeLessThanOrEqual(WINDOW_LOSSLESS_MAX_PX);
+    const state = chooseWindow(view(11.2, 78.4, 7.5), PHONE)!;
+    expect(state.size.width * state.size.height).toBeGreaterThan(WINDOW_LOSSLESS_MAX_PX);
   });
 
   it('holds the whole view with room to spare on every side', () => {
@@ -117,7 +123,7 @@ describe('chooseWindow', () => {
     expect(fine.kmPerPx).toBeLessThan(WINDOW_KM_PER_PX * 1.15);
     expect(chooseWindow(view(11.2, 78.4, 9.5), PHONE, fine)).toBe(fine);
     // made zoomed out, where the biggest picture a phone asks for is spread over a wide window, so its pixel is coarser
-    const coarse = chooseWindow(view(11.2, 78.4, 6.2), PHONE)!;
+    const coarse = chooseWindow(view(11.2, 78.4, 6), PHONE)!;
     expect(coarse.kmPerPx).toBeGreaterThan(WINDOW_KM_PER_PX * 1.5);
     const zoomedIn = chooseWindow(view(11.2, 78.4, 8.5), PHONE, coarse)!;
     expect(zoomedIn.id).not.toBe(coarse.id);
@@ -138,7 +144,7 @@ describe('chooseWindow', () => {
     for (const z of [6.5, 7, 7.5, 8, 9, 10]) {
       const w = chooseWindow(view(11.2, 78.4, z), PHONE)!;
       expect(w).not.toBeNull();
-      if (last) expect(w.kmPerPx).toBeLessThanOrEqual(last.kmPerPx + 1e-9);
+      if (last) expect(w.kmPerPx).toBeLessThanOrEqual(last.kmPerPx + 0.01); // pixel counts are whole numbers, so the pixel size wobbles a little
       last = w;
     }
   });

@@ -130,8 +130,9 @@ export function frameTimes(latestMs: number, count = SATELLITE_FRAME_COUNT, step
 }
 
 /**
- * GetMap URL for one frame of `bounds` (all of India unless a closer window is asked for). JPEG keeps a frame to 20-400 KB;
- * transparency is done afterwards, in the browser.
+ * GetMap URL for one frame of `bounds` (all of India unless a closer window is asked for). JPEG keeps a frame to 20-400 KB (the
+ * service compresses it hard and ignores any quality option, so it is blocky when magnified a lot); `lossless` asks for a PNG, about
+ * 15 times the size, for a small window that will be magnified. Transparency is done afterwards, in the browser.
  */
 export function satelliteFrameUrl(
   product: SatelliteProduct,
@@ -139,6 +140,7 @@ export function satelliteFrameUrl(
   layer: string = product.layer,
   size: { width: number; height: number } = SATELLITE_SIZE,
   b: GeoBounds = SATELLITE_BOUNDS,
+  lossless = false,
 ): string {
   const params = new URLSearchParams({
     service: 'WMS',
@@ -151,7 +153,7 @@ export function satelliteFrameUrl(
     bbox: `${b.south},${b.west},${b.north},${b.east}`,
     width: String(size.width),
     height: String(size.height),
-    format: 'image/jpeg',
+    format: lossless ? 'image/png' : 'image/jpeg',
     time: new Date(timeMs).toISOString().replace('.000Z', 'Z'),
   });
   return `${EUMETVIEW_WMS}?${params.toString()}`;

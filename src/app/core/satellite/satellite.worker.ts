@@ -14,6 +14,8 @@ export interface SatelliteWorkerRequest {
   timeMs?: number;
   /** The ground the picture covers, when it is a closer window and not all of India. */
   bounds?: GeoBounds;
+  /** The picture is a PNG (no JPEG blocks to smooth). */
+  lossless?: boolean;
 }
 
 export type SatelliteWorkerResponse =
@@ -22,7 +24,7 @@ export type SatelliteWorkerResponse =
 
 /** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
 addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) => {
-  const { id, jpeg, kind, twilightIr, timeMs, bounds } = event.data;
+  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless } = event.data;
   const box = bounds ?? SATELLITE_BOUNDS;
   try {
     const bitmap = await createImageBitmap(jpeg);
@@ -32,7 +34,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     sctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     const src = sctx.getImageData(0, 0, width, height).data;
-    deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
+    if (!lossless) deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
     const lumaGrid = bounds ? undefined : buildLumaGrid(src, width, height, kind); // the hover readout reads the whole-India picture
     let irPixels: Uint8ClampedArray | undefined;
     if (twilightIr && kind === 'hrv' && timeMs !== undefined) {

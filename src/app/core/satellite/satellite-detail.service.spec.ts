@@ -1,9 +1,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SatelliteDetailService } from './satellite-detail.service';
+import { SATELLITE_WINDOW_LIMITS, SatelliteDetailService } from './satellite-detail.service';
 import { SatelliteFrame, SatelliteService } from './satellite.service';
-import { SATELLITE_HRV, SATELLITE_IR, isTwilightTime, productForTime } from './satellite.config';
+import { SATELLITE_BOUNDS, SATELLITE_HRV, SATELLITE_IR, isTwilightTime, productForTime } from './satellite.config';
+import { WINDOW_LOSSLESS_MAX_PX, kmPerPixel } from './satellite-window';
+
+// a phone: the whole-India picture is 3 km a pixel, so windows are worth fetching (a desktop's picture is as fine as the satellite)
+const PHONE_LIMITS = { maxPx: 1024, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 1000) };
 
 /** A stand-in for the whole-India loop: the frames it shows, whether it is on and still loading, and the two jobs the detail service borrows. */
 class FakeSatelliteService {
@@ -11,7 +15,7 @@ class FakeSatelliteService {
   readonly active = signal(true);
   readonly loading = signal(false);
   built = 0;
-  readonly downloadUrl = vi.fn(async (url: string) => new Blob([url], { type: 'image/jpeg' }));
+  readonly downloadUrl = vi.fn(async (url: string): Promise<Blob | null> => new Blob([url], { type: 'image/jpeg' }));
   readonly process = vi.fn(async () => ({ url: `blob:built-${++this.built}` }));
 }
 
@@ -25,8 +29,8 @@ function loop(lastMs: number, product = SATELLITE_HRV): SatelliteFrame[] {
 
 const MIDDAY = Date.parse('2026-06-15T07:00:00Z'); // about 12:30 IST: HRV
 const MIDNIGHT = Date.parse('2026-06-15T19:00:00Z'); // about 00:30 IST: infrared
-/** A zoomed-in view of Tamil Nadu on a desktop-sized map (the whole-India picture is 1.5 km a pixel there, a window 0.8). */
-const view = (lat = 11.2, lon = 78.4) => ({ lat, lon, zoom: 8.5, width: 1400, height: 800 });
+/** A phone's map zoomed in on Tamil Nadu: a state-sized window (a JPEG) at 8.5, a small one (a PNG) at 10. */
+const view = (lat = 11.2, lon = 78.4, zoom = 8.5) => ({ lat, lon, zoom, width: 412, height: 800 });
 
 /** Lets the settle timer fire and every promise it started finish. */
 async function settle(ms = 400): Promise<void> {
@@ -41,7 +45,12 @@ describe('SatelliteDetailService', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     if (typeof URL.revokeObjectURL !== 'function') URL.revokeObjectURL = () => undefined;
-    TestBed.configureTestingModule({ providers: [{ provide: SatelliteService, useClass: FakeSatelliteService }] });
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: SatelliteService, useClass: FakeSatelliteService },
+        { provide: SATELLITE_WINDOW_LIMITS, useValue: PHONE_LIMITS },
+      ],
+    });
     sat = TestBed.inject(SatelliteService) as unknown as FakeSatelliteService;
     detail = TestBed.inject(SatelliteDetailService);
   });
@@ -84,6 +93,55 @@ describe('SatelliteDetailService', () => {
     expect(detail.loading()).toBe(false);
   });
 
+  it('asks for the satellite pixel, not a finer one: that only makes the service repeat pixels, and streaks', async () => {
+    await show();
+    const w = detail.shown()!.window;
+    expect(w.kmPerPx).toBeGreaterThanOrEqual(1.2);
+    expect(w.kmPerPx).toBeLessThanOrEqual(1.5);
+  });
+
+  it('asks for a state-sized window as a JPEG: a PNG of that size would be too big to be worth it', async () => {
+    await show(loop(MIDDAY), view(11.2, 78.4, 7.5));
+    const w = detail.shown()!.window;
+    expect(w.size.width * w.size.height).toBeGreaterThan(WINDOW_LOSSLESS_MAX_PX);
+    expect(sat.downloadUrl.mock.calls.length).toBe(5);
+    expect(sat.downloadUrl.mock.calls.every(c => new URL(c[0]).searchParams.get('format') === 'image/jpeg')).toBe(true);
+    expect((sat.process.mock.calls as unknown as unknown[][]).every(c => c[5] === false)).toBe(true);
+  });
+
+  it('asks for a deep-zoom window as a lossless PNG, which skips the JPEG deblocking in the worker', async () => {
+    await show(loop(MIDDAY), view(11.7, 79, 10)); // a window of about 150 km
+    const w = detail.shown()!.window;
+    expect(w.size.width * w.size.height).toBeLessThanOrEqual(WINDOW_LOSSLESS_MAX_PX);
+    expect(sat.downloadUrl.mock.calls.length).toBe(5);
+    expect(sat.downloadUrl.mock.calls.every(c => new URL(c[0]).searchParams.get('format') === 'image/png')).toBe(true);
+    expect((sat.process.mock.calls as unknown as unknown[][]).every(c => c[5] === true)).toBe(true);
+  });
+
+  it('keeps a state-sized window when the map zooms in on it, as it is already at the satellite pixel', async () => {
+    await show(loop(MIDDAY), view(11.2, 78.4, 8.5));
+    const first = detail.shown()!.window.id;
+    const downloads = sat.downloadUrl.mock.calls.length;
+    detail.setView(view(11.3, 78.5, 10));
+    await settle();
+    expect(detail.shown()!.window.id).toBe(first);
+    expect(sat.downloadUrl.mock.calls.length).toBe(downloads);
+  });
+
+  it('falls back to the JPEG when the service cannot make the PNG', async () => {
+    sat.downloadUrl.mockImplementation(async (url: string): Promise<Blob | null> =>
+      new URL(url).searchParams.get('format') === 'image/png' ? null : new Blob([url], { type: 'image/jpeg' }),
+    );
+    await show(loop(MIDDAY), view(11.7, 79, 10));
+    const shown = detail.shown();
+    expect(shown).not.toBeNull();
+    expect(shown!.frames.every(f => f !== null)).toBe(true);
+    const formats = sat.downloadUrl.mock.calls.map(c => new URL(c[0]).searchParams.get('format'));
+    expect(formats.filter(f => f === 'image/png')).toHaveLength(5);
+    expect(formats.filter(f => f === 'image/jpeg')).toHaveLength(5);
+    expect((sat.process.mock.calls as unknown as unknown[][]).every(c => c[5] === false)).toBe(true);
+  });
+
   it('is quiet by night: the infrared has nothing finer to give than the whole-India picture', async () => {
     await show(loop(MIDNIGHT, SATELLITE_IR));
     expect(detail.shown()).toBeNull();
@@ -107,7 +165,7 @@ describe('SatelliteDetailService', () => {
     await show();
     expect(detail.shown()).toBeNull();
     sat.active.set(true);
-    detail.setView({ lat: 20, lon: 80, zoom: 4, width: 1400, height: 800 });
+    detail.setView({ lat: 20, lon: 80, zoom: 4, width: 412, height: 800 });
     TestBed.tick();
     await settle();
     expect(detail.shown()).toBeNull();

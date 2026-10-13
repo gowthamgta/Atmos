@@ -2,10 +2,14 @@
  * Where to ask EUMETView for a closer picture.
  *
  * The whole-India picture is asked for at 1.5 km a pixel on a desktop and 3 km on a phone, but the high-resolution visible channel
- * (HRV) keeps its detail down to about 0.8 km a pixel (the same ground asked for at 1.5 km shows visibly less: field patterns,
- * the edges of small cloud). So when the map is zoomed in, a small window of the same picture is fetched at that finer pixel and
- * drawn over the main one, which stays underneath for everything outside the window. The window follows the map: it is chosen
- * from the view, snapped so a small pan keeps it, and replaced only when the view leaves it.
+ * (HRV) is built from pixels about 1.2-1.5 km wide. So a phone's picture throws away half of what the satellite has, and when the
+ * map is zoomed in a small window of the same picture is fetched at the satellite's own pixel and drawn over the main one, which
+ * stays underneath for everything outside the window. (A desktop's picture is already as fine as that, so it never gets a window.)
+ * The window follows the map: it is chosen from the view, snapped so a small pan keeps it, and replaced only when the view leaves it.
+ *
+ * It must not be asked for any finer than the satellite's pixel: the service then pads the picture by repeating its pixels, which
+ * is not detail but a pattern of rectangles that shows as vertical and horizontal streaks as soon as the map is zoomed in. (An
+ * earlier version asked for 0.8 km a pixel and the Kallakurichi view was streaked with them.)
  *
  * Everything here is plain arithmetic on the map's position; nothing is fetched.
  */
@@ -15,8 +19,10 @@ const RAD = Math.PI / 180;
 /** Kilometres in a degree of latitude (and of longitude at the equator). */
 const KM_PER_DEG = 111.32;
 
-/** Pixel size (km) that keeps the HRV's detail. */
-export const WINDOW_KM_PER_PX = 0.8;
+/** Pixel size (km) of a window: about the satellite's own (HRV pixels are 1.2-1.5 km wide over India). */
+export const WINDOW_KM_PER_PX = 1.25;
+/** A window with no more pixels than this is asked for as a lossless PNG (about 200 KB); a bigger one as a JPEG, whose blocks a map zoomed that far out does not show. */
+export const WINDOW_LOSSLESS_MAX_PX = 90_000;
 /** The smallest window, in km across: below this the map is zoomed in further than the data goes, a bigger picture would add nothing. */
 export const WINDOW_MIN_SPAN_KM = 150;
 /** The window reaches this fraction of the view beyond it on every side (so it is two screens across). */

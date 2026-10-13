@@ -31,8 +31,8 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((5
             <div class="title-row">
               <strong>{{ sourceLabel }}</strong>
               @if (detailActive()) {
-                <span class="hd-badge" [class.loading]="detailLoading()" title="High-resolution 0.8 km HRV window active on viewport">
-                  {{ detailLoading() ? 'HD loading…' : 'HD 0.8 km' }}
+                <span class="hd-badge" [class.loading]="detailLoading()" title="The part of the map in view is drawn from a closer picture of the HRV, at the satellite's own pixel (about 1.3 km)">
+                  {{ detailLoading() ? 'HD loading…' : 'HD ' + detailKm() + ' km' }}
                 </span>
               }
             </div>
@@ -152,6 +152,8 @@ export class SatellitePanelComponent {
   protected readonly failed = this.sat.failed;
   protected readonly detailActive = computed(() => this.detail.shown() !== null);
   protected readonly detailLoading = this.detail.loading;
+  /** The pixel of the closer picture on the map, to a tenth of a kilometre. */
+  protected readonly detailKm = computed(() => (this.detail.shown()?.window.kmPerPx ?? 0).toFixed(1));
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */
   protected readonly nightLegend = computed(() => {
