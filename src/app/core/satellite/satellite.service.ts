@@ -3,6 +3,7 @@ import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellit
 import { isPhone } from '../ui/device-profile';
 import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
+  GeoBounds,
   SATELLITE_IR,
   SATELLITE_NATURAL_LAYER,
   SATELLITE_NATURAL_SIZE,
@@ -66,6 +67,8 @@ export class SatelliteService {
   readonly view = signal<SatelliteView>('picture');
   readonly channelMode = signal<SatelliteChannelMode>('auto');
   readonly hoverReading = signal<SatelliteHoverReading | null>(null);
+  /** The satellite layer is on (the pictures are being kept fresh). */
+  readonly active = signal(false);
   /** The full picture is enhanced: natural colour sharpened by the HRV by day, infrared and water vapour without their pixel steps. */
   readonly enhance = signal(readFlag(ENHANCE_KEY, true));
 
@@ -96,11 +99,13 @@ export class SatelliteService {
 
   /** Start (or resume) fetching; looks for newer pictures every couple of minutes while on. */
   activate(): void {
+    this.active.set(true);
     if (this.checkTimer === null) this.checkTimer = setInterval(() => void this.load(), CHECK_MS);
     void this.load();
   }
 
   deactivate(): void {
+    this.active.set(false);
     this.pause();
     this.clearHover();
     if (this.checkTimer !== null) clearInterval(this.checkTimer);
@@ -223,7 +228,7 @@ export class SatelliteService {
   }
 
   /** A picture, or null. EUMETView sometimes answers a busy moment with a 500: that is tried once more after a short wait. */
-  private async downloadUrl(url: string): Promise<Blob | null> {
+  async downloadUrl(url: string): Promise<Blob | null> {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const res = await fetch(url);
@@ -346,8 +351,11 @@ export class SatelliteService {
     await this.load();
   }
 
-  /** Overlay picture (object URL) and downsampled luma grid for a downloaded frame, built in a web worker. */
-  private process(
+  /**
+   * Overlay picture (object URL) and downsampled luma grid for a downloaded frame, built in a web worker (a closer window's
+   * pictures are built here too, with the box they cover).
+   */
+  process(
     jpeg: Blob,
     product: SatelliteProduct,
     view: SatelliteView,
@@ -355,6 +363,7 @@ export class SatelliteService {
     twilightIr?: Blob,
     timeMs?: number,
     enhance = false,
+    bounds?: GeoBounds,
   ): Promise<{ url: string; lumaGrid?: Uint8Array } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
@@ -362,7 +371,7 @@ export class SatelliteService {
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, view, natural, twilightIr, timeMs, enhance } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, view, natural, twilightIr, timeMs, enhance, bounds } satisfies SatelliteWorkerRequest);
     });
   }
 

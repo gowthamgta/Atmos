@@ -17,8 +17,16 @@ import { isPhone, satelliteImageSize } from '../ui/device-profile';
 
 export const EUMETVIEW_WMS = 'https://view.eumetsat.int/geoserver/msg_iodc/wms';
 
+/** A box on the map in degrees. */
+export interface GeoBounds {
+  readonly west: number;
+  readonly east: number;
+  readonly south: number;
+  readonly north: number;
+}
+
 /** The area requested: all of India (the forecast domain covers the same box). */
-export const SATELLITE_BOUNDS = { west: 68, east: 97.5, south: 5, north: 37.5 } as const;
+export const SATELLITE_BOUNDS: GeoBounds = { west: 68, east: 97.5, south: 5, north: 37.5 };
 /** Pixels requested: a square picture of the box (about 1.6 km per pixel on desktop, 3 km on a phone). */
 export const SATELLITE_SIZE = satelliteImageSize(isPhone());
 
@@ -144,9 +152,17 @@ export function frameTimes(latestMs: number, count = SATELLITE_FRAME_COUNT, step
   return Array.from({ length: count }, (_, i) => latestMs - (count - 1 - i) * step);
 }
 
-/** GetMap URL for one frame. JPEG keeps a frame to 20-400 KB; transparency is done afterwards, in the browser. */
-export function satelliteFrameUrl(product: SatelliteProduct, timeMs: number, layer: string = product.layer, size: { width: number; height: number } = SATELLITE_SIZE): string {
-  const b = SATELLITE_BOUNDS;
+/**
+ * GetMap URL for one frame of `bounds` (all of India unless a closer window is asked for). JPEG keeps a frame to 20-400 KB;
+ * transparency is done afterwards, in the browser.
+ */
+export function satelliteFrameUrl(
+  product: SatelliteProduct,
+  timeMs: number,
+  layer: string = product.layer,
+  size: { width: number; height: number } = SATELLITE_SIZE,
+  b: GeoBounds = SATELLITE_BOUNDS,
+): string {
   const params = new URLSearchParams({
     service: 'WMS',
     version: '1.3.0',

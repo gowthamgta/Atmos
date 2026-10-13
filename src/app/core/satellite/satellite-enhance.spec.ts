@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
 import {
   DEFAULT_SHIFT,

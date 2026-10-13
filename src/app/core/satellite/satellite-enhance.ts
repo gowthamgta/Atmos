@@ -14,7 +14,11 @@
  */
 import type { SatelliteChannel } from './satellite.config';
 
-/** The picture size (pixels across) the sizes below are given for; other sizes (a phone gets half) scale them. */
+/**
+ * The picture the sizes below are given for: the whole-India picture 2000 pixels across (1.5 km a pixel). Other pictures scale them by
+ * `scale`, how many times finer their pixels are (a phone's whole-India picture is 0.5, a closer window about 2: see pictureScale),
+ * so a blur always covers the same ground.
+ */
 export const REFERENCE_WIDTH = 2000;
 /** Blur (pixels at the reference size) that takes the steps out of the infrared and water-vapour pictures. */
 export const GREY_SMOOTH_SIGMA = 1.4;
@@ -254,7 +258,8 @@ function tapTable(count: number, size: number, position: (i: number) => number):
 /**
  * Sharpens the natural-colour picture with the HRV one, in place in `hrv` (an RGBA picture whose red and green are the HRV, and
  * blue the infrared; it comes out as the colour picture with the HRV's detail, with alpha untouched). `colour` is the natural-colour
- * picture at its own size (usually half of the main one), already free of JPEG blocks.
+ * picture at its own size (usually half of the main one), already free of JPEG blocks. `scale` is how fine the pixels are against the
+ * reference picture (see REFERENCE_WIDTH); the default is right for a picture covering all India.
  *
  * Standard sharpening of a colour picture by a finer grey one, in four steps:
  *  1. the colour picture is blurred a little, to take out its source's pixel steps, and moved onto the HRV picture (the two are
@@ -273,8 +278,8 @@ export function sharpenColourWithHrv(
   colour: Uint8ClampedArray,
   cw: number,
   ch: number,
+  scale = width / REFERENCE_WIDTH,
 ): FusionInfo {
-  const scale = width / REFERENCE_WIDTH;
   const step = Math.max(1, Math.round(width / cw));
   const dw = Math.floor(width / step);
   const dh = Math.floor(height / step);
@@ -283,7 +288,7 @@ export function sharpenColourWithHrv(
   const soft = new Float32Array(cw * ch * 3);
   const lumaColour = new Float32Array(cw * ch);
   {
-    const sigma = COLOUR_SMOOTH_SIGMA * ((cw * 2) / REFERENCE_WIDTH);
+    const sigma = COLOUR_SMOOTH_SIGMA * scale * ((2 * cw) / width); // the usual colour picture is half the size of the main one
     const scratch = new Float32Array(cw * ch);
     const planes = [0, 1, 2].map(c => {
       const plane = channelPlane(colour, cw, ch, c);
@@ -422,13 +427,21 @@ export interface ColourPicture {
 /**
  * Enhances the full picture of a frame in place: the HRV picture gets the natural colours and the detail of the HRV (or, when the
  * colour picture could not be fetched, only its infrared blue cleared of steps); infrared and water vapour lose their steps.
+ * `scale`: how fine the picture's pixels are against the reference (the default suits a picture of all India).
  */
-export function enhancePicture(px: Uint8ClampedArray, width: number, height: number, kind: SatelliteChannel, colour?: ColourPicture): void {
+export function enhancePicture(
+  px: Uint8ClampedArray,
+  width: number,
+  height: number,
+  kind: SatelliteChannel,
+  colour?: ColourPicture,
+  scale = width / REFERENCE_WIDTH,
+): void {
   if (kind !== 'hrv') {
-    smoothGrey(px, width, height);
+    smoothGrey(px, width, height, GREY_SMOOTH_SIGMA * scale);
   } else if (colour) {
-    sharpenColourWithHrv(px, width, height, colour.data, colour.width, colour.height);
+    sharpenColourWithHrv(px, width, height, colour.data, colour.width, colour.height, scale);
   } else {
-    smoothChannel(px, width, height, 2);
+    smoothChannel(px, width, height, 2, GREY_SMOOTH_SIGMA * scale);
   }
 }

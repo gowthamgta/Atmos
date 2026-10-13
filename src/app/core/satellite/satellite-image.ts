@@ -210,8 +210,18 @@ export function shadePixel(
       out[o + 3] = Math.round(255 * smoothstep(3, 14, Math.max(r, g, b)));
       return;
     }
-    const cloud = smoothstep(background + 20, background + 105, b);
-    const white = Math.min(255, 0.55 * g + 0.45 * b + 28 * cloud); // slightly brightened, so thin cloud reads clearly
+    // Clouds view: middle and high cold cloud stands out in blue channel; bright low cloud stands out in visible channels
+    const cold = smoothstep(background + 18, background + 105, b);
+    const hrv = (r + g) / 2;
+    const isBrightLow = hrv > 185 && b > 70 && (r + g + b) > 430;
+    const low = isBrightLow ? smoothstep(185, 235, hrv) : 0;
+    const cloud = Math.max(cold, low);
+    if (cloud <= 0) {
+      out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
+      return;
+    }
+    // Brilliant clean white cloud with natural luminosity texture; crisp, keeping thin cloud
+    const white = Math.min(255, Math.round(0.55 * g + 0.45 * b + 28 * cloud));
     out[o] = white; out[o + 1] = white; out[o + 2] = Math.min(255, white + 8);
     out[o + 3] = Math.round(255 * Math.pow(cloud, 0.85) * 0.96);
     return;
@@ -224,6 +234,18 @@ export function shadePixel(
     out[o + 1] = Math.round(g * 0.96);
     out[o + 2] = Math.min(255, Math.round(b * 1.08 + 18 * moist));
     out[o + 3] = Math.round(255 * moist * 0.92);
+    return;
+  }
+  if (kind === 'ir' && view === 'clouds') {
+    // Infrared clouds view: cold clouds are crisp, luminous white, warmer surface is transparent
+    const cloud = smoothstep(0.18, 0.55, luma);
+    if (cloud <= 0) {
+      out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
+      return;
+    }
+    const white = Math.min(255, Math.round(205 + 50 * luma));
+    out[o] = white; out[o + 1] = white; out[o + 2] = Math.min(255, white + 4);
+    out[o + 3] = Math.round(255 * Math.pow(cloud, 0.85) * 0.95);
     return;
   }
   out[o] = r; out[o + 1] = g; out[o + 2] = b;
@@ -479,9 +501,6 @@ export function toOverlayPixels(
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
-  // Clouds only: shade the clouds at the picture's own resolution first, then re-space the rows (premultiplied, so
-  // the soft cloud edges blend without fringes). Other views shade each re-spaced pixel.
-  const clouds = view === 'clouds' ? shadeCloudLayer(src, width, srcHeight, kind, background, natural) : null;
   const irOverlay =
     twilightIr && kind === 'hrv' && timeMs !== undefined
       ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', view, outHeight, undefined, undefined, undefined, b)
@@ -500,23 +519,13 @@ export function toOverlayPixels(
     let o = r * width * 4;
     for (let x = 0; x < width; x++, o += 4) {
       const i = x * 4;
-      if (clouds) {
-        const aA = clouds[a + i + 3] / 255;
-        const aB = clouds[c + i + 3] / 255;
-        const alpha = aA * (1 - w) + aB * w;
-        if (alpha > 0) {
-          for (let k = 0; k < 3; k++) out[o + k] = (clouds[a + i + k] * aA * (1 - w) + clouds[c + i + k] * aB * w) / alpha;
-          out[o + 3] = alpha * 255;
-        }
-      } else {
-        shadePixel(
-          kind, view,
-          src[a + i] * (1 - w) + src[c + i] * w,
-          src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
-          src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
-          background, out, o,
-        );
-      }
+      shadePixel(
+        kind, view,
+        src[a + i] * (1 - w) + src[c + i] * w,
+        src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
+        src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
+        background, out, o,
+      );
       if (irOverlay && timeMs !== undefined) {
         const lon = b.west + ((x + 0.5) / width) * (b.east - b.west);
         const dayW = smoothstep(TWILIGHT_BLEND_LO_DEG, TWILIGHT_BLEND_HI_DEG, sunElevationDeg(timeMs, lat, lon));

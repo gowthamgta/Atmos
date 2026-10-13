@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
 import { buildLumaGrid, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
 import { ColourPicture, enhancePicture } from './satellite-enhance';
-import { SatelliteChannel, SatelliteView } from './satellite.config';
+import { pictureScale } from './satellite-window';
+import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel, SatelliteView } from './satellite.config';
 
 export interface SatelliteWorkerRequest {
   id: number;
@@ -16,10 +17,12 @@ export interface SatelliteWorkerRequest {
   twilightIr?: Blob;
   /** Frame timestamp in epoch ms (needed for solar terminator position during twilight). */
   timeMs?: number;
+  /** The ground the picture covers, when it is a closer window and not all of India. */
+  bounds?: GeoBounds;
 }
 
 export type SatelliteWorkerResponse =
-  | { id: number; png: Blob; lumaGrid: Uint8Array }
+  | { id: number; png: Blob; lumaGrid?: Uint8Array }
   | { id: number; error: string };
 
 /** A picture at its own size (not stretched to the main one's), free of its JPEG blocks. */
@@ -36,7 +39,8 @@ async function decodeRaster(blob: Blob): Promise<ColourPicture> {
 
 /** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
 addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) => {
-  const { id, jpeg, kind, view, natural, twilightIr, timeMs, enhance } = event.data;
+  const { id, jpeg, kind, view, natural, twilightIr, timeMs, enhance, bounds } = event.data;
+  const box = bounds ?? SATELLITE_BOUNDS;
   try {
     const bitmap = await createImageBitmap(jpeg);
     const { width, height } = bitmap;
@@ -46,7 +50,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     bitmap.close();
     const src = sctx.getImageData(0, 0, width, height).data;
     deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
-    const lumaGrid = buildLumaGrid(src, width, height, kind);
+    const lumaGrid = bounds ? undefined : buildLumaGrid(src, width, height, kind); // the hover readout reads the whole-India picture
     let colour: Uint8ClampedArray | undefined;
     if (natural && kind === 'hrv' && view === 'clouds') {
       const colourBitmap = await createImageBitmap(natural);
@@ -67,15 +71,16 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     if (enhance && view === 'picture') {
       // the full picture only: the hover readout (built above) and the thermal view read the pictures as the service made them
       const colourPicture = natural && kind === 'hrv' ? await decodeRaster(natural) : undefined;
-      enhancePicture(src, width, height, kind, colourPicture);
-      if (irPixels) enhancePicture(irPixels, width, height, 'ir');
+      const scale = pictureScale(box, width);
+      enhancePicture(src, width, height, kind, colourPicture, scale);
+      if (irPixels) enhancePicture(irPixels, width, height, 'ir', undefined, scale);
     }
-    const outHeight = mercatorHeight(width);
-    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight, colour, irPixels, timeMs);
+    const outHeight = mercatorHeight(width, box);
+    const pixels = toOverlayPixels(src, width, height, kind, view, outHeight, colour, irPixels, timeMs, box);
     const out = new OffscreenCanvas(width, outHeight);
     out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
     const png = await out.convertToBlob({ type: 'image/png' });
-    postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, [lumaGrid.buffer]);
+    postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);
   } catch (e) {
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
   }
