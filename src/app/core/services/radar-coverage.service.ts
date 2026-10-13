@@ -1,9 +1,11 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { readFlag, writeFlag } from '../ui/saved-flag';
 import { MapLayerService } from './map-layer.service';
 import { CoverageGrid, coverageAt, coverageCorners, coverageHaze, parseCoverageMeta } from './radar-coverage';
 
 /** Width of the haze picture: about 1 km a pixel, plenty for a haze whose edges are soft anyway. */
 const HAZE_WIDTH = 1100;
+const HAZE_KEY = 'atmosiq.radar.haze';
 
 export interface CoverageOverlay {
   /** The haze as a PNG data address for the map's image source. */
@@ -20,8 +22,8 @@ export interface CoverageOverlay {
 export class RadarCoverageService {
   private readonly layers = inject(MapLayerService);
 
-  /** The switch in the radar panel. */
-  readonly enabled = signal(true);
+  /** The switch in the radar panel (remembered between visits). */
+  readonly enabled = signal(readFlag(HAZE_KEY, true));
   readonly grid = signal<CoverageGrid | null>(null);
   private readonly radarOn = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
   /** The haze is drawn while the radar is on and the switch is on. */
@@ -37,6 +39,7 @@ export class RadarCoverageService {
     effect(() => {
       if (this.radarOn()) void this.load();
     });
+    effect(() => writeFlag(HAZE_KEY, this.enabled()));
   }
 
   toggle(): void {

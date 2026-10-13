@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,7 +46,7 @@ describe('radar picture processing (the same code runs in the worker and on the 
       const still = await processor.still(load(file), options);
       expect(still.decoded && still.layoutOk).toBe(true);
       expect(hash(still.field!)).toBe(expected);
-      const svc = new RadarService() as any;
+      const svc = TestBed.runInInjectionContext(() => new RadarService()) as any;
       const img = await svc.decodeImage(load(file));
       const res = svc.processRgba(station, product, config, true, img.rgba, img.w, img.h, null, true, false);
       expect(hash(res.fieldData.field)).toBe(expected);

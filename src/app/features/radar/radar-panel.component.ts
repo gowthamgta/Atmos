@@ -112,6 +112,12 @@ const FRESHNESS_LABEL: Record<string, string> = {
           </ul>
         }
 
+        <button type="button" class="storm-toggle full-only" [class.active]="radar.hideFaintFar()" [attr.aria-pressed]="radar.hideFaintFar()" (click)="radar.toggleHideFaintFar()"
+          title="Far from a radar, or behind mountains, its beam passes high above the ground. A faint echo seen from up there is mostly cloud, or rain that dries up before it lands, and on some radars noise. Off: every echo is drawn, as the IMD sends it">
+          <span class="faint-icon" aria-hidden="true"></span>
+          <span class="storm-text">Hide faint far-range echoes <span class="storm-sub">{{ radar.hideFaintFar() ? 'Only firmer echoes where the beam is high' : 'Off: every echo is drawn' }}</span></span>
+        </button>
+
         <div class="stations full-only">
           <div class="label">Radars online: {{ online() }} of {{ stations.length }}</div>
           <div class="chips">
@@ -172,6 +178,10 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .cone { width: 18px; height: 12px; flex: none; background: linear-gradient(90deg, rgba(251,191,36,0.9), rgba(251,191,36,0.15)); clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 60%); }
     .storm-sub { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--text-muted); }
     .haze-icon { width: 18px; height: 12px; flex: none; border-radius: 3px; background: linear-gradient(90deg, rgba(104,120,146,0), rgba(104,120,146,0.75)); box-shadow: inset 0 0 0 1px var(--line-strong); }
+    .faint-icon { position: relative; width: 18px; height: 12px; flex: none; }
+    .faint-icon::before, .faint-icon::after { content: ''; position: absolute; border-radius: 50%; }
+    .faint-icon::before { left: 1px; top: 4px; width: 5px; height: 5px; background: rgba(58, 217, 228, 0.55); }    /* a faint echo */
+    .faint-icon::after { right: 1px; top: 1px; width: 9px; height: 9px; background: rgba(250, 204, 21, 0.95); }     /* a firm one */
     .haze-key { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 6px 0 0; padding: 0 2px; list-style: none; font-size: var(--fs-xs); color: var(--text-secondary); }
     .haze-key li { display: flex; align-items: center; gap: 6px; }
     .haze-key .swatch { width: 14px; height: 10px; flex: none; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line-strong); }

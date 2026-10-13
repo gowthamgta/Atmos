@@ -9,9 +9,11 @@ import {
   COVERAGE_POOR,
   CoverageGrid,
   CoverageMeta,
+  FAINTEST_KEPT,
   coverageAt,
   coverageCorners,
   coverageHaze,
+  hideFaintFarEchoes,
   parseCoverageMeta,
 } from './radar-coverage';
 
@@ -138,5 +140,53 @@ describe('the baked file', () => {
     const at = (km: number) => coverageAt(grid, chennai.lat, chennai.lng - km / (111.32 * Math.cos((chennai.lat * Math.PI) / 180)));
     expect(at(40)).toBeGreaterThanOrEqual(at(130));
     expect(at(130)).toBeGreaterThanOrEqual(at(230));
+  });
+});
+
+describe('leaving out faint echoes where the radars see little', () => {
+  // the 3 x 3 grid again, with a 3 x 3 picture laid exactly on its cells: good, none / limited, poor / (none row)
+  const CORNERS = [[78, 11], [79, 11], [79, 10], [78, 10]] as const;
+  const at = (out: Uint8Array, x: number, y: number) => out[y * 3 + x];
+
+  it('keeps everything close to a radar, and fades a faint echo away where the beam is high or blocked', () => {
+    const faint = new Uint8Array(9).fill(40);                                  // about 0.94 on the intensity scale (21 dBZ)
+    const out = hideFaintFarEchoes(faint, 3, 3, CORNERS, GRID);
+    expect(at(out, 0, 0)).toBe(40);                                            // seen well: kept
+    expect(at(out, 0, 1)).toBe(40);                                            // partly seen: the limit is 0.9 (38), so it stays
+    expect(at(out, 1, 0)).toBe(0);                                             // no radar: gone
+    expect(at(out, 1, 1)).toBe(0);                                             // mostly missed: gone
+  });
+
+  it('keeps firm echoes everywhere and fades the ones near the limit softly', () => {
+    const firm = hideFaintFarEchoes(new Uint8Array(9).fill(200), 3, 3, CORNERS, GRID);
+    expect([...firm].every(b => b === 200)).toBe(true);
+    const mid = hideFaintFarEchoes(new Uint8Array(9).fill(50), 3, 3, CORNERS, GRID);
+    expect(at(mid, 1, 1)).toBeGreaterThan(0);                                  // between 70% of the limit (41.7) and the limit (59.5): faded, not cut
+    expect(at(mid, 1, 1)).toBeLessThan(50);
+    expect(at(mid, 0, 0)).toBe(50);
+  });
+
+  it('leaves no echo where there was none, and does not change the picture it was given', () => {
+    const input = new Uint8Array(9);
+    input[4] = 40;
+    const copy = new Uint8Array(input);
+    const out = hideFaintFarEchoes(input, 3, 3, CORNERS, GRID);
+    expect(input).toEqual(copy);
+    expect(out[0]).toBe(0);
+    expect(out[4]).toBe(0);
+  });
+
+  it('treats a place outside the baked box as unseen', () => {
+    // a picture reaching two degrees west of the grid: its first column is outside the box
+    const wide = [[76, 11], [79, 11], [79, 10], [76, 10]] as const;
+    const out = hideFaintFarEchoes(new Uint8Array(4 * 3).fill(40), 4, 3, wide, GRID);
+    expect(out[0]).toBe(0);                                                    // 76 E: outside the box
+    expect(out[2]).toBe(40);                                                   // 78 E, 11 N: the grid's best cell
+  });
+
+  it('has a limit for every class, the best one needing none', () => {
+    expect(FAINTEST_KEPT[COVERAGE_GOOD]).toBe(0);
+    expect(FAINTEST_KEPT[COVERAGE_LIMITED]).toBeLessThan(FAINTEST_KEPT[COVERAGE_POOR]);
+    expect(FAINTEST_KEPT[COVERAGE_NONE]).toBe(FAINTEST_KEPT[COVERAGE_POOR]);
   });
 });

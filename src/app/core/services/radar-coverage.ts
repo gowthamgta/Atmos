@@ -63,6 +63,79 @@ export function hazeAlpha(cls: number): number {
 /** Slate, light enough to show on the dark map and over the sea. */
 export const HAZE_RGB: readonly [number, number, number] = [104, 120, 146];
 
+/**
+ * The faintest echo kept at a place, on the radar's intensity scale (dBZ = 12 + 9.6 x value), by how well the radars see low rain there.
+ * Where the beam passes high above the ground or is blocked, an echo as faint as 25 dBZ is mostly cloud, or rain that dries up before it lands
+ * (and, with the clutter filter of some radars switched off, noise), so the picture leaves out what is fainter and fades the edge of what is not.
+ * Close to a radar everything is kept.
+ */
+export const FAINTEST_KEPT: Record<number, number> = {
+  [COVERAGE_NONE]: 1.4,      // 25 dBZ: no radar sees low rain here (a very long range sweep, or beyond the baked box)
+  [COVERAGE_POOR]: 1.4,
+  [COVERAGE_LIMITED]: 0.9,   // 20.6 dBZ
+  [COVERAGE_GOOD]: 0,
+};
+const FIELD_MAX = 6;       // the radar field's top (see RADAR_FIELD_MAX in radar-field.ts), as one byte per pixel = value / 6 * 255
+/** Below this share of the limit an echo is removed; between that and the limit it is faded in. */
+const KNEE = 0.7;
+
+function smoothstep(lo: number, hi: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+}
+
+const thresholdCache = new WeakMap<CoverageGrid, Float32Array>();
+
+/** The faintest byte kept at each cell of the grid (0: everything is kept). */
+function byteThresholds(grid: CoverageGrid): Float32Array {
+  let t = thresholdCache.get(grid);
+  if (!t) {
+    t = new Float32Array(grid.classes.length);
+    for (let i = 0; i < t.length; i++) t[i] = ((FAINTEST_KEPT[grid.classes[i]] ?? 0) * 255) / FIELD_MAX;
+    thresholdCache.set(grid, t);
+  }
+  return t;
+}
+
+/**
+ * A copy of a radar picture's intensity (one byte per pixel, row 0 at the north edge; `coordinates` are the corners [lng, lat] NW, NE, SE, SW)
+ * without the faint echoes where the radars see little (see FAINTEST_KEPT).
+ */
+export function hideFaintFarEchoes(
+  field: Uint8Array,
+  width: number,
+  height: number,
+  coordinates: readonly [readonly [number, number], readonly [number, number], readonly [number, number], readonly [number, number]],
+  grid: CoverageGrid,
+): Uint8Array {
+  const m = grid.meta;
+  const thr = byteThresholds(grid);
+  const west = coordinates[0][0];
+  const east = coordinates[1][0];
+  const north = coordinates[0][1];
+  const south = coordinates[2][1];
+  // the cell each column and each row of the picture falls in (rows and columns of the picture are evenly spaced in latitude and longitude)
+  const col = new Int32Array(width);
+  for (let x = 0; x < width; x++) {
+    const i = Math.round((west + (x / (width - 1)) * (east - west) - m.west) / m.step);
+    col[x] = i < 0 || i >= m.nx ? -1 : i;
+  }
+  const out = new Uint8Array(field);
+  for (let y = 0; y < height; y++) {
+    const j = Math.round((m.north - (north - (y / (height - 1)) * (north - south))) / m.step);
+    const outsideRow = j < 0 || j >= m.ny;
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      const b = field[row + x];
+      if (b === 0) continue;
+      const t = outsideRow || col[x] < 0 ? (FAINTEST_KEPT[COVERAGE_NONE] * 255) / FIELD_MAX : thr[j * m.nx + col[x]];
+      if (t === 0 || b >= t) continue;
+      out[row + x] = Math.round(b * smoothstep(KNEE * t, t, b));
+    }
+  }
+  return out;
+}
+
 /** Corners [lng, lat] (NW, NE, SE, SW) of the picture: the cells are centred on the grid, so it reaches half a step past it. */
 export function coverageCorners(meta: CoverageMeta): [[number, number], [number, number], [number, number], [number, number]] {
   const h = meta.step / 2;
