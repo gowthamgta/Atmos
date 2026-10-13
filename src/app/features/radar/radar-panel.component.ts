@@ -3,6 +3,8 @@ import { IconComponent } from '../../shared/icon.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
+import { COVERAGE_LEGEND, HAZE_RGB, hazeAlpha } from '../../core/services/radar-coverage';
+import { RadarCoverageService } from '../../core/services/radar-coverage.service';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 
 interface ProductOption {
@@ -97,6 +99,19 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <span class="storm-text">Storm tracks <span class="storm-sub">{{ stormSummary() }}</span></span>
         </button>
 
+        <button type="button" class="storm-toggle full-only" [class.active]="coverage.enabled()" [attr.aria-pressed]="coverage.enabled()" (click)="coverage.toggle()"
+          title="A faint haze where the radars see little: far from a radar, or behind mountains. A blank there says nothing about rain">
+          <span class="haze-icon" aria-hidden="true"></span>
+          <span class="storm-text">Where radar can't see <span class="storm-sub">{{ coverage.enabled() ? 'Haze marks the weak spots' : 'Off' }}</span></span>
+        </button>
+        @if (coverage.enabled()) {
+          <ul class="haze-key full-only" aria-label="What the haze means">
+            @for (k of hazeKey; track k.cls) {
+              <li [title]="k.hint"><span class="swatch" [style.background]="k.swatch"></span>{{ k.label }}</li>
+            }
+          </ul>
+        }
+
         <div class="stations full-only">
           <div class="label">Radars online: {{ online() }} of {{ stations.length }}</div>
           <div class="chips">
@@ -156,6 +171,10 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .storm-toggle.active { background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.5); color: var(--warn); }
     .cone { width: 18px; height: 12px; flex: none; background: linear-gradient(90deg, rgba(251,191,36,0.9), rgba(251,191,36,0.15)); clip-path: polygon(0 40%, 100% 0, 100% 100%, 0 60%); }
     .storm-sub { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--text-muted); }
+    .haze-icon { width: 18px; height: 12px; flex: none; border-radius: 3px; background: linear-gradient(90deg, rgba(104,120,146,0), rgba(104,120,146,0.75)); box-shadow: inset 0 0 0 1px var(--line-strong); }
+    .haze-key { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 6px 0 0; padding: 0 2px; list-style: none; font-size: var(--fs-xs); color: var(--text-secondary); }
+    .haze-key li { display: flex; align-items: center; gap: 6px; }
+    .haze-key .swatch { width: 14px; height: 10px; flex: none; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line-strong); }
     .panel.compact .loop { margin-top: 8px; }
     .sub[data-state='fresh'] { color: var(--ok); }
     .sub[data-state='recent'] { color: var(--warn); }
@@ -208,6 +227,12 @@ export class RadarPanelComponent {
 
   protected readonly radar = inject(RadarService);
   protected readonly storms = inject(StormTracksService);
+  protected readonly coverage = inject(RadarCoverageService);
+  /** The haze's key: a swatch of each class as it looks over the dark map, and what it means. */
+  protected readonly hazeKey = COVERAGE_LEGEND.map(k => ({
+    ...k,
+    swatch: `linear-gradient(rgba(${HAZE_RGB.join(',')},${hazeAlpha(k.cls)}), rgba(${HAZE_RGB.join(',')},${hazeAlpha(k.cls)})), #2a2d33`,
+  }));
   protected readonly frames = this.radar.history;
   protected readonly playing = this.radar.playing;
   protected readonly loopLoading = this.radar.historyLoading;

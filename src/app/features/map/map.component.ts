@@ -22,6 +22,8 @@ import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
 import { SATELLITE_BOUNDS } from '../../core/satellite/satellite.config';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
+import { RadarCoverageService } from '../../core/services/radar-coverage.service';
+import { syncCoverageLayer } from './radar-coverage-overlay';
 
 /** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
 const KALLAKURICHI = { lng: 78.96, lat: 11.74 } as const;
@@ -284,6 +286,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private satellite = inject(SatelliteService);
   private gibs = inject(GibsHdService);
   private storms = inject(StormTracksService);
+  private coverage = inject(RadarCoverageService);
   private forecastState = inject(ForecastStateService);
   private observations = inject(ObservationsService);
   private stationSelection = inject(StationSelectionService);
@@ -307,6 +310,14 @@ export class MapComponent implements OnInit, OnDestroy {
     const mosaic = this.radarService.displayed(); // the live composite, or a frame of the one-hour loop
     if (!this.map || !this.isMapLoaded()) return;
     this.updateRadarMosaicOverlay(mosaic);
+  });
+
+  // Reactive Effect: the haze that marks where the radars see little (far away, behind mountains), under the echoes
+  private coverageEffect = effect(() => {
+    const overlay = this.coverage.overlay();
+    const visible = this.coverage.visible();
+    if (!this.map || !this.isMapLoaded()) return;
+    syncCoverageLayer(this.map, overlay, visible, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
   });
 
   // Reactive Effect: Meteosat satellite pictures (which are loaded, where the loop is, whether the layer is on, opacity)
