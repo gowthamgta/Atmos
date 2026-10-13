@@ -46,14 +46,15 @@ def grid_of(fetcher):
     return getattr(fetcher, "GRID", None) or INDIA
 
 
-def build_manifest(fetcher, run, steps, build=None):
+def build_manifest(fetcher, run, steps, build=None, omit=frozenset()):
+    """The manifest of a run. `omit`: variables the source had no data for at any step, which are not published (see main)."""
     grid = grid_of(fetcher)
     return {
         "model": fetcher.MODEL_ID,
         "run": f"{run:%Y%m%dT%H}Z",
         "grid": grid.manifest(),
         "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps],
-        "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in published_vars(fetcher)},
+        "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in published_vars(fetcher) if v.id not in omit},
         "levels": list(C.LEVELS),
         "path": "{var}/{h:03d}.png",
         "notes": {"precip": fetcher.PRECIP_NOTE},
@@ -68,7 +69,8 @@ DERIVED_ACROSS_STEPS = {"rain24", "raintot", "extreme", "tmin24", "tmax24"}   # 
 
 
 def process_step(fetcher, run, h):
-    """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from."""
+    """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from, its air
+    temperature, and the variables that have data at this step (the rest are all "no data": see main)."""
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid_of(fetcher).lat_max)
     if fetcher.MODEL_ID == "ecmwf_ifs" and LAND_MASK is not None:
         grid = grid_of(fetcher)
@@ -78,8 +80,10 @@ def process_step(fetcher, run, h):
         if RAIN_BIAS:
             # the rain factor of the Tamil Nadu gauges, on land near them (see correction.apply_rain)
             fields = correction.apply_rain(fields, grid.lats(), grid.lons(), RAIN_BIAS, LAND_MASK)
-    pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS}
-    return h, pngs, fields["precip"], fields["t2m"]
+    per_step = [v for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS]
+    pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in per_step}
+    with_data = {v.id for v in per_step if np.isfinite(fields[v.id]).any()}
+    return h, pngs, fields["precip"], fields["t2m"], with_data
 
 
 def build_id() -> str:
@@ -145,16 +149,27 @@ def main() -> int:
     done = []
     rates: dict[int, object] = {}
     temps: dict[int, object] = {}
+    with_data: set[str] = set()
+    empty: set[str] = set()
     run_dir = os.path.join(args.out, fetcher.MODEL_ID, run_id)
     try:
         with ThreadPoolExecutor(args.workers) as pool:
-            for h, pngs, rate, temp in pool.map(lambda h: process_step(fetcher, run, h), steps):
+            for h, pngs, rate, temp, seen in pool.map(lambda h: process_step(fetcher, run, h), steps):
                 for vid, png in pngs.items():
                     write(os.path.join(run_dir, vid, f"{h:03d}.png"), png)
                 rates[h] = rate
                 temps[h] = temp
+                with_data |= seen
                 done.append(h)
                 print(f"  +{h:03d}h done ({len(done)}/{len(steps)})", flush=True)
+        # A variable the source has no data for at any step is not published (the 0.25 degree ECMWF and NOAA data have no 800 hPa level, for
+        # one): the app works a level between two others out from them, and greys out any other layer, instead of drawing an empty picture.
+        # One that only lacks some steps (rain at the analysis hour) stays: its empty pictures say "no data" for those.
+        empty = {v.id for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS} - with_data
+        for vid in sorted(empty):
+            shutil.rmtree(os.path.join(run_dir, vid), ignore_errors=True)
+        if empty:
+            print(f"{args.model}: no data at any step for {', '.join(sorted(empty))}; not published", flush=True)
         # rain over the next 24 h from each step (no data where the run ends before that)
         rain24 = C.VARS["rain24"]
         accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
@@ -183,7 +198,7 @@ def main() -> int:
     # latest.json is written last so a half-finished folder never advertises a run
     build = build_id()
     write(os.path.join(args.out, fetcher.MODEL_ID, run_id, "manifest.json"),
-          json.dumps(build_manifest(fetcher, run, sorted(done), build)).encode())
+          json.dumps(build_manifest(fetcher, run, sorted(done), build, empty)).encode())
     gaps = fetcher.incomplete_steps() if hasattr(fetcher, "incomplete_steps") else []
     latest = {"model": fetcher.MODEL_ID, "run": run_id, "build": build, "domain": grid_of(fetcher).domain}
     if hasattr(fetcher, "LIVE_FORMAT"):

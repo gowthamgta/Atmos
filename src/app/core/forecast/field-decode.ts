@@ -3,6 +3,12 @@ import { decodeRg16 } from './forecast.model';
 const cache = new WeakMap<ImageBitmap, Float32Array>();
 let canvas: OffscreenCanvas | HTMLCanvasElement | null = null;
 
+/** True when every cell is flagged "no data": the picture the pipeline publishes for a level its source does not have. */
+export function isEmptyField(values: ArrayLike<number>): boolean {
+  for (let i = 0; i < values.length; i++) if (!Number.isNaN(values[i])) return false;
+  return true;
+}
+
 /**
  * Decodes a whole rg16 field image into one Float32Array (row-major, NaN where flagged "no data").
  * The result is cached per bitmap, so replaying the timeline does not decode the same image twice.

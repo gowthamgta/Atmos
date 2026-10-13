@@ -1,8 +1,20 @@
 import { Injectable, inject } from '@angular/core';
 import { blendFields, encodeFieldBitmap } from './derived-fields';
-import { decodeFieldBitmap } from './field-decode';
+import { decodeFieldBitmap, isEmptyField } from './field-decode';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastManifest } from './forecast.model';
+
+/** The two levels a variable at 800 or 600 hPa is worked out from, and how far between them it lies (linear in ln p); null for any other variable. */
+function levelNeighbours(varId: string): { belowId: string; aboveId: string; mix: number } | null {
+  const m = /^([a-z]+)(800|600)$/.exec(varId);
+  if (!m) return null;
+  const is800 = m[2] === '800';
+  return {
+    belowId: `${m[1]}${is800 ? 850 : 700}`,
+    aboveId: `${m[1]}${is800 ? 700 : 500}`,
+    mix: is800 ? Math.log(850 / 800) / Math.log(850 / 700) : Math.log(700 / 600) / Math.log(700 / 500),
+  };
+}
 
 /** Downloads and caches decoded-on-GPU field images (ImageBitmaps of the rg16 PNGs). */
 @Injectable({ providedIn: 'root' })
@@ -12,6 +24,8 @@ export class FieldLoaderService {
   private readonly catalog = inject(ForecastCatalogService);
   private readonly cache = new Map<string, ImageBitmap>();
   private readonly inflight = new Map<string, Promise<ImageBitmap>>();
+  /** Levels ("model/run.build/800") whose published pictures hold no data, so they are worked out from the levels either side (see fetchField). */
+  private readonly emptyLevels = new Set<string>();
 
   /** How many pictures are held, decoded, in memory now (the performance meter shows it). */
   get cached(): number {
@@ -42,9 +56,9 @@ export class FieldLoaderService {
     }
     let pending = this.inflight.get(key);
     if (!pending) {
-      const load = this.catalog.isSynthesizedVar?.(varId)
+      const load = this.catalog.isSynthesizedVar?.(varId) || this.emptyLevels.has(this.emptyKey(manifest, varId))
         ? this.interpolateLevelBitmap(manifest, varId, stepHour, priority)
-        : this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, run, manifest.build), priority);
+        : this.fetchField(manifest, varId, stepHour, priority);
       pending = load.then(bmp => {
         this.cache.set(key, bmp);
         this.evict();
@@ -61,15 +75,31 @@ export class FieldLoaderService {
     for (const h of stepHours) this.get(varId, h).catch(() => undefined);
   }
 
+  private emptyKey(manifest: ForecastManifest, varId: string): string {
+    return `${manifest.model}/${manifest.run}.${manifest.build ?? ''}/${varId.replace(/^[a-z]+/, '')}`;
+  }
+
+  /**
+   * One picture as published. The pipeline lists 800 and 600 hPa for every model, but a source that has no such level (ECMWF's open data
+   * has no 800 hPa) came out as a picture with no data in any cell. That level is worked out from the levels either side instead, as
+   * when the manifest has none, and remembered, so the rest of the run's pictures of it do not ask for the empty ones.
+   */
+  private async fetchField(manifest: ForecastManifest, varId: string, stepHour: number, priority: 'auto' | 'low'): Promise<ImageBitmap> {
+    const bitmap = await this.fetchBitmap(this.catalog.fieldUrl(varId, stepHour, manifest.run, manifest.build), priority);
+    const near = levelNeighbours(varId);
+    const info = manifest.vars[varId];
+    if (!near || !info || !manifest.vars[near.belowId] || !manifest.vars[near.aboveId]) return bitmap;
+    if (!isEmptyField(decodeFieldBitmap(bitmap, info.min, info.max))) return bitmap;
+    this.emptyLevels.add(this.emptyKey(manifest, varId));
+    bitmap.close();
+    return this.interpolateLevelBitmap(manifest, varId, stepHour, priority);
+  }
+
   /** Interpolates an 800 hPa (from 850 & 700 hPa) or 600 hPa (from 700 & 500 hPa) field bitmap linearly in ln(p). */
   private async interpolateLevelBitmap(manifest: ForecastManifest, varId: string, stepHour: number, priority: 'auto' | 'low'): Promise<ImageBitmap> {
-    const m = /^([a-z]+)(800|600)$/.exec(varId);
-    if (!m) throw new Error(`Unsupported synthesized variable ${varId}`);
-    const [, kind, lvlStr] = m;
-    const is800 = lvlStr === '800';
-    const belowId = `${kind}${is800 ? 850 : 700}`;
-    const aboveId = `${kind}${is800 ? 700 : 500}`;
-    const mix = is800 ? Math.log(850 / 800) / Math.log(850 / 700) : Math.log(700 / 600) / Math.log(700 / 500);
+    const near = levelNeighbours(varId);
+    if (!near) throw new Error(`Unsupported synthesized variable ${varId}`);
+    const { belowId, aboveId, mix } = near;
     const belowInfo = manifest.vars[belowId];
     const aboveInfo = manifest.vars[aboveId];
     const targetInfo = manifest.vars[varId];
