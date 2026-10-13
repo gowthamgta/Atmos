@@ -14,8 +14,8 @@ function istClock(ms: number): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} IST`;
 }
 
-/** Where the labels of the cloud-top colour bar sit along it: the bar runs from +5 °C on the left to -85 °C on the right. */
-const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((5 - t) / 90) * 100 }));
+/** Where the labels of the cloud-top colour bar sit along it: the bar runs from +20 °C on the left to -85 °C on the right. */
+const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((20 - t) / 105) * 100 }));
 
 /** Controls for the live satellite picture (Meteosat-9): the frame loop, the Cloud-Top hover readout, and opacity. */
 @Component({

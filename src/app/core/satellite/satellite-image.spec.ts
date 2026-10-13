@@ -112,8 +112,15 @@ describe('shadePixel: the HRV picture by day', () => {
 
 describe('cloud tops: the infrared by night', () => {
   it('leaves the warm ground and sea see-through, and true black (no data) too', () => {
-    expect(shade('ir', 25, 25, 25)[3]).toBe(0); // about +18 C: ground at night
+    expect(shade('ir', 8, 8, 8)[3]).toBe(0); // about +29 C: the sea at night
     expect(shade('ir', 0, 0, 0)[3]).toBe(0);
+  });
+
+  it('shows low cloud, whose tops are +5 to +20 C, faintly instead of dropping it', () => {
+    const low = shade('ir', 44, 44, 44); // about +10 C
+    expect(low[3]).toBeGreaterThan(90);
+    expect(low[3]).toBeLessThan(150);
+    expect(shade('ir', 25, 25, 25)[3]).toBeGreaterThan(30); // about +19 C: the lowest, thinnest cloud
   });
 
   it('shows middle cloud as a soft white-grey, so it still reads as cloud', () => {
@@ -156,7 +163,7 @@ describe('cloud tops: the infrared by night', () => {
   it('draws the colour bar from the same ramp: clear on the left, solid and white on the right', () => {
     const css = cloudTopGradient();
     expect(css.startsWith('linear-gradient(to right, rgba(')).toBe(true);
-    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.1\d\) 0\.0%/); // +5 C: all but clear
+    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.2\d\) 0\.0%/); // +20 C: the lowest cloud tops, faint
     expect(css).toMatch(/rgba\(255, 255, 255, 1\.00\) 100\.0%\)$/);
   });
 });

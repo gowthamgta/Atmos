@@ -136,11 +136,10 @@ describe('ForecastInspectorService, numbers that belong to an earlier period', (
     mode('slow');                                   // the pictures of the new period are still downloading
     state.rangeEndMs.set(hourMs(18));
     await settle(150);                              // the new answer has been asked for
-    await vi.advanceTimersByTimeAsync(STALE_AFTER_MS - 200);
-    expect(inspector.stale()).toBe(false);          // not long enough to say anything yet
+    expect(inspector.stale()).toBe(true);           // the 9 mm is for the old period: said at once, the period is not written on the card
     expect(rain()).toBeCloseTo(9, 1);
-    await vi.advanceTimersByTimeAsync(400);
-    expect(inspector.stale()).toBe(true);           // the 9 mm is for the old period
+    await vi.advanceTimersByTimeAsync(STALE_AFTER_MS + 100);
+    expect(inspector.stale()).toBe(true);
     expect(rain()).toBeCloseTo(9, 1);
 
     release();

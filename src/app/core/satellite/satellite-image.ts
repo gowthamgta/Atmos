@@ -137,17 +137,19 @@ export function classifyCloudTop(tempC: number): CloudTopClassification {
 }
 
 /**
- * The night picture's colours for a cloud-top temperature (°C). The warm ground and sea are left clear; middle cloud is a soft
- * white-grey, so it still reads as cloud; from high cloud upwards the colder the top the louder the colour (cyan, green, yellow,
+ * The night picture's colours for a cloud-top temperature (°C). The warm ground and sea (above about +25 °C) are left clear; low and
+ * middle cloud, whose tops are +20 down to -25 °C in the tropics, is a soft white-grey that gets denser as the top gets colder, so it still reads as cloud; from high cloud upwards the colder the top the louder the colour (cyan, green, yellow,
  * orange, red, white at the coldest), which picks out the tall storm tops and the cirrus anvils.
  */
 export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number, number])[] = [
   // [tempC, R, G, B, alpha 0..255], warmest first
-  [12, 200, 210, 225, 0],
-  [4, 190, 200, 218, 40],
-  [-10, 205, 214, 230, 120],
-  [-25, 225, 232, 245, 185],
-  [-40, 245, 248, 255, 225],
+  [26, 200, 210, 225, 0],
+  [20, 200, 210, 225, 55],
+  [12, 205, 214, 228, 105],
+  [4, 208, 217, 232, 140],
+  [-10, 212, 220, 235, 170],
+  [-25, 228, 234, 246, 200],
+  [-40, 245, 248, 255, 228],
   [-50, 120, 220, 255, 235],
   [-58, 90, 235, 190, 240],
   [-65, 250, 225, 60, 245],
@@ -177,9 +179,9 @@ export function cloudTopColor(tempC: number): [number, number, number, number] {
   return [last[1], last[2], last[3], last[4]];
 }
 
-/** The colour bar of the cloud-top picture as a CSS gradient from +5 °C (left) to -85 °C, matching what the map draws over a dark ground. */
+/** The colour bar of the cloud-top picture as a CSS gradient from +20 °C (left) to -85 °C, matching what the map draws over a dark ground. */
 export function cloudTopGradient(): string {
-  const hi = 5;
+  const hi = 20;
   const lo = -85;
   const stops: string[] = [];
   for (let t = hi; t >= lo; t -= 5) {

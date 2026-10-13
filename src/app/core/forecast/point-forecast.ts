@@ -66,6 +66,8 @@ export interface PointForecast {
   values: Record<string, number>;
   /** True when every variable was read (the full list of values); false when only the summary was, and rows beyond it are empty. */
   detailed: boolean;
+  /** The rain period (epoch ms) the "rain in the chosen period" value was worked out for; absent when that value is not in the rows. */
+  period?: { from: number; to: number };
 }
 
 /** Blend two time steps; if one side has no data the other is used. */

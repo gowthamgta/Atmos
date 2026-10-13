@@ -1,7 +1,7 @@
 /** Declarative registry of the scalar forecast layers. The menu and legend are generated from this list. */
 
 import type { TerrainMode } from './terrain-correction';
-import { WINDY_HUMIDITY, WINDY_RAIN, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
+import { WINDY_HUMIDITY, WINDY_RAIN, WINDY_RAIN_ACCUMULATION, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
 export type Level = 'surface' | 925 | 850 | 800 | 700 | 600 | 500 | 300 | 250 | 200;
@@ -148,8 +148,8 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
     atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100] }),
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
-  { id: 'rain24', label: 'Rain accumulation, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 150, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [5, 10, 25, 50, 100, 150], opacity: 0.9, terrain: 'rain' },
-  { id: 'raintot', label: 'Rain accumulation, choose period', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm in the chosen period', min: 0, max: 300, stops: RAIN, gamma: 0.5, clearBelow: 1, ticks: [10, 25, 50, 100, 200, 300], opacity: 0.9, terrain: 'rain' },
+  { id: 'rain24', label: 'Rain accumulation, next 24 h', icon: '🌊', group: 'Rain and humidity', varId: 'rain24', unit: 'mm', min: 0, max: 300, stops: WINDY_RAIN_ACCUMULATION, gamma: 0.27, clearBelow: 0.5, ticks: [3, 10, 25, 100, 300], opacity: 0.9, terrain: 'rain' },
+  { id: 'raintot', label: 'Rain accumulation, choose period', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm in the chosen period', min: 0, max: 300, stops: WINDY_RAIN_ACCUMULATION, gamma: 0.27, clearBelow: 0.5, ticks: [3, 10, 25, 100, 300], opacity: 0.9, terrain: 'rain' },
   { id: 'extreme', label: 'Probability of rain, next 24 h', icon: '⚠', group: 'Rain and humidity', varId: 'extreme', unit: '%', min: 0, max: 100, stops: EXTREME, gamma: 1, clearBelow: 10, ticks: [20, 40, 60, 80, 100], opacity: 0.9, terrain: null },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },

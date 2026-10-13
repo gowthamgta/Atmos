@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { DistrictLookupService } from '../geo/district-lookup.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -45,7 +45,13 @@ export class ForecastInspectorService {
    * (the pictures are still downloading) or could not be read. Showing the old number as if it were current is a wrong value, so
    * the card and the bubble say so (see the place card and the map pin).
    */
-  readonly stale = signal(false);
+  private readonly slow = signal(false);
+  readonly stale = computed(() => {
+    if (this.slow()) return true;
+    // the period of the rain total is not written on the card: a value for another period is out of date at once, not after a wait
+    const p = this.point()?.period;
+    return !!p && this.state.activeLayerId() === 'raintot' && (p.from !== this.state.rangeStartMs() || p.to !== this.state.rangeEndMs());
+  });
   /** How many of the variables wanted for the full list have been read (the card says so while it waits). */
   readonly progress = signal<{ done: number; total: number }>({ done: 0, total: 0 });
 
@@ -136,7 +142,7 @@ export class ForecastInspectorService {
     if (this.staleTimer !== null) clearTimeout(this.staleTimer);
     this.staleTimer = setTimeout(() => {
       this.staleTimer = null;
-      if (my === this.token) this.stale.set(true);
+      if (my === this.token) this.slow.set(true);
     }, STALE_AFTER_MS);
   }
 
@@ -144,7 +150,7 @@ export class ForecastInspectorService {
   private settle(stale: boolean): void {
     if (this.staleTimer !== null) clearTimeout(this.staleTimer);
     this.staleTimer = null;
-    this.stale.set(stale);
+    this.slow.set(stale);
   }
 
   private run(): void {
@@ -229,6 +235,7 @@ export class ForecastInspectorService {
         rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }, this.unitsService.units()),
         values: { ...values },
         detailed,
+        period: 'rainrange' in values && from !== null && to !== null ? { from, to } : undefined,
       });
       answered = true;
     } catch (err) {
