@@ -9,6 +9,28 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://gowthamgta.github.io" crossorigin>
+  <script>
+    // A page opened before a new deploy asks for script files that no longer exist (the host answers with the page itself). Reload once to get
+    // the new page; the flag stops a loop if the files really are missing.
+    (function () {
+      function again() {
+        try {
+          if (sessionStorage.getItem('chunk-reload') === '1') return;
+          sessionStorage.setItem('chunk-reload', '1');
+        } catch (e) { return; }
+        location.reload();
+      }
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (t && t.tagName === 'SCRIPT' && t.type === 'module') again();
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        var m = String((e.reason && e.reason.message) || e.reason || '');
+        if (/dynamically imported module|Importing a module script failed|MIME type/i.test(m)) again();
+      });
+      window.addEventListener('load', function () { setTimeout(function () { try { sessionStorage.removeItem('chunk-reload'); } catch (e) {} }, 10000); });
+    })();
+  </script>
 </head>
 <body>
   <app-root></app-root>
