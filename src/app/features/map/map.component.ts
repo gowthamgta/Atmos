@@ -23,6 +23,8 @@ import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
 import { SATELLITE_BOUNDS } from '../../core/satellite/satellite.config';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
+import { TerrainService } from '../../core/forecast/terrain.service';
+import { RELIEF_STRENGTH } from '../../core/forecast/forecast-map.controller';
 import { syncCoverageLayer } from './radar-coverage-overlay';
 
 /** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
@@ -287,6 +289,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private gibs = inject(GibsHdService);
   private storms = inject(StormTracksService);
   private coverage = inject(RadarCoverageService);
+  private terrain = inject(TerrainService);
   private forecastState = inject(ForecastStateService);
   private observations = inject(ObservationsService);
   private stationSelection = inject(StationSelectionService);
@@ -310,6 +313,18 @@ export class MapComponent implements OnInit, OnDestroy {
     const mosaic = this.radarService.displayed(); // the live composite, or a frame of the one-hour loop
     if (!this.map || !this.isMapLoaded()) return;
     this.updateRadarMosaicOverlay(mosaic);
+  });
+
+  // Reactive Effect: the 90 m relief shaded into the radar echoes (the same terrain, light and strength as the forecast colours; the Terrain relief switch)
+  private radarReliefEffect = effect(() => {
+    const data = this.terrain.data();
+    const strength = this.forecastState.relief() ? RELIEF_STRENGTH : 0;
+    this.radarService.displayed(); // the layer exists once there is a picture to show
+    const layer = this.radarLayer;
+    if (!layer) return;
+    layer.setTerrain(data);
+    layer.setRelief(strength);
+    layer.setLite(isPhone());
   });
 
   // Reactive Effect: the haze that marks where the radars see little (far away, behind mountains), under the echoes
@@ -708,6 +723,7 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!this.radarLayer) {
       this.radarLayer = new RadarFieldLayer();
       this.radarLayer.setOpacity(this.radarService.radarOpacity());
+      void this.terrain.ensureLoaded().catch(() => undefined); // the relief shading needs the terrain (loaded once, shared with the forecast layers)
       // above the boundary lines (the echoes stay readable) but under the storm cones and place names
       this.map.addLayer(this.radarLayer, this.observationAnchorId());
     }

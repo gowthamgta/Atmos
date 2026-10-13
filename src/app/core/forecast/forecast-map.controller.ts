@@ -23,7 +23,7 @@ import { MeteogramService } from '../meteogram/meteogram.service';
 import { PerfMeterService } from '../ui/perf-meter.service';
 
 /** How strongly the 90 m relief is shaded into the forecast colours when it is on. */
-const RELIEF_STRENGTH = 0.55;
+export const RELIEF_STRENGTH = 0.55;
 
 /**
  * Owns the forecast GL layers on the map (colour field and wind particles): mounts them, and keeps them showing

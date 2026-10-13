@@ -17,8 +17,7 @@ import {
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
 import { sameLattice } from '../forecast/terrain-ground';
-import { isPhone } from '../ui/device-profile';
-import { TileGrid, tileSlots, TileSlots, buildTileMap, resampleTileRgb, terrainLevelForZoom, tileGridOf, tilesInBounds, type TerrainLevel } from '../forecast/terrain-tiles';
+import { TERRAIN_TILE_GLSL, TerrainTileGpu } from './terrain-tile-gpu';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -75,16 +74,10 @@ uniform float u_gamma;
 uniform float u_clear;
 uniform vec4 u_grid;     // lonMin, latMax, step, unused
 uniform ivec2 u_size;
-uniform sampler2DArray u_tiles; // the 90 m terrain tiles held on the GPU at the detail level in use, one per layer
-uniform sampler2D u_tileMap;    // which layer holds each 1 x 1 degree tile (see terrain-tiles.ts)
-uniform ivec2 u_tileCount;      // tile columns and rows of the domain
-uniform vec2 u_tileOrigin;      // lonMin of tile column 0, and the top (north) edge of tile row 0
-uniform float u_tilePx;         // cells per degree at the detail level in use
 uniform vec4 u_smoothGrid; // smoothed terrain
 uniform ivec2 u_smoothSize;
 uniform vec4 u_modelGrid;  // model ground
 uniform ivec2 u_modelSize;
-uniform vec2 u_demEnc;     // terrain value range
 uniform int u_terrainOn;   // 1 when the terrain textures are bound
 uniform int u_groundOnNodes; // 1: the field's grid is not the lattice of the model-ground picture, so the ground is read at the field's own nodes
 uniform vec4 u_terrainBox; // west, south, east, north: where the 90 m terrain is; outside it the model's own ground is used
@@ -97,13 +90,7 @@ in vec2 v_merc;
 out vec4 outColor;
 
 const float PI = 3.14159265358979;
-const float M_PER_DEG = 111200.0;
-
-float decode(vec4 c, vec2 enc) {
-  float q = floor(c.r * 255.0 + 0.5) * 256.0 + floor(c.g * 255.0 + 0.5);
-  return enc.x + q / 65535.0 * (enc.y - enc.x);
-}
-
+${TERRAIN_TILE_GLSL}
 // Bilinear. Returns (value, weight of valid neighbours).
 vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
   vec2 fr = fract(g);
@@ -172,40 +159,6 @@ vec2 slopeAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
   float zN = terrainAt(tex, grid, size, lat + s, lon).x;
   float zS = terrainAt(tex, grid, size, lat - s, lon).x;
   return vec2((zE - zW) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (zN - zS) / (2.0 * s * M_PER_DEG));
-}
-
-// The ground from the 90 m tiles held on the GPU: (metres, land fraction, 1). Open sea is 0 m with no land and counts as
-// held. A tile that is not on the GPU, or lies outside the domain, gives (0, 0, 0): the caller then uses the model's ground.
-vec3 tileTerrain(float lat, float lon) {
-  vec2 d = vec2(lon - u_tileOrigin.x, u_tileOrigin.y - lat);
-  ivec2 t = ivec2(floor(d));
-  if (t.x < 0 || t.y < 0 || t.x >= u_tileCount.x || t.y >= u_tileCount.y) return vec3(0.0);
-  int slot = int(texelFetch(u_tileMap, t, 0).r * 255.0 + 0.5);
-  if (slot == 254) return vec3(0.0, 0.0, 1.0);   // open sea
-  if (slot > 253) return vec3(0.0);              // not on the GPU
-  vec2 g = clamp((d - vec2(t)) * u_tilePx - 0.5, vec2(0.0), vec2(u_tilePx - 1.0));
-  vec2 fr = fract(g);
-  ivec2 i0 = ivec2(floor(g));
-  ivec2 hi = ivec2(u_tilePx) - 1;
-  vec2 acc = vec2(0.0);
-  for (int k = 0; k < 4; k++) {
-    ivec2 o = ivec2(k & 1, k >> 1);
-    vec4 c = texelFetch(u_tiles, ivec3(clamp(i0 + o, ivec2(0), hi), slot), 0);
-    float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
-    acc += vec2(decode(c, u_demEnc), c.b) * w;
-  }
-  return vec3(acc, 1.0);
-}
-
-// Slope (m/m, rising east and north) of the 90 m ground over two cells either side; zero where a neighbour is not held.
-vec2 tileSlope(float lat, float lon) {
-  float s = 2.0 / u_tilePx;
-  vec3 e = tileTerrain(lat, lon + s);
-  vec3 w = tileTerrain(lat, lon - s);
-  vec3 n = tileTerrain(lat + s, lon);
-  vec3 so = tileTerrain(lat - s, lon);
-  if (min(min(e.z, w.z), min(n.z, so.z)) < 0.5) return vec2(0.0);
-  return vec2((e.x - w.x) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (n.x - so.x) / (2.0 * s * M_PER_DEG));
 }
 
 void main() {
@@ -341,25 +294,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private demSmoothTex: WebGLTexture | null = null;
   private smoothUploadedFor: TerrainData | null = null;
   private modelUploaded: ImageBitmap | null = null;
-  /** The 90 m tiles of the detail level in use, one per layer of a texture array (see updateTiles). */
-  private tileTex: WebGLTexture | null = null;
-  /** Which layer holds each 1 x 1 degree tile of the domain (one byte each; see buildTileMap). */
-  private tileMapTex: WebGLTexture | null = null;
-  private tileGrid: TileGrid | null = null;
-  private tileLevel: TerrainLevel | null = null;
-  private tilePx = 1;
-  private slots: TileSlots | null = null;
-  private tilesPending = new Set<string>();
-  /** When a tile last failed to load: it is asked for again only after a pause (not on every frame). */
-  private tilesFailedAt = new Map<string, number>();
-  private static readonly TILE_RETRY_MS = 30_000;
-  private tilesOnScreen = new Set<string>();
-  private tileMapDirty = true;
-  private presentCache: ReadonlySet<string> | null = null;
-  private presentCacheFor: TerrainData | null = null;
-  private l0For: TerrainData | null = null;
-  private l0Set: ReadonlySet<string> | null = null;
-  private blankTiles: WebGLTexture | null = null;
+  /** The 90 m terrain tiles of the view on the GPU (shared code with the radar layer). */
+  private readonly tiles = new TerrainTileGpu('forecast');
   private relief = 0;
   private lite = false;
   private visible = false;
@@ -383,7 +319,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   /** Provide (or clear) the terrain, and the model ground matching the shown model's resolution. */
   setTerrain(data: TerrainData | null, modelBitmap: ImageBitmap | null): void {
     if (this.terrain === data && this.modelBitmap === modelBitmap) return;
-    if (this.terrain !== data) this.resetTiles();
+    if (this.terrain !== data) this.tiles.setTerrain(data, this.gl);   // new terrain: the tiles held are dropped
     this.terrain = data;
     this.modelBitmap = modelBitmap;
     this.map?.triggerRepaint();
@@ -428,7 +364,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.lutTex = gl.createTexture();
     this.demModelTex = gl.createTexture();
     this.demSmoothTex = gl.createTexture();
-    this.tileMapTex = gl.createTexture();
+    this.tiles.attach(map, gl);
     this.smoothUploadedFor = null;
     this.modelUploaded = null;
     this.uploadQuad();
@@ -437,14 +373,12 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
     this.textures.clear();
-    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.tileMapTex, this.tileTex, this.blankTiles]) if (tex) gl.deleteTexture(tex);
+    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex]) if (tex) gl.deleteTexture(tex);
+    this.tiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     if (this.program) gl.deleteProgram(this.program);
-    this.lutTex = this.demModelTex = this.demSmoothTex = this.tileMapTex = this.tileTex = this.blankTiles = this.vbo = this.vao = this.program = null;
-    this.tilesFailedAt.clear();
-    this.slots = null;
-    this.tileLevel = null;
+    this.lutTex = this.demModelTex = this.demSmoothTex = this.vbo = this.vao = this.program = null;
     this.map = null;
     this.gl = null;
   }
@@ -468,8 +402,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       this.uploadTerrainImage(gl, this.demModelTex, this.modelBitmap);
       this.modelUploaded = this.modelBitmap;
     }
-    if (this.terrain) this.updateTiles(gl, this.terrain);
-    const terrainOn = !!this.terrain && this.smoothUploadedFor === this.terrain && this.modelUploaded !== null && this.tileTex !== null;
+    this.tiles.update(gl);
+    const terrainOn = !!this.terrain && this.smoothUploadedFor === this.terrain && this.modelUploaded !== null && this.tiles.ready;
     const terrainMode = terrainOn && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
 
     gl.useProgram(program);
@@ -488,14 +422,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     if (terrainOn) {
       bind(4, this.demModelTex);
       bind(7, this.demSmoothTex);
-      gl.activeTexture(gl.TEXTURE0 + 12);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
-      bind(13, this.tileMapTex);
-    } else {
-      // no terrain: the tile sampler still reads a 2D-array texture (a blank one), as the shader declares it
-      gl.activeTexture(gl.TEXTURE0 + 12);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blankTileArray(gl));
     }
+    this.tiles.bind(gl, terrainOn);   // with no terrain the tile sampler still reads a 2D-array texture (a blank one), as the shader declares it
 
     const u = this.uniforms;
     // Unused samplers must not alias a unit holding a different kind of texture; point them at unit 0.
@@ -508,8 +436,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     unit('u_b2', 6, magnitude);
     unit('u_demModel', 4, terrainOn);
     unit('u_demSmooth', 7, terrainOn);
-    gl.uniform1i(u['u_tiles'], 12);   // always unit 12: a 2D-array texture is bound there (see above)
-    unit('u_tileMap', 13, terrainOn);
     gl.uniform1i(u['u_magnitude'], magnitude ? 1 : 0);
     gl.uniform1f(u['u_mix'], this.mix);
     gl.uniform1f(u['u_opacity'], def.opacity);
@@ -526,22 +452,18 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_relief'], terrainOn ? this.relief : 0);
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
+    this.tiles.setUniforms(gl, u, terrainOn);
     const meta = this.terrain?.meta;
-    if (terrainOn && meta && this.tileGrid) {
+    if (terrainOn && meta) {
       const g4 = (name: string, g: ForecastGrid) => gl.uniform4f(u[name], g.lonMin, g.latMax, g.step, 0);
       const s2 = (name: string, g: ForecastGrid) => gl.uniform2i(u[name], g.nx, g.ny);
       g4('u_smoothGrid', meta.smooth);
       s2('u_smoothSize', meta.smooth);
       g4('u_modelGrid', meta.grid);
       s2('u_modelSize', meta.grid);
-      gl.uniform2f(u['u_demEnc'], meta.min, meta.max);
       gl.uniform4f(u['u_terrainBox'], meta.domain.lonMin, meta.domain.latMin, meta.domain.lonMax, meta.domain.latMax);
-      gl.uniform2i(u['u_tileCount'], this.tileGrid.cols, this.tileGrid.rows);
-      gl.uniform2f(u['u_tileOrigin'], this.tileGrid.lonMin, this.tileGrid.latTop);
-      gl.uniform1f(u['u_tilePx'], this.tilePx);
     } else {
       for (const name of ['u_smoothSize', 'u_modelSize']) gl.uniform2i(u[name], 1, 1);
-      gl.uniform2i(u['u_tileCount'], 0, 0);
     }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -589,166 +511,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  }
-
-  /** A 1 x 1 blank 2D-array texture: what the tile sampler reads when there is no terrain. */
-  private blankTileArray(gl: WebGL2RenderingContext): WebGLTexture {
-    if (!this.blankTiles) {
-      this.blankTiles = gl.createTexture()!;
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blankTiles);
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, 1);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    }
-    return this.blankTiles;
-  }
-
-  /** Drops the tiles on the GPU (new terrain): the next frame loads them again. */
-  private resetTiles(): void {
-    if (this.gl && this.tileTex) this.gl.deleteTexture(this.tileTex);
-    this.tilesFailedAt.clear();
-    this.tileTex = null;
-    this.tileLevel = null;
-    this.slots = null;
-    this.tilesPending.clear();
-    this.tileMapDirty = true;
-  }
-
-  /**
-   * Keeps the 90 m tiles on screen on the GPU: the detail level follows the zoom (see terrainLevelForZoom), each tile on
-   * screen that is not held yet is loaded into a free slot, and the tile map is refreshed when a slot changes. A tile
-   * that finds no slot (every slot holds a tile on screen) is not drawn: its pixels use the model's ground.
-   */
-  private updateTiles(gl: WebGL2RenderingContext, data: TerrainData): void {
-    if (!this.map) return;
-    const level = terrainLevelForZoom(this.map.getZoom());
-    if (level !== this.tileLevel || !this.tileTex) this.switchTileLevel(gl, data, level);
-    if (!this.slots || !this.tileGrid) return;
-    const b = this.map.getBounds();
-    const bounds = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
-    const visible = tilesInBounds(this.tileGrid, bounds, this.presentTiles(data));
-    this.tilesOnScreen = new Set(visible);
-    this.slots.touch(visible);
-    for (const name of visible) {
-      if (this.slots.has(name) || this.tilesPending.has(name) || this.recentlyFailed(name)) continue;
-      this.loadTile(gl, data, name, level);
-    }
-    // the tiles just outside the view are loaded ahead of a pan, into free slots only: they never push out a tile on screen
-    const ahead = tilesInBounds(this.tileGrid, { west: bounds.west - 1, south: bounds.south - 1, east: bounds.east + 1, north: bounds.north + 1 }, this.presentTiles(data));
-    let free = this.slots.freeCount() - this.tilesPending.size;
-    for (const name of ahead) {
-      if (free <= 0) break;
-      if (this.tilesOnScreen.has(name) || this.slots.has(name) || this.tilesPending.has(name) || this.recentlyFailed(name)) continue;
-      this.loadTile(gl, data, name, level);
-      free--;
-    }
-    if (this.tileMapDirty) this.uploadTileMap(gl);
-  }
-
-  /** The tiles that have ground (a tile not in the list is open sea), read once per terrain. */
-  private presentTiles(data: TerrainData): ReadonlySet<string> {
-    if (this.presentCacheFor !== data) {
-      this.presentCache = new Set(data.meta.tiles);
-      this.presentCacheFor = data;
-    }
-    return this.presentCache!;
-  }
-
-  private recentlyFailed(name: string): boolean {
-    const t = this.tilesFailedAt.get(name);
-    return t !== undefined && performance.now() - t < ScalarFieldLayer.TILE_RETRY_MS;
-  }
-
-  /** Whether a tile has its own 90 m file (South India); the others are drawn at 90 m from their 270 m file. */
-  private hasL0(data: TerrainData, name: string): boolean {
-    const list = data.meta.tilesL0;
-    if (!list) return true;                       // an index without the list: every tile has a 90 m file
-    if (this.l0For !== data) {
-      this.l0Set = new Set(list);
-      this.l0For = data;
-    }
-    return this.l0Set!.has(name);
-  }
-
-  /** A tile's 270 m image, resampled to the size of the 90 m level (see resampleTileRgb). */
-  private async detailFromCoarse(coarse: ImageBitmap, maxM: number): Promise<ImageBitmap> {
-    const n = coarse.width;
-    const canvas = new OffscreenCanvas(n, n);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-    ctx.drawImage(coarse, 0, 0);
-    const px = ctx.getImageData(0, 0, n, n).data;
-    coarse.close();
-    const m = this.tilePx;
-    return createImageBitmap(new ImageData(resampleTileRgb(px, n, m, maxM), m, m));
-  }
-
-  /** A new detail level: a texture array with a slot per tile the level can hold on screen. */
-  private switchTileLevel(gl: WebGL2RenderingContext, data: TerrainData, level: TerrainLevel): void {
-    if (this.tileTex) gl.deleteTexture(this.tileTex);
-    this.tilesPending.clear();
-    this.tilesFailedAt.clear();
-    this.tileLevel = level;
-    this.tileGrid = tileGridOf(data.meta.domain);
-    this.tilePx = data.meta.levels.find(l => l.id === level)?.perDeg ?? 1200;
-    const slots = tileSlots(isPhone())[level];
-    this.slots = new TileSlots(slots);
-    this.tileTex = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, this.tilePx, this.tilePx, slots);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.tileMapDirty = true;
-  }
-
-  /** Loads one tile and puts it in a free slot (if none is free, it is left out: see updateTiles). */
-  private loadTile(gl: WebGL2RenderingContext, data: TerrainData, name: string, level: TerrainLevel): void {
-    this.tilesPending.add(name);
-    // the 90 m level where a tile has no 90 m file: its 270 m file, at the 90 m size
-    const image = level === 0 && !this.hasL0(data, name)
-      ? data.tileImage(1, name).then(coarse => this.detailFromCoarse(coarse, data.meta.max))
-      : data.tileImage(level, name);
-    image.then(bitmap => {
-      this.tilesPending.delete(name);
-      if (this.terrain !== data || this.tileLevel !== level || !this.slots || !this.tileTex) {
-        bitmap.close(); // the level or the terrain changed while it loaded
-        return;
-      }
-      const slot = this.slots.assign(name, this.tilesOnScreen);
-      if (slot === null) {
-        bitmap.close();
-        return;
-      }
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
-      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, slot, this.tilePx, this.tilePx, 1, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
-      bitmap.close();
-      this.tileMapDirty = true;
-      this.map?.triggerRepaint();
-    }).catch(err => {
-      this.tilesPending.delete(name);
-      this.tilesFailedAt.set(name, performance.now());
-      console.warn('[forecast] terrain tile unavailable', name, err);
-    });
-  }
-
-  /** The tile map: which slot each tile sits in (see buildTileMap), uploaded when a slot changed. */
-  private uploadTileMap(gl: WebGL2RenderingContext): void {
-    const data = this.terrain;
-    if (!data || !this.tileGrid || !this.slots) return;
-    const map = buildTileMap(this.tileGrid, this.presentTiles(data), this.slots.resident());
-    gl.bindTexture(gl.TEXTURE_2D, this.tileMapTex);
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, this.tileGrid.cols, this.tileGrid.rows, 0, gl.RED, gl.UNSIGNED_BYTE, map);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.tileMapDirty = false;
   }
 
   private textureFor(gl: WebGL2RenderingContext, frame: FieldFrame): WebGLTexture {

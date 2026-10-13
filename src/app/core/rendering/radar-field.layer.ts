@@ -1,6 +1,8 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
+import type { TerrainData } from '../forecast/terrain.service';
 import { ECHO_FADE_FULL, ECHO_FADE_START, RADAR_COLOR_STOPS, RADAR_FIELD_MAX } from '../services/radar-field';
+import { TERRAIN_TILE_GLSL, TERRAIN_TILE_UNIFORMS, TerrainTileGpu } from './terrain-tile-gpu';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -39,19 +41,27 @@ ${branches}
  * intensity with a bicubic (Catmull-Rom) filter, steepens it very slightly (unsharp mask), and only then looks up the
  * colour, so rain edges and contours stay smooth and crisp at any zoom instead of turning into blurry coloured blocks.
  * Zoomed out, the mipmapped hardware filter is used so thin echoes do not shimmer.
+ *
+ * The 90 m relief is shaded into the echoes, lit from the north-west as in the forecast colours, so the Ghats and the valleys read through a storm
+ * instead of disappearing under it (the terrain tiles come from the same code as the forecast layer: see terrain-tile-gpu.ts).
  */
 const FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
+precision lowp sampler2DArray;   // the terrain tiles (GLSL ES 3.00 wants a precision for every sampler type)
 uniform sampler2D u_field;   // R8: intensity / ${RADAR_FIELD_MAX}
 uniform vec4 u_box;          // mercator x0 and x1 of the mosaic (its west and east edges); y0, y1 unused
 uniform vec2 u_lat;          // latitude (degrees) of the top and the bottom row
 uniform ivec2 u_size;
 uniform float u_opacity;
 uniform float u_sharpen;
+uniform float u_relief;      // 0..1 strength of the relief shading
+uniform int u_terrainOn;     // 1 when the terrain tiles are bound
+uniform int u_lite;          // 1: phone mode, the relief slope from screen differences (far fewer texture reads)
+uniform vec4 u_terrainBox;   // west, south, east, north: where the 90 m terrain is; outside it there is no shading
 in vec2 v_merc;
 out vec4 outColor;
-
+${TERRAIN_TILE_GLSL}
 ${rampGlsl()}
 
 vec4 weights(float t) {
@@ -80,6 +90,25 @@ float bicubic(vec2 px) {
     }
   }
   return clamp(sum, 0.0, 1.0);
+}
+
+// How the 90 m ground lights an echo: hills lit from the north-west, 1.0 on flat ground, at sea and where the ground is not loaded.
+float reliefShade(float lat, float lon) {
+  if (lon < u_terrainBox.x || lon > u_terrainBox.z || lat < u_terrainBox.y || lat > u_terrainBox.w) return 1.0;
+  vec3 tile = tileTerrain(lat, lon);
+  if (tile.z < 0.5) return 1.0;
+  vec2 slope;
+  if (u_lite == 0) {
+    slope = tileSlope(lat, lon);
+  } else {
+    // the screen-space slope of the ground (one terrain read instead of sixteen), in metres per metre
+    float mPerPx = max(length(dFdx(v_merc)) * 40075016.686 * cos(radians(lat)), 1.0);
+    slope = vec2(dFdx(tile.x), -dFdy(tile.x)) / mPerPx;
+  }
+  vec3 n = normalize(vec3(-slope * 3.0, 1.0));
+  vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
+  float shade = dot(n, light) / light.z;
+  return mix(1.0, clamp(1.0 + u_relief * (shade - 1.0), 0.55, 1.4), tile.y);
 }
 
 void main() {
@@ -113,7 +142,9 @@ void main() {
   float feather = smoothstep(${f(ECHO_FADE_START)}, ${f(ECHO_FADE_FULL)}, v);
   float a = c.a * feather * u_opacity;
   if (a <= 0.001) discard;
-  outColor = vec4(c.rgb * a, a);   // premultiplied for MapLibre's blend function
+  vec3 rgb = c.rgb;
+  if (u_terrainOn == 1 && u_relief > 0.0) rgb *= reliefShade(lat, v_merc.x * 360.0 - 180.0);
+  outColor = vec4(rgb * a, a);   // premultiplied for MapLibre's blend function
 }`;
 
 export interface RadarLayerFrame {
@@ -144,6 +175,10 @@ export class RadarFieldLayer implements CustomLayerInterface {
   private lat: [number, number] = [1, 0];
   private opacity = 1;
   private sharpen = 0.0;
+  /** The 90 m terrain tiles of the view on the GPU (shared code with the forecast layer). */
+  private readonly tiles = new TerrainTileGpu('radar');
+  private relief = 0;
+  private lite = false;
 
   /** The mosaic to draw (null hides the layer). */
   setFrame(frame: RadarLayerFrame | null): void {
@@ -159,6 +194,26 @@ export class RadarFieldLayer implements CustomLayerInterface {
 
   setOpacity(opacity: number): void {
     this.opacity = opacity;
+    this.map?.triggerRepaint();
+  }
+
+  /** The terrain to shade by (null: none). The tiles of the view are loaded only while the relief strength is above zero. */
+  setTerrain(data: TerrainData | null): void {
+    this.tiles.setTerrain(data, this.gl);
+    this.map?.triggerRepaint();
+  }
+
+  /** Strength (0..1) of the relief shading over land; 0 draws the echoes plain. */
+  setRelief(strength: number): void {
+    if (this.relief === strength) return;
+    this.relief = strength;
+    this.map?.triggerRepaint();
+  }
+
+  /** Phone mode: the relief slope from screen-space differences of the terrain, not four extra terrain reads per pixel. */
+  setLite(lite: boolean): void {
+    if (this.lite === lite) return;
+    this.lite = lite;
     this.map?.triggerRepaint();
   }
 
@@ -178,7 +233,10 @@ export class RadarFieldLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`radar program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_field', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen']) this.uniforms[name] = gl.getUniformLocation(program, name);
+    for (const name of ['u_matrix', 'u_field', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen', 'u_relief', 'u_terrainOn', 'u_lite', 'u_terrainBox', ...TERRAIN_TILE_UNIFORMS]) {
+      this.uniforms[name] = gl.getUniformLocation(program, name);
+    }
+    this.tiles.attach(map, gl);
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
     this.uploadQuad();
@@ -187,6 +245,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
     this.textures.clear();
+    this.tiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     if (this.program) gl.deleteProgram(this.program);
@@ -238,10 +297,15 @@ export class RadarFieldLayer implements CustomLayerInterface {
     const { program, frame } = this;
     if (!program || !frame || this.opacity <= 0.001) return;
     const tex = this.textureFor(gl, frame);
+    // the ground is only read (and its tiles only loaded) while the relief is wanted
+    const wantRelief = this.relief > 0 && this.tiles.data !== null;
+    if (wantRelief) this.tiles.update(gl);
+    const terrainOn = wantRelief && this.tiles.ready;
     gl.useProgram(program);
     gl.bindVertexArray(this.vao);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
+    this.tiles.bind(gl, terrainOn);
     const u = this.uniforms;
     gl.uniformMatrix4fv(u['u_matrix'], false, options.defaultProjectionData.mainMatrix as unknown as Float32List);
     gl.uniform1i(u['u_field'], 0);
@@ -250,7 +314,14 @@ export class RadarFieldLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], frame.width, frame.height);
     gl.uniform1f(u['u_opacity'], this.opacity);
     gl.uniform1f(u['u_sharpen'], this.sharpen);
+    gl.uniform1i(u['u_terrainOn'], terrainOn ? 1 : 0);
+    gl.uniform1f(u['u_relief'], terrainOn ? this.relief : 0);
+    gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
+    this.tiles.setUniforms(gl, u, terrainOn);
+    const domain = this.tiles.data?.meta.domain;
+    if (terrainOn && domain) gl.uniform4f(u['u_terrainBox'], domain.lonMin, domain.latMin, domain.lonMax, domain.latMax);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
+    gl.activeTexture(gl.TEXTURE0);
   }
 }
