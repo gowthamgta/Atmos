@@ -54,6 +54,8 @@ export class SatelliteDetailService {
 
   /** What to draw over the main picture (null: nothing, the main picture is fine or the window is not ready). */
   readonly shown = signal<ShownWindow | null>(null);
+  /** Whether a detail window is currently being fetched or built. */
+  readonly loading = signal<boolean>(false);
 
   private view: MapView | null = null;
   private wanted: SatelliteWindow | null = null;
@@ -92,6 +94,7 @@ export class SatelliteDetailService {
   private clear(): void {
     this.wanted = null;
     if (this.shown() !== null) this.shown.set(null);
+    this.loading.set(false);
     this.prune(null);
   }
 
@@ -115,22 +118,29 @@ export class SatelliteDetailService {
     }
     this.useWindow(win.id);
 
-    // download what is missing, newest first, a few at a time
-    const queue = hrv.filter(i => !this.raws.has(i.rawKey)).reverse();
-    const worker = async () => {
-      for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
-        const got = await this.download(win, item);
-        if (token !== this.token) return;
-        if (got) this.raws.set(item.rawKey, got);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, queue.length) }, worker));
-    if (token !== this.token) return;
+    this.loading.set(true);
+    try {
+      // download what is missing, newest first, a few at a time
+      const queue = hrv.filter(i => !this.raws.has(i.rawKey)).reverse();
+      const worker = async () => {
+        for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+          const got = await this.download(win, item);
+          if (token !== this.token) return;
+          if (got) this.raws.set(item.rawKey, got);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, queue.length) }, worker));
+      if (token !== this.token) return;
 
-    const frames = await Promise.all(items.map(i => (this.raws.has(i.rawKey) ? this.frameFor(win, i) : Promise.resolve(null))));
-    if (token !== this.token) return; // the map moved on while these were being built
-    this.shown.set({ window: win, times: items.map(i => i.timeMs), frames });
-    this.prune(win);
+      const frames = await Promise.all(items.map(i => (this.raws.has(i.rawKey) ? this.frameFor(win, i) : Promise.resolve(null))));
+      if (token !== this.token) return; // the map moved on while these were being built
+      this.shown.set({ window: win, times: items.map(i => i.timeMs), frames });
+      this.prune(win);
+    } finally {
+      if (token === this.token) {
+        this.loading.set(false);
+      }
+    }
   }
 
   /** Note that a window is in use, and drop the downloads of the ones used longest ago. */

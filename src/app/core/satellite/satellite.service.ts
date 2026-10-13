@@ -400,6 +400,15 @@ export class SatelliteService {
     if (n > 0) this.position.set(Math.min(Math.max(Math.round(i), 0), n - 1));
   }
 
+  /** Step forward or back by delta frames (delta: -1 or +1), pausing the loop. */
+  step(delta: number): void {
+    this.pause();
+    const n = this.frames().length;
+    if (n === 0) return;
+    const cur = Math.round(this.position());
+    this.setFrame(cur + delta);
+  }
+
   togglePlay(): void {
     if (this.playing()) this.pause();
     else this.play();
