@@ -1,6 +1,7 @@
 /**
- * High-detail true-colour satellite pictures from NASA GIBS (Global Imagery Browse Services): corrected reflectance from the
- * polar-orbiting VIIRS and MODIS instruments at 250 m per pixel, about 4 to 8 times sharper than the weather satellites.
+ * Daily corrected-reflectance composites from NASA GIBS (Global Imagery Browse Services), using polar-orbiting VIIRS and
+ * MODIS imagery. VIIRS true colour combines 375 m I1 with 750 m M4/M3 input bands; GIBS serves it through its Level 9
+ * Web Mercator tile matrix (~306 m per tile pixel at the equator), so zooming past that matrix enlarges the same pixels.
  * They need no key and allow cross-origin requests. A polar orbiter passes over India once a day (about 10:30 to 13:30
  * local time), so this is a daily snapshot, not a live picture: each day's picture is the latest pass of that UTC day.
  *
@@ -15,6 +16,8 @@ export interface GibsSensor {
   layer: string;
   /** Approximate local solar time of the pass over India, for the label. */
   pass: string;
+  /** Explain when the selected composite uses a non-natural band combination. */
+  note?: string;
 }
 
 export const GIBS_SENSORS: readonly GibsSensor[] = [
@@ -23,11 +26,18 @@ export const GIBS_SENSORS: readonly GibsSensor[] = [
   { id: 'noaa20', label: 'VIIRS · NOAA-20', layer: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor', pass: 'about 1:30 pm' },
   { id: 'terra', label: 'MODIS · Terra', layer: 'MODIS_Terra_CorrectedReflectance_TrueColor', pass: 'about 10:30 am' },
   { id: 'aqua', label: 'MODIS · Aqua', layer: 'MODIS_Aqua_CorrectedReflectance_TrueColor', pass: 'about 1:30 pm' },
+  {
+    id: 'noaa21-detail',
+    label: 'NOAA-21 · 375 m detail',
+    layer: 'VIIRS_NOAA21_CorrectedReflectance_BandsM11-I2-I1',
+    pass: 'about 1:30 pm',
+    note: 'False colour: I1 visible + I2 near-infrared (375 m), M11 shortwave infrared (750 m).',
+  },
 ];
 
 export const GIBS_DEFAULT_SENSOR = 'noaa21';
 
-/** The tile matrix of 250 m imagery: zoom 9 is the finest; the map magnifies it beyond that. */
+/** GIBS Web Mercator tile matrix for these products: levels 0–9, with no finer source tiles after level 9. */
 export const GIBS_MAX_ZOOM = 9;
 export const GIBS_TILE_SIZE = 256;
 

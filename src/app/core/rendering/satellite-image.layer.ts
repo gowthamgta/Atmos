@@ -139,7 +139,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private frames: SatelliteLayerFrame[] = [];
   private position = 0;
   private opacity = 0.9;
-  private look: 'picture' | 'clouds' = 'clouds';
+  private look: 'picture' | 'clouds' | 'thermal' = 'clouds';
   private lite = false;
 
   /** The pictures of the loop, oldest first. Pictures no longer listed are released. */
@@ -161,7 +161,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
    * magnification and mild sharpening). The cloud-only view is smoothed (and its texture restored) when the cloud is picked,
    * so it gets no sharpening on top.
    */
-  setLook(look: 'picture' | 'clouds'): void {
+  setLook(look: 'picture' | 'clouds' | 'thermal'): void {
     this.look = look;
     this.map?.triggerRepaint();
   }

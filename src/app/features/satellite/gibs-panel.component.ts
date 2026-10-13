@@ -14,7 +14,7 @@ import { GibsHdService } from '../../core/satellite/gibs-hd.service';
           <span class="live" aria-hidden="true"></span>
           <div class="heading">
             <strong>HD satellite</strong>
-            <span class="sub">True colour, 250 m · {{ gibs.sensor().pass }} IST</span>
+            <span class="sub">Daily {{ gibs.sensor().id === 'noaa21-detail' ? 'false-colour detail' : 'true colour' }} · {{ gibs.sensor().pass }} IST</span>
           </div>
         </header>
 
@@ -38,7 +38,7 @@ import { GibsHdService } from '../../core/satellite/gibs-hd.service';
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="gibs.opacity()" (input)="onOpacity($event)" aria-label="HD satellite opacity" />
         </label>
-        <p class="note">One picture a day: the satellite's pass over India. Blank where it has not passed yet. © NASA GIBS / EOSDIS</p>
+        <p class="note">{{ gibs.sensor().note ?? 'One picture a day from the satellite’s pass over India.' }} Blank where it has not passed yet. © NASA GIBS / EOSDIS</p>
       </section>
     }
   `,

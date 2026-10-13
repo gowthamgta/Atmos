@@ -3,8 +3,12 @@ import {
   DEBLOCK_MAX_STEP,
   blurField,
   blurFieldWide,
+  buildLumaGrid,
+  classifyCloudTop,
   cloudCover,
   shadeCloudLayer,
+  irLumaToTempC,
+  irTempToHeightKm,
   JPEG_BLOCK,
   deblockJpeg,
   latFromMercatorY,
@@ -12,8 +16,10 @@ import {
   mercatorRowMap,
   hrvBackground,
   mercatorY,
+  sampleLumaGrid,
   shadePixel,
   satelliteCoordinates,
+  thermalColorRamp,
   toOverlayPixels,
 } from './satellite-image';
 
@@ -373,3 +379,86 @@ describe('blurField (the fast version) and blurFieldWide', () => {
     expect(blurFieldWide(f, w, h, 1)).toEqual(blurField(f, w, h, 1));
   });
 });
+
+import {
+  LUMA_GRID_SIZE,
+} from './satellite-image';
+
+describe('thermal IR temperature, height, and color ramp', () => {
+  it('maps normalized luma 0..1 monotonically from warm (+30C) to cold (-85C)', () => {
+    expect(irLumaToTempC(0)).toBeCloseTo(30, 1);
+    expect(irLumaToTempC(1)).toBeCloseTo(-85, 1);
+    expect(irLumaToTempC(0.8)).toBeLessThan(irLumaToTempC(0.4));
+  });
+
+  it('estimates higher cloud-top height for colder cloud-top temperatures', () => {
+    expect(irTempToHeightKm(28)).toBe(0);
+    expect(irTempToHeightKm(0)).toBeGreaterThan(3);
+    expect(irTempToHeightKm(-65)).toBeGreaterThan(13);
+    expect(irTempToHeightKm(-95)).toBeLessThanOrEqual(18);
+  });
+
+  it('classifies cloud regimes across warm surface, mid cloud, and overshooting tops', () => {
+    expect(classifyCloudTop(20).label).toBe('Clear / Warm surface');
+    expect(classifyCloudTop(5).label).toBe('Low cloud / Cumulus');
+    expect(classifyCloudTop(-15).label).toBe('Mid-level cloud');
+    expect(classifyCloudTop(-38).label).toBe('High cloud / Cirrus anvil');
+    expect(classifyCloudTop(-58).label).toBe('Deep convection');
+    expect(classifyCloudTop(-75).label).toBe('Overshooting top / Severe');
+  });
+
+  it('renders warm pixels transparent and cold convective pixels with high alpha in thermal view', () => {
+    expect(thermalColorRamp(20)[3]).toBe(0);
+    const cold = thermalColorRamp(-65);
+    expect(cold[3]).toBeGreaterThan(220);
+    expect(cold[0]).toBeGreaterThan(180); // bright red/magenta core
+
+    const out = new Uint8ClampedArray(4);
+    shadePixel('ir', 'thermal', 230, 230, 230, 0, out, 0);
+    expect(out[3]).toBeGreaterThan(220);
+    shadePixel('ir', 'thermal', 20, 20, 20, 0, out, 0);
+    expect(out[3]).toBe(0);
+  });
+});
+
+describe('twilight terminator blending and luma hover grid', () => {
+  it('blends daytime HRV with nighttime IR across the dawn terminator', () => {
+    const w = 16, h = 8;
+    const hrv = new Uint8ClampedArray(w * h * 4);
+    const ir = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      // HRV: dark everywhere (simulating night side in visible channel)
+      hrv.set([20, 20, 20, 255], i * 4);
+      // IR: cold bright cloud everywhere
+      ir.set([220, 220, 220, 255], i * 4);
+    }
+    // 00:45 UTC on equinox: sun is rising in the east (97.5E ~ +11 deg) and still dark in the west (68E ~ -16 deg)
+    const dawnMs = Date.parse('2026-03-21T00:45:00Z');
+    const blended = toOverlayPixels(hrv, w, h, 'hrv', 'clouds', 8, undefined, ir, dawnMs);
+    const westAlpha = blended[(4 * w + 1) * 4 + 3];
+    const eastAlpha = blended[(4 * w + (w - 2)) * 4 + 3];
+    // West is in darkness -> takes IR cloud alpha (high); East is in daylight -> takes dark HRV alpha (0)
+    expect(westAlpha).toBeGreaterThan(150);
+    expect(eastAlpha).toBeLessThan(30);
+  });
+
+  it('builds and samples the compact luma grid accurately by lat/lon', () => {
+    const w = 20, h = 20;
+    const src = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = x < 10 ? 40 : 210;
+        src.set([v, v, v, 255], (y * w + x) * 4);
+      }
+    }
+    const grid = buildLumaGrid(src, w, h, 'ir');
+    const west = sampleLumaGrid(grid, LUMA_GRID_SIZE, 20, 72);
+    const east = sampleLumaGrid(grid, LUMA_GRID_SIZE, 20, 92);
+    expect(west).not.toBeNull();
+    expect(east).not.toBeNull();
+    expect(east!.tempC).toBeLessThan(west!.tempC - 40);
+    expect(east!.heightKm).toBeGreaterThan(west!.heightKm + 5);
+    expect(sampleLumaGrid(grid, LUMA_GRID_SIZE, 2, 72)).toBeNull(); // outside bounds
+  });
+});
+

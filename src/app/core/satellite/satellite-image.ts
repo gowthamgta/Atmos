@@ -5,7 +5,14 @@
  * taller than the last one going north. So the picture's rows are re-spaced to Mercator before it is placed on the
  * map, and its dark or empty parts are made see-through.
  */
-import { SATELLITE_BOUNDS, SatelliteChannel, SatelliteView } from './satellite.config';
+import {
+  SATELLITE_BOUNDS,
+  SatelliteChannel,
+  SatelliteView,
+  TWILIGHT_BLEND_HI_DEG,
+  TWILIGHT_BLEND_LO_DEG,
+  sunElevationDeg,
+} from './satellite.config';
 
 const RAD = Math.PI / 180;
 
@@ -99,10 +106,79 @@ export function hrvBackground(src: Uint8ClampedArray): number {
 }
 
 /**
+ * Estimates Cloud-Top Temperature (°C) from normalized Meteosat IR10.8 brightness `luma` (0 = warm +30°C surface,
+ * 1 = cold -85°C tropopause).
+ */
+export function irLumaToTempC(luma: number): number {
+  const clamped = Math.min(Math.max(luma, 0), 1);
+  return Math.round((30 - clamped * 115) * 10) / 10;
+}
+
+/**
+ * Estimates tropical Cloud-Top Height (km) from Cloud-Top Temperature (°C) using a 6.2°C/km lapse rate from +28°C.
+ */
+export function irTempToHeightKm(tempC: number): number {
+  if (tempC >= 24) return 0;
+  return Math.min(17.5, Math.max(0, Math.round(((28 - tempC) / 6.2) * 10) / 10));
+}
+
+export interface CloudTopClassification {
+  label: string;
+  color: string;
+}
+
+/** Human-readable cloud regime and accent colour for a Cloud-Top Temperature (°C). */
+export function classifyCloudTop(tempC: number): CloudTopClassification {
+  if (tempC > 8) return { label: 'Clear / Warm surface', color: '#94a3b8' };
+  if (tempC > -12) return { label: 'Low cloud / Cumulus', color: '#38bdf8' };
+  if (tempC > -35) return { label: 'Mid-level cloud', color: '#06b6d4' };
+  if (tempC > -55) return { label: 'High cloud / Cirrus anvil', color: '#facc15' };
+  if (tempC > -70) return { label: 'Deep convection', color: '#f97316' };
+  return { label: 'Overshooting top / Severe', color: '#f43f5e' };
+}
+
+/**
+ * Dvorak / RBTOP-style colorized Thermal IR ramp for a given Cloud-Top Temperature (°C).
+ * Warm surface (> 5°C) is transparent; cooling cloud tops progress through slate-blue -> cyan -> green -> yellow -> red -> magenta -> white.
+ */
+const THERMAL_STOPS: readonly [number, number, number, number, number][] = [
+  // [tempC, R, G, B, Alpha(0..255)] sorted from warmest to coldest
+  [10, 148, 163, 184, 0],
+  [-2, 56, 189, 248, 95],
+  [-18, 6, 182, 212, 165],
+  [-32, 16, 185, 129, 205],
+  [-46, 250, 204, 21, 225],
+  [-58, 249, 115, 22, 238],
+  [-68, 239, 68, 68, 246],
+  [-76, 217, 70, 239, 252],
+  [-85, 255, 255, 255, 255],
+];
+
+export function thermalColorRamp(tempC: number): [number, number, number, number] {
+  if (tempC >= THERMAL_STOPS[0][0]) return [0, 0, 0, 0];
+  for (let i = 0; i < THERMAL_STOPS.length - 1; i++) {
+    const a = THERMAL_STOPS[i];
+    const b = THERMAL_STOPS[i + 1];
+    if (tempC <= a[0] && tempC >= b[0]) {
+      const t = (a[0] - tempC) / (a[0] - b[0]);
+      return [
+        Math.round(a[1] + (b[1] - a[1]) * t),
+        Math.round(a[2] + (b[2] - a[2]) * t),
+        Math.round(a[3] + (b[3] - a[3]) * t),
+        Math.round(a[4] + (b[4] - a[4]) * t),
+      ];
+    }
+  }
+  const last = THERMAL_STOPS[THERMAL_STOPS.length - 1];
+  return [last[1], last[2], last[3], last[4]];
+}
+
+/**
  * Colour and opacity (0..255) of one pixel; the result is written into `out` at `o`.
  *
  * HRV pictures show land yellow, sea dark and cloud white or lavender, so cloud stands out in the blue channel.
  * In `clouds` view the opacity follows how far the blue channel is above the background, and the cloud is drawn white;
+ * in `thermal` view the infrared brightness is mapped to the Dvorak Cloud-Top Temperature color scale;
  * in `picture` view everything except true black is kept. Infrared is grey and bright where the cloud is cold and high.
  */
 export function shadePixel(
@@ -115,6 +191,19 @@ export function shadePixel(
   out: Uint8ClampedArray,
   o: number,
 ): void {
+  if (r + g + b === 0) {
+    out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
+    return;
+  }
+  if (view === 'thermal') {
+    // In HRV RGB, the blue channel is the inverted IR10.8 brightness; in IR/WV all three channels carry brightness.
+    const irLuma = kind === 'hrv'
+      ? Math.max(0, (b - Math.max(0, background - 18)) / Math.max(1, 255 - Math.max(0, background - 18)))
+      : (r + g + b) / 3 / 255;
+    const [tr, tg, tb, ta] = thermalColorRamp(irLumaToTempC(irLuma));
+    out[o] = tr; out[o + 1] = tg; out[o + 2] = tb; out[o + 3] = ta;
+    return;
+  }
   if (kind === 'hrv') {
     if (view === 'picture') {
       out[o] = r; out[o + 1] = g; out[o + 2] = b;
@@ -128,9 +217,18 @@ export function shadePixel(
     return;
   }
   const luma = (r + g + b) / 3 / 255;
+  if (kind === 'wv' && view === 'clouds') {
+    // Upper-tropospheric moisture & cloud: soft cyan-white tint where water vapour is abundant, dry subsiding air transparent
+    const moist = smoothstep(0.22, 0.62, luma);
+    out[o] = Math.round(r * 0.88);
+    out[o + 1] = Math.round(g * 0.96);
+    out[o + 2] = Math.min(255, Math.round(b * 1.08 + 18 * moist));
+    out[o + 3] = Math.round(255 * moist * 0.92);
+    return;
+  }
   out[o] = r; out[o + 1] = g; out[o + 2] = b;
   // true black is no data (at the edge of the picture): see-through
-  out[o + 3] = r + g + b === 0 ? 0 : view === 'picture' ? Math.round(255 * 0.92) : Math.round(255 * smoothstep(0.2, 0.55, luma) * 0.92);
+  out[o + 3] = view === 'picture' ? Math.round(255 * 0.92) : Math.round(255 * smoothstep(0.2, 0.55, luma) * 0.92);
 }
 
 /**
@@ -363,6 +461,8 @@ export function shadeCloudLayer(
 /**
  * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set colour and
  * opacity for the chosen view. `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
+ * When `twilightIr` and `timeMs` are provided for an HRV frame near sunrise/sunset, pixels on the dark side of the solar
+ * terminator smoothly transition to the infrared picture instead of going black.
  */
 export function toOverlayPixels(
   src: Uint8ClampedArray,
@@ -372,13 +472,23 @@ export function toOverlayPixels(
   view: SatelliteView,
   outHeight = mercatorHeight(width),
   natural?: Uint8ClampedArray,
+  twilightIr?: Uint8ClampedArray,
+  timeMs?: number,
+  b = SATELLITE_BOUNDS,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
-  const rowMap = mercatorRowMap(srcHeight, outHeight);
+  const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
   // Clouds only: shade the clouds at the picture's own resolution first, then re-space the rows (premultiplied, so
   // the soft cloud edges blend without fringes). Other views shade each re-spaced pixel.
   const clouds = view === 'clouds' ? shadeCloudLayer(src, width, srcHeight, kind, background, natural) : null;
+  const irOverlay =
+    twilightIr && kind === 'hrv' && timeMs !== undefined
+      ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', view, outHeight, undefined, undefined, undefined, b)
+      : null;
+  const yTop = mercatorY(b.north);
+  const yBottom = mercatorY(b.south);
+
   for (let r = 0; r < outHeight; r++) {
     const f = rowMap[r];
     const y0 = Math.floor(f);
@@ -386,6 +496,7 @@ export function toOverlayPixels(
     const w = f - y0;
     const a = y0 * width * 4;
     const c = y1 * width * 4;
+    const lat = irOverlay ? latFromMercatorY(yTop + ((yBottom - yTop) * (r + 0.5)) / outHeight) : 0;
     let o = r * width * 4;
     for (let x = 0; x < width; x++, o += 4) {
       const i = x * 4;
@@ -393,21 +504,101 @@ export function toOverlayPixels(
         const aA = clouds[a + i + 3] / 255;
         const aB = clouds[c + i + 3] / 255;
         const alpha = aA * (1 - w) + aB * w;
-        if (alpha <= 0) continue;
-        for (let k = 0; k < 3; k++) out[o + k] = (clouds[a + i + k] * aA * (1 - w) + clouds[c + i + k] * aB * w) / alpha;
-        out[o + 3] = alpha * 255;
-        continue;
+        if (alpha > 0) {
+          for (let k = 0; k < 3; k++) out[o + k] = (clouds[a + i + k] * aA * (1 - w) + clouds[c + i + k] * aB * w) / alpha;
+          out[o + 3] = alpha * 255;
+        }
+      } else {
+        shadePixel(
+          kind, view,
+          src[a + i] * (1 - w) + src[c + i] * w,
+          src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
+          src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
+          background, out, o,
+        );
       }
-      shadePixel(
-        kind, view,
-        src[a + i] * (1 - w) + src[c + i] * w,
-        src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
-        src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
-        background, out, o,
-      );
+      if (irOverlay && timeMs !== undefined) {
+        const lon = b.west + ((x + 0.5) / width) * (b.east - b.west);
+        const dayW = smoothstep(TWILIGHT_BLEND_LO_DEG, TWILIGHT_BLEND_HI_DEG, sunElevationDeg(timeMs, lat, lon));
+        if (dayW < 0.999) {
+          const aDay = (out[o + 3] / 255) * dayW;
+          const aNight = (irOverlay[o + 3] / 255) * (1 - dayW);
+          const aMix = aDay + aNight;
+          if (aMix <= 0) {
+            out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
+          } else {
+            out[o] = (out[o] * aDay + irOverlay[o] * aNight) / aMix;
+            out[o + 1] = (out[o + 1] * aDay + irOverlay[o + 1] * aNight) / aMix;
+            out[o + 2] = (out[o + 2] * aDay + irOverlay[o + 2] * aNight) / aMix;
+            out[o + 3] = aMix * 255;
+          }
+        }
+      }
     }
   }
   return out;
+}
+
+export const LUMA_GRID_SIZE = 120;
+
+export interface SatelliteHoverReading {
+  lat: number;
+  lon: number;
+  tempC: number;
+  heightKm: number;
+  label: string;
+  color: string;
+}
+
+/**
+ * Downsamples a source satellite image (`width` x `height` in EPSG:4326) to a compact `gridSize` x `gridSize` IR
+ * brightness grid (`0` = no data, `1..255` = IR brightness) for fast hover inspection on the main thread.
+ */
+export function buildLumaGrid(
+  src: Uint8ClampedArray,
+  width: number,
+  height: number,
+  kind: SatelliteChannel,
+  gridSize = LUMA_GRID_SIZE,
+): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(gridSize * gridSize);
+  const bg = kind === 'hrv' ? hrvBackground(src) : 0;
+  const floor = Math.max(0, bg - 18);
+  const span = Math.max(1, 255 - floor);
+  for (let r = 0; r < gridSize; r++) {
+    const sy = Math.min(height - 1, Math.floor(((r + 0.5) / gridSize) * height));
+    for (let c = 0; c < gridSize; c++) {
+      const sx = Math.min(width - 1, Math.floor(((c + 0.5) / gridSize) * width));
+      const p = (sy * width + sx) * 4;
+      const red = src[p];
+      const green = src[p + 1];
+      const blue = src[p + 2];
+      if (red + green + blue === 0) continue;
+      const luma = kind === 'hrv' ? Math.max(0, (blue - floor) / span) : (red + green + blue) / (3 * 255);
+      out[r * gridSize + c] = Math.max(1, Math.min(255, Math.round(luma * 254 + 1)));
+    }
+  }
+  return out;
+}
+
+/** Reads Cloud-Top Temperature (°C), Cloud-Top Height (km) and cloud classification at `(lat, lon)` from a luma grid. */
+export function sampleLumaGrid(
+  grid: Uint8Array,
+  gridSize: number,
+  lat: number,
+  lon: number,
+  b = SATELLITE_BOUNDS,
+): SatelliteHoverReading | null {
+  if (lat < b.south || lat > b.north || lon < b.west || lon > b.east || grid.length < gridSize * gridSize) return null;
+  const r = Math.min(gridSize - 1, Math.max(0, Math.floor(((b.north - lat) / (b.north - b.south)) * gridSize)));
+  const c = Math.min(gridSize - 1, Math.max(0, Math.floor(((lon - b.west) / (b.east - b.west)) * gridSize)));
+  const raw = grid[r * gridSize + c];
+  if (!raw) return null;
+  const luma = (raw - 1) / 254;
+  const tempC = irLumaToTempC(luma);
+  const heightKm = irTempToHeightKm(tempC);
+  const { label, color } = classifyCloudTop(tempC);
+  return { lat, lon, tempC, heightKm, label, color };
 }
 
 /** The overlay's corners for MapLibre: top-left, top-right, bottom-right, bottom-left as [lng, lat]. */

@@ -63,7 +63,7 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                       <app-icon name="satellite" [size]="20" /><span class="tile-name">Satellite</span><span class="tile-sub">15 min</span>
                     </button>
                     <button type="button" class="tile" [class.active]="gibsActive()" [attr.aria-pressed]="gibsActive()" (click)="toggleGibs()" title="High-detail true-colour picture at 250 m, one per day (NASA GIBS)">
-                      <app-icon name="globe" [size]="20" /><span class="tile-name">HD satellite</span><span class="tile-sub">250 m · daily</span>
+                      <app-icon name="globe" [size]="20" /><span class="tile-name">HD satellite</span><span class="tile-sub">375 m option · daily</span>
                     </button>
                   </div>
                 </section>

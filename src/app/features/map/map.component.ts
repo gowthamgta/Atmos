@@ -677,10 +677,18 @@ export class MapComponent implements OnInit, OnDestroy {
           y: e.point.y
         });
       }
+      if (this.layerService.layers().some(l => l.id === 'satellite' && l.active)) {
+        this.satellite.inspectAt(e.lngLat.lat, e.lngLat.lng);
+      }
     });
 
-    // Real-time IMD Radar dBZ hover inspector
+    // Real-time IMD Radar dBZ and Satellite Cloud-Top hover inspector
     map.on('mousemove', (e) => {
+      if (this.layerService.layers().some(l => l.id === 'satellite' && l.active)) {
+        this.satellite.inspectAt(e.lngLat.lat, e.lngLat.lng);
+      } else {
+        this.satellite.clearHover();
+      }
       if (!this.isRadarActive) {
         this.radarService.clearHover();
         return;
@@ -693,6 +701,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
     map.on('mouseout', () => {
       this.radarService.clearHover();
+      this.satellite.clearHover();
     });
 
     // Adaptive zoom detail scaling
@@ -793,7 +802,11 @@ export class MapComponent implements OnInit, OnDestroy {
         bounds: [b.west, b.south, b.east, b.north],
         attribution: 'NASA GIBS / EOSDIS',
       });
-      this.map.addLayer({ id: 'gibs-hd', type: 'raster', source: 'gibs-hd', paint: { 'raster-opacity': opacity, 'raster-fade-duration': 200 } }, this.observationAnchorId());
+      this.map.addLayer({ id: 'gibs-hd', type: 'raster', source: 'gibs-hd', paint: {
+        'raster-opacity': opacity,
+        'raster-fade-duration': 200,
+        'raster-resampling': 'linear',
+      } }, this.observationAnchorId());
       this.gibsTemplate = template;
     }
     this.map.setPaintProperty('gibs-hd', 'raster-opacity', opacity);

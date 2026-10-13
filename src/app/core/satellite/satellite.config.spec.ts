@@ -3,9 +3,11 @@ import {
   EUMETVIEW_WMS,
   SATELLITE_HRV,
   SATELLITE_IR,
+  SATELLITE_WV,
   SATELLITE_LAG_MIN,
   SATELLITE_FRAME_COUNT,
   frameTimes,
+  isTwilightTime,
   latestFrameTime,
   parseNewestTime,
   productForTime,
@@ -51,7 +53,7 @@ describe('frameTimes', () => {
   });
 });
 
-describe('sunElevationDeg and productForTime', () => {
+describe('sunElevationDeg, productForTime and isTwilightTime', () => {
   it('has the sun high at local noon and well below the horizon at local midnight over South India', () => {
     // local solar noon at 79 E is about 06:45 UTC
     expect(sunElevationDeg(T('2026-10-05T06:45:00Z'), 13, 79)).toBeGreaterThan(65);
@@ -68,12 +70,23 @@ describe('sunElevationDeg and productForTime', () => {
     expect(productForTime(T('2026-10-05T14:00:00Z'))).toBe(SATELLITE_IR); // 19:30 IST, dark
   });
 
-  it('switches to HRV after sunrise and back to infrared by evening', () => {
+  it('locks to Infrared or Water Vapour when a manual channel mode is chosen', () => {
+    expect(productForTime(T('2026-10-05T06:45:00Z'), 'ir')).toBe(SATELLITE_IR);
+    expect(productForTime(T('2026-10-05T06:45:00Z'), 'wv')).toBe(SATELLITE_WV);
+    expect(productForTime(T('2026-10-05T20:00:00Z'), 'wv')).toBe(SATELLITE_WV);
+  });
+
+  it('switches to HRV after sunrise and back to infrared by evening, and detects dawn/dusk twilight across the domain', () => {
     // in early October the sun rises near 06:00 IST (00:30 UTC) and sets near 18:00 IST (12:30 UTC)
     expect(productForTime(T('2026-10-05T00:00:00Z'))).toBe(SATELLITE_IR); // 05:30 IST
     expect(productForTime(T('2026-10-05T02:00:00Z'))).toBe(SATELLITE_HRV); // 07:30 IST
     expect(productForTime(T('2026-10-05T11:00:00Z'))).toBe(SATELLITE_HRV); // 16:30 IST
     expect(productForTime(T('2026-10-05T13:00:00Z'))).toBe(SATELLITE_IR); // 18:30 IST
+    // Dawn (01:00 UTC / 06:30 IST) and dusk (12:00 UTC / 17:30 IST) have the solar terminator crossing India (68E..97.5E)
+    expect(isTwilightTime(T('2026-10-05T01:00:00Z'))).toBe(true);
+    expect(isTwilightTime(T('2026-10-05T12:00:00Z'))).toBe(true);
+    expect(isTwilightTime(T('2026-10-05T06:45:00Z'))).toBe(false); // midday
+    expect(isTwilightTime(T('2026-10-05T18:45:00Z'))).toBe(false); // midnight
   });
 });
 
@@ -88,8 +101,9 @@ describe('satelliteFrameUrl', () => {
     expect(url.searchParams.get('format')).toBe('image/jpeg');
   });
 
-  it('uses the infrared layer for night frames', () => {
+  it('uses the infrared layer for night frames and wv062 for water vapour', () => {
     expect(new URL(satelliteFrameUrl(SATELLITE_IR, T('2026-10-05T20:00:00Z'))).searchParams.get('layers')).toBe('msg_iodc:ir108');
+    expect(new URL(satelliteFrameUrl(SATELLITE_WV, T('2026-10-05T20:00:00Z'))).searchParams.get('layers')).toBe('msg_iodc:wv062');
   });
 
   it('orders the box south, west, north, east as WMS 1.3.0 needs for EPSG:4326', () => {
@@ -98,7 +112,7 @@ describe('satelliteFrameUrl', () => {
   });
 
   it('never contains a key, token or secret', () => {
-    for (const p of [SATELLITE_HRV, SATELLITE_IR]) {
+    for (const p of [SATELLITE_HRV, SATELLITE_IR, SATELLITE_WV]) {
       expect(satelliteFrameUrl(p, T('2026-10-05T05:30:00Z')).toLowerCase()).not.toMatch(/key|token|secret|auth/);
     }
   });
@@ -124,5 +138,6 @@ describe('parseNewestTime', () => {
   it('asks the capabilities of the layer being shown', () => {
     expect(satelliteCapabilitiesUrl(SATELLITE_IR)).toContain('/msg_iodc/ir108/ows?');
     expect(satelliteCapabilitiesUrl(SATELLITE_HRV)).toContain('/msg_iodc/rgb_eview/ows?');
+    expect(satelliteCapabilitiesUrl(SATELLITE_WV)).toContain('/msg_iodc/wv062/ows?');
   });
 });

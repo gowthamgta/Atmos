@@ -39,8 +39,10 @@ export const SATELLITE_LAG_MIN = 25;
 /** Frames in the loop: 5 x 15 min = the last hour (the first frame is exactly 60 minutes before the newest). */
 export const SATELLITE_FRAME_COUNT = 5;
 
-/** The pictures shown: Meteosat's HRV by day, infrared at night. */
-export type SatelliteChannel = 'hrv' | 'ir';
+/** The pictures shown: Meteosat's HRV by day, infrared at night, or upper-level water vapour (6.2 µm). */
+export type SatelliteChannel = 'hrv' | 'ir' | 'wv';
+/** Channel selection mode: 'auto' switches HRV by day / IR by night (and blends across twilight); 'ir' or 'wv' locks that channel. */
+export type SatelliteChannelMode = 'auto' | 'ir' | 'wv';
 
 export interface SatelliteProduct {
   id: SatelliteChannel;
@@ -51,6 +53,7 @@ export interface SatelliteProduct {
 
 export const SATELLITE_HRV: SatelliteProduct = { id: 'hrv', label: 'European HRV RGB', layer: 'rgb_eview' };
 export const SATELLITE_IR: SatelliteProduct = { id: 'ir', label: 'Infrared', layer: 'ir108' };
+export const SATELLITE_WV: SatelliteProduct = { id: 'wv', label: 'Water Vapour', layer: 'wv062' };
 
 /** The satellite's name and credit, as shown in the menus and the panel. */
 export const SATELLITE_NAME = 'Meteosat-9';
@@ -58,14 +61,18 @@ export const SATELLITE_CREDIT = '© EUMETSAT';
 
 /**
  * What is drawn. `clouds`: only the cloud, bright and clean over the map (land and sea are see-through).
+ * `thermal`: colorized Cloud-Top Temperature (Dvorak RBTOP color scale highlighting deep convective cores).
  * `picture`: the whole satellite picture (HRV keeps its land and sea colours).
  */
-export type SatelliteView = 'clouds' | 'picture';
+export type SatelliteView = 'clouds' | 'thermal' | 'picture';
 
 /** Centre of India, used to decide whether it is day or night over the area. */
 const CENTRE = { lat: 20, lon: 79 };
 /** Sun height (degrees) above which the visible picture is bright enough to use. */
 export const DAYLIGHT_MIN_ELEVATION_DEG = 8;
+/** Twilight elevation band (degrees) over which HRV and IR are smoothly blended across the solar terminator. */
+export const TWILIGHT_BLEND_LO_DEG = 2;
+export const TWILIGHT_BLEND_HI_DEG = 14;
 
 /** Height of the sun above the horizon in degrees for a place and time (simple solar-position formula, about 1 degree accurate). */
 export function sunElevationDeg(timeMs: number, latDeg: number, lonDeg: number): number {
@@ -88,9 +95,20 @@ export function sunElevationDeg(timeMs: number, latDeg: number, lonDeg: number):
   return Math.asin(Math.max(-1, Math.min(1, sinElevation))) / rad;
 }
 
-/** The picture for a frame: HRV while the sun is up over India, infrared otherwise. */
-export function productForTime(timeMs: number): SatelliteProduct {
+/** The picture for a frame: HRV while the sun is up over India, infrared otherwise (unless locked to IR or WV). */
+export function productForTime(timeMs: number, mode: SatelliteChannelMode = 'auto'): SatelliteProduct {
+  if (mode === 'wv') return SATELLITE_WV;
+  if (mode === 'ir') return SATELLITE_IR;
   return sunElevationDeg(timeMs, CENTRE.lat, CENTRE.lon) >= DAYLIGHT_MIN_ELEVATION_DEG ? SATELLITE_HRV : SATELLITE_IR;
+}
+
+/** True when the solar terminator lies inside the satellite bounds, so HRV and IR should be blended per-column. */
+export function isTwilightTime(timeMs: number, b = SATELLITE_BOUNDS): boolean {
+  const westElev = sunElevationDeg(timeMs, CENTRE.lat, b.west);
+  const eastElev = sunElevationDeg(timeMs, CENTRE.lat, b.east);
+  const minE = Math.min(westElev, eastElev);
+  const maxE = Math.max(westElev, eastElev);
+  return maxE > TWILIGHT_BLEND_LO_DEG && minE < TWILIGHT_BLEND_HI_DEG;
 }
 
 /** Capabilities document of a layer: tiny, and it lists the newest time the service really has. */

@@ -6,7 +6,10 @@ const T = (iso: string) => Date.parse(iso);
 describe('GIBS high-detail tiles', () => {
   it('lists the instruments, each with its own layer', () => {
     expect(new Set(GIBS_SENSORS.map(s => s.id)).size).toBe(GIBS_SENSORS.length);
-    for (const s of GIBS_SENSORS) expect(s.layer).toMatch(/CorrectedReflectance_TrueColor$/);
+    for (const s of GIBS_SENSORS.filter(s => s.id !== 'noaa21-detail')) expect(s.layer).toMatch(/CorrectedReflectance_TrueColor$/);
+    const detail = GIBS_SENSORS.find(s => s.id === 'noaa21-detail');
+    expect(detail?.layer).toBe('VIIRS_NOAA21_CorrectedReflectance_BandsM11-I2-I1');
+    expect(detail?.note).toContain('375 m');
   });
 
   it('writes the UTC date of a day offset', () => {

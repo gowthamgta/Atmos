@@ -15,7 +15,7 @@ const CREDITS: readonly Credit[] = [
   { name: 'ECMWF AIFS', what: 'ECMWF open data (CC BY 4.0)' },
   { name: 'Model files', what: 'Republished by Open-Meteo.com (CC BY 4.0)' },
   { name: 'Radar', what: 'India Meteorological Department (IMD), observed' },
-  { name: 'Satellite', what: 'Meteosat-9 over India, © EUMETSAT, via EUMETView; the 250 m VIIRS and MODIS true-colour pictures via NASA GIBS (EOSDIS); cyclone tracks from ECMWF open data' },
+  { name: 'Satellite', what: 'Meteosat-9 over India, © EUMETSAT, via EUMETView; daily VIIRS and MODIS imagery via NASA GIBS (EOSDIS), with an optional 375 m VIIRS false-colour detail composite; cyclone tracks from ECMWF open data' },
   { name: 'Terrain', what: 'Copernicus DEM GLO-30 (© DLR and Airbus), averaged to 90 m' },
   { name: 'Boundaries', what: 'geoBoundaries (ODbL), from the Local Government Directory of India' },
   { name: 'Place search', what: 'Open-Meteo geocoding (CC BY 4.0): only the text typed in the search box is sent' },
