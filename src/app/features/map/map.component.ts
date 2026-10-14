@@ -441,17 +441,42 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Radar and satellite pictures sit on a plain, light basemap (no relief, no minor roads), like Windy's: the picture is what you came to see. */
+  /** Radar and satellite pictures sit on a plain, light basemap (no relief shading; roads, rivers and borders stay), like Windy's. */
   private plainBasemap = computed(() => this.layerService.layers().some(l => (l.id === 'radar' || l.id === 'satellite') && l.active));
 
-  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle, and off under radar and satellite) and the minor roads
+  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle, and off under radar and satellite)
   private reliefEffect = effect(() => {
-    const visible = this.forecastState.relief() && !this.plainBasemap();
     const plain = this.plainBasemap();
+    const visible = this.forecastState.relief() && !plain;
     if (!this.map || !this.isMapLoaded()) return;
     this.setHillshadeVisible(visible);
-    this.setRoadsVisible(!plain);
+    this.showPlainLines(plain);
   });
+
+  /**
+   * Under a radar or satellite picture the roads and rivers of the basemap would be covered by it: draw them again above it, thin and
+   * faint (like Windy), only while one of those layers is on.
+   */
+  private showPlainLines(on: boolean): void {
+    const map = this.map;
+    if (!map) return;
+    const before = this.observationAnchorId();
+    if (on && before && !map.getLayer('plain-waterway')) {
+      map.addLayer({
+        id: 'plain-waterway', type: 'line', source: 'base-vector', 'source-layer': 'waterway',
+        filter: ['match', ['get', 'class'], ['river', 'canal'], true, false],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': 'rgba(150, 185, 235, 0.55)', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 1.2, 12, 2.4] }
+      }, before);
+      map.addLayer({
+        id: 'plain-roads', type: 'line', source: 'base-vector', 'source-layer': 'transportation', minzoom: 6,
+        filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], true, false],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': 'rgba(255, 255, 255, 0.4)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 9, 0.9, 13, 1.8] }
+      }, before);
+    }
+    for (const id of ['plain-waterway', 'plain-roads']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  }
 
   private setHillshadeVisible(visible: boolean): void {
     if (!this.map) return;
@@ -460,12 +485,6 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
-  private setRoadsVisible(visible: boolean): void {
-    if (!this.map) return;
-    for (const id of ['base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
-      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
-    }
-  }
 
   // Reactive Effect: Radar Opacity Slider
   private radarOpacityEffect = effect(() => {
@@ -587,6 +606,19 @@ export class MapComponent implements OnInit, OnDestroy {
             source: 'base-vector',
             'source-layer': 'water',
             paint: { 'fill-color': '#171b22' }
+          },
+          // Rivers and canals (streams only once zoomed in)
+          {
+            id: 'base-waterway',
+            type: 'line',
+            source: 'base-vector',
+            'source-layer': 'waterway',
+            filter: ['match', ['get', 'class'], ['river', 'canal'], true, ['==', ['zoom'], 99]],
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              'line-color': 'rgba(120, 150, 190, 0.55)',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 1.2, 12, 2.4]
+            }
           },
           // Roads: motorways, trunks, primary, secondary, and minor streets from OpenFreeMap
           {
@@ -1117,10 +1149,9 @@ export class MapComponent implements OnInit, OnDestroy {
 
   private syncBasemap(type: string = 'dark'): void {
     if (!this.map || !this.isMapLoaded()) return;
-    for (const id of ['base-water', 'base-border']) {
+    for (const id of ['base-water', 'base-waterway', 'base-border', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
-    this.setRoadsVisible(!this.plainBasemap());
     this.setHillshadeVisible(this.forecastState.relief() && !this.plainBasemap());
   }
 
