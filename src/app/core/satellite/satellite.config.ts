@@ -158,3 +158,8 @@ export function satelliteFrameUrl(
   });
   return `${EUMETVIEW_WMS}?${params.toString()}`;
 }
+
+/** The closest the map zooms while the satellite is on: past this the picture (1.3 km a pixel at best) is only blur; Windy stops about here. */
+export const SATELLITE_MAX_ZOOM = 11;
+/** How close the map zooms with any other layer. */
+export const MAP_MAX_ZOOM = 15;

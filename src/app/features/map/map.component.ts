@@ -20,7 +20,7 @@ import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer'
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
 import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
-import { SATELLITE_BOUNDS, SatelliteChannel } from '../../core/satellite/satellite.config';
+import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM, SatelliteChannel } from '../../core/satellite/satellite.config';
 import { SatelliteDetailService, ShownWindow } from '../../core/satellite/satellite-detail.service';
 import type { MapView } from '../../core/satellite/satellite-window';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
@@ -353,6 +353,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const kind = this.satellite.current()?.product.id;
     if (!this.map || !this.isMapLoaded()) return;
     this.updateSatelliteOverlay(on, frames, position, opacity);
+    this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
     this.satelliteLayer?.setSharpness(satelliteSharpness(kind));
   });
 
@@ -649,7 +650,7 @@ export class MapComponent implements OnInit, OnDestroy {
       center: this.urlState.camera() ? [this.urlState.camera()!.lon, this.urlState.camera()!.lat] : [KALLAKURICHI.lng, KALLAKURICHI.lat],
       zoom: this.urlState.camera()?.zoom ?? HOME_ZOOM,
       minZoom: 3.2,
-      maxZoom: 15,
+      maxZoom: MAP_MAX_ZOOM,
       attributionControl: false
     });
     this.map = map;
