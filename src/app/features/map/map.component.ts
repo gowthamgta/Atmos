@@ -40,6 +40,10 @@ const HOME_ZOOM = 6.2;
 const BOUNDARY_SOURCE_ID = 'boundaries';
 const BOUNDARY_FIRST_LAYER_ID = 'district-casing';
 const BORDER_TOP_LAYER_ID = 'border-top';
+const DARK_LAND = '#2b2e35';
+const DARK_SEA = '#171b22';
+const PLAIN_LAND = '#585b64';
+const PLAIN_SEA = '#3d424d';
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
@@ -476,6 +480,9 @@ export class MapComponent implements OnInit, OnDestroy {
       }, before);
     }
     for (const id of ['plain-waterway', 'plain-roads']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    // Windy's flat, mid-grey land and slightly darker sea under radar and satellite
+    if (map.getLayer('map-background-layer')) map.setPaintProperty('map-background-layer', 'background-color', on ? PLAIN_LAND : DARK_LAND);
+    if (map.getLayer('base-water')) map.setPaintProperty('base-water', 'fill-color', on ? PLAIN_SEA : DARK_SEA);
   }
 
   private setHillshadeVisible(visible: boolean): void {

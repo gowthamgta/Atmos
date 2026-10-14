@@ -17,9 +17,9 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['chennai', 'caz', 'chennai-caz.gif', '70d2d0c9'],
-  ['karaikal', 'caz', 'karaikal-caz.gif', 'c07966ae'],
-  ['thiruvananthapuram', 'ppz', 'thiruvananthapuram-ppz.gif', '792a72f7'],
+  ['chennai', 'caz', 'chennai-caz.gif', 'c3923dfd'],
+  ['karaikal', 'caz', 'karaikal-caz.gif', 'd8aed1c3'],
+  ['thiruvananthapuram', 'ppz', 'thiruvananthapuram-ppz.gif', '17b0dda0'],
 ];
 
 function load(file: string): ArrayBuffer {
@@ -128,11 +128,11 @@ describe('radar intensity is kept as the picture gives it', () => {
     expect(peak(sea)).toBe(0);
   });
 
-  it('keeps a small cell of a few picture pixels, and leaves out a lone speck', () => {
+  it('keeps every echo, even a lone speck (no speck filter: all of the radar rain is shown)', () => {
     const cell = run(picture(block(60, 60, 3, 3, [0, 51, 255])), chennai.palette);            // 26 dBZ, 3 x 3 pixels
     expect(peak(cell)).toBeGreaterThan(1.2);
     const speck = run(picture({ '60,60': [0, 51, 255] }), chennai.palette);
-    expect(peak(speck)).toBe(0);
+    expect(peak(speck)).toBeGreaterThan(1.2);
   });
 });
 

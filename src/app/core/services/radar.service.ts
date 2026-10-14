@@ -102,7 +102,7 @@ export class RadarService implements OnDestroy {
    * Leave out faint echoes where the beam passes high above the ground (far from a radar, behind mountains): there they are mostly cloud or rain
    * that never lands, and on a radar whose clutter filter is off, noise (see radar-coverage.ts). Remembered between visits.
    */
-  readonly hideFaintFar = signal<boolean>(readFlag('atmosiq.radar.hideFaint', true));
+  readonly hideFaintFar = signal<boolean>(readFlag('atmosiq.radar.hideFaint.v2', false));
   private readonly coverage = inject(RadarCoverageService);
   /** The faint-echo-free copy of each picture shown, kept per picture so playing the loop does not redo it. */
   private readonly faintFree = new WeakMap<Uint8Array, { grid: CoverageGrid; out: Uint8Array }>();
@@ -243,7 +243,7 @@ export class RadarService implements OnDestroy {
     this.fetchAllRadarSweeps();
     this.startAutoRefresh();
     this.startLiveClock();
-    effect(() => writeFlag('atmosiq.radar.hideFaint', this.hideFaintFar()));
+    effect(() => writeFlag('atmosiq.radar.hideFaint.v2', this.hideFaintFar()));
     // each new live picture pushes the one before it into the loop, so the last hour keeps up without downloading the animations again
     effect(() => {
       this.compositeMosaic();

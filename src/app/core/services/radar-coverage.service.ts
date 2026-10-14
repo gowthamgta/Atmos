@@ -5,7 +5,7 @@ import { CoverageGrid, coverageAt, coverageCorners, coverageHaze, parseCoverageM
 
 /** Width of the haze picture: about 1 km a pixel, plenty for a haze whose edges are soft anyway. */
 const HAZE_WIDTH = 1100;
-const HAZE_KEY = 'atmosiq.radar.haze';
+const HAZE_KEY = 'atmosiq.radar.haze.v2'; // off by default: Windy draws only the rain on a plain map
 
 export interface CoverageOverlay {
   /** The haze as a PNG data address for the map's image source. */
@@ -23,7 +23,7 @@ export class RadarCoverageService {
   private readonly layers = inject(MapLayerService);
 
   /** The switch in the radar panel (remembered between visits). */
-  readonly enabled = signal(readFlag(HAZE_KEY, true));
+  readonly enabled = signal(readFlag(HAZE_KEY, false));
   readonly grid = signal<CoverageGrid | null>(null);
   private readonly radarOn = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
   /** The haze is drawn while the radar is on and the switch is on. */

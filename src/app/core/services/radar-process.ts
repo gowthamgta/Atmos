@@ -343,9 +343,9 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
     // High-gain receiver noise, clear-air boundary layer backscatter, sea clutter, and
     // radar transmitter artifacts produce isolated 1-to-4 pixel specks (such as Chennai S-Band's
     // concentric ring clutter at 150-250km).
-    const gridPerPixel = (outSize / cropW) * (outSize / cropH);
-    const minArea = Math.max(12, Math.round(8 * gridPerPixel));
-    const minStrongArea = Math.max(8, Math.round(4.5 * gridPerPixel));
+    // No speck filter any more (the user wants every echo the radar shows, small ones included): a single picture pixel is kept.
+    const minArea = 1;
+    const minStrongArea = 1;
     const visited = new Uint8Array(outSize * outSize);
     const queue = new Int32Array(outSize * outSize);
     const compIndices = new Int32Array(outSize * outSize);
