@@ -78,13 +78,16 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
           </div>
         }
 
-        @if (sat.hoverReading(); as h) {
-          <div class="hover-readout" aria-live="polite" title="Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres">
+        <!-- always there, at a fixed height, so the panel does not jump as the pointer moves on and off the cloud -->
+        <div class="hover-readout" aria-live="polite" title="Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres">
+          @if (sat.hoverReading(); as h) {
             <span class="hover-dot" [style.background]="h.color"></span>
             <span class="hover-type">{{ h.label }}</span>
             <span class="hover-vals">≈ {{ h.tempC > 0 ? '+' : '' }}{{ h.tempC }}°C · {{ h.heightKm }} km</span>
-          </div>
-        }
+          } @else {
+            <span class="hover-type idle">Hover the map to read cloud tops</span>
+          }
+        </div>
 
         <label class="opacity">
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
@@ -128,7 +131,8 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
     .cloud-bar { height: 8px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line-strong); }
     .cloud-scale { position: relative; height: 14px; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
     .cloud-scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-    .hover-readout { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 5px 8px; border-radius: 8px; background: var(--surface-3); font-size: 11px; }
+    .hover-readout { display: flex; align-items: center; gap: 6px; margin-top: 8px; padding: 0 8px; height: 28px; box-sizing: border-box; border-radius: 8px; background: var(--surface-3); font-size: 11px; }
+    .hover-type.idle { color: var(--text-muted); }
     .hover-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
     .hover-type { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
     .hover-vals { font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
