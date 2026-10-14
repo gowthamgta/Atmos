@@ -405,7 +405,7 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
       }
     }
 
-    removeRadialInterference(rawGrid, outSize);
+    // Nothing is filtered out any more: every echo the radar shows is kept (removeRadialInterference is still exported but not applied).
 
     // Re-evaluate hasAnyEcho after clutter filtering
     hasAnyEcho = false;

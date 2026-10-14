@@ -96,12 +96,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
           </ul>
         }
 
-        <button type="button" class="storm-toggle full-only" [class.active]="radar.hideFaintFar()" [attr.aria-pressed]="radar.hideFaintFar()" (click)="radar.toggleHideFaintFar()"
-          title="Far from a radar, or behind mountains, its beam passes high above the ground. A faint echo seen from up there is mostly cloud, or rain that dries up before it lands, and on some radars noise. Off: every echo is drawn, as the IMD sends it">
-          <span class="faint-icon" aria-hidden="true"></span>
-          <span class="storm-text">Hide faint far-range echoes <span class="storm-sub">{{ radar.hideFaintFar() ? 'Only firmer echoes where the beam is high' : 'Off: every echo is drawn' }}</span></span>
-        </button>
-
         <div class="stations full-only">
           <div class="label">Radars online: {{ online() }} of {{ stations.length }}</div>
           <div class="chips">

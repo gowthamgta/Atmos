@@ -28,7 +28,6 @@ function mosaic(timeMs: number, tag = 1): ProcessedRadarResult {
 function service(): RadarService {
   vi.stubGlobal('fetch', () => Promise.reject(new Error('offline')));
   const svc = TestBed.runInInjectionContext(() => new RadarService());
-  svc.hideFaintFar.set(false);
   return svc;
 }
 

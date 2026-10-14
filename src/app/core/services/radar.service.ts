@@ -18,9 +18,7 @@ import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForS
 import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
-import { readFlag, writeFlag } from '../ui/saved-flag';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
-import { CoverageGrid, hideFaintFarEchoes } from './radar-coverage';
 import { RadarCoverageService } from './radar-coverage.service';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
@@ -102,10 +100,7 @@ export class RadarService implements OnDestroy {
    * Leave out faint echoes where the beam passes high above the ground (far from a radar, behind mountains): there they are mostly cloud or rain
    * that never lands, and on a radar whose clutter filter is off, noise (see radar-coverage.ts). Remembered between visits.
    */
-  readonly hideFaintFar = signal<boolean>(readFlag('atmosiq.radar.hideFaint.v2', false));
   private readonly coverage = inject(RadarCoverageService);
-  /** The faint-echo-free copy of each picture shown, kept per picture so playing the loop does not redo it. */
-  private readonly faintFree = new WeakMap<Uint8Array, { grid: CoverageGrid; out: Uint8Array }>();
 
   // Dynamic Live Clock & Freshness State
   readonly liveClock = signal<number>(Date.now());
@@ -150,29 +145,29 @@ export class RadarService implements OnDestroy {
   readonly cursorMax = computed(() => this.history().length + this.nowcast().length);
   /** IMD publishes animations for the max-reflectivity (CAZ) and rain-rate (SRI) products only. */
   readonly historyAvailable = computed(() => animationFile('x', this.activeProduct()) !== null);
-  /** The live picture as it is drawn (see withoutFaintFar), or null when there is none or even its newest scan is too old to show. */
+  /** The live picture as it is drawn (every echo, nothing filtered out), or null when there is none or even its newest scan is too old to show. */
   readonly liveFrame = computed<RadarDisplayFrame | null>(() => {
     const live = this.compositeMosaic();
     // the whole picture goes when even its newest scan is older than MAX_SCAN_AGE_MIN (the clock ticks between refreshes)
     const stale = !!live?.timing?.epochMs && this.liveClock() - live.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000;
     return live && live.displayField && live.isDisplayed !== false && !stale
-      ? this.withoutFaintFar({
+      ? {
           field: live.displayField,
           width: live.fieldData.cropW,
           height: live.fieldData.cropH,
           coordinates: live.coordinates,
           timeMs: live.timing?.epochMs ?? null,
-        })
+        }
       : null;
   });
   /** The picture on the map: a step of the nowcast or a loop frame while one is chosen, otherwise the live composite. */
   readonly displayed = computed<RadarDisplayFrame | null>(() => {
     const ahead = this.leadIndex();
     const guess = ahead === null ? null : this.nowcast()[ahead];
-    if (guess) return this.withoutFaintFar(guess);
+    if (guess) return guess;
     const i = this.playIndex();
     const frame = i === null ? null : this.history()[i];
-    if (frame) return this.withoutFaintFar(frame);
+    if (frame) return frame;
     return this.liveFrame();
   });
   /** Fixed ~4 km grid over every radar's coverage, for storm tracking (the same for every loop frame). */
@@ -243,7 +238,6 @@ export class RadarService implements OnDestroy {
     this.fetchAllRadarSweeps();
     this.startAutoRefresh();
     this.startLiveClock();
-    effect(() => writeFlag('atmosiq.radar.hideFaint.v2', this.hideFaintFar()));
     // each new live picture pushes the one before it into the loop, so the last hour keeps up without downloading the animations again
     effect(() => {
       this.compositeMosaic();
@@ -277,22 +271,6 @@ export class RadarService implements OnDestroy {
     const at = this.playIndex();
     this.history.set(kept);
     if (at !== null) this.playIndex.set(Math.min(Math.max(at - dropped, 0), kept.length - 1));
-  }
-
-  toggleHideFaintFar(): void {
-    this.hideFaintFar.update(v => !v);
-  }
-
-  /** The picture as it is drawn: without the faint echoes where the radars see little, once the coverage is known and the switch is on. */
-  private withoutFaintFar<T extends RadarDisplayFrame>(frame: T): T {
-    const grid = this.coverage.grid();
-    if (!this.hideFaintFar() || !grid) return frame;
-    let hit = this.faintFree.get(frame.field);
-    if (!hit || hit.grid !== grid) {
-      hit = { grid, out: hideFaintFarEchoes(frame.field, frame.width, frame.height, frame.coordinates, grid) };
-      this.faintFree.set(frame.field, hit);
-    }
-    return { ...frame, field: hit.out };
   }
 
   ngOnDestroy(): void {
