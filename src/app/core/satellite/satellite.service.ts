@@ -1,6 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
 import { isPhone } from '../ui/device-profile';
+import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
   GeoBounds,
   SATELLITE_IR,
@@ -59,6 +60,8 @@ export class SatelliteService {
   readonly hoverReading = signal<SatelliteHoverReading | null>(null);
   /** The satellite layer is on (the pictures are being kept fresh). */
   readonly active = signal(false);
+  /** Show the infrared picture also by day (the switch in the panel); off: the visible HRV by day, infrared at night. */
+  readonly infraredOnly = signal(readFlag('atmosiq.satellite.infrared', false));
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -84,6 +87,14 @@ export class SatelliteService {
   private publishApplied = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastHoverCoords: { lat: number; lon: number } | null = null;
+
+  /** Switch between the visible picture (by day) and the infrared; the loop is rebuilt from the other channel. */
+  setInfrared(on: boolean): void {
+    if (this.infraredOnly() === on) return;
+    this.infraredOnly.set(on);
+    writeFlag('atmosiq.satellite.infrared', on);
+    if (this.active()) void this.load();
+  }
 
   /** Start (or resume) fetching; looks for newer pictures every couple of minutes while on. */
   activate(): void {
@@ -144,7 +155,7 @@ export class SatelliteService {
   private async plan(nowMs: number): Promise<PlanItem[]> {
     const newest = await this.newestTime(nowMs);
     return frameTimes(newest).map(t => {
-      const product = productForTime(t);
+      const product = this.infraredOnly() ? SATELLITE_IR : productForTime(t);
       const rawKey = `${product.id}|${t}`;
       const needTwilightIr = product.id === 'hrv' && isTwilightTime(t);
       return {
@@ -191,7 +202,7 @@ export class SatelliteService {
     if (token !== this.loadToken) return;
 
     for (const [k, v] of [...this.raws.entries()]) {
-      if (!times.includes(v.timeMs)) this.raws.delete(k); // older than the loop
+      if (!rawKeys.includes(k)) this.raws.delete(k); // older than the loop, or of the channel not shown now
     }
     await this.publish(plan, token, following);
     if (token !== this.loadToken) return;

@@ -54,6 +54,10 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
         } @else {
+          <div class="channel" role="group" aria-label="Picture">
+            <button type="button" [class.on]="!sat.infraredOnly()" [attr.aria-pressed]="!sat.infraredOnly()" (click)="sat.setInfrared(false)">Visible</button>
+            <button type="button" [class.on]="sat.infraredOnly()" [attr.aria-pressed]="sat.infraredOnly()" (click)="sat.setInfrared(true)" title="Infrared: cloud-top temperature, day and night">Infrared</button>
+          </div>
           <div class="scan">
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
@@ -110,6 +114,9 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
     .play:hover:not(:disabled) { background: var(--surface-4); }
     .play:disabled { opacity: 0.4; cursor: default; }
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
+    .channel { display: flex; gap: 2px; margin-top: 10px; padding: 2px; border-radius: 9px; background: var(--surface-3); }
+    .channel button { flex: 1; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 600; cursor: pointer; }
+    .channel button.on { background: var(--accent); color: #fff; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
     .ends { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
@@ -163,7 +170,7 @@ export class SatellitePanelComponent {
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
     if (!f) return 'loading';
-    if (f.product.id === 'ir') return 'night infrared, cloud tops';
+    if (f.product.id === 'ir') return this.sat.infraredOnly() ? 'infrared, cloud tops' : 'night infrared, cloud tops';
     return isTwilightTime(f.timeMs) ? 'twilight HRV + infrared' : 'daylight, HRV';
   });
   protected readonly sourceLabel = SATELLITE_NAME;
