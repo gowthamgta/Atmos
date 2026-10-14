@@ -351,6 +351,27 @@ function boxBlur(plane: Float32Array, w: number, h: number, radius: number, pass
   }
 }
 
+/** Morphological closing (square window of `radius`): fills holes and gaps narrower than 2 x radius + 1 pixels. */
+function closeGaps(plane: Float32Array, w: number, h: number, radius: number): Float32Array {
+  const pass = (src: Float32Array, horizontal: boolean, grow: boolean): Float32Array => {
+    const out = new Float32Array(src.length);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let v = grow ? 0 : 1;
+        for (let k = -radius; k <= radius; k++) {
+          const xx = horizontal ? Math.min(w - 1, Math.max(0, x + k)) : x;
+          const yy = horizontal ? y : Math.min(h - 1, Math.max(0, y + k));
+          const s = src[yy * w + xx];
+          v = grow ? Math.max(v, s) : Math.min(v, s);
+        }
+        out[y * w + x] = v;
+      }
+    }
+    return out;
+  };
+  return pass(pass(pass(pass(plane, true, true), false, true), true, false), false, false);
+}
+
 /**
  * How much of each pixel of an HRV picture is cloud (0 = the clear ground, 1 = cloud), from how far it stands out from the ground around
  * it. `width` x `height` is the picture, which covers `b`.
@@ -429,6 +450,9 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
     }
   }
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.85 * spread[i] * smoothstep(3, 9, excess[i]));
+  // a small hole in the middle of a cloud (a darker patch of the cloud itself) is not ground: close gaps up to 6 pixels
+  const closed = closeGaps(keep, width, height, 3);
+  for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.8 * closed[i]);
   boxBlur(keep, width, height, 1, 1);
   return keep;
 }

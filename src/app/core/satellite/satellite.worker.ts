@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { buildLumaGrid, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
 import { enhancePicture } from './satellite-enhance';
+import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
 import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel } from './satellite.config';
 
@@ -51,9 +52,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
-    const out = new OffscreenCanvas(width, outHeight);
-    out.getContext('2d')!.putImageData(new ImageData(pixels, width, outHeight), 0, 0);
-    const png = await out.convertToBlob({ type: 'image/png' });
+    const png = await encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);
   } catch (e) {
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);

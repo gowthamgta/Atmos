@@ -21,7 +21,8 @@ void main() {
  * range allows, without overshoot, dark fringes or halos. The four neighbours it compares with are read one picture pixel from
  * the point being drawn (bilinear), so the sharpening follows the point and does not snap to the nearest picture pixel.
  *
- * Pictures are premultiplied RGBA, so cloud edges (transparent land and sea) blend without dark or bright fringes.
+ * Pictures are stored as straight RGBA and premultiplied in the shader (in float), so cloud edges (transparent land and sea) blend
+ * without dark or bright fringes and faint cloud keeps its exact colour.
  *
  * A closer window of the same picture can sit over the whole-India one (see satellite-window.ts): the window fades out over a
  * feather at its edge (`u_feather`, in map units) and the whole-India layer, told where the window is, fades out inside it by the
@@ -50,6 +51,12 @@ vec4 weights(float t) {
   return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
 }
 
+// The pictures are stored with straight (not premultiplied) colour, so that faint cloud keeps its exact colour; every filter below
+// works on premultiplied values.
+vec4 premultiplied(vec4 c) {
+  return vec4(c.rgb * c.a, c.a);
+}
+
 vec4 bicubic(sampler2D tex, vec2 px) {
   vec2 p = px - 0.5;
   ivec2 i1 = ivec2(floor(p));
@@ -60,7 +67,7 @@ vec4 bicubic(sampler2D tex, vec2 px) {
   for (int j = 0; j < 4; j++) {
     for (int i = 0; i < 4; i++) {
       ivec2 q = clamp(i1 + ivec2(i - 1, j - 1), ivec2(0), u_size - 1);
-      sum += texelFetch(tex, q, 0) * (wx[i] * wy[j]);
+      sum += premultiplied(texelFetch(tex, q, 0)) * (wx[i] * wy[j]);
     }
   }
   return clamp(sum, 0.0, 1.0);
@@ -71,10 +78,10 @@ vec4 bicubic(sampler2D tex, vec2 px) {
 // headroom is the alpha, not 1) and rises on real edges. The result never leaves the range of the neighbourhood.
 vec4 cas(sampler2D tex, vec2 px, vec4 c, float sharpness) {
   vec2 inv = 1.0 / vec2(u_size);
-  vec4 b = textureLod(tex, (px + vec2(0.0, -1.0)) * inv, 0.0);
-  vec4 d = textureLod(tex, (px + vec2(-1.0, 0.0)) * inv, 0.0);
-  vec4 f = textureLod(tex, (px + vec2(1.0, 0.0)) * inv, 0.0);
-  vec4 h = textureLod(tex, (px + vec2(0.0, 1.0)) * inv, 0.0);
+  vec4 b = premultiplied(textureLod(tex, (px + vec2(0.0, -1.0)) * inv, 0.0));
+  vec4 d = premultiplied(textureLod(tex, (px + vec2(-1.0, 0.0)) * inv, 0.0));
+  vec4 f = premultiplied(textureLod(tex, (px + vec2(1.0, 0.0)) * inv, 0.0));
+  vec4 h = premultiplied(textureLod(tex, (px + vec2(0.0, 1.0)) * inv, 0.0));
   vec3 mn = min(min(min(b.rgb, d.rgb), min(f.rgb, h.rgb)), c.rgb);
   vec3 mx = max(max(max(b.rgb, d.rgb), max(f.rgb, h.rgb)), c.rgb);
   vec3 amp = sqrt(clamp(min(mn, c.a - mx) / max(mx, vec3(1e-4)), 0.0, 1.0));
@@ -86,15 +93,15 @@ vec4 cas(sampler2D tex, vec2 px, vec4 c, float sharpness) {
 // The mean of the picture (bilinear) at four diagonal points r picture pixels from px: a small, even blur.
 vec4 around(sampler2D tex, vec2 px, float r) {
   vec2 inv = 1.0 / vec2(u_size);
-  return 0.25 * (textureLod(tex, (px + vec2(r, r)) * inv, 0.0) + textureLod(tex, (px + vec2(-r, r)) * inv, 0.0)
-               + textureLod(tex, (px + vec2(r, -r)) * inv, 0.0) + textureLod(tex, (px + vec2(-r, -r)) * inv, 0.0));
+  return 0.25 * (premultiplied(textureLod(tex, (px + vec2(r, r)) * inv, 0.0)) + premultiplied(textureLod(tex, (px + vec2(-r, r)) * inv, 0.0))
+               + premultiplied(textureLod(tex, (px + vec2(r, -r)) * inv, 0.0)) + premultiplied(textureLod(tex, (px + vec2(-r, -r)) * inv, 0.0)));
 }
 
 // Magnified: the colour is softened a little (so the picture's pixels do not show as blocks), then sharpened by CAS, and last the
 // cloud's edge (its opacity) is softened, so the boundary of a cloud is a smooth curve, not a staircase. Colour stays premultiplied
 // and never exceeds the opacity.
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
-  if (!magnifying) return textureGrad(tex, uv, gx, gy); // explicit gradients: safe inside a per-pixel branch
+  if (!magnifying) return premultiplied(textureGrad(tex, uv, gx, gy)); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
   if (c.a <= 0.001 && around(tex, px, 1.0).a <= 0.001) return c; // clear ground, well away from any cloud
   c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5);
@@ -236,8 +243,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     this.slots.set(frame.key, slot);
     try {
       const blob = await (await fetch(frame.url)).blob();
-      // premultiplied, so cloud edges blend cleanly when filtered
-      const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'premultiply', colorSpaceConversion: 'none' });
+      // straight colour (premultiplied by the shader in full precision): 8-bit premultiplied storage bands the colour of faint cloud
+      const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
       if (this.slots.get(frame.key) !== slot) {
         bitmap.close(); // released while it was loading
         return;
