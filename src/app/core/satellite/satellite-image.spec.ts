@@ -19,6 +19,7 @@ import {
   sampleLumaGrid,
   satelliteCoordinates,
   shadePixel,
+  hrvCloudKeep,
   toOverlayPixels,
 } from './satellite-image';
 
@@ -309,7 +310,7 @@ describe('twilight terminator blending and luma hover grid', () => {
     const hrv = new Uint8ClampedArray(w * h * 4);
     const ir = new Uint8ClampedArray(w * h * 4);
     for (let i = 0; i < w * h; i++) {
-      hrv.set([20, 20, 20, 255], i * 4); // a dim, real picture everywhere
+      hrv.set(i % w >= w - 3 ? [200, 200, 230, 255] : [20, 20, 20, 255], i * 4); // dim ground, with cloud in the far east
       ir.set([220, 220, 220, 255], i * 4); // cold bright cloud everywhere
     }
     // 00:45 UTC on equinox: sun is rising in the east (97.5E ~ +11 deg) and still dark in the west (68E ~ -16 deg)
@@ -323,7 +324,28 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(west[2]).toBeLessThan(120);
     // East is in daylight: it is the HRV picture, with at most a trace of the infrared where the sun is still low
     expect(east[3]).toBe(255);
-    for (let c = 0; c < 3; c++) expect(Math.abs(east[c] - 20)).toBeLessThan(15);
+    for (let c = 0; c < 3; c++) expect(Math.abs(east[c] - [200, 200, 230][c])).toBeLessThan(15);
+  });
+
+  it('takes out the clear ground of an HRV picture and keeps every cloud pixel with its own colour', () => {
+    const w = 600, h = 400; // about 5 km a pixel, so the ground window (65 km) is wider than the clouds
+    const src = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const lowCloud = x >= 80 && x < 100 && y >= 80 && y < 100; // sunlit, yellowish, not cold
+        const highCloud = x >= 360 && x < 400 && y >= 140 && y < 190; // white and lavender
+        const rgb = lowCloud ? [150, 140, 90] : highCloud ? [215, 215, 240] : [95, 85, 40]; // yellow land
+        src.set([...rgb, 255], (y * w + x) * 4);
+      }
+    }
+    const keep = hrvCloudKeep(src, w, h);
+    expect(keep[300 * w + 250]).toBeLessThan(0.05); // plain ground
+    expect(keep[90 * w + 90]).toBeGreaterThan(0.9); // low cloud stays
+    expect(keep[160 * w + 380]).toBeGreaterThan(0.9); // high cloud stays
+    const out = toOverlayPixels(src, w, h, 'hrv', h);
+    const o = (160 * w + 380) * 4;
+    expect(Array.from(out.slice(o, o + 3))).toEqual([215, 215, 240]); // colour untouched
+    expect(out[(300 * w + 250) * 4 + 3]).toBeLessThan(15);
   });
 
   it('builds and samples the compact luma grid accurately by lat/lon', () => {

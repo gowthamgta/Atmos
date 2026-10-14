@@ -218,6 +218,7 @@ export function shadePixel(
   background: number,
   out: Uint8ClampedArray,
   o: number,
+  keep = 1,
 ): void {
   if (r + g + b === 0) {
     out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
@@ -229,7 +230,8 @@ export function shadePixel(
     // the red and green (a real HRV pixel has about as much blue as red, or much less) counts as no data too, which clears the violet line
     const blueHeavy = smoothstep(1.7, 2.8, b / Math.max(hrv, 1));
     const hasHrv = Math.min(smoothstep(2, 7, hrv), 1 - blueHeavy);
-    const hrvAlpha = smoothstep(3, 14, Math.max(r, g, b));
+    // `keep` (see hrvCloudKeep) is how much of the pixel is cloud rather than clear ground; its colour is left as it is
+    const hrvAlpha = smoothstep(3, 14, Math.max(r, g, b)) * keep;
     if (hasHrv >= 1) {
       out[o] = r; out[o + 1] = g; out[o + 2] = b;
       out[o + 3] = Math.round(255 * hrvAlpha);
@@ -256,6 +258,181 @@ export function shadePixel(
   out[o] = cr; out[o + 1] = cg; out[o + 2] = cb; out[o + 3] = ca;
 }
 
+// ── Ground removal (HRV by day) ──
+// The picture's land is yellow and its sea dark. Cloud is whatever stands out from the clear ground around it: brighter (low, sunlit
+// cloud, which stays yellowish) or colder (the blue channel is the infrared: high cloud is white and lavender). The ground under each place
+// is the low end (22nd percentile) of the picture over about 65 km around it, which cloud never is, measured on a coarse grid. A pixel's own
+// colour is never changed: only its opacity says how much of it is cloud, so low and high cloud still differ in colour. The measure errs towards keeping.
+const GROUND_PERCENTILE = 0.22;
+const GROUND_RADIUS_KM = 65;
+/** The excess over the ground (0 to 255) at which a pixel starts to count as cloud, and where it is all cloud. */
+const KEEP_FROM = 7;
+const KEEP_FULL = 30;
+
+/** The `pct` percentile (0..1) of a coarse plane (values 0..255, -1 for no data) in a square window of `radius` around each cell. */
+function windowPercentile(plane: Int16Array, w: number, h: number, radius: number, pct: number): Float32Array {
+  const out = new Float32Array(w * h);
+  const hist = new Int32Array(128);
+  for (let y = 0; y < h; y++) {
+    hist.fill(0);
+    let n = 0;
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(h - 1, y + radius);
+    const edit = (x: number, sign: number): void => {
+      if (x < 0 || x >= w) return;
+      for (let yy = y0; yy <= y1; yy++) {
+        const v = plane[yy * w + x];
+        if (v >= 0) {
+          hist[v >> 1] += sign;
+          n += sign;
+        }
+      }
+    };
+    for (let x = 0; x <= radius; x++) edit(x, 1);
+    for (let x = 0; x < w; x++) {
+      if (x > 0) {
+        edit(x - radius - 1, -1);
+        edit(x + radius, 1);
+      }
+      if (n === 0) {
+        out[y * w + x] = 60;
+        continue;
+      }
+      const target = n * pct;
+      let acc = 0;
+      let bin = 0;
+      for (; bin < 127; bin++) {
+        acc += hist[bin];
+        if (acc >= target) break;
+      }
+      out[y * w + x] = bin * 2 + 1;
+    }
+  }
+  return out;
+}
+
+/** The `pct` percentile (0..1) of all the valid cells (not -1) of a coarse plane. */
+function planePercentile(plane: Int16Array, pct: number): number {
+  const hist = new Int32Array(256);
+  let n = 0;
+  for (const v of plane) {
+    if (v >= 0) {
+      hist[v]++;
+      n++;
+    }
+  }
+  let acc = 0;
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= n * pct) return v;
+  }
+  return 255;
+}
+
+/** Separable box blur of a plane, `passes` times (edges clamped), in place. */
+function boxBlur(plane: Float32Array, w: number, h: number, radius: number, passes: number): void {
+  const tmp = new Float32Array(plane.length);
+  const norm = 1 / (2 * radius + 1);
+  for (let p = 0; p < passes; p++) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let s = 0;
+        for (let k = -radius; k <= radius; k++) s += plane[y * w + Math.min(w - 1, Math.max(0, x + k))];
+        tmp[y * w + x] = s * norm;
+      }
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let s = 0;
+        for (let k = -radius; k <= radius; k++) s += tmp[Math.min(h - 1, Math.max(0, y + k)) * w + x];
+        plane[y * w + x] = s * norm;
+      }
+    }
+  }
+}
+
+/**
+ * How much of each pixel of an HRV picture is cloud (0 = the clear ground, 1 = cloud), from how far it stands out from the ground around
+ * it. `width` x `height` is the picture, which covers `b`.
+ */
+export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b = SATELLITE_BOUNDS): Float32Array {
+  const midLat = (b.north + b.south) / 2;
+  const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
+  const stride = Math.max(1, Math.round(width / 250));
+  const gw = Math.ceil(width / stride);
+  const gh = Math.ceil(height / stride);
+  const lumPlane = new Int16Array(gw * gh).fill(-1);
+  const bluePlane = new Int16Array(gw * gh).fill(-1);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const p = (Math.min(height - 1, gy * stride) * width + Math.min(width - 1, gx * stride)) * 4;
+      if (src[p] + src[p + 1] + src[p + 2] < 12) continue; // the empty corners are not ground
+      lumPlane[gy * gw + gx] = (src[p] + src[p + 1]) >> 1;
+      bluePlane[gy * gw + gx] = src[p + 2];
+    }
+  }
+  const radius = Math.min(14, Math.max(3, Math.round(GROUND_RADIUS_KM / (kmPerPx * stride))));
+  const lumGround = windowPercentile(lumPlane, gw, gh, radius, GROUND_PERCENTILE);
+  const blueGround = windowPercentile(bluePlane, gw, gh, radius, GROUND_PERCENTILE);
+  // a cloud mass wider than the window would count as ground: the ground is never brighter than most of the whole picture
+  const lumCap = planePercentile(lumPlane, 0.6);
+  const blueCap = planePercentile(bluePlane, 0.6);
+  for (let i = 0; i < lumGround.length; i++) {
+    lumGround[i] = Math.min(lumGround[i], lumCap);
+    blueGround[i] = Math.min(blueGround[i], blueCap);
+  }
+  boxBlur(lumGround, gw, gh, 2, 2);
+  boxBlur(blueGround, gw, gh, 2, 2);
+
+  // each column's and row's place on the coarse grid
+  const cx0 = new Int32Array(width);
+  const cx1 = new Int32Array(width);
+  const cwx = new Float32Array(width);
+  for (let x = 0; x < width; x++) {
+    const f = Math.min(gw - 1, Math.max(0, (x + 0.5) / stride - 0.5));
+    cx0[x] = Math.floor(f);
+    cx1[x] = Math.min(gw - 1, cx0[x] + 1);
+    cwx[x] = f - cx0[x];
+  }
+  const excess = new Float32Array(width * height);
+  const keep = new Float32Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const f = Math.min(gh - 1, Math.max(0, (y + 0.5) / stride - 0.5));
+    const r0 = Math.floor(f) * gw;
+    const r1 = Math.min(gh - 1, Math.floor(f) + 1) * gw;
+    const wy = f - Math.floor(f);
+    for (let x = 0; x < width; x++) {
+      const p = (y * width + x) * 4;
+      if (src[p] + src[p + 1] + src[p + 2] < 12) continue;
+      const bil = (plane: Float32Array): number =>
+        (plane[r0 + cx0[x]] * (1 - cwx[x]) + plane[r0 + cx1[x]] * cwx[x]) * (1 - wy) + (plane[r1 + cx0[x]] * (1 - cwx[x]) + plane[r1 + cx1[x]] * cwx[x]) * wy;
+      const e = Math.max((src[p] + src[p + 1]) / 2 - bil(lumGround), 0.8 * (src[p + 2] - bil(blueGround)));
+      excess[y * width + x] = e;
+      keep[y * width + x] = smoothstep(KEEP_FROM, KEEP_FULL, e);
+    }
+  }
+  // thin cloud beside thick cloud belongs to it: strong opacity spreads two pixels, where there is some excess at all
+  const rowMax = new Float32Array(keep.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let m = 0;
+      for (let k = -2; k <= 2; k++) m = Math.max(m, keep[y * width + Math.min(width - 1, Math.max(0, x + k))]);
+      rowMax[y * width + x] = m;
+    }
+  }
+  const spread = new Float32Array(keep.length);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let m = 0;
+      for (let k = -2; k <= 2; k++) m = Math.max(m, rowMax[Math.min(height - 1, Math.max(0, y + k)) * width + x]);
+      spread[y * width + x] = m;
+    }
+  }
+  for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.85 * spread[i] * smoothstep(3, 9, excess[i]));
+  boxBlur(keep, width, height, 1, 1);
+  return keep;
+}
+
 /**
  * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set colour and
  * opacity (see shadePixel). `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
@@ -275,6 +452,7 @@ export function toOverlayPixels(
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
+  const cloud = kind === 'hrv' ? hrvCloudKeep(src, width, srcHeight, b) : null;
   const irOverlay =
     twilightIr && kind === 'hrv' && timeMs !== undefined
       ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', outHeight, undefined, undefined, b)
@@ -299,6 +477,7 @@ export function toOverlayPixels(
         src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
         src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
         background, out, o,
+        cloud ? cloud[y0 * width + x] * (1 - w) + cloud[y1 * width + x] * w : 1,
       );
       if (irOverlay && timeMs !== undefined) {
         const lon = b.west + ((x + 0.5) / width) * (b.east - b.west);
