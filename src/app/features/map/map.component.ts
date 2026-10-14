@@ -1,5 +1,6 @@
 import {
   Component,
+  computed,
   OnInit,
   OnDestroy,
   inject,
@@ -321,7 +322,7 @@ export class MapComponent implements OnInit, OnDestroy {
   // Reactive Effect: the 90 m relief shaded into the radar echoes (the same terrain, light and strength as the forecast colours; the Terrain relief switch)
   private radarReliefEffect = effect(() => {
     const data = this.terrain.data();
-    const strength = this.forecastState.relief() ? RELIEF_STRENGTH : 0;
+    const strength = this.forecastState.relief() && !this.plainBasemap() ? RELIEF_STRENGTH : 0;
     this.radarService.displayed(); // the layer exists once there is a picture to show
     const layer = this.radarLayer;
     if (!layer) return;
@@ -440,17 +441,29 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
-  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle)
+  /** Radar and satellite pictures sit on a plain, light basemap (no relief, no minor roads), like Windy's: the picture is what you came to see. */
+  private plainBasemap = computed(() => this.layerService.layers().some(l => (l.id === 'radar' || l.id === 'satellite') && l.active));
+
+  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle, and off under radar and satellite) and the minor roads
   private reliefEffect = effect(() => {
-    const visible = this.forecastState.relief();
+    const visible = this.forecastState.relief() && !this.plainBasemap();
+    const plain = this.plainBasemap();
     if (!this.map || !this.isMapLoaded()) return;
     this.setHillshadeVisible(visible);
+    this.setRoadsVisible(!plain);
   });
 
   private setHillshadeVisible(visible: boolean): void {
     if (!this.map) return;
     if (this.map.getLayer('dark-hillshade-layer')) {
       this.map.setLayoutProperty('dark-hillshade-layer', 'visibility', visible ? 'visible' : 'none');
+    }
+  }
+
+  private setRoadsVisible(visible: boolean): void {
+    if (!this.map) return;
+    for (const id of ['base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
+      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
     }
   }
 
@@ -1104,10 +1117,11 @@ export class MapComponent implements OnInit, OnDestroy {
 
   private syncBasemap(type: string = 'dark'): void {
     if (!this.map || !this.isMapLoaded()) return;
-    for (const id of ['base-water', 'base-border', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
+    for (const id of ['base-water', 'base-border']) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
-    this.setHillshadeVisible(this.forecastState.relief());
+    this.setRoadsVisible(!this.plainBasemap());
+    this.setHillshadeVisible(this.forecastState.relief() && !this.plainBasemap());
   }
 
   private syncZoomVisuals(): void {
