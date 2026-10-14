@@ -12,6 +12,13 @@ export interface RadarCropConfig {
 export interface RadarPaletteEntry {
   rgb: [number, number, number];
   dbz: number;
+  /** How far each colour channel may be from `rgb` and still count as this swatch (6 when absent). */
+  tol?: number;
+  /**
+   * A colour the basemap also uses (white, cream, light blue, the sea): it counts as an echo only where echoes of the other colours
+   * are next to it, so the strong core of a cell is kept and a white label or a stretch of sea is not.
+   */
+  context?: boolean;
 }
 
 export interface RadarProductConfig {
@@ -317,6 +324,36 @@ const SHR_PPI_BANDS: [[number, number, number], number][] = [
 
 const shrPalette = (bands: [[number, number, number], number][]): RadarPaletteEntry[] => [...bands].reverse().map(([rgb, dbz]) => ({ rgb, dbz }));
 
+// Chennai (S-Band) MAX(Z) picture: 16 swatches, 20 to 60 dBZ in steps of 2.5 (read off the picture's colour bar; the middle of each step is
+// the dBZ; strongest first, and a swatch the GIF draws in two nearby colours has both). The picture's sea is light blue and its labels white, so those swatches count only next to other echoes. The picture's
+// GIF repeats one colour for two steps in places (yellow-orange for 42.5 to 47.5), so that colour takes the middle, 45.
+const CNI_CAZ_PALETTE: RadarPaletteEntry[] = [
+  { rgb: [153, 0, 51], dbz: 61 }, { rgb: [102, 0, 51], dbz: 61 }, { rgb: [153, 0, 0], dbz: 58 }, { rgb: [204, 0, 0], dbz: 53.75 },
+  { rgb: [255, 51, 0], dbz: 51.25 }, { rgb: [255, 102, 0], dbz: 48.75 }, { rgb: [255, 204, 0], dbz: 45 }, { rgb: [255, 255, 0], dbz: 43.75 },
+  { rgb: [255, 255, 204], dbz: 41.25, context: true }, { rgb: [255, 255, 255], dbz: 38.75, context: true },
+  { rgb: [153, 255, 255], dbz: 36.25, context: true }, { rgb: [102, 255, 255], dbz: 36.25, context: true }, { rgb: [102, 204, 255], dbz: 33.75, context: true },
+  { rgb: [51, 153, 255], dbz: 31.25 }, { rgb: [0, 153, 255], dbz: 31.25 }, { rgb: [0, 102, 255], dbz: 28.75 }, { rgb: [0, 51, 255], dbz: 26.25 },
+  { rgb: [0, 0, 204], dbz: 23.75 }, { rgb: [0, 0, 153], dbz: 21.25 },
+];
+
+// Karaikal (S-Band) MAX(Z) picture: its colour scale is a smooth gradient from 20 dBZ (indigo) through blue, cyan, white, yellow and
+// orange to red at 60 (sampled down the picture's colour bar every 3 pixels). Echoes take any shade along it, so a pixel is matched to the
+// nearest sample. The pale and yellow end resembles the relief map, so from 36 dBZ up a pixel counts only next to other echoes.
+const KKL_RAMP: [number, number, number, number][] = [
+  [200, 0, 37, 60.2], [200, 0, 22, 59.7], [200, 0, 10, 59.1], [203, 4, 2, 58.6], [210, 11, 6, 58.1], [219, 21, 12, 57.6], [234, 39, 22, 57.1],
+  [241, 47, 27, 56.5], [255, 63, 34, 56.0], [255, 62, 27, 55.0], [255, 60, 14, 54.5], [255, 59, 8, 54.0], [255, 59, 4, 53.4], [255, 58, 0, 52.9],
+  [255, 59, 0, 52.4], [255, 60, 0, 51.9], [255, 61, 0, 51.4], [255, 62, 0, 50.9], [255, 78, 0, 49.8], [255, 86, 0, 49.3], [255, 103, 0, 48.8],
+  [255, 110, 0, 48.3], [255, 127, 0, 47.8], [255, 138, 0, 47.2], [255, 146, 0, 46.7], [255, 159, 0, 46.2], [255, 169, 0, 45.7], [255, 183, 0, 45.2],
+  [255, 193, 0, 44.7], [255, 197, 0, 44.1], [255, 206, 0, 43.6], [255, 214, 0, 43.1], [255, 222, 0, 42.6], [255, 229, 0, 42.1], [255, 237, 72, 41.5],
+  [255, 238, 88, 41.0], [255, 243, 135, 40.5], [255, 250, 207, 40.0], [255, 253, 231, 39.5], [234, 249, 255, 39.0], [207, 242, 255, 38.4],
+  [164, 230, 255, 37.9], [132, 222, 255, 37.4], [110, 216, 255, 36.9], [78, 205, 255, 36.4], [73, 201, 255, 35.9], [53, 185, 255, 35.3],
+  [46, 179, 255, 34.8], [35, 170, 255, 34.3], [26, 162, 255, 33.8], [22, 157, 255, 33.3], [18, 149, 255, 32.8], [12, 140, 255, 32.2],
+  [7, 132, 255, 31.7], [2, 125, 255, 31.2], [0, 115, 255, 30.7], [0, 102, 255, 30.2], [0, 92, 255, 29.7], [0, 72, 255, 29.1], [0, 64, 255, 28.6],
+  [0, 51, 254, 28.1], [0, 37, 240, 27.6], [0, 32, 233, 27.1], [0, 22, 223, 26.6], [0, 11, 212, 26.0], [0, 2, 203, 25.5], [11, 0, 193, 25.0],
+  [16, 0, 189, 24.5], [31, 0, 179, 24.0], [42, 0, 171, 23.4], [53, 0, 164, 22.9], [58, 0, 160, 22.4],
+];
+const KKL_CAZ_PALETTE: RadarPaletteEntry[] = KKL_RAMP.map(([r, g, b, dbz]) => ({ rgb: [r, g, b], dbz, tol: 12, context: dbz >= 36 }));
+
 /**
  * Factory helper to construct complete RadarStationConfig with all IMD products.
  */
@@ -429,7 +466,8 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       sri: { x: 0, y: 0, w: 720, h: 720 },
       pac: { x: 0, y: 0, w: 720, h: 720 },
       ppz: { x: 0, y: 0, w: 720, h: 720 }
-    }
+    },
+    palettes: { caz: KKL_CAZ_PALETTE }
   }),
   createImdStation({
     id: 'chennai',
@@ -455,7 +493,8 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       sri: { x: 0, y: 0, w: 600, h: 600 },
       pac: { x: 0, y: 0, w: 599, h: 599 },
       ppz: { x: 0, y: 0, w: 800, h: 800 }
-    }
+    },
+    palettes: { caz: CNI_CAZ_PALETTE }
   }),
   createImdStation({
     id: 'pallikaranai',

@@ -17,9 +17,9 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['chennai', 'caz', 'chennai-caz.gif', '924f1322'],
-  ['karaikal', 'caz', 'karaikal-caz.gif', 'ccc5dfd8'],
-  ['thiruvananthapuram', 'ppz', 'thiruvananthapuram-ppz.gif', '44e2091b'],
+  ['chennai', 'caz', 'chennai-caz.gif', '70d2d0c9'],
+  ['karaikal', 'caz', 'karaikal-caz.gif', 'c07966ae'],
+  ['thiruvananthapuram', 'ppz', 'thiruvananthapuram-ppz.gif', '792a72f7'],
 ];
 
 function load(file: string): ArrayBuffer {
@@ -72,3 +72,67 @@ describe('radar picture processing (the same code runs in the worker and on the 
     expect(still.bytes).toBeDefined();
   });
 });
+
+describe('radar intensity is kept as the picture gives it', () => {
+  const karaikal = IMD_RADAR_STATIONS.find(st => st.id === 'karaikal')!.products.caz;
+  const chennai = IMD_RADAR_STATIONS.find(st => st.id === 'chennai')!.products.caz;
+  const SEA: [number, number, number] = [190, 190, 190];
+  const N = 120;
+
+  /** A 120 x 120 picture of plain basemap with the given pixels painted on it (colours by [x, y]). */
+  function picture(paint: Record<string, [number, number, number]>, background: [number, number, number] = SEA): Uint8Array {
+    const rgba = new Uint8Array(N * N * 4);
+    for (let i = 0; i < N * N; i++) rgba.set([...background, 255], i * 4);
+    for (const [key, rgb] of Object.entries(paint)) {
+      const [x, y] = key.split(',').map(Number);
+      rgba.set([...rgb, 255], (y * N + x) * 4);
+    }
+    return rgba;
+  }
+  const block = (x0: number, y0: number, w: number, h: number, rgb: [number, number, number]) => {
+    const p: Record<string, [number, number, number]> = {};
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) p[`${x},${y}`] = rgb;
+    return p;
+  };
+  const run = (rgba: Uint8Array, palette: typeof karaikal.palette) => processRadarPixels(rgba, N, N, { palette, isTransparent: true, isXBand: false });
+  const peak = (f: Float32Array) => f.reduce((m, v) => Math.max(m, v), 0);
+  const dbz = (v: number) => 12 + 9.6 * v;
+
+  it('shows a small strong cell at the strength the radar measured, not a blurred-down one', () => {
+    // 4 x 4 picture pixels of 42 dBZ (the yellow of the scale of Karaikal), about 4 km across, inside a ring of 30 dBZ as every strong core is
+    const out = run(picture({ ...block(48, 48, 8, 8, [0, 102, 255]), ...block(50, 50, 4, 4, [255, 229, 0]) }), karaikal.palette);
+    expect(dbz(peak(out))).toBeGreaterThan(40);
+    expect(dbz(peak(out))).toBeLessThan(45);
+  });
+
+  it('reads every shade of the smooth colour scale of Karaikal as its own intensity', () => {
+    const weak = run(picture(block(50, 50, 6, 6, [58, 0, 160])), karaikal.palette);        // 20 to 22.7 dBZ: the bottom of the scale
+    const middle = run(picture(block(50, 50, 6, 6, [0, 102, 255])), karaikal.palette);     // 30 dBZ
+    const strong = run(picture({ ...block(47, 47, 10, 10, [0, 102, 255]), ...block(50, 50, 4, 4, [255, 110, 0]) }), karaikal.palette);     // 48 dBZ
+    expect(dbz(peak(weak))).toBeGreaterThan(21);
+    expect(dbz(peak(weak))).toBeLessThan(24);
+    expect(dbz(peak(middle))).toBeGreaterThan(29);
+    expect(dbz(peak(middle))).toBeLessThan(32);
+    expect(dbz(peak(strong))).toBeGreaterThan(46);
+    expect(dbz(peak(strong))).toBeLessThan(50);
+  });
+
+  it('keeps the white, cream and light-blue cores of a strong cell, but not a white label or a stretch of sea on its own', () => {
+    const ring = block(50, 50, 8, 8, [0, 102, 255]);                                         // 30 dBZ ring...
+    const core = block(52, 52, 4, 4, [255, 255, 255]);                                       // ...with a white 38 dBZ core
+    const cell = run(picture({ ...ring, ...core }), chennai.palette);
+    expect(dbz(peak(cell))).toBeGreaterThan(37);
+    const label = run(picture(block(50, 50, 10, 4, [255, 255, 255])), chennai.palette);       // a white label on the basemap
+    expect(peak(label)).toBe(0);
+    const sea = run(picture({}, [102, 204, 255]), chennai.palette);                           // Chennai's sea is the colour of the 33 dBZ swatch
+    expect(peak(sea)).toBe(0);
+  });
+
+  it('keeps a small cell of a few picture pixels, and leaves out a lone speck', () => {
+    const cell = run(picture(block(60, 60, 3, 3, [0, 51, 255])), chennai.palette);            // 26 dBZ, 3 x 3 pixels
+    expect(peak(cell)).toBeGreaterThan(1.2);
+    const speck = run(picture({ '60,60': [0, 51, 255] }), chennai.palette);
+    expect(peak(speck)).toBe(0);
+  });
+});
+

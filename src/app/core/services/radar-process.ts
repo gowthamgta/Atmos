@@ -30,22 +30,30 @@ export function layoutMatches(crop: RadarCropConfig | undefined, w: number, h: n
 const RADAR_BLUR_SIGMA_PX = 2.6;
 
 // ── Radial interference (spoke) removal ──
-// Sun strikes and RF interference paint long, thin wedges that point straight at the radar.
-// Real rain is spread across neighbouring azimuths; a spoke is not. Each 0.5° ray's echo fill is
-// compared with the rays 3°–6° to either side, and rays that stand out alone are cleared.
+// Sun strikes and RF interference paint long, thin wedges that point straight at the radar and run all the way out.
+// Real rain is spread across neighbouring azimuths, and even a band that points at the radar covers only part of the range.
+// Each 0.5° ray's echo fill is compared with the rays 3°–6° to either side, and rays that stand out alone are cleared,
+// but only when the echo runs all the way out to the edge of the range and back through the middle or the inner part: a real rain band
+// pointing at the radar is narrow in azimuth too, and would otherwise be taken for a spoke and deleted.
 const SPOKE_AZIMUTH_BINS = 720;
 const SPOKE_MIN_FILL = 0.2;
 const SPOKE_FLANK_RATIO = 0.25;
 const SPOKE_MIN_RADIUS_PX = 24;
-const spokeGeometryCache = new Map<number, { bins: Int16Array; totals: Float64Array }>();
+const SPOKE_THIRDS = 3;
+const SPOKE_MIN_THIRD_FILL = 0.3;
+const SPOKE_MIN_OUTER_FILL = 0.6;
+interface SpokeGeometry { bins: Int16Array; thirds: Uint8Array; totals: Float64Array; thirdTotals: Float64Array }
+const spokeGeometryCache = new Map<number, SpokeGeometry>();
 
-function getSpokeGeometry(size: number): { bins: Int16Array; totals: Float64Array } {
+function getSpokeGeometry(size: number): SpokeGeometry {
   let geom = spokeGeometryCache.get(size);
   if (geom) return geom;
   const half = size / 2;
   const maxR = half - 2;
   const bins = new Int16Array(size * size).fill(-1);
+  const thirds = new Uint8Array(size * size);
   const totals = new Float64Array(SPOKE_AZIMUTH_BINS);
+  const thirdTotals = new Float64Array(SPOKE_AZIMUTH_BINS * SPOKE_THIRDS);
   for (let y = 0; y < size; y++) {
     const dy = y - half;
     for (let x = 0; x < size; x++) {
@@ -55,11 +63,14 @@ function getSpokeGeometry(size: number): { bins: Int16Array; totals: Float64Arra
       let a = Math.atan2(dy, dx);
       if (a < 0) a += 2 * Math.PI;
       const bin = Math.floor((a / (2 * Math.PI)) * SPOKE_AZIMUTH_BINS) % SPOKE_AZIMUTH_BINS;
+      const third = Math.min(SPOKE_THIRDS - 1, Math.floor(((r - SPOKE_MIN_RADIUS_PX) / (maxR - SPOKE_MIN_RADIUS_PX)) * SPOKE_THIRDS));
       bins[y * size + x] = bin;
+      thirds[y * size + x] = third;
       totals[bin]++;
+      thirdTotals[bin * SPOKE_THIRDS + third]++;
     }
   }
-  geom = { bins, totals };
+  geom = { bins, thirds, totals, thirdTotals };
   spokeGeometryCache.set(size, geom);
   return geom;
 }
@@ -69,10 +80,14 @@ function getSpokeGeometry(size: number): { bins: Int16Array; totals: Float64Arra
  * Returns the number of cleared pixels.
  */
 export function removeRadialInterference(grid: Float32Array, size: number): number {
-  const { bins, totals } = getSpokeGeometry(size);
+  const { bins, thirds, totals, thirdTotals } = getSpokeGeometry(size);
   const echo = new Float64Array(SPOKE_AZIMUTH_BINS);
+  const echoThird = new Float64Array(SPOKE_AZIMUTH_BINS * SPOKE_THIRDS);
   for (let i = 0; i < grid.length; i++) {
-    if (grid[i] > 0 && bins[i] >= 0) echo[bins[i]]++;
+    if (grid[i] > 0 && bins[i] >= 0) {
+      echo[bins[i]]++;
+      echoThird[bins[i] * SPOKE_THIRDS + thirds[i]]++;
+    }
   }
   const fill = new Float64Array(SPOKE_AZIMUTH_BINS);
   for (let a = 0; a < SPOKE_AZIMUTH_BINS; a++) {
@@ -83,6 +98,13 @@ export function removeRadialInterference(grid: Float32Array, size: number): numb
   let anySpoke = false;
   for (let a = 0; a < SPOKE_AZIMUTH_BINS; a++) {
     if (fill[a] < SPOKE_MIN_FILL) continue;
+    const thirdFill = (t: number) => {
+      const n = thirdTotals[a * SPOKE_THIRDS + t];
+      return n > 0 ? echoThird[a * SPOKE_THIRDS + t] / n : 0;
+    };
+    // a spoke runs out to the edge of the range (the outer third is nearly solid) and back through the middle or the inner part; a rain band
+    // that points at the radar ends somewhere inside the range
+    if (thirdFill(SPOKE_THIRDS - 1) < SPOKE_MIN_OUTER_FILL || Math.max(thirdFill(0), thirdFill(1)) < SPOKE_MIN_THIRD_FILL) continue;
     let flankSum = 0;
     let flankCount = 0;
     for (let k = 6; k <= 12; k++) {
@@ -179,26 +201,39 @@ export function classifyRainPixel(
   return 0.0;
 }
 
-function classifyPalettePixel(r: number, g: number, b: number, palette: RadarPaletteEntry[]): number {
-  const tolerance = 6;
+/** The legend swatch nearest to a colour (every channel within the swatch's tolerance), as an intensity, or null when it is none of them. */
+function matchPalette(r: number, g: number, b: number, palette: RadarPaletteEntry[]): { value: number; context: boolean } | null {
+  let best: RadarPaletteEntry | null = null;
+  let bestDistance = Infinity;
   for (const entry of palette) {
-    const [pr, pg, pb] = entry.rgb;
-    if (Math.abs(r - pr) <= tolerance && Math.abs(g - pg) <= tolerance && Math.abs(b - pb) <= tolerance) {
-      // Echoes below ~8 dBZ are clear-air returns / noise rather than precipitation
-      if (entry.dbz < 8) return 0.0;
-      return Math.max(0.3, (entry.dbz - 12) / 9.6);
+    const tolerance = entry.tol ?? 6;
+    const dr = Math.abs(r - entry.rgb[0]);
+    const dg = Math.abs(g - entry.rgb[1]);
+    const db = Math.abs(b - entry.rgb[2]);
+    if (dr > tolerance || dg > tolerance || db > tolerance) continue;
+    if (dr + dg + db < bestDistance) {
+      bestDistance = dr + dg + db;
+      best = entry;
     }
   }
-  return 0.0;
+  // Echoes below ~8 dBZ are clear-air returns / noise rather than precipitation
+  if (!best || best.dbz < 8) return null;
+  return { value: Math.max(0.3, (best.dbz - 12) / 9.6), context: !!best.context };
+}
+
+/** The intensity of a colour in a picture with an exact legend; a swatch the basemap also uses (see RadarPaletteEntry.context) needs its neighbours, so alone it is 0. */
+function classifyPalettePixel(r: number, g: number, b: number, palette: RadarPaletteEntry[]): number {
+  const hit = matchPalette(r, g, b, palette);
+  return hit && !hit.context ? hit.value : 0.0;
 }
 
 /**
- * The intensity field (1024 x 1024, `Float32Array`) of a decoded picture `rgba` of `w` x `h` pixels. The caller has checked
- * `layoutMatches`.
+ * The picture's own intensity, one class per pixel of its map panel (0 where there is no echo): the legend's colours read as intensity.
+ * `classes` is `crop.w` x `crop.h`, row 0 at the north edge.
  */
-export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number, opts: RadarPixelOptions): Float32Array {
+export function classifyRadarPicture(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number, opts: RadarPixelOptions): { classes: Float32Array; crop: { x: number; y: number; w: number; h: number } } {
   const { crop, palette } = opts;
-  // 1. Full Square Extent Crop Detection (Preserves all corner storm echoes)
+  // Full Square Extent Crop Detection (Preserves all corner storm echoes)
   let cropX = 0;
   let cropY = 0;
   let cropW = w;
@@ -221,17 +256,13 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
     cropH = h;
   }
 
-  // 2. High-Resolution Square Output Canvas (1024x1024 for smooth curved contours at deep zoom)
-  const outSize = RADAR_FIELD_SIZE;
-  const halfSize = outSize / 2;
-  const maxRadius = halfSize - 2; // Strict circular radar sweep boundary limit
-
-  let hasAnyEcho = false;
   const { isXBand, isTransparent } = opts;
 
-  // 3. Classify every source pixel once, at the image's own resolution. Resampling the colour classes (rather than
+  // Classify every source pixel once, at the image's own resolution. Resampling the colour classes (rather than
   // the picture) lets the intensity be interpolated smoothly below, instead of copying stair-stepped blocks.
   const classes = new Float32Array(cropW * cropH);
+  const colourHits = new Map<number, { value: number; context: boolean } | null>();   // a GIF has at most 256 colours: each is matched once
+  const needNeighbours: { index: number; value: number }[] = [];
   for (let sy = 0; sy < cropH; sy++) {
     const py = cropY + sy;
     if (py < 0 || py >= h) continue;
@@ -239,9 +270,58 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
       const px = cropX + sx;
       if (px < 0 || px >= w) continue;
       const srcIdx = (py * w + px) * 4;
-      classes[sy * cropW + sx] = classifyRainPixel(rgba[srcIdx], rgba[srcIdx + 1], rgba[srcIdx + 2], isTransparent, isXBand, palette);
+      const r = rgba[srcIdx];
+      const g = rgba[srcIdx + 1];
+      const b = rgba[srcIdx + 2];
+      if (palette && isTransparent) {
+        const key = (r << 16) | (g << 8) | b;
+        let hit = colourHits.get(key);
+        if (hit === undefined) {
+          hit = matchPalette(r, g, b, palette);
+          colourHits.set(key, hit);
+        }
+        if (hit && !hit.context) classes[sy * cropW + sx] = hit.value;
+        else if (hit) needNeighbours.push({ index: sy * cropW + sx, value: hit.value });
+      } else {
+        classes[sy * cropW + sx] = classifyRainPixel(r, g, b, isTransparent, isXBand, palette);
+      }
     }
   }
+  // the swatches the basemap also uses (white, cream, light blue) are echoes where echoes of the other colours are next to them: the strong
+  // core of a cell is kept, and a white label or a stretch of sea is not (judged on the other colours only, so a core does not make its sea a core)
+  if (needNeighbours.length > 0) {
+    const sure = classes.slice();
+    for (const { index, value } of needNeighbours) {
+      const cx = index % cropW;
+      const cy = Math.floor(index / cropW);
+      let around = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if ((dx !== 0 || dy !== 0) && cx + dx >= 0 && cx + dx < cropW && cy + dy >= 0 && cy + dy < cropH && sure[(cy + dy) * cropW + cx + dx] > 0) around++;
+        }
+      }
+      if (around >= 3) classes[index] = value;
+    }
+  }
+  return { classes, crop: { x: cropX, y: cropY, w: cropW, h: cropH } };
+}
+
+/**
+ * The intensity field (1024 x 1024, `Float32Array`) of a decoded picture `rgba` of `w` x `h` pixels. The caller has checked
+ * `layoutMatches`.
+ */
+export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number, opts: RadarPixelOptions): Float32Array {
+  const { classes, crop: { w: cropW, h: cropH } } = classifyRadarPicture(rgba, w, h, opts);
+  const { isTransparent } = opts;
+  const cropX = opts.crop ? opts.crop.x : 0;
+  const cropY = opts.crop ? opts.crop.y : 0;
+  // High-Resolution Square Output Canvas (1024x1024 for smooth curved contours at deep zoom)
+  const outSize = RADAR_FIELD_SIZE;
+  const halfSize = outSize / 2;
+  const maxRadius = halfSize - 2; // Strict circular radar sweep boundary limit
+
+  let hasAnyEcho = false;
+
   const rawGrid = resampleBilinear(classes, cropW, cropH, outSize);
 
   // Circular dish mask: completely clip anything outside the radar sweep circle
@@ -263,6 +343,9 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
     // High-gain receiver noise, clear-air boundary layer backscatter, sea clutter, and
     // radar transmitter artifacts produce isolated 1-to-4 pixel specks (such as Chennai S-Band's
     // concentric ring clutter at 150-250km).
+    const gridPerPixel = (outSize / cropW) * (outSize / cropH);
+    const minArea = Math.max(12, Math.round(8 * gridPerPixel));
+    const minStrongArea = Math.max(8, Math.round(4.5 * gridPerPixel));
     const visited = new Uint8Array(outSize * outSize);
     const queue = new Int32Array(outSize * outSize);
     const compIndices = new Int32Array(outSize * outSize);
@@ -309,9 +392,11 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
 
         // Meteorological Spatial Coherence Rules:
         // A detected echo is considered genuine precipitation only if:
-        // 1. It forms an extensive contiguous rain area (>= 60 pixels in the 1024x1024 grid, representing ~15 sq km)
-        // 2. OR it contains an active convective core (maxVal >= 1.4, i.e. >= 25 dBZ) with at least 15 pixels area
-        const isCoherentRain = compCount >= 60 || (maxVal >= 1.4 && compCount >= 15);
+        // 1. It covers a few of the picture's own pixels (about 3 or more, which is what a lone speck of noise does not)
+        // 2. OR it contains an active convective core (maxVal >= 1.4, i.e. >= 25 dBZ) at least 2 pixels wide
+        // The areas are counted on the 1024 grid, so they are scaled by how many grid pixels one picture pixel covers: a smaller
+        // radar picture (Chennai, 1 km a pixel) and a larger one (Pallikaranai) then keep the same small cells.
+        const isCoherentRain = compCount >= minArea || (maxVal >= 1.4 && compCount >= minStrongArea);
         if (!isCoherentRain) {
           for (let i = 0; i < compCount; i++) {
             rawGrid[compIndices[i]] = 0.0;
@@ -333,20 +418,12 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
   }
 
   if (isTransparent && hasAnyEcho) {
-    // 4. Natural continuous-field smoothing: Gaussian blur gives organic curved contours.
+    // 4. Natural continuous-field smoothing: a Gaussian blur gives organic curved contours at the edges of an echo.
     const baseBlur = blurSeparable(rawGrid, outSize, gaussianKernel(RADAR_BLUR_SIGMA_PX));
 
-    // Preserve authentic convective peak intensities (torrential rain and storm cores)
-    // by reconstructing the peak excess through a smooth diffusion filter rather than
-    // copying stair-stepped raw pixels.
-    const peakDiff = new Float32Array(outSize * outSize);
-    for (let i = 0; i < rawGrid.length; i++) {
-      if (rawGrid[i] > baseBlur[i]) {
-        peakDiff[i] = rawGrid[i] - baseBlur[i];
-      }
-    }
-    const smoothPeakDiff = blurSeparable(peakDiff, outSize, gaussianKernel(1.8));
-
+    // The intensity itself is never turned down: `rawGrid` is the picture's own intensity, smoothly interpolated (it passes through the
+    // value of every picture pixel), and the blur only adds a soft halo around it. A blur alone, or a blur with a re-built peak, takes a cell
+    // of one or two picture pixels down to a fraction of what the radar measured, so a 40 dBZ core came out as 25.
     // - Color mapping with smooth Hermite border feathering (blends seamlessly into terrain)
     for (let y = 0; y < outSize; y++) {
       const dy = y - halfSize;
@@ -357,7 +434,7 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
         const dishEdgeDist = maxRadius - dist;
         if (dishEdgeDist <= 0) continue;
 
-        let val = baseBlur[rowOffset + x] + smoothPeakDiff[rowOffset + x] * 1.25;
+        let val = Math.max(baseBlur[rowOffset + x], rawGrid[rowOffset + x]);
         if (val > 5.5) val = 5.5;
 
         if (dishEdgeDist < 8) {

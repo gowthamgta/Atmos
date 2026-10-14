@@ -390,7 +390,7 @@ describe('Radar legend palettes', () => {
       for (const product of Object.values(st.products)) {
         if (!product.palette) continue;
         for (let i = 1; i < product.palette.length; i++) {
-          expect(product.palette[i].dbz).toBeLessThan(product.palette[i - 1].dbz);
+          expect(product.palette[i].dbz).toBeLessThanOrEqual(product.palette[i - 1].dbz);   // equal: one swatch drawn in two nearby colours
         }
       }
     }
@@ -427,6 +427,23 @@ describe('Radial interference removal', () => {
     const before = grid.filter(v => v > 0).length;
     expect(removeRadialInterference(grid, size)).toBe(0);
     expect(grid.filter(v => v > 0).length).toBe(before);
+  });
+
+  it('keeps a rain band that points at the radar: it is narrow like a spoke but covers only part of the range', () => {
+    const grid = new Float32Array(size * size);
+    paint(grid, (r, deg) => r > 55 && r < 100 && Math.abs(deg - 130) < 2);           // 4 degrees wide, a third of the range long
+    const before = grid.filter(v => v > 0).length;
+    expect(before).toBeGreaterThan(50);
+    expect(removeRadialInterference(grid, size)).toBe(0);
+    expect(grid.filter(v => v > 0).length).toBe(before);
+  });
+
+  it('still removes a spoke that starts part-way out and runs to the edge of the range (as the interference on the base sweep does)', () => {
+    const grid = new Float32Array(size * size);
+    paint(grid, (r, deg) => r > 70 && Math.abs(deg - 300) < 1.2);
+    const before = grid.filter(v => v > 0).length;
+    expect(before).toBeGreaterThan(30);
+    expect(removeRadialInterference(grid, size)).toBe(before);
   });
 
   it('removes the spoke but keeps an adjacent storm', () => {

@@ -64,18 +64,20 @@ out vec4 outColor;
 ${TERRAIN_TILE_GLSL}
 ${rampGlsl()}
 
+// Catmull-Rom weights: the curve passes through every sample, so the intensity of a cell is what the radar measured. (A B-spline, which
+// averages its neighbours, takes a small cell down to a fraction of its strength; the field is already smoothed when it is built.)
 vec4 weights(float t) {
   float t2 = t * t;
   float t3 = t2 * t;
   return vec4(
-    (1.0 - 3.0 * t + 3.0 * t2 - t3) / 6.0,
-    (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0,
-    (1.0 + 3.0 * t + 3.0 * t2 - 3.0 * t3) / 6.0,
-    t3 / 6.0
+    -0.5 * t3 + t2 - 0.5 * t,
+    1.5 * t3 - 2.5 * t2 + 1.0,
+    -1.5 * t3 + 2.0 * t2 + 0.5 * t,
+    0.5 * t3 - 0.5 * t2
   );
 }
 
-// Bicubic intensity with uniform cubic B-spline filter for C2 continuity and silky smooth contours.
+// Bicubic (Catmull-Rom) intensity: smooth contours at any zoom, and the strength of every cell kept.
 float bicubic(vec2 px) {
   vec2 p = px - 0.5;
   ivec2 i1 = ivec2(floor(p));
