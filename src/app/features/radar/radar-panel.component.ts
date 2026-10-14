@@ -206,7 +206,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .legend { margin-top: 10px; }
-    .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3ad9e4 0%, #00a33f 20%, #afc600 40%, var(--warn) 60%, #ef4444 80%, #a855f7 100%); }
+    .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #3a00a0 0%, #0020e9 16%, #027dff 36%, #6ed8ff 50%, #fffde7 56%, #ffe500 64%, #ff9f00 76%, #ff3e00 88%, #c80025 100%); }
     .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: var(--fs-xs); color: var(--text-secondary); }
     @media (max-width: 700px) { .panel { width: min(260px, calc(100vw - 24px)); } }
   `]

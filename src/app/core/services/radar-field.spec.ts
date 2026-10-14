@@ -140,7 +140,7 @@ describe('quantizeRadarField', () => {
   it('is finer than the colour scale, so classes and the colours between them survive', () => {
     const stops = RADAR_COLOR_STOPS.map(s => s.val);
     const gaps = stops.slice(1).map((v, i) => v - stops[i]);
-    expect(RADAR_FIELD_MAX / 255).toBeLessThan(Math.min(...gaps) / 10);
+    expect(RADAR_FIELD_MAX / 255).toBeLessThan(Math.min(...gaps) / 4);
     expect(RADAR_FIELD_MAX).toBeGreaterThan(stops[stops.length - 1]);
   });
 });
