@@ -91,34 +91,15 @@ export function echoAlphaFeather(v: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/**
- * The radar colour scale: intensity (0 = nothing; v = (dBZ - 12) / 9.6, so 1.08 is 22 dBZ and 5 is 60 dBZ) to colour and opacity. These are
- * IMD's own colours (sampled down the colour bar of the Karaikal MAX(Z) picture): indigo, blue, azure, cyan, white, yellow, orange, red,
- * crimson, so an echo looks the way it does on the radar's own picture.
- */
+/** The radar colour scale: intensity (0 = nothing, 1.2 light rain, 3 heavy 36+ dBZ, 5.2 hail) to colour and opacity. */
 export const RADAR_COLOR_STOPS = [
-  { val: 0.0, r: 58, g: 0, b: 160, a: 0.0 }, // Transparent
-  { val: 0.3, r: 58, g: 0, b: 160, a: 0.6 }, // the faintest echoes (about 12 to 20 dBZ)
-  { val: 1.08, r: 58, g: 0, b: 160, a: 0.85 }, // 22.4 dBZ
-  { val: 1.35, r: 11, g: 0, b: 193, a: 0.9 }, // 25 dBZ
-  { val: 1.57, r: 0, g: 32, b: 233, a: 0.92 }, // 27.1 dBZ
-  { val: 1.78, r: 0, g: 72, b: 255, a: 0.94 }, // 29.1 dBZ
-  { val: 2, r: 2, g: 125, b: 255, a: 0.95 }, // 31.2 dBZ
-  { val: 2.22, r: 22, g: 157, b: 255, a: 0.96 }, // 33.3 dBZ
-  { val: 2.43, r: 53, g: 185, b: 255, a: 0.97 }, // 35.3 dBZ
-  { val: 2.59, r: 110, g: 216, b: 255, a: 0.98 }, // 36.9 dBZ
-  { val: 2.75, r: 207, g: 242, b: 255, a: 0.98 }, // 38.4 dBZ
-  { val: 2.86, r: 255, g: 253, b: 231, a: 0.99 }, // 39.5 dBZ
-  { val: 2.97, r: 255, g: 243, b: 135, a: 1 }, // 40.5 dBZ
-  { val: 3.14, r: 255, g: 229, b: 0, a: 1 }, // 42.1 dBZ
-  { val: 3.34, r: 255, g: 197, b: 0, a: 1 }, // 44.1 dBZ
-  { val: 3.56, r: 255, g: 159, b: 0, a: 1 }, // 46.2 dBZ
-  { val: 3.78, r: 255, g: 110, b: 0, a: 1 }, // 48.3 dBZ
-  { val: 4.05, r: 255, g: 62, b: 0, a: 1 }, // 50.9 dBZ
-  { val: 4.38, r: 255, g: 59, b: 8, a: 1 }, // 54 dBZ
-  { val: 4.58, r: 255, g: 63, b: 34, a: 1 }, // 56 dBZ
-  { val: 4.8, r: 210, g: 11, b: 6, a: 1 }, // 58.1 dBZ
-  { val: 5.02, r: 200, g: 0, b: 37, a: 1 } // 60 dBZ
+  { val: 0.0, r: 58, g: 217, b: 228, a: 0.00 }, // Transparent
+  { val: 0.5, r: 58, g: 217, b: 228, a: 0.65 }, // #3ad9e4ff (Light Echo, < 18 dBZ)
+  { val: 1.2, r: 0, g: 163, b: 63, a: 0.82 },   // #00a33fff (Light Rain, 18 - 25 dBZ)
+  { val: 2.0, r: 175, g: 198, b: 0, a: 0.90 },  // #afc600ff (Moderate Rain, 26 - 35 dBZ)
+  { val: 3.0, r: 250, g: 204, b: 21, a: 0.96 }, // #facc15 (Heavy Rain, 36 - 44 dBZ)
+  { val: 4.4, r: 239, g: 68, b: 68, a: 1.00 },  // #ef4444 (Torrential Rain, 45 - 54 dBZ)
+  { val: 5.2, r: 168, g: 85, b: 247, a: 1.00 }  // #a855f7 (Severe Storm / Hail, >= 55 dBZ)
 ];
 
 export function sampleRadarColorRamp(v: number): [number, number, number, number] {
