@@ -6,6 +6,7 @@
  * map, and its dark or empty parts are made see-through.
  */
 import {
+  GeoBounds,
   SATELLITE_BOUNDS,
   SatelliteChannel,
   TWILIGHT_BLEND_HI_DEG,
@@ -427,11 +428,45 @@ function morph(plane: Float32Array, w: number, h: number, radius: number, grow: 
   return out;
 }
 
+/** One pixel of a picture half the size per 2 x 2 block of `src` (the mean), for work that does not need the full detail. */
+function halve(src: Uint8ClampedArray, width: number, height: number): { data: Uint8ClampedArray; w: number; h: number } {
+  const w = width >> 1;
+  const h = height >> 1;
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = (2 * y * width + 2 * x) * 4;
+      const q = p + width * 4;
+      for (let k = 0; k < 4; k++) data[(y * w + x) * 4 + k] = (src[p + k] + src[p + 4 + k] + src[q + k] + src[q + 4 + k]) >> 2;
+    }
+  }
+  return { data, w, h };
+}
+
+/** A plane of `w` x `h` made `width` x `height` by bilinear interpolation. */
+function upsample(plane: Float32Array, w: number, h: number, width: number, height: number): Float32Array {
+  const out = new Float32Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const fy = Math.min(h - 1, Math.max(0, ((y + 0.5) * h) / height - 0.5));
+    const y0 = Math.floor(fy);
+    const y1 = Math.min(h - 1, y0 + 1);
+    const wy = fy - y0;
+    for (let x = 0; x < width; x++) {
+      const fx = Math.min(w - 1, Math.max(0, ((x + 0.5) * w) / width - 0.5));
+      const x0 = Math.floor(fx);
+      const x1 = Math.min(w - 1, x0 + 1);
+      const wx = fx - x0;
+      out[y * width + x] = (plane[y0 * w + x0] * (1 - wx) + plane[y0 * w + x1] * wx) * (1 - wy) + (plane[y1 * w + x0] * (1 - wx) + plane[y1 * w + x1] * wx) * wy;
+    }
+  }
+  return out;
+}
+
 /**
  * How much of each pixel of an HRV picture is cloud (0 = the clear ground, 1 = cloud), from how far it stands out from the ground around
  * it. `width` x `height` is the picture, which covers `b`.
  */
-export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b = SATELLITE_BOUNDS): Float32Array {
+function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number): Float32Array {
   const midLat = (b.north + b.south) / 2;
   const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
   const stride = Math.max(1, Math.round(width / 250));
@@ -489,13 +524,20 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
     }
   }
   // thin cloud beside thick cloud belongs to it: strong opacity spreads two pixels (a round reach), where there is some excess at all
-  const spread = morph(keep, width, height, 2, true);
+  const spread = morph(keep, width, height, spreadRadius, true);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.85 * spread[i] * smoothstep(3, 9, excess[i]));
   // a small hole in the middle of a cloud (a darker patch of the cloud itself) is not ground: close gaps up to 6 pixels
-  const closed = morph(morph(keep, width, height, 3, true), width, height, 3, false);
+  const closed = morph(morph(keep, width, height, closeRadius, true), width, height, closeRadius, false);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.8 * closed[i]);
   boxBlur(keep, width, height, 1, 2); // and the edge of what is left is smooth
   return keep;
+}
+
+export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS): Float32Array {
+  // the mask is smooth, so a big picture is judged at half the size (a quarter of the work) and stretched back
+  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3);
+  const half = halve(src, width, height);
+  return upsample(cloudKeepAt(half.data, half.w, half.h, b, 1, 2), half.w, half.h, width, height);
 }
 
 /**

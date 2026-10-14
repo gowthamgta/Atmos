@@ -38,7 +38,7 @@ const STEP_MS = 1100;
 const HOLD_MS = 1800;
 /** How often to ask the service whether a newer picture exists (a tiny request; a picture is fetched only when there is one). */
 const CHECK_MS = 2 * 60_000;
-const LOAD_CONCURRENCY = 3;
+const LOAD_CONCURRENCY = 5;
 
 /**
  * Loads the last hour of Meteosat-9 pictures (the HRV by day, one infrared picture by night) and plays them as a loop that
@@ -83,6 +83,8 @@ export class SatelliteService {
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
   private loadToken = 0;
+  /** The newest picture time the service has reported so far (0: not asked yet). */
+  private knownNewest = 0;
   private publishSeq = 0;
   private publishApplied = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -152,8 +154,7 @@ export class SatelliteService {
    * newest time and the picture from EUMETView (during dawn and dusk also the infrared picture, so the solar terminator
    * blends smoothly without a dark band).
    */
-  private async plan(nowMs: number): Promise<PlanItem[]> {
-    const newest = await this.newestTime(nowMs);
+  private plan(newest: number): PlanItem[] {
     return frameTimes(newest).map(t => {
       const product = this.infraredOnly() ? SATELLITE_IR : productForTime(t);
       const rawKey = `${product.id}|${t}`;
@@ -177,8 +178,15 @@ export class SatelliteService {
     const token = ++this.loadToken;
     const nowMs = Date.now();
     this.now.set(nowMs);
-    const plan = await this.plan(nowMs);
-    if (token !== this.loadToken) return;
+    // Start at once from the newest time the clock says is safe (or the one the service gave last time): asking the service for its
+    // newest time takes a second on its own, so it is asked alongside, and a newer picture, if there is one, is loaded when it answers.
+    const startAt = Math.max(latestFrameTime(nowMs), this.knownNewest);
+    const plan = this.plan(startAt);
+    void this.newestTime(nowMs).then(newest => {
+      if (token !== this.loadToken) return;
+      this.knownNewest = Math.max(this.knownNewest, newest);
+      if (newest > startAt) void this.load();
+    });
     const rawKeys = plan.map(p => p.rawKey);
     const times = plan.map(p => p.timeMs);
 

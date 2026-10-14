@@ -52,7 +52,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
-    const png = await encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
+    const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);
   } catch (e) {
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
