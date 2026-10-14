@@ -51,12 +51,6 @@ import { StationSelectionService } from '../../core/forecast/station-selection.s
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
 
-/** How hard the satellite layer sharpens edges: the sharp HRV takes more (a phone a little less), the soft night infrared less. */
-function satelliteSharpness(kind: SatelliteChannel | undefined): number {
-  if (kind === 'ir') return 0.35;
-  return isPhone() ? 0.45 : 0.65;
-}
-
 @Component({
   selector: 'app-map',
   standalone: true,
@@ -354,7 +348,6 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!this.map || !this.isMapLoaded()) return;
     this.updateSatelliteOverlay(on, frames, position, opacity);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
-    this.satelliteLayer?.setSharpness(satelliteSharpness(kind));
   });
 
   // Reactive Effect: the closer window of the satellite picture at HRV's finer pixel (see satellite-detail.service.ts)
@@ -838,7 +831,6 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteLayer.setWindow(this.satelliteDetailLayer);
     }
     this.satelliteDetailLayer.setBounds(shown.window.bounds);
-    this.satelliteDetailLayer.setSharpness(satelliteSharpness(kind));
     // Build the frame list aligned to the main loop's times: null where the window has no picture yet
     const mainFrames = this.satellite.frames();
     const detailFrames = mainFrames.map(mf => {

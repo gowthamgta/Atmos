@@ -204,14 +204,14 @@ function infraredShare(blue: number, background: number): number {
 type Rgb = readonly [number, number, number];
 /** Cloud that is not cold, by brightness (0..1 of the HRV): the warm ramp. */
 const WARM_STOPS: readonly (readonly [number, Rgb])[] = [
-  [0.1, [58, 62, 80]],
-  [0.3, [128, 118, 106]],
-  [0.5, [204, 178, 134]],
-  [0.75, [226, 205, 165]],
-  [1, [240, 228, 204]],
+  [0.1, [62, 58, 66]],
+  [0.3, [140, 112, 88]],
+  [0.5, [214, 170, 106]],
+  [0.75, [236, 204, 146]],
+  [1, [247, 232, 196]],
 ];
-const COLD_LOW: Rgb = [84, 96, 140];
-const COLD_HIGH: Rgb = [226, 232, 248];
+const COLD_LOW: Rgb = [112, 122, 162];
+const COLD_HIGH: Rgb = [232, 236, 250];
 
 function rampColor(stops: readonly (readonly [number, Rgb])[], t: number, out: number[]): void {
   const last = stops.length - 1;
@@ -388,15 +388,35 @@ function boxBlur(plane: Float32Array, w: number, h: number, radius: number, pass
 
 /** Grows (max) or shrinks (min) a plane by a round window of `radius` pixels; round, so the shapes it leaves are not squares. */
 function morph(plane: Float32Array, w: number, h: number, radius: number, grow: boolean): Float32Array {
-  const offsets: number[][] = [];
-  for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) if (dx * dx + dy * dy <= radius * radius + 0.5) offsets.push([dx, dy]);
+  // a disc is a stack of rows of different half-widths: one horizontal pass per distinct half-width, then each output row combines rows
+  const half: number[] = [];
+  for (let dy = -radius; dy <= radius; dy++) half.push(Math.floor(Math.sqrt(radius * radius + 0.5 - dy * dy)));
+  const horizontal = new Map<number, Float32Array>();
+  for (const k of new Set(half)) {
+    const out = new Float32Array(plane.length);
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
+        let v = grow ? 0 : 1;
+        const x0 = Math.max(0, x - k);
+        const x1 = Math.min(w - 1, x + k);
+        for (let xx = x0; xx <= x1; xx++) {
+          const s = plane[row + xx];
+          if (grow ? s > v : s < v) v = s;
+        }
+        out[row + x] = v;
+      }
+    }
+    horizontal.set(k, out);
+  }
   const out = new Float32Array(plane.length);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       let v = grow ? 0 : 1;
-      for (const [dx, dy] of offsets) {
-        const s = plane[Math.min(h - 1, Math.max(0, y + dy)) * w + Math.min(w - 1, Math.max(0, x + dx))];
-        v = grow ? Math.max(v, s) : Math.min(v, s);
+      for (let i = 0; i < half.length; i++) {
+        const yy = Math.min(h - 1, Math.max(0, y + i - radius));
+        const s = horizontal.get(half[i])![yy * w + x];
+        if (grow ? s > v : s < v) v = s;
       }
       out[y * w + x] = v;
     }
