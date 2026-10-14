@@ -68,7 +68,7 @@ describe('shadePixel: the HRV picture by day', () => {
     expect(lr).toBeGreaterThan(lb + 25);
     const [cr, cg, cb, ca] = shade('hrv', 247, 247, 204); // thick cloud: light
     expect(ca).toBe(255);
-    expect(Math.min(cr, cg, cb)).toBeGreaterThan(190);
+    expect(Math.min(cr, cg, cb)).toBeGreaterThan(160);
     expect(shade('hrv', 40, 41, 52)[3]).toBe(255); // dark sea is drawn, not cleared
   });
 
@@ -77,8 +77,8 @@ describe('shadePixel: the HRV picture by day', () => {
     const high = windyCloudColor(215, 215, 240, background);
     const low = windyCloudColor(215, 205, 90, background);
     expect(high[2]).toBeGreaterThan(high[0]);
-    expect(Math.min(...high)).toBeGreaterThan(150);
-    expect(Math.min(...windyCloudColor(252, 252, 255, background))).toBeGreaterThan(200); // only the brightest cores go white
+    expect(Math.min(...high)).toBeGreaterThan(130);
+    expect(Math.min(...windyCloudColor(252, 252, 255, background))).toBeGreaterThan(170); // only the brightest cores go white
     expect(low[0]).toBeGreaterThan(low[2] + 30);
   });
 
