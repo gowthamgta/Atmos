@@ -130,61 +130,57 @@ describe('shadePixel: the HRV picture by day', () => {
   });
 });
 
-describe('cloud tops: the infrared by night', () => {
-  it('leaves the warm ground and sea see-through, and true black (no data) too', () => {
-    expect(shade('ir', 8, 8, 8)[3]).toBe(0); // about +29 C: the sea at night
+describe("cloud tops: the infrared in Windy's style (grey, with colour on the cold tops)", () => {
+  it('draws warm ground and sea dark grey and solid, and leaves true black (no data) see-through', () => {
+    const [r, g, bl, a2] = shade('ir', 8, 8, 8); // about +29 C: the sea
+    expect(a2).toBeGreaterThan(200);
+    expect(Math.max(r, g, bl)).toBeLessThan(40);
     expect(shade('ir', 0, 0, 0)[3]).toBe(0);
   });
 
-  it('shows low cloud, whose tops are +5 to +20 C, faintly instead of dropping it', () => {
+  it('gets lighter grey for colder cloud, up to about -32 C', () => {
     const low = shade('ir', 44, 44, 44); // about +10 C
-    expect(low[3]).toBeGreaterThan(90);
-    expect(low[3]).toBeLessThan(150);
-    expect(shade('ir', 25, 25, 25)[3]).toBeGreaterThan(30); // about +19 C: the lowest, thinnest cloud
+    const mid = shade('ir', 100, 100, 100); // about -10 C
+    const high = shade('ir', 140, 140, 140); // about -31 C
+    expect(mid[0]).toBeGreaterThan(low[0] + 30);
+    expect(high[0]).toBeGreaterThan(mid[0] + 20);
+    expect(Math.abs(high[0] - high[2])).toBeLessThan(15); // still grey
   });
 
-  it('shows middle cloud as a soft white-grey, so it still reads as cloud', () => {
-    const [r, g, b, a] = shade('ir', 130, 130, 130); // about -29 C
-    expect(a).toBeGreaterThan(150);
-    expect(a).toBeLessThan(235);
-    expect(Math.min(r, g, b)).toBeGreaterThan(200);
+  it('picks the cold tops out in colour: teal, yellow, orange, red, and deep red at the coldest', () => {
+    const teal = shade('ir', 150, 150, 150); // about -42 C
+    expect(teal[1]).toBeGreaterThan(teal[0]);
+    const orange = shade('ir', 190, 190, 190); // about -60 C
+    expect(orange[0]).toBeGreaterThan(200);
+    expect(orange[2]).toBeLessThan(120);
+    const red = shade('ir', 215, 215, 215); // about -69 C
+    expect(red[0]).toBeGreaterThan(red[1] + 80);
+    const [dr, dg, db] = cloudTopColor(-85); // the coldest core: deep red
+    expect(dr).toBeGreaterThan(80);
+    expect(dr).toBeLessThan(140);
+    expect(dg).toBeLessThan(30);
+    expect(db).toBeLessThan(40);
   });
 
-  it('picks the high cold tops out in colour and solid', () => {
-    const [r, g, b, a] = shade('ir', 232, 232, 232); // about -75 C
-    expect(a).toBeGreaterThan(240);
-    expect(r).toBeGreaterThan(220);
-    expect(b).toBeLessThan(120); // orange or red, not grey
-    const mid = shade('ir', 170, 170, 170); // about -50 C: cyan
-    expect(mid[2]).toBeGreaterThan(mid[0]);
+  it('is solid wherever there is any cloud colour', () => {
+    for (const t of [-40, -55, -70, -80]) expect(cloudTopColor(t)[3]).toBeGreaterThan(250);
   });
 
-  it('gets more opaque with every degree colder', () => {
-    let last = -1;
-    for (let luma = 0; luma <= 255; luma += 5) {
-      const a = shade('ir', luma, luma, luma)[3];
-      expect(a).toBeGreaterThanOrEqual(last);
-      last = a;
-    }
-  });
-
-  it('has a ramp that starts clear at the warm end and ends solid white at the coldest', () => {
-    expect(cloudTopColor(30)[3]).toBe(0);
-    expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[3]).toBe(0);
-    expect(cloudTopColor(-85)).toEqual([255, 255, 255, 255]);
-    expect(cloudTopColor(-120)).toEqual([255, 255, 255, 255]);
-    // halfway between two stops is halfway in every channel
+  it('has a ramp that is dark and solid at the warm end and deep red at the coldest', () => {
+    expect(cloudTopColor(30)[3]).toBeGreaterThan(200);
+    expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[0]).toBeLessThan(40);
+    expect(cloudTopColor(-120)).toEqual([105, 6, 20, 255]);
     const a = CLOUD_TOP_STOPS[3];
     const b = CLOUD_TOP_STOPS[4];
     const mid = cloudTopColor((a[0] + b[0]) / 2);
     expect(mid[3]).toBe(Math.round((a[4] + b[4]) / 2));
   });
 
-  it('draws the colour bar from the same ramp: clear on the left, solid and white on the right', () => {
+  it('draws the colour bar from the same ramp, grey on the left to deep red on the right', () => {
     const css = cloudTopGradient();
     expect(css.startsWith('linear-gradient(to right, rgba(')).toBe(true);
-    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.2\d\) 0\.0%/); // +20 C: the lowest cloud tops, faint
-    expect(css).toMatch(/rgba\(255, 255, 255, 1\.00\) 100\.0%\)$/);
+    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.9\d\) 0\.0%/);
+    expect(css).toMatch(/rgba\(\d+, \d+, \d+, 1\.00\) 100\.0%\)$/);
   });
 });
 
@@ -339,7 +335,7 @@ describe('twilight terminator blending and luma hover grid', () => {
     const east = Array.from(blended.slice((4 * w + (w - 2)) * 4, (4 * w + (w - 2)) * 4 + 4));
     // West is in darkness: it shows the infrared's cloud-top colours (orange for this cold)
     expect(west[3]).toBeGreaterThan(200);
-    expect(west[0]).toBeGreaterThan(200);
+    expect(west[0]).toBeGreaterThan(170);
     expect(west[2]).toBeLessThan(120);
     // East is in daylight: it is the HRV picture, with at most a trace of the infrared where the sun is still low
     expect(east[3]).toBeGreaterThan(200);

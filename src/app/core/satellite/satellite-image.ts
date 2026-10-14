@@ -142,20 +142,21 @@ export function classifyCloudTop(tempC: number): CloudTopClassification {
  * orange, red, white at the coldest), which picks out the tall storm tops and the cirrus anvils.
  */
 export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number, number])[] = [
-  // [tempC, R, G, B, alpha 0..255], warmest first
-  [26, 200, 210, 225, 0],
-  [20, 200, 210, 225, 55],
-  [12, 205, 214, 228, 105],
-  [4, 208, 217, 232, 140],
-  [-10, 212, 220, 235, 170],
-  [-25, 228, 234, 246, 200],
-  [-40, 245, 248, 255, 228],
-  [-50, 120, 220, 255, 235],
-  [-58, 90, 235, 190, 240],
-  [-65, 250, 225, 60, 245],
-  [-72, 255, 140, 40, 250],
-  [-79, 250, 60, 70, 252],
-  [-85, 255, 255, 255, 255],
+  // [tempC, R, G, B, alpha 0..255], warmest first. Windy's infrared: a dark-to-light grey picture, then colour on the cold tops, deepening to dark red at the coldest.
+  [26, 20, 23, 22, 244],
+  [15, 44, 48, 46, 244],
+  [5, 82, 86, 84, 244],
+  [-10, 130, 134, 131, 246],
+  [-22, 176, 178, 174, 248],
+  [-32, 206, 208, 204, 250],
+  [-36, 128, 200, 170, 252],
+  [-44, 190, 208, 140, 253],
+  [-52, 232, 205, 120, 254],
+  [-60, 225, 140, 85, 255],
+  [-66, 200, 66, 56, 255],
+  [-72, 170, 34, 38, 255],
+  [-78, 140, 16, 28, 255],
+  [-85, 105, 6, 20, 255],
 ];
 
 /** Colour and opacity (0..255) of a cloud top of this temperature (°C). */
