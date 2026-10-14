@@ -134,7 +134,7 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
   it('draws warm ground and sea dark grey and solid, and leaves true black (no data) see-through', () => {
     const [r, g, bl, a2] = shade('ir', 8, 8, 8); // about +29 C: the sea
     expect(a2).toBeGreaterThan(200);
-    expect(Math.max(r, g, bl)).toBeLessThan(45);
+    expect(Math.max(r, g, bl)).toBeLessThan(120);
     expect(shade('ir', 0, 0, 0)[3]).toBe(0);
   });
 
@@ -148,12 +148,12 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
   });
 
   it('picks the height of the cold tops out in colour: blue, cyan, green, yellow, orange, red, and dark red at the coldest', () => {
-    const teal = shade('ir', 193, 193, 193); // about -57 C: cyan
+    const teal = shade('ir', 192, 192, 192); // about -56 C: cyan
     expect(teal[1]).toBeGreaterThan(teal[0]);
-    const orange = shade('ir', 224, 224, 224); // about -71 C: yellow to orange
+    const orange = shade('ir', 241, 241, 241); // about -79 C: orange
     expect(orange[0]).toBeGreaterThan(170);
     expect(orange[2]).toBeLessThan(130);
-    const red = shade('ir', 238, 238, 238); // about -78 C: red
+    const red = shade('ir', 248, 248, 248); // about -82 C: red
     expect(red[0]).toBeGreaterThan(red[1] + 50);
     const [dr, dg, db] = cloudTopColor(-85); // the coldest core: deep red
     expect(dr).toBeGreaterThan(80);
@@ -166,9 +166,9 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
     for (const t of [-40, -55, -70, -80]) expect(cloudTopColor(t)[3]).toBeGreaterThan(250);
   });
 
-  it('has a ramp that is dark and solid at the warm end and deep red at the coldest', () => {
+  it('has a ramp that is mid grey and solid at the warm end and deep red at the coldest', () => {
     expect(cloudTopColor(30)[3]).toBeGreaterThan(200);
-    expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[0]).toBeLessThan(40);
+    expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[0]).toBeLessThan(120); // dark grey, not black
     expect(cloudTopColor(-120)).toEqual([100, 6, 12, 255]);
     const a = CLOUD_TOP_STOPS[3];
     const b = CLOUD_TOP_STOPS[4];

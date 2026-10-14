@@ -143,24 +143,24 @@ export function classifyCloudTop(tempC: number): CloudTopClassification {
  * orange, red, white at the coldest), which picks out the tall storm tops and the cirrus anvils.
  */
 export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number, number])[] = [
-  // [tempC, R, G, B, alpha 0..255], warmest first. Windy's infrared (colours measured from its picture): a dark-to-light grey with a faint
-  // green tint, then, as on Windy, the height of the cold tops in colour: blue, cyan, green, yellow, orange, red, dark red at the coldest.
-  [26, 19, 19, 19, 244],
-  [15, 36, 38, 36, 244],
-  [5, 66, 72, 68, 244],
-  [-5, 96, 104, 98, 246],
-  [-15, 130, 138, 130, 248],
-  [-25, 165, 170, 163, 250],
-  [-33, 198, 201, 194, 252],
-  [-44, 214, 216, 210, 253],
-  [-46, 44, 112, 238, 254],
-  [-55, 62, 198, 232, 254],
-  [-60, 92, 212, 112, 255],
-  [-66, 192, 226, 62, 255],
-  [-70, 250, 226, 44, 255],
-  [-75, 255, 150, 32, 255],
-  [-79, 226, 52, 32, 255],
-  [-82, 150, 16, 18, 255],
+  // [tempC, R, G, B, alpha 0..255], warmest first. Windy's infrared, measured from its picture of the same day: a mid-to-light grey (the
+  // ground is not black), then the height of the cold tops in colour: blue, cyan, green, yellow, orange, red, dark red at the coldest.
+  // The band edges are set so each colour covers as much of the picture as it does on Windy.
+  [26, 93, 93, 93, 244],
+  [15, 105, 111, 105, 244],
+  [5, 127, 138, 130, 244],
+  [-5, 146, 158, 149, 246],
+  [-15, 170, 180, 170, 248],
+  [-25, 195, 201, 192, 250],
+  [-33, 225, 228, 220, 252],
+  [-44, 240, 242, 235, 253],
+  [-50, 44, 112, 238, 254],
+  [-56, 62, 198, 232, 254],
+  [-64, 92, 212, 112, 255],
+  [-73, 250, 226, 44, 255],
+  [-79, 255, 150, 32, 255],
+  [-82, 226, 52, 32, 255],
+  [-84, 150, 16, 18, 255],
   [-85, 100, 6, 12, 255],
 ];
 
