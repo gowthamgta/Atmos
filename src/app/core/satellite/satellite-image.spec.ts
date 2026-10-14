@@ -20,6 +20,7 @@ import {
   satelliteCoordinates,
   shadePixel,
   hrvCloudKeep,
+  windyCloudColor,
   toOverlayPixels,
 } from './satellite-image';
 
@@ -60,11 +61,24 @@ function shade(kind: 'hrv' | 'ir', r: number, g: number, b: number, bg = 58): nu
 }
 
 describe('shadePixel: the HRV picture by day', () => {
-  it('keeps the picture as the service draws it, and only true black (the empty edge) is see-through', () => {
+  it("draws the picture in Windy's palette, and only true black (the empty edge) is see-through", () => {
     expect(shade('hrv', 0, 0, 0)[3]).toBe(0);
-    expect(shade('hrv', 123, 122, 60)).toEqual([123, 122, 60, 255]); // yellow land
-    expect(shade('hrv', 247, 247, 204)).toEqual([247, 247, 204, 255]); // thick cloud
+    const [lr, , lb, la] = shade('hrv', 123, 122, 60); // yellow land / low sunlit cloud: sand, warmer than blue
+    expect(la).toBe(255);
+    expect(lr).toBeGreaterThan(lb + 25);
+    const [cr, cg, cb, ca] = shade('hrv', 247, 247, 204); // thick cloud: light
+    expect(ca).toBe(255);
+    expect(Math.min(cr, cg, cb)).toBeGreaterThan(190);
     expect(shade('hrv', 40, 41, 52)[3]).toBe(255); // dark sea is drawn, not cleared
+  });
+
+  it('tells high cloud from low: cold tops white with a blue tint, warm ones sand', () => {
+    const background = 60;
+    const high = windyCloudColor(215, 215, 240, background);
+    const low = windyCloudColor(215, 205, 90, background);
+    expect(high[2]).toBeGreaterThan(high[0]);
+    expect(Math.min(...high)).toBeGreaterThan(200);
+    expect(low[0]).toBeGreaterThan(low[2] + 30);
   });
 
   it('draws the infrared where the HRV has no data (only the blue): warm ground clear, cloud see-through white', () => {
@@ -96,8 +110,12 @@ describe('shadePixel: the HRV picture by day', () => {
     const [r, , b, a] = shade('hrv', 45, 45, 130);
     expect(b - r).toBeLessThan(25);
     expect(a).toBeLessThan(255);
-    expect(shade('hrv', 117, 114, 160)).toEqual([117, 114, 160, 255]); // thin lavender cloud: blue above red, but not by that much
-    expect(shade('hrv', 150, 150, 70)).toEqual([150, 150, 70, 255]);
+    const lavender = shade('hrv', 117, 114, 160); // thin lavender cloud: blue above red, but not by that much
+    expect(lavender[3]).toBe(255);
+    expect(lavender[2]).toBeGreaterThan(lavender[0]);
+    const sand = shade('hrv', 150, 150, 70);
+    expect(sand[3]).toBe(255);
+    expect(sand[0]).toBeGreaterThan(sand[2]);
   });
 
   it('mixes the two where the HRV fades out, so the edge of its data has no seam', () => {
@@ -189,8 +207,8 @@ describe('toOverlayPixels', () => {
     const out = toOverlayPixels(src, width, srcHeight, 'hrv', 10);
     expect(out.length).toBe(width * 10 * 4);
     for (let r = 0; r < 10; r++) {
-      expect(out[r * width * 4]).toBeLessThanOrEqual(7 * 30);
-      expect(out[r * width * 4 + 1]).toBe(100);
+      expect(out[r * width * 4]).toBeLessThanOrEqual(255);
+      expect(out[r * width * 4 + 3]).toBeGreaterThan(0);
     }
   });
 
@@ -324,7 +342,8 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(west[2]).toBeLessThan(120);
     // East is in daylight: it is the HRV picture, with at most a trace of the infrared where the sun is still low
     expect(east[3]).toBe(255);
-    for (let c = 0; c < 3; c++) expect(Math.abs(east[c] - [200, 200, 230][c])).toBeLessThan(15);
+    expect(east[2]).toBeGreaterThan(east[0]); // high cloud: white with a blue tint
+    expect(east[0]).toBeGreaterThan(180);
   });
 
   it('takes out the clear ground of an HRV picture and keeps every cloud pixel with its own colour', () => {
@@ -344,7 +363,8 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(keep[160 * w + 380]).toBeGreaterThan(0.9); // high cloud stays
     const out = toOverlayPixels(src, w, h, 'hrv', h);
     const o = (160 * w + 380) * 4;
-    expect(Array.from(out.slice(o, o + 3))).toEqual([215, 215, 240]); // colour untouched
+    expect(out[o + 3]).toBe(255);
+    expect(out[o + 2]).toBeGreaterThanOrEqual(out[o]); // high cloud stays white with a blue tint
     expect(out[(300 * w + 250) * 4 + 3]).toBeLessThan(15);
   });
 

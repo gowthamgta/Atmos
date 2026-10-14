@@ -200,6 +200,39 @@ function infraredShare(blue: number, background: number): number {
   return Math.min(1, Math.max(0, (blue - floor) / Math.max(1, 255 - floor)));
 }
 
+// ── Windy's look for the HRV: low, sunlit cloud is sand, thick shaded cloud slate, cold high cloud white with a blue tint ──
+type Rgb = readonly [number, number, number];
+/** Cloud that is not cold, by brightness (0..1 of the HRV): the warm ramp. */
+const WARM_STOPS: readonly (readonly [number, Rgb])[] = [
+  [0.1, [58, 62, 80]],
+  [0.3, [128, 118, 106]],
+  [0.5, [206, 181, 138]],
+  [0.75, [238, 220, 184]],
+  [1, [250, 244, 232]],
+];
+const COLD_LOW: Rgb = [150, 162, 205];
+const COLD_HIGH: Rgb = [246, 248, 255];
+
+function rampColor(stops: readonly (readonly [number, Rgb])[], t: number, out: number[]): void {
+  const last = stops.length - 1;
+  if (t <= stops[0][0]) return void out.splice(0, 3, ...stops[0][1]);
+  if (t >= stops[last][0]) return void out.splice(0, 3, ...stops[last][1]);
+  let i = 0;
+  while (t > stops[i + 1][0]) i++;
+  const f = (t - stops[i][0]) / (stops[i + 1][0] - stops[i][0]);
+  for (let k = 0; k < 3; k++) out[k] = stops[i][1][k] + (stops[i + 1][1][k] - stops[i][1][k]) * f;
+}
+
+/** The colour of an HRV pixel in Windy's palette, from its brightness (red and green) and how cold its top is (blue, the infrared). */
+export function windyCloudColor(r: number, g: number, b: number, background: number): [number, number, number] {
+  const lum = Math.min(1, (r + g) / 510);
+  const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
+  const warm = [0, 0, 0];
+  rampColor(WARM_STOPS, lum, warm);
+  const k = smoothstep(0.1, 0.9, lum);
+  return [0, 1, 2].map(i => warm[i] + (COLD_LOW[i] + (COLD_HIGH[i] - COLD_LOW[i]) * k - warm[i]) * cold) as [number, number, number];
+}
+
 /**
  * Colour and opacity (0..255) of one pixel; the result is written into `out` at `o`.
  *
@@ -232,6 +265,7 @@ export function shadePixel(
     const hasHrv = Math.min(smoothstep(2, 7, hrv), 1 - blueHeavy);
     // `keep` (see hrvCloudKeep) is how much of the pixel is cloud rather than clear ground; its colour is left as it is
     const hrvAlpha = smoothstep(3, 14, Math.max(r, g, b)) * keep;
+    if (hasHrv > 0) [r, g, b] = windyCloudColor(r, g, b, background);
     if (hasHrv >= 1) {
       out[o] = r; out[o + 1] = g; out[o + 2] = b;
       out[o + 3] = Math.round(255 * hrvAlpha);
