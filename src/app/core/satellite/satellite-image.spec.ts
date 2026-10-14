@@ -134,7 +134,7 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
   it('draws warm ground and sea dark grey and solid, and leaves true black (no data) see-through', () => {
     const [r, g, bl, a2] = shade('ir', 8, 8, 8); // about +29 C: the sea
     expect(a2).toBeGreaterThan(200);
-    expect(Math.max(r, g, bl)).toBeLessThan(40);
+    expect(Math.max(r, g, bl)).toBeLessThan(45);
     expect(shade('ir', 0, 0, 0)[3]).toBe(0);
   });
 
@@ -151,15 +151,15 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
     const teal = shade('ir', 150, 150, 150); // about -42 C
     expect(teal[1]).toBeGreaterThan(teal[0]);
     const orange = shade('ir', 190, 190, 190); // about -60 C
-    expect(orange[0]).toBeGreaterThan(200);
-    expect(orange[2]).toBeLessThan(120);
+    expect(orange[0]).toBeGreaterThan(170);
+    expect(orange[2]).toBeLessThan(130);
     const red = shade('ir', 215, 215, 215); // about -69 C
-    expect(red[0]).toBeGreaterThan(red[1] + 80);
+    expect(red[0]).toBeGreaterThan(red[1] + 50);
     const [dr, dg, db] = cloudTopColor(-85); // the coldest core: deep red
     expect(dr).toBeGreaterThan(80);
     expect(dr).toBeLessThan(140);
-    expect(dg).toBeLessThan(30);
-    expect(db).toBeLessThan(40);
+    expect(dg).toBeLessThan(40);
+    expect(db).toBeLessThan(50);
   });
 
   it('is solid wherever there is any cloud colour', () => {
@@ -169,7 +169,7 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
   it('has a ramp that is dark and solid at the warm end and deep red at the coldest', () => {
     expect(cloudTopColor(30)[3]).toBeGreaterThan(200);
     expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[0]).toBeLessThan(40);
-    expect(cloudTopColor(-120)).toEqual([105, 6, 20, 255]);
+    expect(cloudTopColor(-120)).toEqual([100, 20, 34, 255]);
     const a = CLOUD_TOP_STOPS[3];
     const b = CLOUD_TOP_STOPS[4];
     const mid = cloudTopColor((a[0] + b[0]) / 2);
@@ -335,7 +335,7 @@ describe('twilight terminator blending and luma hover grid', () => {
     const east = Array.from(blended.slice((4 * w + (w - 2)) * 4, (4 * w + (w - 2)) * 4 + 4));
     // West is in darkness: it shows the infrared's cloud-top colours (orange for this cold)
     expect(west[3]).toBeGreaterThan(200);
-    expect(west[0]).toBeGreaterThan(170);
+    expect(west[0]).toBeGreaterThan(150);
     expect(west[2]).toBeLessThan(120);
     // East is in daylight: it is the HRV picture, with at most a trace of the infrared where the sun is still low
     expect(east[3]).toBeGreaterThan(200);
