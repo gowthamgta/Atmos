@@ -77,7 +77,8 @@ describe('shadePixel: the HRV picture by day', () => {
     const high = windyCloudColor(215, 215, 240, background);
     const low = windyCloudColor(215, 205, 90, background);
     expect(high[2]).toBeGreaterThan(high[0]);
-    expect(Math.min(...high)).toBeGreaterThan(200);
+    expect(Math.min(...high)).toBeGreaterThan(150);
+    expect(Math.min(...windyCloudColor(252, 252, 255, background))).toBeGreaterThan(200); // only the brightest cores go white
     expect(low[0]).toBeGreaterThan(low[2] + 30);
   });
 
@@ -341,9 +342,9 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(west[0]).toBeGreaterThan(200);
     expect(west[2]).toBeLessThan(120);
     // East is in daylight: it is the HRV picture, with at most a trace of the infrared where the sun is still low
-    expect(east[3]).toBe(255);
+    expect(east[3]).toBeGreaterThan(200);
     expect(east[2]).toBeGreaterThan(east[0]); // high cloud: white with a blue tint
-    expect(east[0]).toBeGreaterThan(180);
+    expect(east[0]).toBeGreaterThan(130);
   });
 
   it('takes out the clear ground of an HRV picture and keeps every cloud pixel with its own colour', () => {

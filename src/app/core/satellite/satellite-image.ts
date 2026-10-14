@@ -206,12 +206,12 @@ type Rgb = readonly [number, number, number];
 const WARM_STOPS: readonly (readonly [number, Rgb])[] = [
   [0.1, [58, 62, 80]],
   [0.3, [128, 118, 106]],
-  [0.5, [206, 181, 138]],
-  [0.75, [238, 220, 184]],
-  [1, [250, 244, 232]],
+  [0.5, [204, 178, 134]],
+  [0.75, [226, 205, 165]],
+  [1, [240, 228, 204]],
 ];
-const COLD_LOW: Rgb = [150, 162, 205];
-const COLD_HIGH: Rgb = [246, 248, 255];
+const COLD_LOW: Rgb = [84, 96, 140];
+const COLD_HIGH: Rgb = [226, 232, 248];
 
 function rampColor(stops: readonly (readonly [number, Rgb])[], t: number, out: number[]): void {
   const last = stops.length - 1;
@@ -229,7 +229,8 @@ export function windyCloudColor(r: number, g: number, b: number, background: num
   const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
   const warm = [0, 0, 0];
   rampColor(WARM_STOPS, lum, warm);
-  const k = smoothstep(0.1, 0.9, lum);
+  // the HRV of thick cloud is nearly saturated: spread the top of its range so the shading of the cloud shows, and only the brightest cores go white
+  const k = Math.pow(Math.min(1, Math.max(0, (lum - 0.3) / 0.7)), 1.8);
   return [0, 1, 2].map(i => warm[i] + (COLD_LOW[i] + (COLD_HIGH[i] - COLD_LOW[i]) * k - warm[i]) * cold) as [number, number, number];
 }
 
@@ -385,25 +386,22 @@ function boxBlur(plane: Float32Array, w: number, h: number, radius: number, pass
   }
 }
 
-/** Morphological closing (square window of `radius`): fills holes and gaps narrower than 2 x radius + 1 pixels. */
-function closeGaps(plane: Float32Array, w: number, h: number, radius: number): Float32Array {
-  const pass = (src: Float32Array, horizontal: boolean, grow: boolean): Float32Array => {
-    const out = new Float32Array(src.length);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        let v = grow ? 0 : 1;
-        for (let k = -radius; k <= radius; k++) {
-          const xx = horizontal ? Math.min(w - 1, Math.max(0, x + k)) : x;
-          const yy = horizontal ? y : Math.min(h - 1, Math.max(0, y + k));
-          const s = src[yy * w + xx];
-          v = grow ? Math.max(v, s) : Math.min(v, s);
-        }
-        out[y * w + x] = v;
+/** Grows (max) or shrinks (min) a plane by a round window of `radius` pixels; round, so the shapes it leaves are not squares. */
+function morph(plane: Float32Array, w: number, h: number, radius: number, grow: boolean): Float32Array {
+  const offsets: number[][] = [];
+  for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) if (dx * dx + dy * dy <= radius * radius + 0.5) offsets.push([dx, dy]);
+  const out = new Float32Array(plane.length);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let v = grow ? 0 : 1;
+      for (const [dx, dy] of offsets) {
+        const s = plane[Math.min(h - 1, Math.max(0, y + dy)) * w + Math.min(w - 1, Math.max(0, x + dx))];
+        v = grow ? Math.max(v, s) : Math.min(v, s);
       }
+      out[y * w + x] = v;
     }
-    return out;
-  };
-  return pass(pass(pass(pass(plane, true, true), false, true), true, false), false, false);
+  }
+  return out;
 }
 
 /**
@@ -436,8 +434,9 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
     lumGround[i] = Math.min(lumGround[i], lumCap);
     blueGround[i] = Math.min(blueGround[i], blueCap);
   }
-  boxBlur(lumGround, gw, gh, 2, 2);
-  boxBlur(blueGround, gw, gh, 2, 2);
+  // a percentile over a square window leaves square contours: blur them away (about 5 cells) so the cloud edge does not follow squares
+  boxBlur(lumGround, gw, gh, 3, 3);
+  boxBlur(blueGround, gw, gh, 3, 3);
 
   // each column's and row's place on the coarse grid
   const cx0 = new Int32Array(width);
@@ -466,28 +465,13 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
       keep[y * width + x] = smoothstep(KEEP_FROM, KEEP_FULL, e);
     }
   }
-  // thin cloud beside thick cloud belongs to it: strong opacity spreads two pixels, where there is some excess at all
-  const rowMax = new Float32Array(keep.length);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let m = 0;
-      for (let k = -2; k <= 2; k++) m = Math.max(m, keep[y * width + Math.min(width - 1, Math.max(0, x + k))]);
-      rowMax[y * width + x] = m;
-    }
-  }
-  const spread = new Float32Array(keep.length);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let m = 0;
-      for (let k = -2; k <= 2; k++) m = Math.max(m, rowMax[Math.min(height - 1, Math.max(0, y + k)) * width + x]);
-      spread[y * width + x] = m;
-    }
-  }
+  // thin cloud beside thick cloud belongs to it: strong opacity spreads two pixels (a round reach), where there is some excess at all
+  const spread = morph(keep, width, height, 2, true);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.85 * spread[i] * smoothstep(3, 9, excess[i]));
   // a small hole in the middle of a cloud (a darker patch of the cloud itself) is not ground: close gaps up to 6 pixels
-  const closed = closeGaps(keep, width, height, 3);
+  const closed = morph(morph(keep, width, height, 3, true), width, height, 3, false);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.8 * closed[i]);
-  boxBlur(keep, width, height, 1, 1);
+  boxBlur(keep, width, height, 1, 2); // and the edge of what is left is smooth
   return keep;
 }
 
