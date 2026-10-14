@@ -39,6 +39,10 @@ const HOLD_MS = 1800;
 /** How often to ask the service whether a newer picture exists (a tiny request; a picture is fetched only when there is one). */
 const CHECK_MS = 2 * 60_000;
 const LOAD_CONCURRENCY = 5;
+/** The newest picture of each channel is kept in the browser's cache, to be shown at once next time (EUMETView itself takes 2 to 3 seconds). */
+const CACHE_NAME = 'atmos-satellite-v1';
+/** A kept picture older than this is not worth showing first. */
+const CACHED_MAX_AGE_MS = 3 * 3_600_000;
 
 /**
  * Loads the last hour of Meteosat-9 pictures (the HRV by day, one infrared picture by night) and plays them as a loop that
@@ -58,6 +62,8 @@ export class SatelliteService {
   readonly failed = signal(false);
   readonly opacity = signal(1);
   readonly hoverReading = signal<SatelliteHoverReading | null>(null);
+  /** The older pictures of the hour are only downloaded once the loop is wanted (play, step back, the slider): first only the newest. */
+  readonly historyRequested = signal(false);
   /** The satellite layer is on (the pictures are being kept fresh). */
   readonly active = signal(false);
   /** Show the infrared picture also by day (the switch in the panel); off: the visible HRV by day, infrared at night. */
@@ -85,6 +91,9 @@ export class SatelliteService {
   private loadToken = 0;
   /** The newest picture time the service has reported so far (0: not asked yet). */
   private knownNewest = 0;
+  /** The picture kept from last time, shown until the fresh newest one is built. */
+  private preview: SatelliteFrame | null = null;
+  private playWhenReady = false;
   private publishSeq = 0;
   private publishApplied = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,6 +124,10 @@ export class SatelliteService {
     this.retryTimer = null;
     this.loadToken++; // abandon a load in progress
     this.loading.set(false);
+    this.historyRequested.set(false);
+    this.playWhenReady = false;
+    if (this.preview) URL.revokeObjectURL(this.preview.url);
+    this.preview = null;
   }
 
   /** Sample Cloud-Top Temperature (°C) and Height (km) at `(lat, lon)` for the currently displayed frame. */
@@ -188,20 +201,24 @@ export class SatelliteService {
       if (newest > startAt) void this.load();
     });
     const rawKeys = plan.map(p => p.rawKey);
-    const times = plan.map(p => p.timeMs);
+    // first only the newest picture; the rest of the hour once the loop is wanted
+    const wanted = this.historyRequested() ? plan : plan.slice(-1);
+    const wantedKeys = wanted.map(p => p.rawKey);
+    void this.showCached(plan[plan.length - 1].product, token);
 
     const following = this.position() >= this.frames().length - 1; // watching the newest picture, so keep following it
-    if (!rawKeys.every(k => this.raws.has(k))) this.loading.set(true);
+    if (!wantedKeys.every(k => this.raws.has(k))) this.loading.set(true);
     this.failed.set(false);
 
     // download what is missing, newest first, a few at a time
-    const queue = plan.filter(p => !this.raws.has(p.rawKey)).reverse();
+    const queue = wanted.filter(p => !this.raws.has(p.rawKey)).reverse();
     const worker = async () => {
       for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
         const got = await item.fetch();
         if (token !== this.loadToken) return;
         if (got) {
           this.raws.set(item.rawKey, { timeMs: item.timeMs, product: item.product, blob: got.blob, twilightIr: got.twilightIr });
+          if (item === plan[plan.length - 1]) void this.keepForNextTime(item, got.blob);
           void this.publish(plan, token, following); // the next picture downloads while this one is built
         }
       }
@@ -218,12 +235,57 @@ export class SatelliteService {
     this.failed.set(this.frames().length === 0);
     this.loading.set(false);
     // some pictures could not be fetched (the service was busy): ask again in a little while instead of at the next check
-    if (this.retryTimer === null && rawKeys.some(k => !this.raws.has(k))) {
+    if (this.playWhenReady && this.frames().length >= 2) {
+      this.playWhenReady = false;
+      this.play();
+    }
+    if (this.retryTimer === null && wantedKeys.some(k => !this.raws.has(k))) {
       this.retryTimer = setTimeout(() => {
         this.retryTimer = null;
         void this.load();
       }, 20_000);
     }
+  }
+
+  /** The newest picture of a channel, kept for the next visit (a failure only means nothing is kept). */
+  private async keepForNextTime(item: PlanItem, blob: Blob): Promise<void> {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(new Request(`/__satellite/${item.product.id}`), new Response(blob, { headers: { 'x-time': String(item.timeMs), 'content-type': 'image/jpeg' } }));
+    } catch {
+      // no cache in this browser or window: the next visit simply waits for the service
+    }
+  }
+
+  /** Shows the picture kept from last time at once (built in the worker, well under a second), until the fresh one is ready. */
+  private async showCached(product: SatelliteProduct, token: number): Promise<void> {
+    const stale = () => token !== this.loadToken || this.frames().length > 0;
+    try {
+      if (stale() || typeof caches === 'undefined') return;
+      const cache = await caches.open(CACHE_NAME);
+      const hit = await cache.match(new Request(`/__satellite/${product.id}`));
+      if (!hit || stale()) return;
+      const timeMs = Number(hit.headers.get('x-time'));
+      if (!timeMs || Date.now() - timeMs > CACHED_MAX_AGE_MS) return;
+      const res = await this.process(await hit.blob(), product, undefined, timeMs);
+      if (!res) return;
+      if (stale()) {
+        URL.revokeObjectURL(res.url);
+        return;
+      }
+      this.preview = { timeMs, product, url: res.url, lumaGrid: res.lumaGrid };
+      this.frames.set([this.preview]);
+      this.position.set(0);
+    } catch {
+      // nothing usable kept: wait for the service
+    }
+  }
+
+  /** Download the rest of the hour (play, step back and the slider need it); the newest picture is already there. */
+  requestHistory(): void {
+    if (this.historyRequested()) return;
+    this.historyRequested.set(true);
+    if (this.active()) void this.load();
   }
 
   /** A picture, or null. EUMETView sometimes answers a busy moment with a 500: that is tried once more after a short wait. */
@@ -283,7 +345,13 @@ export class SatelliteService {
     if (seq < this.publishApplied) return; // a later publish (with more pictures) is already shown
     this.publishApplied = seq;
     const list = built.filter((f): f is SatelliteFrame => f !== null);
+    if (list.length === 0 && this.preview) return; // keep the small first picture until a full one is built
     this.frames.set(list);
+    if (this.preview) {
+      const old = this.preview;
+      this.preview = null;
+      setTimeout(() => URL.revokeObjectURL(old.url), 5000);
+    }
     this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));
     if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
   }
@@ -331,6 +399,7 @@ export class SatelliteService {
 
   /** Jump to a whole frame (the slider). */
   setFrame(i: number): void {
+    if (i < this.frames().length - 1) this.requestHistory();
     const n = this.frames().length;
     if (n > 0) this.position.set(Math.min(Math.max(Math.round(i), 0), n - 1));
   }
@@ -338,6 +407,7 @@ export class SatelliteService {
   /** Step forward or back by delta frames (delta: -1 or +1), pausing the loop. */
   step(delta: number): void {
     this.pause();
+    this.requestHistory();
     const n = this.frames().length;
     if (n === 0) return;
     const cur = Math.round(this.position());
@@ -351,7 +421,16 @@ export class SatelliteService {
 
   /** Play the hour as a loop: each picture fades into the next, the newest holds a moment, then it starts again. */
   play(): void {
-    if (this.playing() || this.frames().length < 2 || typeof requestAnimationFrame !== 'function') return;
+    if (this.playing()) return;
+    if (this.frames().length < 2) {
+      // only the newest picture is loaded so far: fetch the hour, and start the loop when it is all there
+      if (!this.historyRequested()) {
+        this.playWhenReady = true;
+        this.requestHistory();
+      }
+      return;
+    }
+    if (typeof requestAnimationFrame !== 'function') return;
     this.playing.set(true);
     if (this.position() >= this.frames().length - 1) this.position.set(0);
     let last = performance.now();
