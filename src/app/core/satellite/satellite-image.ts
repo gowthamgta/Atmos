@@ -144,7 +144,7 @@ export function classifyCloudTop(tempC: number): CloudTopClassification {
  */
 export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number, number])[] = [
   // [tempC, R, G, B, alpha 0..255], warmest first. Windy's infrared (colours measured from its picture): a dark-to-light grey with a faint
-  // green tint, then muted teal, khaki, tan, rose-red on the cold tops, deepening to dark red at the coldest.
+  // green tint, then, as on Windy, the height of the cold tops in colour: blue, cyan, green, yellow, orange, red, dark red at the coldest.
   [26, 19, 19, 19, 244],
   [15, 36, 38, 36, 244],
   [5, 66, 72, 68, 244],
@@ -152,14 +152,15 @@ export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number
   [-15, 130, 138, 130, 248],
   [-25, 165, 170, 163, 250],
   [-33, 198, 201, 194, 252],
-  [-38, 128, 190, 168, 253],
-  [-45, 175, 195, 140, 254],
-  [-52, 200, 184, 134, 255],
-  [-59, 190, 138, 112, 255],
-  [-66, 180, 100, 92, 255],
-  [-74, 150, 60, 62, 255],
-  [-80, 120, 30, 40, 255],
-  [-85, 100, 20, 34, 255],
+  [-48, 214, 216, 210, 253],
+  [-50, 44, 112, 238, 254],
+  [-57, 62, 198, 232, 254],
+  [-63, 92, 212, 112, 255],
+  [-68, 250, 226, 44, 255],
+  [-73, 255, 150, 32, 255],
+  [-78, 226, 52, 32, 255],
+  [-82, 150, 16, 18, 255],
+  [-85, 100, 6, 12, 255],
 ];
 
 /** Colour and opacity (0..255) of a cloud top of this temperature (°C). */

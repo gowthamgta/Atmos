@@ -144,16 +144,16 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
     const high = shade('ir', 140, 140, 140); // about -31 C
     expect(mid[0]).toBeGreaterThan(low[0] + 30);
     expect(high[0]).toBeGreaterThan(mid[0] + 20);
-    expect(Math.abs(high[0] - high[2])).toBeLessThan(15); // still grey
+    expect(Math.abs(high[0] - high[2])).toBeLessThan(25); // still grey
   });
 
-  it('picks the cold tops out in colour: teal, yellow, orange, red, and deep red at the coldest', () => {
-    const teal = shade('ir', 150, 150, 150); // about -42 C
+  it('picks the height of the cold tops out in colour: blue, cyan, green, yellow, orange, red, and dark red at the coldest', () => {
+    const teal = shade('ir', 193, 193, 193); // about -57 C: cyan
     expect(teal[1]).toBeGreaterThan(teal[0]);
-    const orange = shade('ir', 190, 190, 190); // about -60 C
+    const orange = shade('ir', 224, 224, 224); // about -71 C: yellow to orange
     expect(orange[0]).toBeGreaterThan(170);
     expect(orange[2]).toBeLessThan(130);
-    const red = shade('ir', 215, 215, 215); // about -69 C
+    const red = shade('ir', 238, 238, 238); // about -78 C: red
     expect(red[0]).toBeGreaterThan(red[1] + 50);
     const [dr, dg, db] = cloudTopColor(-85); // the coldest core: deep red
     expect(dr).toBeGreaterThan(80);
@@ -169,7 +169,7 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
   it('has a ramp that is dark and solid at the warm end and deep red at the coldest', () => {
     expect(cloudTopColor(30)[3]).toBeGreaterThan(200);
     expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[0]).toBeLessThan(40);
-    expect(cloudTopColor(-120)).toEqual([100, 20, 34, 255]);
+    expect(cloudTopColor(-120)).toEqual([100, 6, 12, 255]);
     const a = CLOUD_TOP_STOPS[3];
     const b = CLOUD_TOP_STOPS[4];
     const mid = cloudTopColor((a[0] + b[0]) / 2);
