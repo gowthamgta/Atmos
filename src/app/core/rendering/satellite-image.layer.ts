@@ -83,10 +83,24 @@ vec4 cas(sampler2D tex, vec2 px, vec4 c, float sharpness) {
   return vec4(clamp(sharp, mn, mx), c.a);
 }
 
+// The mean of the picture (bilinear) at four diagonal points r picture pixels from px: a small, even blur.
+vec4 around(sampler2D tex, vec2 px, float r) {
+  vec2 inv = 1.0 / vec2(u_size);
+  return 0.25 * (textureLod(tex, (px + vec2(r, r)) * inv, 0.0) + textureLod(tex, (px + vec2(-r, r)) * inv, 0.0)
+               + textureLod(tex, (px + vec2(r, -r)) * inv, 0.0) + textureLod(tex, (px + vec2(-r, -r)) * inv, 0.0));
+}
+
+// Magnified: the colour is softened a little (so the picture's pixels do not show as blocks), then sharpened by CAS, and last the
+// cloud's edge (its opacity) is softened, so the boundary of a cloud is a smooth curve, not a staircase. Colour stays premultiplied
+// and never exceeds the opacity.
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
   if (!magnifying) return textureGrad(tex, uv, gx, gy); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
+  if (c.a <= 0.001 && around(tex, px, 1.0).a <= 0.001) return c; // clear ground, well away from any cloud
+  c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5);
   if (u_sharpen > 0.0 && c.a > 0.001) c = cas(tex, px, c, u_sharpen);
+  c.a = clamp(mix(c.a, around(tex, px, 0.5).a, 0.6), 0.0, 1.0);
+  c.rgb = min(c.rgb, vec3(c.a));
   return c;
 }
 
