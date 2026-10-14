@@ -134,5 +134,19 @@ describe('radar intensity is kept as the picture gives it', () => {
     const speck = run(picture({ '60,60': [0, 51, 255] }), chennai.palette);
     expect(peak(speck)).toBeGreaterThan(1.2);
   });
+
+  it("reads Karaikal's PPI light rain (7 to 28 dBZ) and its strong cores from the PPI legend, and the PPZ with the 20 to 60 dBZ legend", () => {
+    const ppi = IMD_RADAR_STATIONS.find(st => st.id === 'karaikal')!.products.ppi;
+    const ppz = IMD_RADAR_STATIONS.find(st => st.id === 'karaikal')!.products.ppz;
+    expect(ppi.palette).toBeDefined();
+    expect(ppz.palette).toBeDefined();
+    const light = run(picture(block(50, 50, 6, 6, [0, 43, 245])), ppi.palette!); // the blue at 17 dBZ on the PPI scale
+    expect(dbz(peak(light))).toBeGreaterThan(14);
+    expect(dbz(peak(light))).toBeLessThan(20);
+    const strong = run(picture({ ...block(48, 48, 10, 10, [0, 120, 255]), ...block(51, 51, 4, 4, [255, 118, 0]) }), ppi.palette!); // orange: about 45 dBZ
+    expect(dbz(peak(strong))).toBeGreaterThan(42);
+    const ppzCell = run(picture({ ...block(48, 48, 10, 10, [0, 102, 255]), ...block(51, 51, 4, 4, [255, 229, 0]) }), ppz.palette!);
+    expect(dbz(peak(ppzCell))).toBeGreaterThan(40);
+  });
 });
 

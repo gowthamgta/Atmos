@@ -354,6 +354,14 @@ const KKL_RAMP: [number, number, number, number][] = [
 ];
 const KKL_CAZ_PALETTE: RadarPaletteEntry[] = KKL_RAMP.map(([r, g, b, dbz]) => ({ rgb: [r, g, b], dbz, tol: 12, context: dbz >= 36 }));
 
+// Karaikal PPI (150 km, 0.5 degrees, 2 to 72 dBZ) uses the same colours stretched over a wider, uneven scale (16 equal boxes labelled
+// 2 7 12 18 21 23 28 34 37 39 44 50 53 55 60 66 72): sampled down the colour bar every 3 pixels, dBZ interpolated between the labels.
+// Its light rain (7 to 28 dBZ) is most of what the picture shows, and the CAZ (20 dBZ and up) leaves it out.
+const KKL_PPI_RAMP: [number, number, number, number][] = [
+  [200, 0, 79, 72.0], [200, 0, 58, 64.8], [200, 0, 42, 63.6], [200, 0, 33, 62.4], [200, 0, 11, 61.2], [200, 1, 5, 60.0], [212, 14, 8, 59.0], [223, 27, 15, 58.0], [234, 39, 22, 57.0], [247, 54, 31, 56.0], [255, 63, 35, 55.0], [255, 62, 28, 54.6], [255, 61, 20, 54.2], [255, 60, 12, 53.8], [255, 59, 9, 53.4], [255, 58, 0, 53.0], [255, 59, 0, 52.4], [255, 60, 0, 51.8], [255, 61, 0, 51.2], [255, 62, 0, 50.6], [255, 63, 0, 50.0], [255, 76, 0, 48.8], [255, 90, 0, 47.6], [255, 103, 0, 46.4], [255, 118, 0, 45.2], [255, 129, 0, 44.0], [255, 141, 0, 43.0], [255, 153, 0, 42.0], [255, 165, 0, 41.0], [255, 177, 0, 40.0], [255, 189, 0, 39.0], [255, 197, 0, 38.6], [255, 206, 0, 38.2], [255, 214, 0, 37.8], [255, 220, 0, 37.4], [255, 226, 0, 37.0], [254, 236, 67, 36.4], [255, 240, 104, 35.8], [255, 245, 151, 35.2], [255, 250, 199, 34.6], [255, 255, 254, 34.0], [221, 246, 255, 32.8], [185, 236, 255, 31.6], [153, 228, 255, 30.4], [121, 219, 255, 29.2], [84, 209, 255, 28.0], [74, 202, 255, 27.0], [63, 193, 255, 26.0], [49, 182, 255, 25.0], [38, 173, 255, 24.0], [27, 164, 255, 23.0], [20, 154, 255, 22.6], [15, 146, 255, 22.2], [10, 137, 255, 21.8], [5, 128, 255, 21.4], [0, 120, 255, 21.0], [0, 110, 255, 20.4], [0, 93, 255, 19.8], [0, 80, 255, 19.2], [0, 67, 255, 18.6], [0, 53, 255, 18.0], [0, 43, 245, 16.8], [0, 31, 233, 15.6], [0, 20, 221, 14.4], [0, 12, 212, 13.2], [0, 1, 201, 12.0], [9, 0, 194, 11.0], [20, 0, 186, 10.0], [31, 0, 179, 9.0], [45, 0, 169, 8.0], [56, 0, 161, 7.0], [58, 0, 160, 6.0],
+];
+const KKL_PPI_PALETTE: RadarPaletteEntry[] = KKL_PPI_RAMP.map(([r, g, b, dbz]) => ({ rgb: [r, g, b], dbz, tol: 12, context: dbz >= 34 }));
+
 /**
  * Factory helper to construct complete RadarStationConfig with all IMD products.
  */
@@ -467,7 +475,8 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       pac: { x: 0, y: 0, w: 720, h: 720 },
       ppz: { x: 0, y: 0, w: 720, h: 720 }
     },
-    palettes: { caz: KKL_CAZ_PALETTE }
+    // the PPZ (500 km) legend is the same 20 to 60 dBZ gradient as the CAZ
+    palettes: { caz: KKL_CAZ_PALETTE, ppz: KKL_CAZ_PALETTE, ppi: KKL_PPI_PALETTE }
   }),
   createImdStation({
     id: 'chennai',

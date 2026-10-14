@@ -78,7 +78,7 @@ export function resampleBilinear(src: Float32Array, srcW: number, srcH: number, 
 
 /** Intensity below which an echo is invisible, and the intensity at which it is fully opaque. */
 export const ECHO_FADE_START = 0.05;
-export const ECHO_FADE_FULL = 0.9;
+export const ECHO_FADE_FULL = 0.4;
 
 /**
  * Opacity factor 0..1 for an echo of intensity `v`: faint values (the fringe around a rain area, and the lightest

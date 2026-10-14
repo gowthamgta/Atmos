@@ -116,8 +116,8 @@ describe('echoAlphaFeather', () => {
   });
 
   it('fades the lightest class in gently rather than switching it on', () => {
-    const lightest = echoAlphaFeather(0.5); // the first colour class
-    expect(lightest).toBeGreaterThan(0.3);
+    const lightest = echoAlphaFeather(0.2); // a very light echo (the first colour class is full now: light rain must show)
+    expect(lightest).toBeGreaterThan(0.1);
     expect(lightest).toBeLessThan(0.9);
     expect(echoAlphaFeather(1.2)).toBe(1); // light rain and heavier are not faded
   });
