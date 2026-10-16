@@ -191,6 +191,7 @@ export class ForecastStateService {
     this.windParticles.set(false);
     this.isobars.set(false);
     this.pause();
+    this.lightning.set(true); // lightning comes with the radar and the satellite by default (it can be switched off, and a link says what it wants)
     this.mapLayers.selectSingleLayer('radar');
   }
 
@@ -200,6 +201,7 @@ export class ForecastStateService {
     this.windParticles.set(false);
     this.isobars.set(false);
     this.pause();
+    this.lightning.set(true);
     this.mapLayers.selectSingleLayer('satellite');
   }
 
