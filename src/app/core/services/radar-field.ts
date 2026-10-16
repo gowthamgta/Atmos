@@ -76,6 +76,24 @@ export function resampleBilinear(src: Float32Array, srcW: number, srcH: number, 
   return out;
 }
 
+/**
+ * Raises a bilinearly resampled field (`out`, `outSize` square, made from `src`, `srcW` x `srcH`, by resampleBilinear) back to the picture's own
+ * value wherever the nearest picture pixel is at least `minValue`. Bilinear interpolation averages a strong pixel with its weaker
+ * neighbours, which takes the small hot cores of a storm (a pixel or two of orange or white) down to half of what the radar measured;
+ * the picture's own strong pixels are kept at full strength instead, and the weaker echoes stay smoothly interpolated.
+ */
+export function keepStrongPixels(out: Float32Array, src: Float32Array, srcW: number, srcH: number, outSize: number, minValue: number): void {
+  const sx = srcW > 1 ? (srcW - 1) / (outSize - 1) : 0;
+  const sy = srcH > 1 ? (srcH - 1) / (outSize - 1) : 0;
+  for (let y = 0; y < outSize; y++) {
+    const row = Math.min(srcH - 1, Math.round(y * sy)) * srcW;
+    for (let x = 0; x < outSize; x++) {
+      const v = src[row + Math.min(srcW - 1, Math.round(x * sx))];
+      if (v >= minValue && v > out[y * outSize + x]) out[y * outSize + x] = v;
+    }
+  }
+}
+
 /** Intensity below which an echo is invisible, and the intensity at which it is fully opaque. */
 export const ECHO_FADE_START = 0.05;
 export const ECHO_FADE_FULL = 0.4;

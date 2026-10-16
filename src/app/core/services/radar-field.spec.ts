@@ -10,6 +10,7 @@ import {
   gaussianKernel,
   quantizeRadarField,
   resampleBilinear,
+  keepStrongPixels,
 } from './radar-field';
 
 describe('gaussianKernel', () => {
@@ -142,5 +143,23 @@ describe('quantizeRadarField', () => {
     const gaps = stops.slice(1).map((v, i) => v - stops[i]);
     expect(RADAR_FIELD_MAX / 255).toBeLessThan(Math.min(...gaps) / 5);
     expect(RADAR_FIELD_MAX).toBeGreaterThan(stops[stops.length - 1]);
+  });
+});
+
+describe('keepStrongPixels', () => {
+  it('keeps strong picture pixels at full strength where interpolation would average them down, and leaves weak ones smooth', () => {
+    const n = 40;
+    const src = new Float32Array(n * n);
+    src[20 * n + 20] = 3.5; // one hot pixel in a dry picture
+    src[10 * n + 10] = 1.0; // one weak pixel
+    const out = resampleBilinear(src, n, n, 100);
+    const hotBefore = Math.max(...out);
+    keepStrongPixels(out, src, n, n, 100, 2.0);
+    expect(Math.max(...out)).toBe(3.5);
+    expect(hotBefore).toBeLessThanOrEqual(3.5);
+    let weak = 0;
+    for (let i = 0; i < out.length; i++) if (out[i] > 0 && out[i] <= 1.0) weak++;
+    expect(weak).toBeGreaterThan(0); // the weak pixel is still only interpolated
+    expect(out.filter(v => v === 1.0).length).toBeLessThanOrEqual(1);
   });
 });

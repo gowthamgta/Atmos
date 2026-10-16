@@ -6,7 +6,7 @@
  */
 import { GifReader } from 'omggif';
 import type { RadarCropConfig, RadarPaletteEntry } from '../domain/models/radar.model';
-import { blurSeparable, gaussianKernel, resampleBilinear } from './radar-field';
+import { blurSeparable, gaussianKernel, keepStrongPixels, resampleBilinear } from './radar-field';
 
 /** Side of the intensity field a station is resampled to: 1024 pixels, about 0.5 km each. */
 export const RADAR_FIELD_SIZE = 1024;
@@ -28,6 +28,8 @@ export function layoutMatches(crop: RadarCropConfig | undefined, w: number, h: n
  * smooths the intensity itself when it draws, so contours stay crisp at any zoom.
  */
 const RADAR_BLUR_SIGMA_PX = 2.6;
+/** Picture pixels at or above this intensity (31 dBZ) keep their own value when the picture is stretched to the working grid. */
+const STRONG_PIXEL_MIN = 2.0;
 
 // ── Radial interference (spoke) removal ──
 // Sun strikes and RF interference paint long, thin wedges that point straight at the radar and run all the way out.
@@ -323,6 +325,7 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
   let hasAnyEcho = false;
 
   const rawGrid = resampleBilinear(classes, cropW, cropH, outSize);
+  keepStrongPixels(rawGrid, classes, cropW, cropH, outSize, STRONG_PIXEL_MIN); // the hot cores keep the strength the radar measured
 
   // Circular dish mask: completely clip anything outside the radar sweep circle
   for (let outY = 0; outY < outSize; outY++) {

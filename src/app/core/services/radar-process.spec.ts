@@ -17,7 +17,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['karaikal', 'caz', 'karaikal-caz.gif', 'd8aed1c3'],
+  ['karaikal', 'caz', 'karaikal-caz.gif', 'c8c678fd'],
 ];
 
 function load(file: string): ArrayBuffer {
