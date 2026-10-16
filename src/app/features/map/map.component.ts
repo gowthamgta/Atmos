@@ -27,7 +27,6 @@ import type { MapView } from '../../core/satellite/satellite-window';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
 import { TerrainService } from '../../core/forecast/terrain.service';
-import { RELIEF_STRENGTH } from '../../core/forecast/forecast-map.controller';
 import { syncCoverageLayer } from './radar-coverage-overlay';
 
 /** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
@@ -326,7 +325,7 @@ export class MapComponent implements OnInit, OnDestroy {
   // Reactive Effect: the 90 m relief shaded into the radar echoes (the same terrain, light and strength as the forecast colours; the Terrain relief switch)
   private radarReliefEffect = effect(() => {
     const data = this.terrain.data();
-    const strength = this.forecastState.relief() && !this.plainBasemap() ? RELIEF_STRENGTH : 0;
+    const strength = 0; // no shading on the radar echoes: the terrain is shown on the map itself (see reliefEffect)
     this.radarService.displayed(); // the layer exists once there is a picture to show
     const layer = this.radarLayer;
     if (!layer) return;
@@ -445,16 +444,17 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Radar and satellite pictures sit on a plain, light basemap (no relief shading; roads, rivers and borders stay), like Windy's. */
+  /** Radar and satellite pictures sit on a plain, light basemap (roads, rivers and borders stay), like Windy's. */
   private plainBasemap = computed(() => this.layerService.layers().some(l => (l.id === 'radar' || l.id === 'satellite') && l.active));
+  /** The satellite picture covers the ground, so the map's terrain is left out under it; the radar shows the terrain of the map (the Terrain relief toggle). */
+  private satelliteOn = computed(() => this.layerService.layers().some(l => l.id === 'satellite' && l.active));
 
-  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle, and off under radar and satellite)
+  // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle; off under the satellite picture)
   private reliefEffect = effect(() => {
-    const plain = this.plainBasemap();
-    const visible = this.forecastState.relief() && !plain;
+    const visible = this.forecastState.relief() && !this.satelliteOn();
     if (!this.map || !this.isMapLoaded()) return;
     this.setHillshadeVisible(visible);
-    this.showPlainLines(plain);
+    this.showPlainLines(this.plainBasemap());
   });
 
   /**
@@ -1159,7 +1159,7 @@ export class MapComponent implements OnInit, OnDestroy {
     for (const id of ['base-water', 'base-waterway', 'base-border', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
-    this.setHillshadeVisible(this.forecastState.relief() && !this.plainBasemap());
+    this.setHillshadeVisible(this.forecastState.relief() && !this.satelliteOn());
   }
 
   private syncZoomVisuals(): void {
