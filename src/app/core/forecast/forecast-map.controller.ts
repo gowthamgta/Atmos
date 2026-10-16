@@ -10,7 +10,8 @@ import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
 import { cycloneGeoJson, loadCyclones } from './cyclone-tracks';
-import { lightningGeoJson, loadLightning } from './lightning';
+import { ageStrokes, lightningGeoJson, loadLightning } from './lightning';
+import type { Stroke } from './lightning';
 import { decodeFieldBitmap } from './field-decode';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -60,6 +61,9 @@ export class ForecastMapController {
   private cycloneLoadedAt = 0;
   private cycloneLoading = false;
   private lightningTimer: ReturnType<typeof setInterval> | null = null;
+  private lightningTick: ReturnType<typeof setInterval> | null = null;
+  private lightningStrokes: Stroke[] = [];
+  private lightningFetchedAt = 0;
   private lightningLoading = false;
 
   private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
@@ -67,7 +71,9 @@ export class ForecastMapController {
   private static readonly LIGHTNING_SOURCE = 'forecast-lightning';
   private static readonly LIGHTNING_LAYER = 'forecast-lightning-bolts';
   private static readonly LIGHTNING_IMAGE = 'lightning-bolt';
-  private static readonly LIGHTNING_REFRESH_MS = 60_000;
+  private static readonly LIGHTNING_FLASH = 'forecast-lightning-flash';
+  private static readonly LIGHTNING_REFRESH_MS = 10_000;
+  private static readonly LIGHTNING_TICK_MS = 1_000;
   private static readonly ISOBAR_SOURCE = 'forecast-isobars';
   private static readonly ISOBAR_MIN_INTERVAL_MS = 150;
 
@@ -112,8 +118,7 @@ export class ForecastMapController {
       this.removeCycloneLayers(this.map);
       this.removeLightningLayer(this.map);
     }
-    if (this.lightningTimer) clearInterval(this.lightningTimer);
-    this.lightningTimer = null;
+    this.stopLightning();
     for (const l of [this.layer, this.windLayer]) {
       if (this.map && l && this.map.getLayer(l.id)) this.map.removeLayer(l.id);
     }
@@ -368,6 +373,16 @@ export class ForecastMapController {
     const source = ForecastMapController.LIGHTNING_SOURCE;
     if (!map.hasImage(ForecastMapController.LIGHTNING_IMAGE)) map.addImage(ForecastMapController.LIGHTNING_IMAGE, this.boltImage());
     map.addSource(source, { type: 'geojson', data: lightningGeoJson([]) });
+    // a new strike flashes: a ring that grows and fades over its first ten seconds
+    map.addLayer({
+      id: ForecastMapController.LIGHTNING_FLASH, type: 'circle', source, filter: ['<', ['get', 'age'], 10],
+      layout: { visibility: 'none' },
+      paint: {
+        'circle-color': 'rgba(255, 255, 255, 0)', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2,
+        'circle-radius': ['interpolate', ['linear'], ['get', 'age'], 0, 6, 10, 28],
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 0.95, 10, 0],
+      },
+    });
     map.addLayer({
       id: ForecastMapController.LIGHTNING_LAYER, type: 'symbol', source,
       layout: {
@@ -379,8 +394,15 @@ export class ForecastMapController {
   }
 
   private removeLightningLayer(map: MapLibreMap): void {
-    if (map.getLayer(ForecastMapController.LIGHTNING_LAYER)) map.removeLayer(ForecastMapController.LIGHTNING_LAYER);
+    for (const id of [ForecastMapController.LIGHTNING_LAYER, ForecastMapController.LIGHTNING_FLASH]) if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(ForecastMapController.LIGHTNING_SOURCE)) map.removeSource(ForecastMapController.LIGHTNING_SOURCE);
+  }
+
+  /** Draws the strokes as they are now: aged by the time since they were fetched, so the bolts fade and the flashes run between polls. */
+  private drawLightning(): void {
+    const source = this.map?.getSource(ForecastMapController.LIGHTNING_SOURCE) as { setData?: (d: unknown) => void } | undefined;
+    if (!source?.setData) return;
+    source.setData(lightningGeoJson(ageStrokes(this.lightningStrokes, (Date.now() - this.lightningFetchedAt) / 1000)));
   }
 
   private pullLightning(): void {
@@ -388,22 +410,32 @@ export class ForecastMapController {
     this.lightningLoading = true;
     void loadLightning().then(strokes => {
       if (!this.map || !strokes) return;
-      (this.map.getSource(ForecastMapController.LIGHTNING_SOURCE) as { setData?: (d: unknown) => void } | undefined)?.setData?.(lightningGeoJson(strokes));
+      this.lightningStrokes = strokes;
+      this.lightningFetchedAt = Date.now();
+      this.drawLightning();
     }).finally(() => (this.lightningLoading = false));
   }
 
-  /** Shows the bolts while the overlay is on and fetches the last five minutes now and then every minute (not at all while it is off). */
+  private stopLightning(): void {
+    if (this.lightningTimer) clearInterval(this.lightningTimer);
+    if (this.lightningTick) clearInterval(this.lightningTick);
+    this.lightningTimer = this.lightningTick = null;
+  }
+
+  /** Shows the bolts while the overlay is on: fetched now and every ten seconds, redrawn every second (nothing runs while it is off). */
   private updateLightning(): void {
     const map = this.map;
     if (!map) return;
     const on = this.state.lightning();
-    if (map.getLayer(ForecastMapController.LIGHTNING_LAYER)) map.setLayoutProperty(ForecastMapController.LIGHTNING_LAYER, 'visibility', on ? 'visible' : 'none');
+    for (const id of [ForecastMapController.LIGHTNING_LAYER, ForecastMapController.LIGHTNING_FLASH]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+    }
     if (on && !this.lightningTimer) {
       this.pullLightning();
       this.lightningTimer = setInterval(() => this.pullLightning(), ForecastMapController.LIGHTNING_REFRESH_MS);
+      this.lightningTick = setInterval(() => this.drawLightning(), ForecastMapController.LIGHTNING_TICK_MS);
     } else if (!on && this.lightningTimer) {
-      clearInterval(this.lightningTimer);
-      this.lightningTimer = null;
+      this.stopLightning();
     }
   }
 

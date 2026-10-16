@@ -10,8 +10,8 @@
   status = 200
   force = true
 
-# Lightning strokes of the last minutes from ILDN (Tripura University): our own address, cached for a minute at the edge, so the
-# network is asked about once a minute however many people look. Free for non-commercial use with attribution (see lightning.ts).
+# Lightning strokes of the last minutes from ILDN (Tripura University): our own address, cached for ten seconds at the edge, so the
+# network is asked about every ten seconds in all however many people look. Free for non-commercial use with attribution (see lightning.ts).
 [[redirects]]
   from = "/ildn/*"
   to = "https://ildn.in/:splat"
@@ -35,7 +35,7 @@
 [[headers]]
   for = "/ildn/*"
   [headers.values]
-    Cache-Control = "public, max-age=30, s-maxage=60"
+    Cache-Control = "public, max-age=5, s-maxage=10"
 
 [[headers]]
   for = "/*"
