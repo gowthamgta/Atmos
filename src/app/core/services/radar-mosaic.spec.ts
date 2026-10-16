@@ -64,23 +64,39 @@ describe('composeRadarMosaic', () => {
     expect(valueAt(ppiMosaic, lat, lng)).toBeCloseTo(3.8, 1);
   });
 
-  it('does not blend radars where they overlap: every point takes its value from the closest radar', () => {
+  it('where radars overlap, the one with the latest scan is drawn (no blending); outside the overlap each radar is alone', () => {
+    // Karaikal's scan is 5 minutes older than Sriharikota's: in the overlap Sriharikota's picture is shown, near Karaikal too
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
-      ['karaikal', scan(karaikal, 'caz', 4.0)],
-      ['sriharikota', scan(shr, 'caz', 2.0)],
+      ['karaikal', scan(karaikal, 'caz', 4.0, 0)],
+      ['sriharikota', scan(shr, 'caz', 2.0, 5)],
     ])!;
-    const nearKaraikal = valueAt(mosaic, ...between(0.35));
-    const nearShr = valueAt(mosaic, ...between(0.65));
-    expect(nearKaraikal).toBeCloseTo(4.0, 1); // Karaikal's own value, with no trace of Sriharikota's
-    expect(nearShr).toBeCloseTo(2.0, 1);      // Sriharikota's own value, although Karaikal also sees this point with a stronger echo
+    expect(valueAt(mosaic, ...between(0.35))).toBeCloseTo(2.0, 1); // overlap, closer to Karaikal, but Sriharikota's scan is later
+    expect(valueAt(mosaic, ...between(0.65))).toBeCloseTo(2.0, 1); // overlap, closer to Sriharikota
+    expect(valueAt(mosaic, ...between(0.05))).toBeCloseTo(4.0, 1); // only Karaikal reaches here
+    // and the other way round: with Karaikal's scan the later one, it wins the overlap
+    const other = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 4.0, 5)],
+      ['sriharikota', scan(shr, 'caz', 2.0, 0)],
+    ])!;
+    expect(valueAt(other, ...between(0.65))).toBeCloseTo(4.0, 1);
+    expect(valueAt(other, ...between(0.95))).toBeCloseTo(2.0, 1); // only Sriharikota reaches here
   });
 
-  it('a point a radar sees as dry stays dry although a farther radar has an echo there', () => {
+  it('with scans of the same time, the closest radar is drawn in the overlap', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
-      ['karaikal', scan(karaikal, 'caz', 0)],
-      ['sriharikota', scan(shr, 'caz', 3.0)],
+      ['karaikal', scan(karaikal, 'caz', 4.0, 0)],
+      ['sriharikota', scan(shr, 'caz', 2.0, 0)],
     ])!;
-    expect(valueAt(mosaic, ...between(0.35))).toBe(0);
+    expect(valueAt(mosaic, ...between(0.35))).toBeCloseTo(4.0, 1);
+    expect(valueAt(mosaic, ...between(0.65))).toBeCloseTo(2.0, 1);
+  });
+
+  it('a point the latest radar sees as dry stays dry although an older radar has an echo there', () => {
+    const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 3.0, 0)],
+      ['sriharikota', scan(shr, 'caz', 0, 5)],
+    ])!;
+    expect(valueAt(mosaic, ...between(0.5))).toBe(0);
   });
 
   it('skips scans that are hidden as too old, and returns nothing when there is no scan', () => {

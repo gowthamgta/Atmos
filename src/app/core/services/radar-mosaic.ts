@@ -197,8 +197,10 @@ export function composeRadarMosaic(
   const radarCount = new Uint8Array(outW * bandRows);    // how many radars see an echo here
   // Each station's scan is settled at a pixel before the next station is drawn there: the running best of the station being
   // drawn at each pixel, which station it belongs to, and its distance weight.
-  // Every pixel belongs to the closest radar whose range covers it (no blending of overlapping radars): its index and distance.
+  // Every pixel belongs to ONE radar (no blending): of the radars whose range covers it, the one with the most recent scan, and the closest
+  // when their scans are of the same time. Its index, scan time and distance.
   const nearest = new Int16Array(outW * bandRows);
+  const nearestMs = new Float64Array(outW * bandRows);
   const nearestKm = new Float32Array(outW * bandRows);
   const stationOf = new Int16Array(outW * bandRows);
   const stationVal = new Float32Array(outW * bandRows);
@@ -223,13 +225,15 @@ export function composeRadarMosaic(
     stationVal.fill(0, 0, n);
     stationWeight.fill(0, 0, n);
     nearest.fill(-1, 0, n);
+    nearestMs.fill(0, 0, n);
     nearestKm.fill(Infinity, 0, n);
     let touched = false;
 
-    // which radar is the closest at each pixel of this band (among those that cover it)
+    // which radar has the latest scan at each pixel of this band (among those that cover it), the closest on a tie
     for (const g of preps) {
       if (!g) continue;
       const st = g.s;
+      const scanMs = st.res.timing?.epochMs ?? 0;
       for (let y = Math.max(yb, g.y0); y <= Math.min(ye - 1, g.y1); y++) {
         const lat = maxLat - (y / (outH - 1)) * latSpan;
         if (lat < st.south || lat > st.north) continue;
@@ -238,9 +242,12 @@ export function composeRadarMosaic(
         for (let x = g.x0; x <= g.x1; x++) {
           if (g.lngOk[x] === 0) continue;
           const d = Math.sqrt(dLatKm * dLatKm + g.dLng[x] * g.dLng[x]);
-          if (d > st.rangeKm || d >= nearestKm[row + x]) continue;
-          nearestKm[row + x] = d;
-          nearest[row + x] = st.stationIndex;
+          if (d > st.rangeKm) continue;
+          const i = row + x;
+          if (nearest[i] >= 0 && (scanMs < nearestMs[i] || (scanMs === nearestMs[i] && d >= nearestKm[i]))) continue; // an earlier scan, or the same time and farther
+          nearestMs[i] = scanMs;
+          nearestKm[i] = d;
+          nearest[i] = st.stationIndex;
         }
       }
     }
@@ -276,7 +283,7 @@ export function composeRadarMosaic(
 
         for (let x = xFrom; x <= xTo; x++) {
           if (g.lngOk[x] === 0) continue;
-          if (nearest[rowOffset + x] !== s.stationIndex) continue; // another radar is closer to this point
+          if (nearest[rowOffset + x] !== s.stationIndex) continue; // another radar's scan is later (or closer) here
           // the four source pixels around this point; most of the picture has no rain, so empty ones are skipped first
           const xA = g.xA[x];
           const xB = g.xB[x];
@@ -327,7 +334,7 @@ export function composeRadarMosaic(
       const count = radarCount[i];
       if (count === 0) continue;
 
-      // one radar per pixel (the closest), so there is nothing to blend
+      // one radar per pixel (the latest scan), so there is nothing to blend
       compositeField[base + i] = peak[i];
     }
   }
