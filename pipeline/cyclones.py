@@ -120,19 +120,24 @@ def build(oper: list[dict], enfo: list[dict], run: datetime) -> dict:
     return {"version": VERSION, "run": f"{run:%Y%m%dT%H}Z", "generated": f"{datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%SZ}", "storms": storms}
 
 
-def latest_run() -> datetime:
+def client():
+    """The ECMWF open-data client, patient for a minute and no more. Its default is 500 tries 120 seconds apart (over 16 hours), which
+    turns a "429 Too Many Requests" from the portal into a job stuck for hours; the tracks are small and optional, so give up early."""
     from ecmwf.opendata import Client
-    return Client(source="ecmwf").latest(type="tf", stream="oper", step=360).replace(tzinfo=timezone.utc)
+    return Client(source="ecmwf", maximum_retries=3, retry_after=20, use_server_retry_after=False)
+
+
+def latest_run() -> datetime:
+    return client().latest(type="tf", stream="oper", step=360).replace(tzinfo=timezone.utc)
 
 
 def fetch(run: datetime) -> tuple[list[dict], list[dict]]:
-    from ecmwf.opendata import Client
-    client = Client(source="ecmwf")
+    ec = client()
     with tempfile.TemporaryDirectory() as tmp:
         paths = {}
         for stream in ("oper", "enfo"):
             paths[stream] = os.path.join(tmp, f"{stream}.bufr")
-            client.retrieve(date=run.strftime("%Y%m%d"), time=run.hour, stream=stream, type="tf", step=360, target=paths[stream])
+            ec.retrieve(date=run.strftime("%Y%m%d"), time=run.hour, stream=stream, type="tf", step=360, target=paths[stream])
         return read_bufr(paths["oper"], run), read_bufr(paths["enfo"], run)
 
 

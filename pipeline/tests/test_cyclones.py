@@ -57,3 +57,12 @@ def test_the_cyclone_region_covers_all_of_india_not_only_the_south():
     south, north, west, east = cyclones.REGION
     assert north >= config.IFS_LAT_MAX and west <= config.IFS_LON_MIN and east >= config.IFS_LON_MAX and south <= config.IFS_LAT_MIN
     assert cyclones.in_region([{"lat": 21.0, "lon": 70.0}])         # the Arabian Sea off Gujarat
+
+
+def test_the_ecmwf_client_gives_up_quickly_when_the_portal_is_busy():
+    """A 429 from the open-data portal must not hold the whole job for hours (the library's default is 500 tries, 2 minutes apart)."""
+    import cyclones
+    c = cyclones.client()
+    assert c.maximum_retries <= 5
+    assert c.retry_after <= 60
+    assert c.use_server_retry_after is False
