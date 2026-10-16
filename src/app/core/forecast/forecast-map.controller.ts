@@ -10,7 +10,8 @@ import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
 import { cycloneGeoJson, loadCyclones } from './cyclone-tracks';
-import { ageStrokes, lightningGeoJson, loadLightning } from './lightning';
+import { ageStrokes, lightningGeoJson, lightningShown, loadLightning } from './lightning';
+import { MapLayerService } from '../services/map-layer.service';
 import type { Stroke } from './lightning';
 import { decodeFieldBitmap } from './field-decode';
 import { FieldLoaderService } from './field-loader.service';
@@ -38,6 +39,7 @@ export class ForecastMapController {
   private readonly catalog = inject(ForecastCatalogService);
   private readonly loader = inject(FieldLoaderService);
   private readonly state = inject(ForecastStateService);
+  private readonly mapLayers = inject(MapLayerService);
   private readonly terrain = inject(TerrainService);
   private readonly inspector = inject(ForecastInspectorService);
   private readonly stations = inject(StationSelectionService);
@@ -422,11 +424,11 @@ export class ForecastMapController {
     this.lightningTimer = this.lightningTick = null;
   }
 
-  /** Shows the bolts while the overlay is on: fetched now and every ten seconds, redrawn every second (nothing runs while it is off). */
+  /** Shows the bolts while the radar or the satellite is on: fetched now and every ten seconds, redrawn every second (nothing runs while it is off). */
   private updateLightning(): void {
     const map = this.map;
     if (!map) return;
-    const on = this.state.lightning();
+    const on = lightningShown(this.mapLayers.layers());
     for (const id of [ForecastMapController.LIGHTNING_LAYER, ForecastMapController.LIGHTNING_FLASH]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
     }

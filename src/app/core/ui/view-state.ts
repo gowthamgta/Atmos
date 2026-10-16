@@ -13,7 +13,7 @@ export interface ViewState {
 }
 
 /** The overlays that can be switched, with the order they are written in. */
-export const OVERLAYS = ['particles', 'isobars', 'stations', 'cyclones', 'lightning', 'districts', 'relief'] as const;
+export const OVERLAYS = ['particles', 'isobars', 'stations', 'cyclones', 'districts', 'relief'] as const;
 
 const ID = /^[a-z0-9_-]{1,40}$/i;
 const LEVELS = new Set(['surface', '925', '850', '800', '700', '600', '500', '300', '250', '200']);

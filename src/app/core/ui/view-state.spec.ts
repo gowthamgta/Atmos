@@ -21,9 +21,9 @@ describe('view state in the address', () => {
   });
 
   it('reads overlays separated by a comma, a space or a plus (a copied link often loses its commas)', () => {
-    expect(parseViewState('o=relief,lightning').overlays).toEqual(['relief', 'lightning']);
-    expect(parseViewState('o=relief lightning').overlays).toEqual(['relief', 'lightning']);
-    expect(parseViewState('o=relief+lightning').overlays).toEqual(['relief', 'lightning']);
+    expect(parseViewState('o=relief,districts').overlays).toEqual(['relief', 'districts']);
+    expect(parseViewState('o=relief districts').overlays).toEqual(['relief', 'districts']);
+    expect(parseViewState('o=relief+districts').overlays).toEqual(['relief', 'districts']);
   });
 
   it('keeps an empty overlay list (all off) apart from no list (the defaults)', () => {

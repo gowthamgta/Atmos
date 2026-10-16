@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIGHTNING_WINDOW_S, ageStrokes, decodeStrokes, lightningGeoJson } from './lightning';
+import { LIGHTNING_WINDOW_S, ageStrokes, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
 
 /** A response of the shape ILDN sends: [time f64, lat f32, lon f32, age f32, (4 bytes), id u64] per stroke. */
 function response(strokes: { lat: number; lon: number; age: number }[]): ArrayBuffer {
@@ -46,5 +46,12 @@ describe('lightning strokes', () => {
   it('ages strokes between polls and drops those that pass the window', () => {
     const aged = ageStrokes([{ lat: 10, lon: 78, ageS: 5 }, { lat: 11, lon: 79, ageS: 295 }, { lat: 12, lon: 80, ageS: 120 }], 8);
     expect(aged.map(s => s.ageS)).toEqual([13, 128]);
+  });
+
+  it('is shown with the radar and with the satellite, and not over a forecast layer', () => {
+    expect(lightningShown([{ id: 'radar', active: true }, { id: 'satellite', active: false }])).toBe(true);
+    expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: true }])).toBe(true);
+    expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: false }, { id: 'gibs', active: true }])).toBe(false);
+    expect(lightningShown([])).toBe(false);
   });
 });

@@ -1,11 +1,9 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
-import { readFlag, writeFlag } from '../ui/saved-flag';
 import { MapLayerService } from './map-layer.service';
 import { CoverageGrid, coverageAt, coverageCorners, coverageHaze, parseCoverageMeta } from './radar-coverage';
 
 /** Width of the haze picture: about 1 km a pixel, plenty for a haze whose edges are soft anyway. */
 const HAZE_WIDTH = 1100;
-const HAZE_KEY = 'atmosiq.radar.haze.v2'; // off by default: Windy draws only the rain on a plain map
 
 export interface CoverageOverlay {
   /** The haze as a PNG data address for the map's image source. */
@@ -16,14 +14,14 @@ export interface CoverageOverlay {
 
 /**
  * Where the radars can see low rain (see radar-coverage.ts). The small grid is loaded the first time the radar is shown; the haze over the
- * map follows the switch in the radar panel.
+ * map is no longer drawn (its switch was taken out of the radar panel).
  */
 @Injectable({ providedIn: 'root' })
 export class RadarCoverageService {
   private readonly layers = inject(MapLayerService);
 
-  /** The switch in the radar panel (remembered between visits). */
-  readonly enabled = signal(readFlag(HAZE_KEY, false));
+  /** The haze is not drawn any more (the switch left the radar panel); the grid is still used for the rain line on the place card. */
+  readonly enabled = signal(false);
   readonly grid = signal<CoverageGrid | null>(null);
   private readonly radarOn = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
   /** The haze is drawn while the radar is on and the switch is on. */
@@ -39,11 +37,6 @@ export class RadarCoverageService {
     effect(() => {
       if (this.radarOn()) void this.load();
     });
-    effect(() => writeFlag(HAZE_KEY, this.enabled()));
-  }
-
-  toggle(): void {
-    this.enabled.update(v => !v);
   }
 
   /** How well the radars see low rain at a place (a COVERAGE_* class), or null while the grid is not loaded. */

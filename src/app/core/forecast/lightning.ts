@@ -70,3 +70,8 @@ export async function loadLightning(url: string = LIGHTNING_URL): Promise<Stroke
     return null;
   }
 }
+
+/** Lightning is drawn whenever the radar or the satellite picture is on (there is no switch for it). */
+export function lightningShown(layers: readonly { id: string; active: boolean }[]): boolean {
+  return layers.some(l => (l.id === 'radar' || l.id === 'satellite') && l.active);
+}

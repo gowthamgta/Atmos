@@ -64,23 +64,21 @@ describe('composeRadarMosaic', () => {
     expect(valueAt(ppiMosaic, lat, lng)).toBeCloseTo(3.8, 1);
   });
 
-  it('does not blend radars where they overlap: every point takes its value from the closest radar', () => {
+  it('where radars overlap, shows the strongest echo of either radar (no blending), wherever it is closer to', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.0)],
       ['chennai', scan(cni, 'caz', 2.0)],
     ])!;
-    const nearKaraikal = valueAt(mosaic, ...between(0.35));
-    const nearShr = valueAt(mosaic, ...between(0.65));
-    expect(nearKaraikal).toBeCloseTo(4.0, 1); // Karaikal's own value, with no trace of Chennai's
-    expect(nearShr).toBeCloseTo(2.0, 1);      // Chennai's own value, although Karaikal also sees this point with a stronger echo
+    expect(valueAt(mosaic, ...between(0.35))).toBeCloseTo(4.0, 1); // Karaikal's stronger echo, near Karaikal
+    expect(valueAt(mosaic, ...between(0.65))).toBeCloseTo(4.0, 1); // and near Chennai too: Chennai sees it weaker
   });
 
-  it('a point a radar sees as dry stays dry although a farther radar has an echo there', () => {
+  it('a point one radar sees as dry still shows the rain the other radar sees there', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 0)],
       ['chennai', scan(cni, 'caz', 3.0)],
     ])!;
-    expect(valueAt(mosaic, ...between(0.35))).toBe(0);
+    expect(valueAt(mosaic, ...between(0.35))).toBeCloseTo(3.0, 1);
   });
 
   it('skips scans that are hidden as too old, and returns nothing when there is no scan', () => {

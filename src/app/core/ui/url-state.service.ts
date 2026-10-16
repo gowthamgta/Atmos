@@ -62,7 +62,6 @@ export class UrlStateService {
       isobars: this.state.isobars(),
       stations: this.state.stationMarkers(),
       cyclones: this.state.cyclones(),
-      lightning: this.state.lightning(),
       districts: this.state.districtLines(),
       relief: this.state.relief(),
     };
@@ -114,7 +113,6 @@ export class UrlStateService {
       this.state.stationMarkers.set(has('stations'));
       if (has('stations')) void this.observations.refresh();
       this.state.cyclones.set(has('cyclones'));
-      this.state.lightning.set(has('lightning'));
       this.state.districtLines.set(has('districts'));
       this.state.relief.set(has('relief'));
     }

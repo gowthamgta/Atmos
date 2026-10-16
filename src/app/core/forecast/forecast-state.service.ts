@@ -56,8 +56,6 @@ export class ForecastStateService {
   readonly isobars = signal(false);
   /** Forecast tracks of tropical cyclones near the region (independent of the colour layer and the timeline). */
   readonly cyclones = signal(false);
-  /** Lightning strokes of the last five minutes (ILDN), drawn over any layer. */
-  readonly lightning = signal(false);
   /** The weather station markers on the map (SYNOP stations, observed; click one for its readings). Off by default. */
   readonly stationMarkers = signal(false);
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
@@ -151,10 +149,6 @@ export class ForecastStateService {
     this.cyclones.update(on => !on);
   }
 
-  toggleLightning(): void {
-    this.lightning.update(on => !on);
-  }
-
   /** Show or hide the pressure lines over whatever layer is active. */
   toggleIsobars(): void {
     if (this.isobars()) {
@@ -191,7 +185,6 @@ export class ForecastStateService {
     this.windParticles.set(false);
     this.isobars.set(false);
     this.pause();
-    this.lightning.set(true); // lightning comes with the radar and the satellite by default (it can be switched off, and a link says what it wants)
     this.mapLayers.selectSingleLayer('radar');
   }
 
@@ -201,7 +194,6 @@ export class ForecastStateService {
     this.windParticles.set(false);
     this.isobars.set(false);
     this.pause();
-    this.lightning.set(true);
     this.mapLayers.selectSingleLayer('satellite');
   }
 

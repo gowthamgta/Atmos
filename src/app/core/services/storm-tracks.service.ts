@@ -60,7 +60,20 @@ export class StormTracksService {
   private readonly cache = new Map<string, { geojson: StormFeatureCollection; summary: StormSummary }>();
   private token = 0;
 
+  /** The loop is loaded once, in the background, so the cells move the way the radar shows them and not with the forecast wind. */
+  private loopRequested = false;
+
   constructor() {
+    effect(() => {
+      const on = this.visible();
+      const live = this.radar.compositeMosaic();
+      if (!on || !live || this.loopRequested) return;
+      untracked(() => {
+        if (this.radar.history().length > 0 || this.radar.historyLoading()) return;
+        this.loopRequested = true;
+        void this.radar.loadHistory();
+      });
+    });
     effect(() => {
       const on = this.visible();
       const index = this.radar.playIndex();
@@ -159,7 +172,7 @@ export class StormTracksService {
         });
       }
     }
-    const speed = m ? `${Math.round(m.speedKmh)} km/h ${compass(m.towardsDeg)}` : '';
+    const speed = m ? `${Math.round(m.speedKmh)} km/h → ${compass(m.towardsDeg)}` : '';
     out.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [lon, lat] },
