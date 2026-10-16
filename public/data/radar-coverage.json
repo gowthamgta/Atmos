@@ -41,46 +41,11 @@
    "rangeKm": 250
   },
   {
-   "id": "chennai",
-   "lat": 13.0838,
-   "lng": 80.29,
-   "band": "S-Band",
-   "rangeKm": 250
-  },
-  {
-   "id": "pallikaranai",
-   "lat": 12.9451,
-   "lng": 80.2115,
-   "band": "X-Band",
-   "rangeKm": 85
-  },
-  {
    "id": "sriharikota",
    "lat": 13.6645,
    "lng": 80.2274,
    "band": "S-Band",
    "rangeKm": 240
-  },
-  {
-   "id": "kochi",
-   "lat": 9.9312,
-   "lng": 76.2673,
-   "band": "S-Band",
-   "rangeKm": 250
-  },
-  {
-   "id": "thiruvananthapuram",
-   "lat": 8.5374,
-   "lng": 76.8657,
-   "band": "C-Band",
-   "rangeKm": 240
-  },
-  {
-   "id": "mangaluru",
-   "lat": 12.901,
-   "lng": 74.856,
-   "band": "C-Band",
-   "rangeKm": 250
   }
  ]
 }

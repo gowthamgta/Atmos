@@ -37,12 +37,7 @@ MAX_M = 4000.0
 # Mirrors IMD_RADAR_STATIONS in src/app/core/domain/models/radar.model.ts: id, latitude, longitude, band, range of the column-maximum picture (km)
 STATIONS = [
     ("karaikal", 10.9254, 79.8380, "S-Band", 250),
-    ("chennai", 13.0838, 80.2900, "S-Band", 250),
-    ("pallikaranai", 12.9451, 80.2115, "X-Band", 85),
     ("sriharikota", 13.6645, 80.2274, "S-Band", 240),
-    ("kochi", 9.9312, 76.2673, "S-Band", 250),
-    ("thiruvananthapuram", 8.5374, 76.8657, "C-Band", 240),
-    ("mangaluru", 12.901, 74.856, "C-Band", 250),
 ]
 
 SOUTH, NORTH, WEST, EAST, STEP = 5.8, 16.4, 72.0, 83.1, 0.02

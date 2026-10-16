@@ -21,10 +21,10 @@ describe('Radar Domain & Config', () => {
     expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.63, 1);
   });
 
-  it('should have all seven South India IMD Doppler Weather Radar stations properly configured', () => {
-    expect(IMD_RADAR_STATIONS.length).toBe(7);
+  it('should have the two radars kept (Karaikal and Sriharikota) properly configured', () => {
+    expect(IMD_RADAR_STATIONS.length).toBe(2);
 
-    const requiredStations = ['karaikal', 'chennai', 'pallikaranai', 'sriharikota', 'kochi', 'thiruvananthapuram', 'mangaluru'];
+    const requiredStations = ['karaikal', 'sriharikota'];
     for (const id of requiredStations) {
       const st = IMD_RADAR_STATIONS.find(s => s.id === id);
       expect(st).toBeDefined();
@@ -44,68 +44,10 @@ describe('Radar Domain & Config', () => {
       expect(st!.products.ppz.url).toContain(st!.code);
     }
 
-    const tvm = IMD_RADAR_STATIONS.find(s => s.id === 'thiruvananthapuram')!;
-    expect(tvm.products.caz.file).toBe('caz_tvm.gif');
-    expect(tvm.products.sri.rangeKm).toBe(124);
-    expect(tvm.products.ppz.rangeKm).toBe(365);
-    expect(tvm.products.caz.palette?.length).toBe(15);
-    expect(tvm.products.ppz.file).toBe('ppz_tvm.gif');
-
-    const mlr = IMD_RADAR_STATIONS.find(s => s.id === 'mangaluru')!;
-    expect(mlr.products.caz.file).toBe('caz_mlr.gif');
-    expect(mlr.products.ppz.file).toBe('ppz_mlr.gif');
-    expect(mlr.band).toBe('C-Band');
-    // Pure white is excluded: the Mangaluru basemap draws district borders in white
-    expect(mlr.products.caz.palette!.some(p => p.rgb.every(c => c === 255))).toBe(false);
-    expect(mlr.products.ppz.crop?.w).toBe(880);
-
-    const cni = IMD_RADAR_STATIONS.find(s => s.id === 'chennai')!;
-    expect(cni.band).toBe('S-Band');
-    expect(cni.operationalRangeKm).toBe(250);
-    expect(cni.code).toBe('cni');
-    expect(cni.products.caz.crop?.y).toBe(201);
-    expect(cni.products.caz.crop?.w).toBe(500);
-    expect(cni.products.caz.crop?.h).toBe(499);
-    expect(cni.products.ppi.crop?.w).toBe(800);
-    expect(cni.products.sri.crop?.w).toBe(600);
-    expect(cni.products.pac.crop?.w).toBe(599);
-    expect(cni.products.ppz.crop?.w).toBe(800);
-
     // Ranges read from the IMD pictures themselves ("Range" / "Max Range" / "Display Range" printed on each one). The
     // picture is placed on the map by this number, so a wrong one stretches every echo away from the radar.
     expect(IMD_RADAR_STATIONS.find(x => x.id === 'karaikal')!.products.ppz.rangeKm).toBe(500);
-    expect(IMD_RADAR_STATIONS.find(x => x.id === 'chennai')!.products.ppz.rangeKm).toBe(600);
-    expect(IMD_RADAR_STATIONS.find(x => x.id === 'mangaluru')!.products.ppz.rangeKm).toBe(450);
     expect(IMD_RADAR_STATIONS.find(x => x.id === 'karaikal')!.products.ppi.rangeKm).toBe(150);
-    expect(IMD_RADAR_STATIONS.find(x => x.id === 'chennai')!.products.ppi.rangeKm).toBe(150);
-
-    const koc = IMD_RADAR_STATIONS.find(s => s.id === 'kochi')!;
-    expect(koc.band).toBe('S-Band');
-    expect(koc.operationalRangeKm).toBe(250);
-    expect(koc.code).toBe('koc');
-    expect(koc.lat).toBeCloseTo(9.93, 1);
-    expect(koc.lng).toBeCloseTo(76.27, 1);
-    // Kochi's real images are bigger than 572 px: when IMD serves its 572x572 "radar under maintenance" photo the crop
-    // does not fit, which is how the station is detected as offline (never decode the photo as rain)
-    expect(koc.products.caz.crop).toEqual({ x: 100, y: 300, w: 600, h: 600 });
-    expect(koc.products.ppi.crop).toEqual({ x: 100, y: 300, w: 600, h: 600 });
-    expect(koc.products.ppz.crop).toEqual({ x: 100, y: 300, w: 600, h: 600 });
-    for (const key of ['caz', 'ppi', 'ppz'] as const) {
-      const c = koc.products[key].crop!;
-      expect(c.x + c.w).toBeGreaterThan(572 + 2);
-    }
-
-    const plk = IMD_RADAR_STATIONS.find(s => s.id === 'pallikaranai')!;
-    expect(plk.band).toBe('X-Band');
-    expect(plk.operationalRangeKm).toBe(85);
-    expect(plk.products.caz.crop).toBeDefined();
-    expect(plk.products.caz.crop?.w).toBe(1800);
-    expect(plk.products.caz.crop?.h).toBe(1800);
-    expect(plk.products.ppi.crop?.w).toBe(2430);
-    expect(plk.products.sri.crop?.w).toBe(2430);
-    expect(plk.products.pac.crop?.w).toBe(2430);
-    expect(plk.products.ppz.crop?.w).toBe(2430);
-    expect(plk.products.ppz.crop?.h).toBe(2485);
 
     // Sriharikota: S-band, 240 km, no animation GIF; ranges and palettes read from its own pictures
     const shr = IMD_RADAR_STATIONS.find(s => s.id === 'sriharikota')!;

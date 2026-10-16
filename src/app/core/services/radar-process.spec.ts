@@ -17,9 +17,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['chennai', 'caz', 'chennai-caz.gif', 'c3923dfd'],
   ['karaikal', 'caz', 'karaikal-caz.gif', 'd8aed1c3'],
-  ['thiruvananthapuram', 'ppz', 'thiruvananthapuram-ppz.gif', '17b0dda0'],
 ];
 
 function load(file: string): ArrayBuffer {
@@ -55,10 +53,10 @@ describe('radar picture processing (the same code runs in the worker and on the 
 
   it('turns a picture that does not match the station layout into no field (the maintenance photo)', async () => {
     const processor = new RadarProcessor();
-    const kochi = IMD_RADAR_STATIONS.find(s => s.id === 'kochi')!;
-    const config = kochi.products.caz;
-    // a Chennai picture is far smaller than Kochi's configured crop
-    const still = await processor.still(load('chennai-caz.gif'), { crop: config.crop, palette: config.palette, isTransparent: true, isXBand: false });
+    const shr = IMD_RADAR_STATIONS.find(s => s.id === 'sriharikota')!;
+    const config = shr.products.caz;
+    // a Karaikal picture is far smaller than Sriharikota's configured crop
+    const still = await processor.still(load('karaikal-caz.gif'), { crop: config.crop, palette: config.palette, isTransparent: true, isXBand: false });
     expect(still.decoded).toBe(true);
     expect(still.layoutOk).toBe(false);
     expect(still.field).toBeNull();
@@ -75,7 +73,6 @@ describe('radar picture processing (the same code runs in the worker and on the 
 
 describe('radar intensity is kept as the picture gives it', () => {
   const karaikal = IMD_RADAR_STATIONS.find(st => st.id === 'karaikal')!.products.caz;
-  const chennai = IMD_RADAR_STATIONS.find(st => st.id === 'chennai')!.products.caz;
   const SEA: [number, number, number] = [190, 190, 190];
   const N = 120;
 
@@ -117,21 +114,10 @@ describe('radar intensity is kept as the picture gives it', () => {
     expect(dbz(peak(strong))).toBeLessThan(50);
   });
 
-  it('keeps the white, cream and light-blue cores of a strong cell, but not a white label or a stretch of sea on its own', () => {
-    const ring = block(50, 50, 8, 8, [0, 102, 255]);                                         // 30 dBZ ring...
-    const core = block(52, 52, 4, 4, [255, 255, 255]);                                       // ...with a white 38 dBZ core
-    const cell = run(picture({ ...ring, ...core }), chennai.palette);
-    expect(dbz(peak(cell))).toBeGreaterThan(37);
-    const label = run(picture(block(50, 50, 10, 4, [255, 255, 255])), chennai.palette);       // a white label on the basemap
-    expect(peak(label)).toBe(0);
-    const sea = run(picture({}, [102, 204, 255]), chennai.palette);                           // Chennai's sea is the colour of the 33 dBZ swatch
-    expect(peak(sea)).toBe(0);
-  });
-
   it('keeps every echo, even a lone speck (no speck filter: all of the radar rain is shown)', () => {
-    const cell = run(picture(block(60, 60, 3, 3, [0, 51, 255])), chennai.palette);            // 26 dBZ, 3 x 3 pixels
+    const cell = run(picture(block(60, 60, 3, 3, [0, 51, 255])), karaikal.palette);            // 26 dBZ, 3 x 3 pixels
     expect(peak(cell)).toBeGreaterThan(1.2);
-    const speck = run(picture({ '60,60': [0, 51, 255] }), chennai.palette);
+    const speck = run(picture({ '60,60': [0, 51, 255] }), karaikal.palette);
     expect(peak(speck)).toBeGreaterThan(1.2);
   });
 

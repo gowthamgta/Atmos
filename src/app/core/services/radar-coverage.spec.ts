@@ -134,10 +134,10 @@ describe('the baked file', () => {
     for (const c of [COVERAGE_NONE, COVERAGE_POOR, COVERAGE_LIMITED, COVERAGE_GOOD]) expect(seen.has(c), 'class ' + c).toBe(true);
   });
 
-  it('sees less of the ground the farther it is from a radar (inland from Chennai)', () => {
+  it('sees less of the ground the farther it is from a radar (inland from Karaikal)', () => {
     const grid: CoverageGrid = { meta: meta!, classes: decodeGrayPng(readFileSync('public/data/radar-coverage.png'), meta!.nx, meta!.ny) };
-    const chennai = IMD_RADAR_STATIONS.find(s => s.id === 'chennai')!;
-    const at = (km: number) => coverageAt(grid, chennai.lat, chennai.lng - km / (111.32 * Math.cos((chennai.lat * Math.PI) / 180)));
+    const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
+    const at = (km: number) => coverageAt(grid, karaikal.lat, karaikal.lng - km / (111.32 * Math.cos((karaikal.lat * Math.PI) / 180)));
     expect(at(40)).toBeGreaterThanOrEqual(at(130));
     expect(at(130)).toBeGreaterThanOrEqual(at(230));
   });

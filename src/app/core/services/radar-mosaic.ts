@@ -58,7 +58,6 @@ function prepareStation(
   const y1 = Math.min(outH - 1, Math.ceil(((maxLat - s.south) / latSpan) * (outH - 1)));
   const rowMin = new Int32Array(s.cropH).fill(-1);
   const rowMax = new Int32Array(s.cropH).fill(-1);
-  let any = false;
   for (let r = 0; r < s.cropH; r++) {
     const o = r * s.cropW;
     let lo = -1;
@@ -71,9 +70,8 @@ function prepareStation(
     }
     rowMin[r] = lo;
     rowMax[r] = hi;
-    if (lo >= 0) any = true;
   }
-  if (!any) return null;
+  // a scan with no echo at all still counts: it is the closest radar for its points, which stay dry
   const xA = new Int32Array(outW);
   const xB = new Int32Array(outW);
   const fx = new Float64Array(outW);

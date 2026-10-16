@@ -50,7 +50,7 @@ export function parseViewState(hash: string): ViewState {
   const zoom = cam ? num(cam.rest[0], 1, 18) : null;
   if (cam && zoom !== null) view.camera = { lat: cam.lat, lon: cam.lon, zoom };
   const overlays = params.get('o');
-  if (overlays !== null) view.overlays = overlays.split(',').filter(o => (OVERLAYS as readonly string[]).includes(o));
+  if (overlays !== null) view.overlays = overlays.split(/[,\s+]+/).filter(o => (OVERLAYS as readonly string[]).includes(o));
   return view;
 }
 

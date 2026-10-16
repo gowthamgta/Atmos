@@ -39,13 +39,11 @@ describe('composeRadarMosaic: unchanged output on a fixed multi-station scene', 
   // CAZ alone: PPZ is a picture of its own now, so its scans are not part of this one
   const sources: [string, ProcessedRadarResult][] = [
     ['karaikal', scan('karaikal', 'caz', 1, 0)],
-    ['chennai', scan('chennai', 'caz', 3, 0)],
-    ['thiruvananthapuram', scan('thiruvananthapuram', 'caz', 5, 1)], ['mangaluru', scan('mangaluru', 'caz', 6, 2)],
     ['sriharikota', scan('sriharikota', 'caz', 7, 0)],
   ];
 
   it('gives the same field, picture and corners', () => {
     const m = composeRadarMosaic(IMD_RADAR_STATIONS, sources, 0.5, 1400, 'caz')!;
-    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1400, h: 1400, field: 'a6069b6a', shown: '4b61ec4f' })   // recorded after overlapping radars stopped being blended: each pixel comes from its closest radar
+    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1075, h: 1400, field: '6fa8ee96', shown: '459e21f6' })   // recorded for the two radars kept (Karaikal and Sriharikota), each pixel from its closest radar
   });
 });

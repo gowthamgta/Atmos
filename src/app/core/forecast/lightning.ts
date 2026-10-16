@@ -4,10 +4,10 @@
  *
  * The page's own map reads a small binary file: 32 bytes a stroke (time as a 64-bit float, then latitude, longitude and age in seconds as
  * 32-bit floats, then an id). ILDN has no push stream (its own map and app poll over HTTP), so live here is a quick poll: every ten
- * seconds through our own address (/ildn, see netlify.toml), which keeps the answer for ten seconds, so ILDN is asked about every ten
+ * seconds through our own address (the function /.netlify/functions/ildn; in development proxy.conf.json), which keeps the answer for ten seconds, so ILDN is asked about every ten
  * seconds in all however many people look. Between polls the strokes are aged locally and a new one flashes.
  */
-export const LIGHTNING_URL = '/ildn/imap-data.php?ut=latest&span=5';
+export const LIGHTNING_URL = '/.netlify/functions/ildn?ut=latest&span=5';
 /** Only strokes this recent are shown (seconds). */
 export const LIGHTNING_WINDOW_S = 300;
 export const LIGHTNING_CREDIT = 'Lightning: ILDN, Tripura University (non-commercial use)';

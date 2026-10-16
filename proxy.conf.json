@@ -7,12 +7,12 @@
       "^/imd-radar": ""
     }
   },
-  "/ildn": {
+  "/.netlify/functions/ildn": {
     "target": "https://ildn.in",
     "secure": true,
     "changeOrigin": true,
     "pathRewrite": {
-      "^/ildn": ""
+      "^/\\.netlify/functions/ildn": "/imap-data.php"
     }
   }
 }

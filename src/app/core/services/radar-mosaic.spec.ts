@@ -4,7 +4,9 @@ import { MAX_SCAN_AGE_MIN, composeRadarMosaic } from './radar-mosaic';
 import { dequantizeRadar } from './radar-field';
 
 const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
-const kochi = IMD_RADAR_STATIONS.find(s => s.id === 'kochi')!;
+const shr = IMD_RADAR_STATIONS.find(s => s.id === 'sriharikota')!;
+/** A point `t` of the way from Karaikal to Sriharikota (about 305 km apart, so their ranges overlap in between). */
+const between = (t: number): [number, number] => [karaikal.lat + (shr.lat - karaikal.lat) * t, karaikal.lng + (shr.lng - karaikal.lng) * t];
 const N = 120;
 
 /** A scan of one station and product that has the same intensity everywhere on its square. */
@@ -63,27 +65,22 @@ describe('composeRadarMosaic', () => {
   });
 
   it('does not blend radars where they overlap: every point takes its value from the closest radar', () => {
-    // Karaikal and Kochi are about 270 km apart in longitude, so a point between them is seen by both
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.0)],
-      ['kochi', scan(kochi, 'caz', 2.0)],
+      ['sriharikota', scan(shr, 'caz', 2.0)],
     ])!;
-    const lat = (karaikal.lat + kochi.lat) / 2;
-    const lng = (karaikal.lng + kochi.lng) / 2;
-    const nearKaraikal = valueAt(mosaic, lat, lng + (karaikal.lng - lng) * 0.4);
-    const nearKochi = valueAt(mosaic, lat, lng + (kochi.lng - lng) * 0.4);
-    expect(nearKaraikal).toBeCloseTo(4.0, 1); // Karaikal's own value, with no trace of Kochi's
-    expect(nearKochi).toBeCloseTo(2.0, 1);    // Kochi's own value, although Karaikal also sees this point with a stronger echo
+    const nearKaraikal = valueAt(mosaic, ...between(0.35));
+    const nearShr = valueAt(mosaic, ...between(0.65));
+    expect(nearKaraikal).toBeCloseTo(4.0, 1); // Karaikal's own value, with no trace of Sriharikota's
+    expect(nearShr).toBeCloseTo(2.0, 1);      // Sriharikota's own value, although Karaikal also sees this point with a stronger echo
   });
 
   it('a point a radar sees as dry stays dry although a farther radar has an echo there', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 0)],
-      ['kochi', scan(kochi, 'caz', 3.0)],
+      ['sriharikota', scan(shr, 'caz', 3.0)],
     ])!;
-    const lat = (karaikal.lat + kochi.lat) / 2;
-    const lng = (karaikal.lng + kochi.lng) / 2;
-    expect(valueAt(mosaic, lat, lng + (karaikal.lng - lng) * 0.4)).toBe(0);
+    expect(valueAt(mosaic, ...between(0.35))).toBe(0);
   });
 
   it('skips scans that are hidden as too old, and returns nothing when there is no scan', () => {
@@ -102,10 +99,10 @@ describe('live scans', () => {
   it('does not draw a live scan older than 45 minutes, and keeps the fresh stations', () => {
     const now = T0 + 60 * 60_000;
     const stale = scan(karaikal, 'caz', 2.0, 0);       // 60 min old
-    const fresh = scan(kochi, 'caz', 3.0, 30);       // 30 min old
+    const fresh = scan(shr, 'caz', 3.0, 30);       // 30 min old
     expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale]], 0.5, 2800, 'caz', now)).toBeNull();
-    const m = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale], ['kochi', fresh]], 0.5, 2800, 'caz', now)!;
-    expect(m.fieldData.bounds[0][0]).toBeLessThan(karaikal.lat - 1);   // the picture is Kochi's square only, not Karaikal's
+    const m = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale], ['sriharikota', fresh]], 0.5, 2800, 'caz', now)!;
+    expect(m.fieldData.bounds[0][0]).toBeGreaterThan(karaikal.lat);   // the picture is Sriharikota's square only, not Karaikal's
     // without a clock (history frames) nothing is dropped
     expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale]])).not.toBeNull();
     expect(MAX_SCAN_AGE_MIN).toBe(45);

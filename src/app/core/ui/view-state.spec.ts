@@ -20,6 +20,12 @@ describe('view state in the address', () => {
     expect(parseViewState('#c=8.5,77.5,9')).toEqual({ camera: { lat: 8.5, lon: 77.5, zoom: 9 } });
   });
 
+  it('reads overlays separated by a comma, a space or a plus (a copied link often loses its commas)', () => {
+    expect(parseViewState('o=relief,lightning').overlays).toEqual(['relief', 'lightning']);
+    expect(parseViewState('o=relief lightning').overlays).toEqual(['relief', 'lightning']);
+    expect(parseViewState('o=relief+lightning').overlays).toEqual(['relief', 'lightning']);
+  });
+
   it('keeps an empty overlay list (all off) apart from no list (the defaults)', () => {
     expect(parseViewState('o=')).toEqual({ overlays: [] });
     expect(parseViewState('l=wind').overlays).toBeUndefined();
