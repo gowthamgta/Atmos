@@ -111,33 +111,32 @@ export function echoAlphaFeather(v: number): number {
 
 /**
  * The radar colour scale: intensity (0 = nothing; v = (dBZ - 12) / 9.6, so 1.08 is 22 dBZ and 5 is 60 dBZ) to colour and opacity. These are
- * Windy's radar colours, sampled down its legend: indigo and blue for light rain, then teal, green, yellow, amber, orange, red-brown,
- * crimson and magenta-purple at 60 dBZ.
+ * IMD's own colours (sampled down the colour bar of the Karaikal MAX(Z) picture): indigo, blue, azure, cyan, white, yellow, orange, red,
+ * crimson, so an echo looks the way it does on the radar's own picture.
  */
 export const RADAR_COLOR_STOPS = [
-  { val: 0.0, r: 36, g: 24, b: 158, a: 0.0 }, // Transparent
-  { val: 0.3, r: 36, g: 24, b: 158, a: 0.55 }, // the faintest echoes (about 12 dBZ and under)
-  { val: 0.5, r: 14, g: 96, b: 154, a: 0.78 }, // 14.6 dBZ
-  { val: 0.69, r: 4, g: 128, b: 136, a: 0.84 }, // 18.6 dBZ
-  { val: 0.98, r: 2, g: 153, b: 144, a: 0.88 }, // 21.4 dBZ
-  { val: 1.21, r: 3, g: 167, b: 133, a: 0.9 }, // 23.6 dBZ
-  { val: 1.43, r: 20, g: 187, b: 131, a: 0.92 }, // 25.7 dBZ
-  { val: 1.66, r: 62, g: 205, b: 125, a: 0.93 }, // 27.9 dBZ
-  { val: 1.88, r: 75, g: 190, b: 86, a: 0.94 }, // 30 dBZ
-  { val: 2.09, r: 125, g: 211, b: 76, a: 0.95 }, // 32.1 dBZ
-  { val: 2.32, r: 175, g: 212, b: 44, a: 0.96 }, // 34.3 dBZ
-  { val: 2.54, r: 210, g: 212, b: 27, a: 0.97 }, // 36.4 dBZ
-  { val: 2.77, r: 235, g: 207, b: 22, a: 0.98 }, // 38.6 dBZ
-  { val: 2.99, r: 227, g: 182, b: 5, a: 0.98 }, // 40.7 dBZ
-  { val: 3.23, r: 242, g: 177, b: 21, a: 1 }, // 43 dBZ
-  { val: 3.46, r: 241, g: 159, b: 33, a: 1 }, // 45.2 dBZ
-  { val: 3.68, r: 233, g: 137, b: 51, a: 1 }, // 47.3 dBZ
-  { val: 3.91, r: 210, g: 107, b: 49, a: 1 }, // 49.5 dBZ
-  { val: 4.14, r: 205, g: 88, b: 70, a: 1 }, // 51.7 dBZ
-  { val: 4.36, r: 199, g: 68, b: 82, a: 1 }, // 53.9 dBZ
-  { val: 4.59, r: 185, g: 50, b: 93, a: 1 }, // 56.1 dBZ
-  { val: 4.82, r: 168, g: 32, b: 98, a: 1 }, // 58.3 dBZ
-  { val: 5, r: 145, g: 18, b: 105, a: 1 } // 60 dBZ
+  { val: 0.0, r: 58, g: 0, b: 160, a: 0.0 }, // Transparent
+  { val: 0.3, r: 58, g: 0, b: 160, a: 0.6 }, // the faintest echoes (about 12 to 20 dBZ)
+  { val: 1.08, r: 58, g: 0, b: 160, a: 0.85 }, // 22.4 dBZ
+  { val: 1.35, r: 11, g: 0, b: 193, a: 0.9 }, // 25 dBZ
+  { val: 1.57, r: 0, g: 32, b: 233, a: 0.92 }, // 27.1 dBZ
+  { val: 1.78, r: 0, g: 72, b: 255, a: 0.94 }, // 29.1 dBZ
+  { val: 2, r: 2, g: 125, b: 255, a: 0.95 }, // 31.2 dBZ
+  { val: 2.22, r: 22, g: 157, b: 255, a: 0.96 }, // 33.3 dBZ
+  { val: 2.43, r: 53, g: 185, b: 255, a: 0.97 }, // 35.3 dBZ
+  { val: 2.59, r: 110, g: 216, b: 255, a: 0.98 }, // 36.9 dBZ
+  { val: 2.75, r: 207, g: 242, b: 255, a: 0.98 }, // 38.4 dBZ
+  { val: 2.86, r: 255, g: 253, b: 231, a: 0.99 }, // 39.5 dBZ
+  { val: 2.97, r: 255, g: 243, b: 135, a: 1 }, // 40.5 dBZ
+  { val: 3.14, r: 255, g: 229, b: 0, a: 1 }, // 42.1 dBZ
+  { val: 3.34, r: 255, g: 197, b: 0, a: 1 }, // 44.1 dBZ
+  { val: 3.56, r: 255, g: 159, b: 0, a: 1 }, // 46.2 dBZ
+  { val: 3.78, r: 255, g: 110, b: 0, a: 1 }, // 48.3 dBZ
+  { val: 4.05, r: 255, g: 62, b: 0, a: 1 }, // 50.9 dBZ
+  { val: 4.38, r: 255, g: 59, b: 8, a: 1 }, // 54 dBZ
+  { val: 4.58, r: 255, g: 63, b: 34, a: 1 }, // 56 dBZ
+  { val: 4.8, r: 210, g: 11, b: 6, a: 1 }, // 58.1 dBZ
+  { val: 5.02, r: 200, g: 0, b: 37, a: 1 } // 60 dBZ
 ];
 
 export function sampleRadarColorRamp(v: number): [number, number, number, number] {
@@ -162,12 +161,12 @@ export function sampleRadarColorRamp(v: number): [number, number, number, number
 }
 
 /**
- * The radar is drawn in flat bands, like a rain radar map, not as a smooth gradient: the band edges in dBZ, and the dBZ whose colour
- * (from RADAR_COLOR_STOPS) fills the band below the first edge, between each pair, and above the last. The edges between bands are
- * smooth curves (the field is reconstructed smoothly) and are only anti-aliased, not blurred.
+ * The radar is drawn in the flat bands of IMD's own colour bar: the band edges in dBZ (the steps of its legend, 22.7 to 60), and the dBZ whose
+ * colour (from RADAR_COLOR_STOPS, IMD's own colours) fills the band below the first edge, between each pair, and above the last. The edges
+ * between bands are smooth curves (the field is reconstructed smoothly) and are only anti-aliased, not blurred.
  */
-export const RADAR_BAND_EDGES_DBZ = [20, 26, 32, 38, 42, 46, 52];
-export const RADAR_BAND_COLOUR_DBZ = [16, 23, 29, 35, 40, 45, 52, 58];
+export const RADAR_BAND_EDGES_DBZ = [22.7, 25.3, 28, 30.7, 33.3, 36, 38.7, 41.3, 44, 46.7, 49.3, 52, 54.7, 57.3, 60];
+export const RADAR_BAND_COLOUR_DBZ = [21.4, 24, 26.7, 29.3, 32, 34.7, 37.3, 40, 42.7, 45.3, 48, 50.7, 53.3, 56, 58.7, 61];
 
 /** The largest intensity the 8-bit display field can hold (the scale tops out at 5.2; above 6 is clipped). */
 export const RADAR_FIELD_MAX = 6;
