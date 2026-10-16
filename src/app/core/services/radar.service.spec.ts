@@ -282,47 +282,35 @@ describe('Radar Domain & Config', () => {
 });
 
 describe('Radar Overlap Color Merging & Color Ramp', () => {
-  it('should map continuous rain intensity values to accurate RGB color ramp', () => {
-    // 0.0 -> Transparent
-    const [r0, g0, b0, a0] = sampleRadarColorRamp(0.0);
-    expect(a0).toBe(0);
-
-    // 0.5 -> Blue (Light Rain)
-    const [r1, g1, b1, a1] = sampleRadarColorRamp(0.5);
-    expect(b1).toBeGreaterThan(150);
-    expect(r1).toBeLessThan(100);
-    expect(a1).toBeGreaterThan(150);
-
-    // 2.0 -> Green (Moderate Rain: #afc600ff)
-    const [r2, g2, b2, a2] = sampleRadarColorRamp(2.0);
-    expect(g2).toBeGreaterThan(180);
-    expect(r2).toBeGreaterThan(150);
-    expect(b2).toBeLessThan(50);
-
-    // 3.0 -> Yellow (Heavy Rain)
-    const [r3, g3, b3, a3] = sampleRadarColorRamp(3.0);
-    expect(r3).toBeGreaterThan(240);
+  it("should map continuous rain intensity values to Windy's radar colours", () => {
+    // v = (dBZ - 12) / 9.6: 0 transparent, then indigo and blue, teal, green, yellow, amber, orange, red-brown, magenta-purple
+    expect(sampleRadarColorRamp(0.0)[3]).toBe(0);
+    const [r1, , b1, a1] = sampleRadarColorRamp(0.5); // faint echo: indigo to blue
+    expect(b1).toBeGreaterThan(120);
+    expect(r1).toBeLessThan(60);
+    expect(a1).toBeGreaterThan(100);
+    const [r2, g2, b2] = sampleRadarColorRamp(1.5); // 26 dBZ: green
+    expect(g2).toBeGreaterThan(170);
+    expect(r2).toBeLessThan(60);
+    expect(b2).toBeGreaterThan(100);
+    const [r3, g3, b3] = sampleRadarColorRamp(2.5); // 36 dBZ: yellow
+    expect(r3).toBeGreaterThan(180);
     expect(g3).toBeGreaterThan(190);
-    expect(b3).toBeLessThan(50);
-
-    // 3.7 -> Orange (Intense Core)
-    const [r4, g4, b4, a4] = sampleRadarColorRamp(3.7);
-    expect(r4).toBeGreaterThan(240);
-    expect(g4).toBeGreaterThan(100);
-    expect(g4).toBeLessThan(150);
-    expect(b4).toBeLessThan(50);
-
-    // 4.4 -> Red (Torrential Rain)
-    const [r5, g5, b5, a5] = sampleRadarColorRamp(4.4);
-    expect(r5).toBeGreaterThan(220);
+    expect(b3).toBeLessThan(60);
+    const [r4, g4, b4] = sampleRadarColorRamp(3.7); // 47 dBZ: orange
+    expect(r4).toBeGreaterThan(220);
+    expect(g4).toBeGreaterThan(110);
+    expect(g4).toBeLessThan(170);
+    expect(b4).toBeLessThan(70);
+    const [r5, g5, b5] = sampleRadarColorRamp(4.4); // 54 dBZ: red-brown
+    expect(r5).toBeGreaterThan(180);
     expect(g5).toBeLessThan(100);
-    expect(b5).toBeLessThan(100);
-
-    // 5.2 -> Purple (Severe Storm / Hail)
-    const [r6, g6, b6, a6] = sampleRadarColorRamp(5.2);
-    expect(r6).toBeGreaterThan(150);
-    expect(b6).toBeGreaterThan(200);
-    expect(g6).toBeLessThan(100);
+    expect(b5).toBeLessThan(110);
+    const [r6, g6, b6, a6] = sampleRadarColorRamp(5.2); // 60+ dBZ: magenta-purple
+    expect(r6).toBeGreaterThan(120);
+    expect(g6).toBeLessThan(40);
+    expect(b6).toBeGreaterThan(90);
+    expect(a6).toBe(255);
   });
 
   it('should merge overlapping radar intensities preserving peak core intensity without dark overlay', () => {
@@ -342,9 +330,9 @@ describe('Radar Overlap Color Merging & Color Ramp', () => {
 
     // In the merged color map, this outputs pure Yellow (RGB ~250, 204, 21), NOT a blue-obscured patch
     const [r, g, b] = sampleRadarColorRamp(mergedCore);
-    expect(r).toBeGreaterThan(240); // Yellow red component
-    expect(g).toBeGreaterThan(180); // Yellow green component
-    expect(b).toBeLessThan(60);   // Yellow blue component (NOT obscured by blue!)
+    expect(r).toBeGreaterThan(220); // yellow-amber red component
+    expect(g).toBeGreaterThan(150); // yellow-amber green component
+    expect(b).toBeLessThan(70);   // blue component small (NOT obscured by blue!)
 
     // Where both radars observe identical light rain (v = 1.0, 1.0)
     const mergedEqual = mergeTwoRadars(1.0, 0.5, 1.0, 0.5);
