@@ -224,37 +224,35 @@ describe('Radar Domain & Config', () => {
 });
 
 describe('Radar Overlap Color Merging & Color Ramp', () => {
-  it("should map continuous rain intensity values to IMD's own colour scale", () => {
-    // v = (dBZ - 12) / 9.6: 0 transparent, then indigo, blue, azure, cyan, white, yellow, orange, red, crimson
+  it("should map continuous rain intensity values to Windy's radar colours", () => {
+    // v = (dBZ - 12) / 9.6: 0 transparent, then indigo and blue, teal, green, yellow, amber, orange, red-brown, magenta-purple
     expect(sampleRadarColorRamp(0.0)[3]).toBe(0);
-    const [r1, , b1, a1] = sampleRadarColorRamp(0.5); // faint echo: indigo
-    expect(b1).toBeGreaterThan(150);
-    expect(r1).toBeLessThan(100);
+    const [r1, , b1, a1] = sampleRadarColorRamp(0.5); // faint echo: indigo to blue
+    expect(b1).toBeGreaterThan(120);
+    expect(r1).toBeLessThan(60);
     expect(a1).toBeGreaterThan(100);
-    const [r2, g2, b2] = sampleRadarColorRamp(2.0); // 31 dBZ: azure blue
-    expect(b2).toBeGreaterThan(240);
-    expect(g2).toBeGreaterThan(100);
-    expect(r2).toBeLessThan(40);
-    const [r3, g3, b3] = sampleRadarColorRamp(2.86); // 39.5 dBZ: white, as on the radar's picture
-    expect(Math.min(r3, g3, b3)).toBeGreaterThan(225);
-    const [r4, g4, b4] = sampleRadarColorRamp(3.14); // 42 dBZ: yellow
-    expect(r4).toBeGreaterThan(240);
-    expect(g4).toBeGreaterThan(200);
-    expect(b4).toBeLessThan(40);
-    const [r5, g5, b5] = sampleRadarColorRamp(3.78); // 48 dBZ: orange
-    expect(r5).toBeGreaterThan(240);
-    expect(g5).toBeGreaterThan(90);
-    expect(g5).toBeLessThan(130);
-    expect(b5).toBeLessThan(40);
-    const [r6, g6, b6] = sampleRadarColorRamp(4.4); // 54 dBZ: red
-    expect(r6).toBeGreaterThan(240);
-    expect(g6).toBeLessThan(100);
-    expect(b6).toBeLessThan(100);
-    const [r7, g7, b7, a7] = sampleRadarColorRamp(5.2); // 60+ dBZ: crimson
-    expect(r7).toBeGreaterThan(190);
-    expect(g7).toBeLessThan(40);
-    expect(b7).toBeLessThan(80);
-    expect(a7).toBe(255);
+    const [r2, g2, b2] = sampleRadarColorRamp(1.5); // 26 dBZ: green
+    expect(g2).toBeGreaterThan(170);
+    expect(r2).toBeLessThan(60);
+    expect(b2).toBeGreaterThan(100);
+    const [r3, g3, b3] = sampleRadarColorRamp(2.5); // 36 dBZ: yellow
+    expect(r3).toBeGreaterThan(180);
+    expect(g3).toBeGreaterThan(190);
+    expect(b3).toBeLessThan(60);
+    const [r4, g4, b4] = sampleRadarColorRamp(3.7); // 47 dBZ: orange
+    expect(r4).toBeGreaterThan(220);
+    expect(g4).toBeGreaterThan(110);
+    expect(g4).toBeLessThan(170);
+    expect(b4).toBeLessThan(70);
+    const [r5, g5, b5] = sampleRadarColorRamp(4.4); // 54 dBZ: red-brown
+    expect(r5).toBeGreaterThan(180);
+    expect(g5).toBeLessThan(100);
+    expect(b5).toBeLessThan(110);
+    const [r6, g6, b6, a6] = sampleRadarColorRamp(5.2); // 60+ dBZ: magenta-purple
+    expect(r6).toBeGreaterThan(120);
+    expect(g6).toBeLessThan(40);
+    expect(b6).toBeGreaterThan(90);
+    expect(a6).toBe(255);
   });
 
   it('should merge overlapping radar intensities preserving peak core intensity without dark overlay', () => {
@@ -272,11 +270,11 @@ describe('Radar Overlap Color Merging & Color Ramp', () => {
     const mergedCore = mergeTwoRadars(3.2, 0.29, 1.0, 0.21);
     expect(mergedCore).toBeGreaterThanOrEqual(3.0); // Preserved as Yellow!
 
-    // In the merged colour map this is a warm yellow, not a blue-obscured patch (the strong core itself, v = 3.2)
-    const [r, g, b] = sampleRadarColorRamp(3.2);
-    expect(r).toBeGreaterThan(240);
-    expect(g).toBeGreaterThan(180);
-    expect(b).toBeLessThan(60);
+    // In the merged color map, this outputs pure Yellow (RGB ~250, 204, 21), NOT a blue-obscured patch
+    const [r, g, b] = sampleRadarColorRamp(mergedCore);
+    expect(r).toBeGreaterThan(220); // yellow-amber red component
+    expect(g).toBeGreaterThan(150); // yellow-amber green component
+    expect(b).toBeLessThan(70);   // blue component small (NOT obscured by blue!)
 
     // Where both radars observe identical light rain (v = 1.0, 1.0)
     const mergedEqual = mergeTwoRadars(1.0, 0.5, 1.0, 0.5);
