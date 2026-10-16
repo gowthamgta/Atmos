@@ -21,10 +21,10 @@ describe('Radar Domain & Config', () => {
     expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.63, 1);
   });
 
-  it('should have the two radars kept (Karaikal and Sriharikota) properly configured', () => {
+  it('should have the two radars kept (Karaikal and Chennai) properly configured', () => {
     expect(IMD_RADAR_STATIONS.length).toBe(2);
 
-    const requiredStations = ['karaikal', 'sriharikota'];
+    const requiredStations = ['karaikal', 'chennai'];
     for (const id of requiredStations) {
       const st = IMD_RADAR_STATIONS.find(s => s.id === id);
       expect(st).toBeDefined();
@@ -49,19 +49,16 @@ describe('Radar Domain & Config', () => {
     expect(IMD_RADAR_STATIONS.find(x => x.id === 'karaikal')!.products.ppz.rangeKm).toBe(500);
     expect(IMD_RADAR_STATIONS.find(x => x.id === 'karaikal')!.products.ppi.rangeKm).toBe(150);
 
-    // Sriharikota: S-band, 240 km, no animation GIF; ranges and palettes read from its own pictures
-    const shr = IMD_RADAR_STATIONS.find(s => s.id === 'sriharikota')!;
-    expect(shr.code).toBe('shr');
-    expect(shr.band).toBe('S-Band');
-    expect(shr.skipAnimation).toBe(true);
-    expect(shr.lat).toBeCloseTo(13.66, 1);
-    expect(shr.lng).toBeCloseTo(80.23, 1);
-    expect(shr.products.caz.rangeKm).toBe(240);
-    expect(shr.products.ppz.rangeKm).toBe(490);
-    expect(shr.products.caz.crop).toEqual({ x: 59, y: 632, w: 1797, h: 1797 });
-    expect(shr.products.caz.palette!.length).toBeGreaterThan(5);
-    expect(shr.products.ppz.palette!.length).toBeGreaterThan(5);
-    expect(shr.products.ppi.palette!.length).toBeGreaterThan(5);
+    // Chennai (Port): S-band, 250 km, at the coordinates given for it
+    const cni = IMD_RADAR_STATIONS.find(s => s.id === 'chennai')!;
+    expect(cni.code).toBe('cni');
+    expect(cni.band).toBe('S-Band');
+    expect(cni.operationalRangeKm).toBe(250);
+    expect(cni.lat).toBeCloseTo(13.0839, 4); // 13 05 01.9 N
+    expect(cni.lng).toBeCloseTo(80.2901, 4); // 80 17 24.2 E
+    expect(cni.products.caz.crop).toEqual({ x: 0, y: 201, w: 500, h: 499 });
+    expect(cni.products.ppz.rangeKm).toBe(600);
+    expect(cni.products.caz.palette!.length).toBeGreaterThan(10);
   });
 
   it('should correctly extract ISO timestamp from synthetic binary GIF comment', () => {

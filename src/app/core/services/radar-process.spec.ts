@@ -53,10 +53,9 @@ describe('radar picture processing (the same code runs in the worker and on the 
 
   it('turns a picture that does not match the station layout into no field (the maintenance photo)', async () => {
     const processor = new RadarProcessor();
-    const shr = IMD_RADAR_STATIONS.find(s => s.id === 'sriharikota')!;
-    const config = shr.products.caz;
-    // a Karaikal picture is far smaller than Sriharikota's configured crop
-    const still = await processor.still(load('karaikal-caz.gif'), { crop: config.crop, palette: config.palette, isTransparent: true, isXBand: false });
+    const config = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!.products.caz;
+    // a picture smaller than the station's configured crop (here the crop asked for is 2000 px square)
+    const still = await processor.still(load('karaikal-caz.gif'), { crop: { x: 0, y: 201, w: 2000, h: 2000 }, palette: config.palette, isTransparent: true, isXBand: false });
     expect(still.decoded).toBe(true);
     expect(still.layoutOk).toBe(false);
     expect(still.field).toBeNull();

@@ -41,11 +41,11 @@
    "rangeKm": 250
   },
   {
-   "id": "sriharikota",
-   "lat": 13.6646,
-   "lng": 80.2276,
+   "id": "chennai",
+   "lat": 13.0839,
+   "lng": 80.2901,
    "band": "S-Band",
-   "rangeKm": 240
+   "rangeKm": 250
   }
  ]
 }
