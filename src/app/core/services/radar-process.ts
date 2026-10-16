@@ -229,6 +229,109 @@ function classifyPalettePixel(r: number, g: number, b: number, palette: RadarPal
   return hit && !hit.context ? hit.value : 0.0;
 }
 
+/** A patch of basemap-like colours counts as rain when at least this share of the pixels around it is rain. */
+const CORE_RAIN_BORDER = 0.5;
+/** ...and a patch this large (picture pixels) must be almost surrounded by rain: a stretch of sea or relief is bordered by the map. */
+const CORE_LARGE_PATCH = 1500;
+const CORE_LARGE_RAIN_BORDER = 0.85;
+
+/**
+ * The swatches the basemap also uses (white, cream, pale yellow, light blue: the strong core of a cell, but also labels, relief and sea) are
+ * judged as connected patches, not pixel by pixel: a patch is rain when most of the pixels around it are rain of the other colours. A core is
+ * a patch of white and yellow inside the blue of its cell, so all of it is kept (judging each pixel by its own neighbours kept only the rim
+ * and lost 80% of the 40 dBZ+ pixels); a white label, a hill or the sea is bordered by the map and stays out. `classes` holds the sure
+ * echoes; `candidates` are the pixels of those swatches with the intensity they would have.
+ */
+function keepCoresInRain(classes: Float32Array, w: number, h: number, all: readonly { index: number; value: number }[]): void {
+  // A swatch that covers a large part of the picture is the basemap itself (Chennai draws its sea in the light blue of 33.75 dBZ): it would
+  // join every coastal core to the whole sea. Its pixels are judged one by one (rain where at least 3 of the 8 around are rain), and the
+  // other swatches as patches.
+  const count = new Map<number, number>();
+  for (const c of all) count.set(c.value, (count.get(c.value) ?? 0) + 1);
+  const basemapLike = new Set([...count].filter(([, n]) => n >= CORE_LARGE_PATCH * 4).map(([v]) => v));
+  const candidates = basemapLike.size > 0 ? all.filter(c => !basemapLike.has(c.value)) : all;
+  if (basemapLike.size > 0) {
+    const sure = classes.slice();
+    for (const c of all) {
+      if (!basemapLike.has(c.value)) continue;
+      const x = c.index % w;
+      const y = (c.index - x) / w;
+      let around = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if ((dx !== 0 || dy !== 0) && nx >= 0 && ny >= 0 && nx < w && ny < h && sure[ny * w + nx] > 0) around++;
+        }
+      }
+      if (around >= 3) classes[c.index] = c.value;
+    }
+  }
+  const value = new Float32Array(w * h);
+  for (const c of candidates) value[c.index] = c.value;
+  // IMD draws its district lines, coastline and grid over the rain: a pixel of a one-pixel line inside rain has rain right next to it, so
+  // around a patch "rain" is a pixel that is rain or touches rain (a line through a cell does not make its core look like map)
+  const rainNear = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (classes[y * w + x] <= 0) continue;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx >= 0 && nx < w) rainNear[ny * w + nx] = 1;
+        }
+      }
+    }
+  }
+  const seen = new Uint8Array(w * h);
+  const counted = new Int32Array(w * h).fill(-1); // the patch an outside pixel was last counted for (each is counted once per patch)
+  const stack: number[] = [];
+  const members: number[] = [];
+  let patch = 0;
+  for (const c of candidates) {
+    if (seen[c.index]) continue;
+    patch++;
+    members.length = 0;
+    stack.push(c.index);
+    seen[c.index] = 1;
+    let border = 0;
+    let rainBorder = 0;
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      members.push(i);
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+            border++; // the edge of the picture counts as map
+            continue;
+          }
+          const n = ny * w + nx;
+          if (value[n] > 0) {
+            if (!seen[n]) {
+              seen[n] = 1;
+              stack.push(n);
+            }
+          } else if (counted[n] !== patch) {
+            counted[n] = patch;
+            border++;
+            if (rainNear[n]) rainBorder++;
+          }
+        }
+      }
+    }
+    const share = border > 0 ? rainBorder / border : 0;
+    const needed = members.length >= CORE_LARGE_PATCH ? CORE_LARGE_RAIN_BORDER : CORE_RAIN_BORDER;
+    if (share >= needed) for (const i of members) classes[i] = value[i];
+  }
+}
+
 /**
  * The picture's own intensity, one class per pixel of its map panel (0 where there is no echo): the legend's colours read as intensity.
  * `classes` is `crop.w` x `crop.h`, row 0 at the north edge.
@@ -289,22 +392,7 @@ export function classifyRadarPicture(rgba: Uint8ClampedArray | Uint8Array, w: nu
       }
     }
   }
-  // the swatches the basemap also uses (white, cream, light blue) are echoes where echoes of the other colours are next to them: the strong
-  // core of a cell is kept, and a white label or a stretch of sea is not (judged on the other colours only, so a core does not make its sea a core)
-  if (needNeighbours.length > 0) {
-    const sure = classes.slice();
-    for (const { index, value } of needNeighbours) {
-      const cx = index % cropW;
-      const cy = Math.floor(index / cropW);
-      let around = 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if ((dx !== 0 || dy !== 0) && cx + dx >= 0 && cx + dx < cropW && cy + dy >= 0 && cy + dy < cropH && sure[(cy + dy) * cropW + cx + dx] > 0) around++;
-        }
-      }
-      if (around >= 3) classes[index] = value;
-    }
-  }
+  if (needNeighbours.length > 0) keepCoresInRain(classes, cropW, cropH, needNeighbours);
   return { classes, crop: { x: cropX, y: cropY, w: cropW, h: cropH } };
 }
 

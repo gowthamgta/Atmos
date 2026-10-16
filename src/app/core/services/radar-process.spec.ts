@@ -17,7 +17,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['karaikal', 'caz', 'karaikal-caz.gif', 'c8c678fd'],
+  ['karaikal', 'caz', 'karaikal-caz.gif', '343eecfd'],
 ];
 
 function load(file: string): ArrayBuffer {
@@ -111,6 +111,37 @@ describe('radar intensity is kept as the picture gives it', () => {
     expect(dbz(peak(middle))).toBeLessThan(32);
     expect(dbz(peak(strong))).toBeGreaterThan(46);
     expect(dbz(peak(strong))).toBeLessThan(50);
+  });
+
+  it('keeps the whole core of a cell, not only its rim: a patch of white and yellow inside the blue of the cell', () => {
+    // a 12 x 12 cell of 30 dBZ with a 6 x 6 core: white (39.5 dBZ) around a 2 x 2 heart of yellow (42 dBZ); white and yellow are colours the
+    // relief map also uses, so they count only next to rain, and judged pixel by pixel the heart had no blue around it and was lost
+    const out = run(picture({ ...block(44, 44, 12, 12, [0, 102, 255]), ...block(47, 47, 6, 6, [255, 253, 231]), ...block(49, 49, 2, 2, [255, 229, 0]) }), karaikal.palette);
+    expect(dbz(peak(out))).toBeGreaterThan(41);
+  });
+
+  it('keeps a core that one of the map lines drawn over the rain crosses', () => {
+    const line: Record<string, [number, number, number]> = {};
+    for (let x = 40; x < 60; x++) line[`${x},50`] = [0, 0, 0]; // a black line across the cell and its core
+    const out = run(picture({ ...block(42, 42, 16, 16, [0, 102, 255]), ...block(46, 46, 8, 8, [255, 229, 0]), ...line }), karaikal.palette);
+    expect(dbz(peak(out))).toBeGreaterThan(41);
+  });
+
+  it('leaves out a patch of those colours that the map surrounds (a label, a hill), however large', () => {
+    expect(peak(run(picture(block(30, 30, 20, 6, [255, 253, 231])), karaikal.palette))).toBe(0);  // a white label on the map
+    expect(peak(run(picture(block(10, 10, 60, 60, [255, 229, 0])), karaikal.palette))).toBe(0);   // a large yellow area: relief
+  });
+
+  it("does not take Chennai's sea (the light blue of 33.75 dBZ) for rain, and still keeps a cyan core in a cell beside it", () => {
+    const chennai = IMD_RADAR_STATIONS.find(st => st.id === 'chennai')!.products.caz;
+    const SEA_CNI: [number, number, number] = [102, 204, 255];
+    const sea = run(picture({}, SEA_CNI), chennai.palette);
+    expect(peak(sea)).toBe(0);
+    const land: [number, number, number] = [80, 160, 60];
+    const paint: Record<string, [number, number, number]> = {};
+    for (let y = 0; y < N; y++) for (let x = 0; x < 60; x++) paint[`${x},${y}`] = land; // land on the left, the sea on the right
+    const cell = run(picture({ ...paint, ...block(20, 40, 16, 16, [0, 102, 255]), ...block(24, 44, 8, 8, [153, 255, 255]) }, SEA_CNI), chennai.palette);
+    expect(dbz(peak(cell))).toBeGreaterThan(35); // the cyan core (36.25 dBZ) is kept
   });
 
   it('keeps every echo, even a lone speck (no speck filter: all of the radar rain is shown)', () => {
