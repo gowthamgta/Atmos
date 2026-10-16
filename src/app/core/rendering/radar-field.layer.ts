@@ -1,7 +1,7 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import type { TerrainData } from '../forecast/terrain.service';
-import { ECHO_FADE_FULL, ECHO_FADE_START, RADAR_COLOR_STOPS, RADAR_FIELD_MAX } from '../services/radar-field';
+import { ECHO_FADE_FULL, ECHO_FADE_START, RADAR_BAND_COLOUR_DBZ, RADAR_BAND_EDGES_DBZ, RADAR_COLOR_STOPS, RADAR_FIELD_MAX } from '../services/radar-field';
 import { TERRAIN_TILE_GLSL, TERRAIN_TILE_UNIFORMS, TerrainTileGpu } from './terrain-tile-gpu';
 
 const VERTEX = `#version 300 es
@@ -36,6 +36,19 @@ ${branches}
 }`;
 }
 
+/** The flat bands as GLSL: the colour of ramp() at each band's own dBZ, switching at the edges over about a pixel (anti-aliased contours). */
+function bandGlsl(): string {
+  const v = (dbz: number) => f((dbz - 12) / 9.6);
+  const colours = RADAR_BAND_COLOUR_DBZ.map(d => `ramp(${v(d)})`);
+  const steps = RADAR_BAND_EDGES_DBZ.map((e, i) => `  c = mix(c, ${colours[i + 1]}, smoothstep(${v(e)} - w, ${v(e)} + w, v));`).join('\n');
+  return `vec4 band(float v) {
+  float w = max(fwidth(v), 0.004) * 0.75;
+  vec4 c = ${colours[0]};
+${steps}
+  return c;
+}`;
+}
+
 /**
  * The radar is drawn from its intensity, not from a picture that was coloured in advance. Each screen pixel reads the
  * intensity with a bicubic (Catmull-Rom) filter, steepens it very slightly (unsharp mask), and only then looks up the
@@ -63,6 +76,7 @@ in vec2 v_merc;
 out vec4 outColor;
 ${TERRAIN_TILE_GLSL}
 ${rampGlsl()}
+${bandGlsl()}
 
 // Catmull-Rom weights: the curve passes through every sample, so the intensity of a cell is what the radar measured. (A B-spline, which
 // averages its neighbours, takes a small cell down to a fraction of its strength; the field is already smoothed when it is built.)
@@ -140,7 +154,7 @@ void main() {
   }
   v *= ${f(RADAR_FIELD_MAX)};
 
-  vec4 c = ramp(v);
+  vec4 c = band(v);
   float feather = smoothstep(${f(ECHO_FADE_START)}, ${f(ECHO_FADE_FULL)}, v);
   float a = c.a * feather * u_opacity;
   if (a <= 0.001) discard;

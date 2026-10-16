@@ -46,6 +46,6 @@ describe('composeRadarMosaic: unchanged output on a fixed multi-station scene', 
 
   it('gives the same field, picture and corners', () => {
     const m = composeRadarMosaic(IMD_RADAR_STATIONS, sources, 0.5, 1400, 'caz')!;
-    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1400, h: 1400, field: '8373ba3c', shown: '617a6a32' })   // recorded for CAZ alone: PPZ is its own picture now, so the merged values no longer apply
+    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1400, h: 1400, field: 'a6069b6a', shown: '4b61ec4f' })   // recorded after overlapping radars stopped being blended: each pixel comes from its closest radar
   });
 });

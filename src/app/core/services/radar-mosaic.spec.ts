@@ -62,19 +62,28 @@ describe('composeRadarMosaic', () => {
     expect(valueAt(ppiMosaic, lat, lng)).toBeCloseTo(3.8, 1);
   });
 
-  it('still blends different stations where they overlap, keeping the storm core', () => {
+  it('does not blend radars where they overlap: every point takes its value from the closest radar', () => {
     // Karaikal and Kochi are about 270 km apart in longitude, so a point between them is seen by both
-    const lat = (karaikal.lat + kochi.lat) / 2;
-    const lng = (karaikal.lng + kochi.lng) / 2;
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.0)],
       ['kochi', scan(kochi, 'caz', 2.0)],
     ])!;
-    const v = valueAt(mosaic, lat, lng);
-    // 0.8 * strongest + 0.2 * the distance-weighted average: between the two stations' values, close to the strong one
-    expect(v).toBeGreaterThan(2.0);
-    expect(v).toBeLessThanOrEqual(4.0);
-    expect(v).toBeGreaterThan(3.2);
+    const lat = (karaikal.lat + kochi.lat) / 2;
+    const lng = (karaikal.lng + kochi.lng) / 2;
+    const nearKaraikal = valueAt(mosaic, lat, lng + (karaikal.lng - lng) * 0.4);
+    const nearKochi = valueAt(mosaic, lat, lng + (kochi.lng - lng) * 0.4);
+    expect(nearKaraikal).toBeCloseTo(4.0, 1); // Karaikal's own value, with no trace of Kochi's
+    expect(nearKochi).toBeCloseTo(2.0, 1);    // Kochi's own value, although Karaikal also sees this point with a stronger echo
+  });
+
+  it('a point a radar sees as dry stays dry although a farther radar has an echo there', () => {
+    const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 0)],
+      ['kochi', scan(kochi, 'caz', 3.0)],
+    ])!;
+    const lat = (karaikal.lat + kochi.lat) / 2;
+    const lng = (karaikal.lng + kochi.lng) / 2;
+    expect(valueAt(mosaic, lat, lng + (karaikal.lng - lng) * 0.4)).toBe(0);
   });
 
   it('skips scans that are hidden as too old, and returns nothing when there is no scan', () => {

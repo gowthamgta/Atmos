@@ -10,11 +10,11 @@
   status = 200
   force = true
 
-# Lightning strokes of the last minutes from ILDN (Tripura University): our own address, cached for ten seconds at the edge, so the
-# network is asked about every ten seconds in all however many people look. Free for non-commercial use with attribution (see lightning.ts).
+# Lightning strokes of the last minutes from ILDN (Tripura University) through a function (netlify/functions/ildn.js; a plain rewrite to
+# ildn.in did not work): cached for ten seconds at the edge, so the network is asked about every ten seconds in all however many people look. Free for non-commercial use with attribution (see lightning.ts).
 [[redirects]]
   from = "/ildn/*"
-  to = "https://ildn.in/:splat"
+  to = "/.netlify/functions/ildn"
   status = 200
   force = true
 

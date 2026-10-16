@@ -143,6 +143,14 @@ export function sampleRadarColorRamp(v: number): [number, number, number, number
   return [0, 0, 0, 0];
 }
 
+/**
+ * The radar is drawn in flat bands, like a rain radar map, not as a smooth gradient: the band edges in dBZ, and the dBZ whose colour
+ * (from RADAR_COLOR_STOPS) fills the band below the first edge, between each pair, and above the last. The edges between bands are
+ * smooth curves (the field is reconstructed smoothly) and are only anti-aliased, not blurred.
+ */
+export const RADAR_BAND_EDGES_DBZ = [20, 26, 32, 38, 44, 50, 56];
+export const RADAR_BAND_COLOUR_DBZ = [16, 23, 29, 35, 41, 47, 53, 60];
+
 /** The largest intensity the 8-bit display field can hold (the scale tops out at 5.2; above 6 is clipped). */
 export const RADAR_FIELD_MAX = 6;
 
