@@ -22,6 +22,8 @@ import {
   hrvCloudKeep,
   windyCloudColor,
   toOverlayPixels,
+  CLOUD_TOP_BAND_EDGES,
+  cloudTopBandTemp,
 } from './satellite-image';
 
 describe('mercator helpers', () => {
@@ -382,5 +384,22 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(east!.tempC).toBeLessThan(west!.tempC - 40);
     expect(east!.heightKm).toBeGreaterThan(west!.heightKm + 5);
     expect(sampleLumaGrid(grid, LUMA_GRID_SIZE, 2, 72)).toBeNull(); // outside bounds
+  });
+});
+
+describe('infrared cold tops in flat bands (like the radar)', () => {
+  it('leaves temperatures warmer than the first band alone, and gives every temperature of a band the same colour', () => {
+    expect(cloudTopBandTemp(-20)).toBe(-20);
+    expect(cloudTopBandTemp(CLOUD_TOP_BAND_EDGES[0] + 1)).toBe(CLOUD_TOP_BAND_EDGES[0] + 1);
+    expect(cloudTopBandTemp(-52)).toBe(cloudTopBandTemp(-55));
+    expect(cloudTopBandTemp(-52)).not.toBe(cloudTopBandTemp(-57));
+    expect(shade('ir', 196, 196, 196).join()).toBe(shade('ir', 198, 198, 198).join()); // neighbouring greys in one band: one colour
+  });
+
+  it('puts the middle of each band between its edges, down to the coldest', () => {
+    expect(cloudTopBandTemp(-46)).toBe(-47);
+    expect(cloudTopBandTemp(-60)).toBe(-59);
+    expect(cloudTopBandTemp(-84)).toBeLessThan(-80);
+    expect(cloudTopBandTemp(-84)).toBeGreaterThan(-86);
   });
 });

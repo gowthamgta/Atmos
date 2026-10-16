@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, untracked } from '@angular/core';
 import { IconComponent } from '../../shared/icon.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
-import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime } from '../../core/satellite/satellite.config';
+import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
 import { cloudTopGradient } from '../../core/satellite/satellite-image';
@@ -54,9 +54,9 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
         } @else {
-          <div class="channel" role="group" aria-label="Picture">
-            <button type="button" [class.on]="!sat.infraredOnly()" [attr.aria-pressed]="!sat.infraredOnly()" (click)="sat.setInfrared(false)">Visible</button>
-            <button type="button" [class.on]="sat.infraredOnly()" [attr.aria-pressed]="sat.infraredOnly()" (click)="sat.setInfrared(true)" title="Infrared: cloud-top temperature, day and night">Infrared</button>
+          <div class="channel" role="group" aria-label="Picture" [class.off]="night()">
+            <button type="button" [class.on]="!sat.infraredOnly() && !night()" [attr.aria-pressed]="!sat.infraredOnly()" [disabled]="night()" (click)="sat.setInfrared(false)" [title]="night() ? nightHint : ''">Visible</button>
+            <button type="button" [class.on]="sat.infraredOnly() || night()" [attr.aria-pressed]="sat.infraredOnly() || night()" [disabled]="night()" (click)="sat.setInfrared(true)" [title]="night() ? nightHint : 'Infrared: cloud-top temperature, day and night'">Infrared</button>
           </div>
           <div class="scan">
             <span>{{ timeLabel() }}</span>
@@ -120,6 +120,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
     button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .channel { display: flex; gap: 2px; margin-top: 10px; padding: 2px; border-radius: 9px; background: var(--surface-3); }
     .channel button { flex: 1; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 600; cursor: pointer; }
+    .channel.off button { opacity: 0.5; cursor: default; }
     .channel button.on { background: var(--accent); color: #fff; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
@@ -173,6 +174,12 @@ export class SatellitePanelComponent {
     return !!f && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
   });
   /** Nothing to play or step through: the hour is loaded and has fewer than two pictures. (Until the loop is asked for, only the newest is loaded.) */
+  /** Night over India: the visible picture is the infrared too, so there is nothing to choose between. */
+  protected readonly night = computed(() => {
+    const f = this.sat.current();
+    return productForTime(f ? f.timeMs : Date.now()).id === 'ir'; // before a picture is there, the clock says
+  });
+  protected readonly nightHint = 'At night the visible picture is the infrared as well';
   protected readonly noLoop = computed(() => this.count() < 2 && this.sat.historyRequested());
   protected readonly historyHint = computed(() => this.count() === 1 && !this.sat.historyRequested());
   protected readonly productLabel = computed(() => {

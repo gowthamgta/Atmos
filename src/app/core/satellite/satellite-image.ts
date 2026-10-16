@@ -164,6 +164,23 @@ export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number
   [-85, 100, 6, 12, 255],
 ];
 
+/**
+ * The cold tops are drawn in flat colour bands, like the radar: the temperatures (°C) where one band ends and the next begins, below the
+ * grey of the lower cloud. The colour of a band is the one of its middle; the contours between bands stay smooth because the picture is
+ * smoothed before and magnified smoothly after.
+ */
+export const CLOUD_TOP_BAND_EDGES: readonly number[] = [-44, -50, -56, -62, -68, -74, -80];
+
+/** The temperature whose colour fills the band that `tempC` is in (the temperature itself while it is warmer than the first band). */
+export function cloudTopBandTemp(tempC: number): number {
+  const edges = CLOUD_TOP_BAND_EDGES;
+  if (tempC > edges[0]) return tempC;
+  let i = 0;
+  while (i + 1 < edges.length && tempC <= edges[i + 1]) i++;
+  const lo = i + 1 < edges.length ? edges[i + 1] : -86;
+  return (edges[i] + lo) / 2;
+}
+
 /** Colour and opacity (0..255) of a cloud top of this temperature (°C). */
 export function cloudTopColor(tempC: number): [number, number, number, number] {
   const first = CLOUD_TOP_STOPS[0];
@@ -295,7 +312,7 @@ export function shadePixel(
     out[o + 3] = Math.round(255 * Math.min(1, total));
     return;
   }
-  const [cr, cg, cb, ca] = cloudTopColor(irLumaToTempC((r + g + b) / 3 / 255));
+  const [cr, cg, cb, ca] = cloudTopColor(cloudTopBandTemp(irLumaToTempC((r + g + b) / 3 / 255)));
   out[o] = cr; out[o + 1] = cg; out[o + 2] = cb; out[o + 3] = ca;
 }
 
