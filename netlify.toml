@@ -10,6 +10,14 @@
   status = 200
   force = true
 
+# Lightning strokes of the last minutes from ILDN (Tripura University): our own address, cached for a minute at the edge, so the
+# network is asked about once a minute however many people look. Free for non-commercial use with attribution (see lightning.ts).
+[[redirects]]
+  from = "/ildn/*"
+  to = "https://ildn.in/:splat"
+  status = 200
+  force = true
+
 # Single Page Application (SPA) routing fallback
 [[redirects]]
   from = "/*"
@@ -23,6 +31,11 @@
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, OPTIONS"
     Cache-Control = "public, max-age=60, s-maxage=60"
+
+[[headers]]
+  for = "/ildn/*"
+  [headers.values]
+    Cache-Control = "public, max-age=30, s-maxage=60"
 
 [[headers]]
   for = "/*"

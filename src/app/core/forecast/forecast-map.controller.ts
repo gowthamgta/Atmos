@@ -10,6 +10,7 @@ import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
 import { cycloneGeoJson, loadCyclones } from './cyclone-tracks';
+import { lightningGeoJson, loadLightning } from './lightning';
 import { decodeFieldBitmap } from './field-decode';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -58,9 +59,15 @@ export class ForecastMapController {
 
   private cycloneLoadedAt = 0;
   private cycloneLoading = false;
+  private lightningTimer: ReturnType<typeof setInterval> | null = null;
+  private lightningLoading = false;
 
   private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
   private static readonly CYCLONE_LAYERS = ['forecast-cyclone-labels', 'forecast-cyclone-points', 'forecast-cyclone-track', 'forecast-cyclone-members'];
+  private static readonly LIGHTNING_SOURCE = 'forecast-lightning';
+  private static readonly LIGHTNING_LAYER = 'forecast-lightning-bolts';
+  private static readonly LIGHTNING_IMAGE = 'lightning-bolt';
+  private static readonly LIGHTNING_REFRESH_MS = 60_000;
   private static readonly ISOBAR_SOURCE = 'forecast-isobars';
   private static readonly ISOBAR_MIN_INTERVAL_MS = 150;
 
@@ -75,6 +82,7 @@ export class ForecastMapController {
     this.perf.probe('streaks', () => String(this.windLayer?.particleCount ?? 0));
     this.addIsobarLayers(map, beforeId);
     this.addCycloneLayers(map);
+    this.addLightningLayer(map);
     this.cycloneLoadedAt = 0;
     map.on('click', this.onMapClick);
     this.effects = [
@@ -82,6 +90,7 @@ export class ForecastMapController {
       effect(() => this.updateWind(), { injector: this.injector }),
       effect(() => this.updateIsobars(), { injector: this.injector }),
       effect(() => this.updateCyclones(), { injector: this.injector }),
+      effect(() => this.updateLightning(), { injector: this.injector }),
       effect(() => this.syncMarker(), { injector: this.injector }),
     ];
   }
@@ -101,7 +110,10 @@ export class ForecastMapController {
     if (this.map) {
       this.removeIsobarLayers(this.map);
       this.removeCycloneLayers(this.map);
+      this.removeLightningLayer(this.map);
     }
+    if (this.lightningTimer) clearInterval(this.lightningTimer);
+    this.lightningTimer = null;
     for (const l of [this.layer, this.windLayer]) {
       if (this.map && l && this.map.getLayer(l.id)) this.map.removeLayer(l.id);
     }
@@ -326,6 +338,73 @@ export class ForecastMapController {
     map.addLayer({ id: 'forecast-cyclone-labels', type: 'symbol', source, filter: ['all', ['==', ['get', 'kind'], 'point'], ['!=', ['get', 'label'], '']],
       layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 12, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': true, ...hidden },
       paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8, 12, 22, 0.9)', 'text-halo-width': 1.5 } });
+  }
+
+  /** A pink bolt with a dark edge, drawn once for the symbol layer. */
+  private boltImage(): ImageData {
+    const size = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    ctx.beginPath();
+    ctx.moveTo(29, 4);
+    ctx.lineTo(11, 27);
+    ctx.lineTo(23, 27);
+    ctx.lineTo(18, 44);
+    ctx.lineTo(37, 20);
+    ctx.lineTo(25, 20);
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(40, 8, 40, 0.9)';
+    ctx.stroke();
+    ctx.fillStyle = '#ff7ad9';
+    ctx.fill();
+    return ctx.getImageData(0, 0, size, size);
+  }
+
+  /** Lightning strokes as bolts, fading with age over the five minutes they are shown. */
+  private addLightningLayer(map: MapLibreMap): void {
+    const source = ForecastMapController.LIGHTNING_SOURCE;
+    if (!map.hasImage(ForecastMapController.LIGHTNING_IMAGE)) map.addImage(ForecastMapController.LIGHTNING_IMAGE, this.boltImage());
+    map.addSource(source, { type: 'geojson', data: lightningGeoJson([]) });
+    map.addLayer({
+      id: ForecastMapController.LIGHTNING_LAYER, type: 'symbol', source,
+      layout: {
+        'icon-image': ForecastMapController.LIGHTNING_IMAGE, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.5, 11, 0.75], 'symbol-sort-key': ['-', ['get', 'age']], visibility: 'none',
+      },
+      paint: { 'icon-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 1, 300, 0.35] },
+    });
+  }
+
+  private removeLightningLayer(map: MapLibreMap): void {
+    if (map.getLayer(ForecastMapController.LIGHTNING_LAYER)) map.removeLayer(ForecastMapController.LIGHTNING_LAYER);
+    if (map.getSource(ForecastMapController.LIGHTNING_SOURCE)) map.removeSource(ForecastMapController.LIGHTNING_SOURCE);
+  }
+
+  private pullLightning(): void {
+    if (this.lightningLoading) return;
+    this.lightningLoading = true;
+    void loadLightning().then(strokes => {
+      if (!this.map || !strokes) return;
+      (this.map.getSource(ForecastMapController.LIGHTNING_SOURCE) as { setData?: (d: unknown) => void } | undefined)?.setData?.(lightningGeoJson(strokes));
+    }).finally(() => (this.lightningLoading = false));
+  }
+
+  /** Shows the bolts while the overlay is on and fetches the last five minutes now and then every minute (not at all while it is off). */
+  private updateLightning(): void {
+    const map = this.map;
+    if (!map) return;
+    const on = this.state.lightning();
+    if (map.getLayer(ForecastMapController.LIGHTNING_LAYER)) map.setLayoutProperty(ForecastMapController.LIGHTNING_LAYER, 'visibility', on ? 'visible' : 'none');
+    if (on && !this.lightningTimer) {
+      this.pullLightning();
+      this.lightningTimer = setInterval(() => this.pullLightning(), ForecastMapController.LIGHTNING_REFRESH_MS);
+    } else if (!on && this.lightningTimer) {
+      clearInterval(this.lightningTimer);
+      this.lightningTimer = null;
+    }
   }
 
   private removeCycloneLayers(map: MapLibreMap): void {

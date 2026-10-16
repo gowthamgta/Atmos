@@ -114,6 +114,9 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                     <button type="button" class="toggle" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
                       <app-icon name="cyclone" [size]="16" />Cyclone tracks
                     </button>
+                    <button type="button" class="toggle" [attr.aria-pressed]="state.lightning()" (click)="state.toggleLightning()" title="Lightning strokes of the last 5 minutes, from the Indian Lightning Detection Network (ILDN, Tripura University)">
+                      <app-icon name="bolt" [size]="16" />Lightning (5 min) · ILDN
+                    </button>
                     <button type="button" class="toggle" [attr.aria-pressed]="state.districtLines()" (click)="state.toggleDistrictLines()" title="Show or hide the district boundaries (state and country outlines stay)">
                       <app-icon name="districts" [size]="16" />Districts
                     </button>
