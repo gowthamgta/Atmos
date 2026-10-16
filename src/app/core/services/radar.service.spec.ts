@@ -5,8 +5,8 @@ import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scan
 describe('Radar Domain & Config', () => {
   it('should have valid Karaikal S-Band DWR configuration', () => {
     expect(KARAIKAL_DWR_CONFIG.id).toBe('karaikal');
-    expect(KARAIKAL_DWR_CONFIG.lat).toBeCloseTo(10.9254, 4);
-    expect(KARAIKAL_DWR_CONFIG.lng).toBeCloseTo(79.8380, 4);
+    expect(KARAIKAL_DWR_CONFIG.lat).toBeCloseTo(10.9129, 4);
+    expect(KARAIKAL_DWR_CONFIG.lng).toBeCloseTo(79.8418, 4);
     expect(KARAIKAL_DWR_CONFIG.rings).toEqual([50, 100, 150, 200, 250]);
   });
 

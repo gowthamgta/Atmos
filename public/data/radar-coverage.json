@@ -35,15 +35,15 @@
  "stations": [
   {
    "id": "karaikal",
-   "lat": 10.9254,
-   "lng": 79.838,
+   "lat": 10.9129,
+   "lng": 79.8418,
    "band": "S-Band",
    "rangeKm": 250
   },
   {
    "id": "sriharikota",
-   "lat": 13.6645,
-   "lng": 80.2274,
+   "lat": 13.6646,
+   "lng": 80.2276,
    "band": "S-Band",
    "rangeKm": 240
   }
