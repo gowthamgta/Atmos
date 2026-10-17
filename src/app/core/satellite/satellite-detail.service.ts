@@ -125,6 +125,18 @@ export class SatelliteDetailService {
 
     this.loading.set(true);
     try {
+      // the newest picture first, on its own: the closer picture is on the map as soon as it is ready, and the rest of the loop follows
+      const newest = hrv[hrv.length - 1];
+      if (!this.raws.has(newest.rawKey)) {
+        const got = await this.download(win, newest);
+        if (token !== this.token) return;
+        if (got) this.raws.set(newest.rawKey, got);
+      }
+      if (this.raws.has(newest.rawKey) && !this.shown()) {
+        const first = await this.frameFor(win, newest);
+        if (token !== this.token) return;
+        if (first) this.shown.set({ window: win, times: items.map(i => i.timeMs), frames: items.map(i => (i === newest ? first : null)) });
+      }
       // download what is missing, newest first, a few at a time
       const queue = hrv.filter(i => !this.raws.has(i.rawKey)).reverse();
       const worker = async () => {

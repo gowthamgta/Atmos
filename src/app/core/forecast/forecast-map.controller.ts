@@ -2,8 +2,8 @@ import { rowsForLayer } from './point-forecast';
 import { ConsensusService } from './consensus.service';
 import { INDIA_GRID, blendFields, differenceField, encodeFieldBitmap } from './derived-fields';
 import { EffectRef, Injectable, Injector, effect, inject } from '@angular/core';
-import { Marker } from 'maplibre-gl';
-import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
+import type { Map as MapLibreMap, MapMouseEvent, Marker } from 'maplibre-gl';
+import { maplibre } from '../map/maplibre-lazy';
 import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
@@ -158,7 +158,7 @@ export class ForecastMapController {
         'position:absolute;left:20px;top:50%;transform:translateY(-50%);padding:2px 9px;border-radius:12px;background:rgba(26,33,46,.94);color:#fff;font:600 13px -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.6);font-variant-numeric:tabular-nums;';
       el.appendChild(label);
       this.pinLabel = label;
-      this.marker = new Marker({ element: el }).setLngLat([sel.lon, sel.lat]).addTo(this.map);
+      this.marker = new (maplibre().Marker)({ element: el }).setLngLat([sel.lon, sel.lat]).addTo(this.map);
     } else {
       this.marker.setLngLat([sel.lon, sel.lat]);
     }

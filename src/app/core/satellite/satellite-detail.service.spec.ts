@@ -233,10 +233,10 @@ describe('SatelliteDetailService', () => {
   });
 
   it('keeps a frame it could not build as null and tries it again the next time', async () => {
-    let failOnce = true;
+    let failures = 2; // the newest picture is built twice in the first refresh (alone, then with the loop): it fails both times
     sat.process.mockImplementation(async () => {
-      if (failOnce) {
-        failOnce = false;
+      if (failures > 0) {
+        failures--;
         return null as unknown as { url: string };
       }
       return { url: `blob:built-${++sat.built}` };

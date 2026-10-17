@@ -9,8 +9,9 @@ import {
   untracked,
   isDevMode
 } from '@angular/core';
-import * as maplibregl from 'maplibre-gl';
-import { Map as MapLibreMap, Marker } from 'maplibre-gl';
+import type * as maplibregl from 'maplibre-gl';
+import type { Map as MapLibreMap, Marker } from 'maplibre-gl';
+import { loadMapLibre, maplibre } from '../../core/map/maplibre-lazy';
 import { MapLayerService, LayerConfig } from '../../core/services/map-layer.service';
 import { RadarDisplayFrame, RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
@@ -479,10 +480,13 @@ export class MapComponent implements OnInit, OnDestroy {
       renderer: () => this.renderer(),
       ensureVisible: (lat, lon, clear) => this.ensureVisible(lat, lon, clear),
     });
-    this.initMap();
+    void this.initMap();
   }
 
+  private destroyed = false;
+
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.mapHost.register(null);
     this.ringLabelMarkers.forEach(m => m.remove());
     this.ringLabelMarkers = [];
@@ -496,17 +500,20 @@ export class MapComponent implements OnInit, OnDestroy {
     this.map = null;
   }
 
-  private initMap(): void {
-    if (typeof maplibregl.setWorkerUrl === 'function') {
-      maplibregl.setWorkerUrl('/maplibre-gl-worker.mjs');
+  private async initMap(): Promise<void> {
+    // the map library comes in its own file, after the page has drawn
+    const ml = await loadMapLibre();
+    if (this.destroyed) return;
+    if (typeof ml.setWorkerUrl === 'function') {
+      ml.setWorkerUrl('/maplibre-gl-worker.mjs');
     }
 
     const isMobile = typeof window !== 'undefined' && (window.innerWidth < 700 || ('ontouchstart' in window && window.innerWidth < 900));
     const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
     const pixelRatio = maxPixelRatio(isMobile, dpr);
 
-    registerGibsProtocol();
-    const map = new maplibregl.Map({
+    registerGibsProtocol(ml);
+    const map = new ml.Map({
       container: 'map-container',
       pixelRatio,
       fadeDuration: 50,
@@ -1089,7 +1096,7 @@ export class MapComponent implements OnInit, OnDestroy {
       el.className = 'dwr-ring-label-marker';
       el.innerHTML = `<span class="dwr-ring-badge ${isOuter ? 'outer' : ''}">${km}km</span>`;
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+      const marker = new (maplibre().Marker)({ element: el, anchor: 'center' })
         .setLngLat([center.lng, labelLat])
         .addTo(this.map);
 

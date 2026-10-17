@@ -1,4 +1,4 @@
-import * as maplibregl from 'maplibre-gl';
+type MapLibre = typeof import('maplibre-gl');
 import { GIBS_PROTOCOL, GIBS_TILE_SIZE, blackToTransparent, gibsTileUrl, parseGibsUrl } from './gibs-hd';
 
 let registered = false;
@@ -7,7 +7,7 @@ let registered = false;
  * Teaches MapLibre the `gibs-hd://` address: it fetches the real GIBS tile, makes its black no-data pixels see-through
  * and hands the map a PNG. Registered once for the whole page.
  */
-export function registerGibsProtocol(): void {
+export function registerGibsProtocol(maplibregl: Pick<MapLibre, 'addProtocol'>): void {
   if (registered) return;
   registered = true;
   maplibregl.addProtocol(GIBS_PROTOCOL, async (params, abortController) => {
