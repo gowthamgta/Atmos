@@ -120,6 +120,13 @@ describe('radar intensity is kept as the picture gives it', () => {
     expect(dbz(peak(out))).toBeGreaterThan(41);
   });
 
+  it('keeps a large core (over 1500 pixels) that is rain along most of its border but has land along the rest', () => {
+    const land: [number, number, number] = [80, 160, 60];
+    // a 50 x 50 core in a ring of blue, with the ring replaced by land along most of one side: about 80% of the core's border is rain
+    const out = run(picture({ ...block(15, 30, 60, 60, [0, 102, 255]), ...block(20, 35, 50, 50, [255, 229, 0]), ...block(70, 48, 8, 37, land) }), karaikal.palette);
+    expect(dbz(peak(out))).toBeGreaterThan(41);
+  });
+
   it('keeps a core that one of the map lines drawn over the rain crosses', () => {
     const line: Record<string, [number, number, number]> = {};
     for (let x = 40; x < 60; x++) line[`${x},50`] = [0, 0, 0]; // a black line across the cell and its core

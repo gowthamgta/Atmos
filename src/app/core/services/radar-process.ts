@@ -235,7 +235,7 @@ function classifyPalettePixel(r: number, g: number, b: number, palette: RadarPal
 const CORE_RAIN_BORDER = 0.5;
 /** ...and a patch this large (picture pixels) must be almost surrounded by rain: a stretch of sea or relief is bordered by the map. */
 const CORE_LARGE_PATCH = 1500;
-const CORE_LARGE_RAIN_BORDER = 0.85;
+const CORE_LARGE_RAIN_BORDER = 0.75;
 
 /**
  * The swatches the basemap also uses (white, cream, pale yellow, light blue: the strong core of a cell, but also labels, relief and sea) are
