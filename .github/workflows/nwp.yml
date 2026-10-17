@@ -23,6 +23,7 @@ on:
       - "pipeline/requirements.txt"
       - ".github/workflows/nwp.yml"
       - "pipeline/cyclones.py"
+      - "pipeline/ens.py"
   workflow_dispatch:
     inputs:
       force:
@@ -87,8 +88,10 @@ jobs:
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
+          # the chance of rain from the ECMWF ensemble (a small folder in the same format as a model; the live one is kept when there is nothing new)
+          python ens.py --out site --live-url "$base/ens/latest.json" $force             || echo "::warning::ens failed; the live copy stays in place"
           # models that were not rebuilt come over from the live site (always: a deploy replaces the whole site)
-          if ! python mirror.py --site site --base-url "$base" --models $models; then
+          if ! python mirror.py --site site --base-url "$base" --models $models ens; then
             echo "::warning::a live model could not be copied; not deploying, so that it is not dropped from the site"
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             exit 0

@@ -39,9 +39,9 @@ export const LAYER_NOTES: Record<string, LayerNote> = {
     time: 'The two ends of the period are blended between model steps like any other time.',
   },
   extreme: {
-    what: 'Probability of rain over the next 24 hours (0 to 100 %), worked out by comparing every forecast model whose run covers the time.',
-    time: `${NEXT_24H} Each model's picture nearest the time on the bar is used.`,
-    gaps: `Requires at least two models covering the time to estimate multi-model probability. ${NO_PARTIAL}`,
+    what: 'Chance of rain at some time in the next 24 hours (0 to 100 %): the share of the 51 members of the ECMWF ensemble that bring rain. Beyond the five days of the ensemble it is worked out by comparing the forecast models.',
+    time: `${NEXT_24H} The ensemble picture nearest the time on the bar is used (every 3 hours).`,
+    gaps: `The ensemble covers the next five days; later, at least two models covering the time are needed. ${NO_PARTIAL}`,
   },
   tcwv: { what: 'Total water vapour in the whole column of air above the ground (precipitable water).', time: INSTANT },
   vis: { what: 'Horizontal visibility at the ground.', time: INSTANT },

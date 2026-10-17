@@ -1,11 +1,20 @@
 import { Injectable, signal } from '@angular/core';
 import { decodeFieldBitmap } from './field-decode';
-import { FORECAST_MODELS, ForecastModelDef } from './forecast-models';
+import { FORECAST_MODELS, PAGES } from './forecast-models';
 import { ForecastManifest } from './forecast.model';
 import { INDIA_GRID, extremeConsensus, resampleField } from './derived-fields';
 
 /** How far from a step a time may be for a model to count (the 6-hourly models are 3 h from their nearest step at worst). */
 const MAX_GAP_MS = 3.5 * 3_600_000;
+/** The ECMWF ensemble's chance of rain (`pop24`, 0 to 100 %), published by the pipeline in the same format as a model (pipeline/ens.py). */
+const ENSEMBLE = { id: 'ens', label: 'ECMWF ensemble (51 members)', baseUrl: `${PAGES}/ens` };
+
+/** Where a published folder is (a model's, or the ensemble's). */
+interface Source {
+  id: string;
+  baseUrl: string;
+}
+
 const MANIFEST_TTL_MS = 10 * 60 * 1000;
 const MAX_CACHED_FIELDS = 40;
 
@@ -24,8 +33,9 @@ interface Published {
 }
 
 /**
- * The extreme-rain layer: multi-model agreement on the next 24 h of rain (`rain24`), mapped continuously onto the 0..3
- * severity scale on the India grid so heavy-rain zones render with smooth Windy-style contours.
+ * The probability-of-rain layer (next 24 h). It is the share of the ECMWF ensemble's members that bring rain (`pop24`) where the
+ * ensemble covers the time (the first five days); beyond that, or if it is not published, it is the agreement of the models on the
+ * next 24 h of rain (`rain24`), on the India grid.
  */
 @Injectable({ providedIn: 'root' })
 export class ConsensusService {
@@ -38,7 +48,13 @@ export class ConsensusService {
   private readonly fields = new Map<string, Float32Array>();
 
   async compute(timeMs: number): Promise<Consensus | null> {
-    const parts = await Promise.all(FORECAST_MODELS.map(m => this.rain24Field(m, timeMs).catch(() => null)));
+    const ensemble = await this.field(ENSEMBLE, 'pop24', timeMs).catch(() => null);
+    if (ensemble) {
+      this.models.set([ENSEMBLE.label]);
+      this.last = { values: ensemble, models: [ENSEMBLE.label] };
+      return this.last;
+    }
+    const parts = await Promise.all(FORECAST_MODELS.map(m => this.field(m, 'rain24', timeMs).catch(() => null)));
     const used = parts.flatMap((p, i) => (p ? [{ label: FORECAST_MODELS[i].label, values: p }] : []));
     if (used.length < 2) {
       this.models.set([]);
@@ -51,10 +67,10 @@ export class ConsensusService {
     return result;
   }
 
-  /** One model's 24 h rainfall field (mm) at a time on the India grid, or null when the model does not cover it. */
-  private async rain24Field(model: ForecastModelDef, timeMs: number): Promise<Float32Array | null> {
+  /** One published field (a model's 24 h rainfall in mm, or the ensemble's chance of rain in %) at a time on the India grid, or null when the run does not cover it. */
+  private async field(model: Source, varId: string, timeMs: number): Promise<Float32Array | null> {
     const p = await this.newest(model);
-    const info = p.manifest.vars['rain24'];
+    const info = p.manifest.vars[varId];
     if (!info) return null;
     let best: { h: number; gap: number } | null = null;
     for (const s of p.manifest.steps) {
@@ -62,10 +78,10 @@ export class ConsensusService {
       if (!best || gap < best.gap) best = { h: s.h, gap };
     }
     if (!best || best.gap > MAX_GAP_MS) return null;
-    const key = `${model.id}/${p.run}.${p.build ?? ''}/rain24/${best.h}`;
+    const key = `${model.id}/${p.run}.${p.build ?? ''}/${varId}/${best.h}`;
     const hit = this.fields.get(key);
     if (hit) return hit;
-    const url = `${model.baseUrl}/${p.run}/rain24/${String(best.h).padStart(3, '0')}.png${p.build ? `?b=${encodeURIComponent(p.build)}` : ''}`;
+    const url = `${model.baseUrl}/${p.run}/${varId}/${String(best.h).padStart(3, '0')}.png${p.build ? `?b=${encodeURIComponent(p.build)}` : ''}`;
     const res = await fetch(url);
     if (!res.ok) return null;
     const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
@@ -77,7 +93,7 @@ export class ConsensusService {
   }
 
   /** The newest run of a model (its latest.json and manifest), kept for ten minutes. */
-  private async newest(model: ForecastModelDef): Promise<Published> {
+  private async newest(model: Source): Promise<Published> {
     const have = this.published.get(model.id);
     if (have && Date.now() - have.at < MANIFEST_TTL_MS) return have;
     const latest = (await (await fetch(`${model.baseUrl}/latest.json`, { cache: 'no-cache' })).json()) as { run: string; build?: string };
