@@ -111,11 +111,36 @@ export function firstNumber(text: string | undefined): number | null {
               <div class="note">Loading the next days…</div>
             }
 
+            @if (observed(); as o) {
+              <div class="heading obs-heading">Observed nearby <span class="obs-note">not the forecast</span></div>
+              @if (o.gauge) {
+                <div class="obs">
+                  <div class="obs-main"><span>Rain gauge</span><strong>{{ o.gauge.value }}</strong></div>
+                  <div class="obs-sub">{{ o.gauge.place }} · {{ o.gauge.km }} km · {{ o.gauge.window }}@if (o.gauge.peak) { · wettest hour {{ o.gauge.peak }} }</div>
+                </div>
+              }
+              @if (o.airport) {
+                <div class="obs">
+                  <div class="obs-main"><span>Airport weather</span><strong>{{ o.airport.value }}</strong></div>
+                  <div class="obs-sub">{{ o.airport.place }} · {{ o.airport.km }} km · {{ o.airport.age }}</div>
+                </div>
+              }
+              @if (o.station) {
+                <div class="obs">
+                  <div class="obs-main"><span>Weather station</span><strong>{{ o.station.value }}</strong></div>
+                  <div class="obs-sub">{{ o.station.place }} · {{ o.station.km }} km · {{ o.station.age }}@if (o.station.rain) { · {{ o.station.rain }} }</div>
+                </div>
+              }
+              @if (!o.gauge && !o.airport && !o.station) {
+                <div class="obs-sub">No rain gauge within 15 km, weather station within 100 km or airport within 120 km.</div>
+              }
+            }
+
             <div class="actions">
               <button type="button" class="act" (click)="meteogram.toggle()" [attr.aria-pressed]="meteogram.visible()" title="Hourly chart of temperature, rain, wind and gusts, and the models side by side (M)">
                 <app-icon name="chart" [size]="16" />Meteogram
               </button>
-              <button type="button" class="act" (click)="toggleValues()" [attr.aria-expanded]="expanded()" title="Every value at this place, and the observations nearby">
+              <button type="button" class="act" (click)="toggleValues()" [attr.aria-expanded]="expanded()" title="Every value at this place">
                 All values <app-icon name="chevron" [size]="14" [style.transform]="expanded() ? 'rotate(180deg)' : ''" />
               </button>
             </div>
@@ -136,30 +161,6 @@ export function firstNumber(text: string | undefined): number | null {
                 </dl>
               } @else {
                 <div class="note busy" role="status"><span class="spinner" aria-hidden="true"></span>Reading every value… {{ inspector.progress().done }} of {{ inspector.progress().total }}</div>
-              }
-              @if (observed(); as o) {
-                <div class="heading obs-heading">Observed nearby <span class="obs-note">not the forecast</span></div>
-                @if (o.gauge) {
-                  <div class="obs">
-                    <div class="obs-main"><span>Rain gauge</span><strong>{{ o.gauge.value }}</strong></div>
-                    <div class="obs-sub">{{ o.gauge.place }} · {{ o.gauge.km }} km · {{ o.gauge.window }}@if (o.gauge.peak) { · wettest hour {{ o.gauge.peak }} }</div>
-                  </div>
-                }
-                @if (o.airport) {
-                  <div class="obs">
-                    <div class="obs-main"><span>Airport weather</span><strong>{{ o.airport.value }}</strong></div>
-                    <div class="obs-sub">{{ o.airport.place }} · {{ o.airport.km }} km · {{ o.airport.age }}</div>
-                  </div>
-                }
-                @if (o.station) {
-                  <div class="obs">
-                    <div class="obs-main"><span>Weather station</span><strong>{{ o.station.value }}</strong></div>
-                    <div class="obs-sub">{{ o.station.place }} · {{ o.station.km }} km · {{ o.station.age }}@if (o.station.rain) { · {{ o.station.rain }} }</div>
-                  </div>
-                }
-                @if (!o.gauge && !o.airport && !o.station) {
-                  <div class="obs-sub">No rain gauge within 15 km, weather station within 100 km or airport within 120 km.</div>
-                }
               }
               @if (adjusted()) { <p class="footer">▲ adjusted to 90 m terrain.</p> }
             }

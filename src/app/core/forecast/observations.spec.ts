@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MetarRecord, RainGauge, SynopRecord, ageLabel, compassPoint, distanceKm, latestReports, latestStationReports, nearestAirport, nearestGauge, nearestStation } from './observations';
+import { MetarRecord, RainGauge, SynopRecord, ageLabel, compassPoint, distanceKm, lastObservationSlot, latestReports, latestStationReports, nearestAirport, nearestGauge, msToNextObservationSlot, nearestStation } from './observations';
 
 const gauge = (n: string, la: number, lo: number, t: number | null = 1): RainGauge => ({ n, d: 'X', la, lo, t, pk: null, pt: null, h: 24 });
 const report = (station: string, lat: number, lon: number, time = '2026-10-10T06:00:00Z'): MetarRecord => ({
@@ -61,5 +61,22 @@ describe('observations near a point', () => {
     const now = Date.parse('2026-10-10T06:00:00Z');
     expect(ageLabel('2026-10-10T05:20:00Z', now)).toBe('40 min ago');
     expect(ageLabel('2026-10-10T03:00:00Z', now)).toBe('3 h ago');
+  });
+});
+
+describe('the :32 refresh', () => {
+  const at = (h: number, m: number, sec = 0) => Date.UTC(2026, 9, 17, h, m, sec);
+
+  it('names the newest :32 that has passed', () => {
+    expect(lastObservationSlot(at(10, 31, 59))).toBe(at(9, 32));
+    expect(lastObservationSlot(at(10, 32))).toBe(at(10, 32));
+    expect(lastObservationSlot(at(10, 59))).toBe(at(10, 32));
+    expect(lastObservationSlot(at(10, 5))).toBe(at(9, 32));
+  });
+
+  it('waits until the next :32', () => {
+    expect(msToNextObservationSlot(at(10, 5))).toBe(27 * 60_000);
+    expect(msToNextObservationSlot(at(10, 32))).toBe(3_600_000);
+    expect(msToNextObservationSlot(at(10, 50))).toBe(42 * 60_000);
   });
 });

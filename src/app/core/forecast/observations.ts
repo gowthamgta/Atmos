@@ -151,3 +151,18 @@ export function ageLabel(iso: string, nowMs = Date.now()): string {
   const min = Math.max(0, Math.round((nowMs - Date.parse(iso)) / 60_000));
   return min < 90 ? `${min} min ago` : `${Math.round(min / 60)} h ago`;
 }
+
+/** The minute of every hour at which the weather stations and airports are asked again (their reports come out at about :00 and :30). */
+export const OBSERVATION_MINUTE = 32;
+
+/** The newest time at or before `nowMs` that was minute :32 of an hour: a load made before it is out of date. */
+export function lastObservationSlot(nowMs: number): number {
+  const hour = Math.floor(nowMs / 3_600_000) * 3_600_000;
+  const slot = hour + OBSERVATION_MINUTE * 60_000;
+  return slot <= nowMs ? slot : slot - 3_600_000;
+}
+
+/** Milliseconds from `nowMs` to the next minute :32 of an hour (a full hour when it is exactly :32). */
+export function msToNextObservationSlot(nowMs: number): number {
+  return lastObservationSlot(nowMs) + 3_600_000 - nowMs;
+}

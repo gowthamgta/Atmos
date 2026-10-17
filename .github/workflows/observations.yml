@@ -1,7 +1,8 @@
 name: observations
 
-# Every 3 hours: the Kallakurichi district's hourly rainfall (TN-SMART), the airport weather near it (METAR) and the SYNOP reports of
-# the Tamil Nadu weather stations (temperature, humidity, wind, pressure, rain). The files are committed to public/data/observations, so the app reads them from its own site.
+# Every 3 hours: the Kallakurichi district's hourly rainfall (TN-SMART). The files are committed to public/data/observations, so the app reads them from its own site.
+# The airport weather (METAR) and the weather stations (SYNOP) are no longer fetched here: the app asks for them live, at 32 minutes past every
+# hour (the Netlify functions metar.js and synop.js), and reads the last files committed here only when a live answer does not come.
 # A personal app: each source is fetched once per run, and a run commits only when a source has something new.
 on:
   schedule:
@@ -30,21 +31,15 @@ jobs:
       - name: Rainfall (TN-SMART), the last two days
         working-directory: pipeline
         run: python obs_tnsmart.py --out ../public/data/observations/rain --days 2 || echo "::warning::rainfall not fetched; the saved files stay in place"
-      - name: Airport weather (METAR), the last 24 hours
-        working-directory: pipeline
-        run: python obs_metar.py --out ../public/data/observations/metar --archive ../data/metar-archive --hours 48 || echo "::warning::METAR not fetched; the saved file stays in place"
-      - name: Weather stations (SYNOP via Ogimet), the last 48 hours
-        working-directory: pipeline
-        run: python obs_synop.py --out ../public/data/observations/synop --archive ../data/synop-archive --hours 48 || echo "::warning::SYNOP not fetched; the saved files stay in place"
       - name: Commit the changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/data/observations data/metar-archive data/synop-archive
+          git add public/data/observations
           if git diff --cached --quiet; then
             echo "nothing new"
           else
-            git commit -m "Observations: Kallakurichi rainfall and airport weather $(date -u +%Y-%m-%dT%H:%MZ)"
+            git commit -m "Observations: Kallakurichi rainfall $(date -u +%Y-%m-%dT%H:%MZ)"
             # main may have moved while this job ran (a push, the forecast workflow): rebase onto it and try again
             for attempt in 1 2 3 4; do
               if git pull --rebase origin main && git push origin HEAD:main; then
