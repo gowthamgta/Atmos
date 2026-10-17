@@ -4,7 +4,7 @@
  * The whole-India picture is asked for at 1.5 km a pixel on a desktop and 3 km on a phone, but the high-resolution visible channel
  * (HRV) is built from pixels about 1.2-1.5 km wide. So a phone's picture throws away half of what the satellite has, and when the
  * map is zoomed in a small window of the same picture is fetched at the satellite's own pixel and drawn over the main one, which
- * stays underneath for everything outside the window. (A desktop's picture is already as fine as that, so it never gets a window.)
+ * stays underneath for everything outside the window. (A desktop's picture is only a little coarser, 1.5 km, so its window is the same HD picture, 1.25 km, at the most it can be asked for.)
  * The window follows the map: it is chosen from the view, snapped so a small pan keeps it, and replaced only when the view leaves it.
  *
  * It must not be asked for any finer than the satellite's pixel: the service then pads the picture by repeating its pixels, which
@@ -26,11 +26,11 @@ export const WINDOW_LOSSLESS_MAX_PX = 90_000;
 /** The smallest window, in km across: below this the map is zoomed in further than the data goes, a bigger picture would add nothing. */
 export const WINDOW_MIN_SPAN_KM = 150;
 /** The window reaches this fraction of the view beyond it on every side (so it is two screens across). */
-export const WINDOW_MARGIN = 0.5;
+export const WINDOW_MARGIN = 0.3;
 /** A window is only worth fetching when its pixels are this much finer than the main picture's. */
-export const WINDOW_MIN_GAIN = 1.3;
+export const WINDOW_MIN_GAIN = 1.15;
 /** An existing window is kept while the view stays this far (fraction of the view) inside it, and is not this much coarser than a fresh one would be. */
-export const WINDOW_KEEP_MARGIN = 0.25;
+export const WINDOW_KEEP_MARGIN = 0.1;
 export const WINDOW_KEEP_COARSER = 1.35;
 
 /** How the map is looking: the centre, the zoom and the size of the map on the screen (CSS pixels). */

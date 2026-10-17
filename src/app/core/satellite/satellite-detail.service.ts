@@ -36,7 +36,7 @@ interface Item {
 /** What a window may be, set once from the device: the biggest picture to ask for, and how fine the whole-India picture already is. */
 export const SATELLITE_WINDOW_LIMITS = new InjectionToken<WindowLimits>('SATELLITE_WINDOW_LIMITS', {
   providedIn: 'root',
-  factory: () => ({ maxPx: isPhone() ? 1024 : 1600, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, SATELLITE_SIZE.width) }),
+  factory: () => ({ maxPx: isPhone() ? 1280 : 2800, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, SATELLITE_SIZE.width) }),
 });
 
 const DOWNLOAD_CONCURRENCY = 3;

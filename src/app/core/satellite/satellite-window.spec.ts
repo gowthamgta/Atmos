@@ -11,8 +11,8 @@ import {
   pictureScale,
 } from './satellite-window';
 
-const PHONE = { maxPx: 1024, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 1000) };
-const DESKTOP = { maxPx: 1600, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 2000) };
+const PHONE = { maxPx: 1280, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 1000) };
+const DESKTOP = { maxPx: 2800, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 2000) };
 const view = (lat: number, lon: number, zoom: number, width = 412, height = 800) => ({ lat, lon, zoom, width, height });
 
 describe('the scale of the map and of the pictures', () => {
@@ -44,14 +44,30 @@ describe('the scale of the map and of the pictures', () => {
 });
 
 describe('chooseWindow', () => {
-  it('wants none while the map is zoomed out: the main picture is as fine as a window could be', () => {
-    expect(chooseWindow(view(20, 80, 3.5), PHONE)).toBeNull();
-    expect(chooseWindow(view(20, 80, 4.5), PHONE)).toBeNull();
-    expect(chooseWindow(view(20, 80, 5), DESKTOP, null)).toBeNull();
+  it('gives the first view of a desktop and of a phone a window at about the satellite pixel, so the HD picture is there by default', () => {
+    const desktop = chooseWindow(view(11.5, 78, 6, 1400, 800), DESKTOP)!;
+    expect(desktop).not.toBeNull();
+    expect(desktop.kmPerPx).toBeLessThan(WINDOW_KM_PER_PX * 1.1);
+    const phone = chooseWindow(view(11.5, 78, 6.5, 378, 640), PHONE)!;
+    expect(phone).not.toBeNull();
+    expect(phone.kmPerPx).toBeLessThan(WINDOW_KM_PER_PX * 1.15);
   });
 
-  it('never gives a desktop a window: its 1.5 km picture is already as fine as the satellite is', () => {
-    for (const z of [4, 6, 7, 8.5, 10, 12]) expect(chooseWindow(view(11.2, 78.4, z, 1400, 800), DESKTOP)).toBeNull();
+  it('never gives a window that is not finer than the main picture', () => {
+    for (const z of [3, 3.5, 4, 4.5, 5, 6, 8, 10]) {
+      for (const [limits, w] of [[PHONE, 412], [DESKTOP, 1400]] as const) {
+        const win = chooseWindow(view(20, 80, z, w, 800), limits);
+        if (win) expect(limits.globalKmPerPx / win.kmPerPx).toBeGreaterThanOrEqual(1.15 - 1e-9);
+      }
+    }
+  });
+
+  it('gives a desktop a window at every zoom of a region, finer than its 1.5 km main picture', () => {
+    for (const z of [6, 7, 8.5, 10, 12]) {
+      const w = chooseWindow(view(11.2, 78.4, z, 1400, 800), DESKTOP)!;
+      expect(w).not.toBeNull();
+      expect(w.kmPerPx).toBeLessThan(DESKTOP.globalKmPerPx / 1.15);
+    }
   });
 
   it('gives a phone a window at the zoom of a state, at about the satellite pixel', () => {
@@ -104,7 +120,7 @@ describe('chooseWindow', () => {
 
   it('keeps the same window while the view moves about inside it, so a pan does not fetch', () => {
     const first = chooseWindow(view(11.2, 78.4, 7.5), PHONE)!;
-    for (const [dLat, dLon, dz] of [[0.2, 0, 0], [0, -0.3, 0], [0.15, 0.2, 0.2], [-0.2, 0.1, -0.2]]) {
+    for (const [dLat, dLon, dz] of [[0.1, 0, 0], [0, -0.15, 0], [0.08, 0.1, 0.1], [-0.1, 0.05, -0.1]]) {
       expect(chooseWindow(view(11.2 + dLat, 78.4 + dLon, 7.5 + dz), PHONE, first)).toBe(first);
     }
   });
@@ -123,7 +139,7 @@ describe('chooseWindow', () => {
     expect(fine.kmPerPx).toBeLessThan(WINDOW_KM_PER_PX * 1.15);
     expect(chooseWindow(view(11.2, 78.4, 9.5), PHONE, fine)).toBe(fine);
     // made zoomed out, where the biggest picture a phone asks for is spread over a wide window, so its pixel is coarser
-    const coarse = chooseWindow(view(11.2, 78.4, 6), PHONE)!;
+    const coarse = chooseWindow(view(11.2, 78.4, 5), PHONE)!;
     expect(coarse.kmPerPx).toBeGreaterThan(WINDOW_KM_PER_PX * 1.5);
     const zoomedIn = chooseWindow(view(11.2, 78.4, 8.5), PHONE, coarse)!;
     expect(zoomedIn.id).not.toBe(coarse.id);

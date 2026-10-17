@@ -7,7 +7,7 @@ import { SATELLITE_BOUNDS, SATELLITE_HRV, SATELLITE_IR, isTwilightTime, productF
 import { WINDOW_LOSSLESS_MAX_PX, kmPerPixel } from './satellite-window';
 
 // a phone: the whole-India picture is 3 km a pixel, so windows are worth fetching (a desktop's picture is as fine as the satellite)
-const PHONE_LIMITS = { maxPx: 1024, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 1000) };
+const PHONE_LIMITS = { maxPx: 1280, globalKmPerPx: kmPerPixel(SATELLITE_BOUNDS, 1000) };
 
 /** A stand-in for the whole-India loop: the frames it shows, whether it is on and still loading, and the two jobs the detail service borrows. */
 class FakeSatelliteService {
@@ -177,9 +177,9 @@ describe('SatelliteDetailService', () => {
     const first = detail.shown()!.window.id;
     const downloads = sat.downloadUrl.mock.calls.length;
     const builds = sat.process.mock.calls.length;
-    detail.setView(view(11.3, 78.5));
+    detail.setView(view(11.25, 78.45));
     await settle();
-    detail.setView(view(11.1, 78.3));
+    detail.setView(view(11.15, 78.35));
     await settle();
     expect(detail.shown()!.window.id).toBe(first);
     expect(sat.downloadUrl.mock.calls.length).toBe(downloads);
