@@ -7,10 +7,10 @@ describe('view state in the address', () => {
       layer: 'rain', model: 'gfs', level: '850',
       place: { lat: 11.7412, lon: 78.9601, name: 'Kallakurichi' },
       camera: { lat: 11.74, lon: 78.96, zoom: 6.2 },
-      overlays: ['particles', 'stations'],
+      overlays: ['particles', 'cyclones'],
     };
     const hash = formatViewState(view);
-    expect(hash).toBe('l=rain&m=gfs&lv=850&p=11.7412,78.9601&n=Kallakurichi&c=11.74,78.96,6.2&o=particles,stations');
+    expect(hash).toBe('l=rain&m=gfs&lv=850&p=11.7412,78.9601&n=Kallakurichi&c=11.74,78.96,6.2&o=particles,cyclones');
     expect(parseViewState('#' + hash)).toEqual(view);
   });
 
@@ -38,7 +38,7 @@ describe('view state in the address', () => {
     expect(parseViewState('p=abc,10')).toEqual({});
     expect(parseViewState('c=11,78,99')).toEqual({});                           // not a zoom
     expect(parseViewState('c=11,78')).toEqual({});                              // no zoom at all
-    expect(parseViewState('o=particles,hack,stations')).toEqual({ overlays: ['particles', 'stations'] });
+    expect(parseViewState('o=particles,hack,cyclones')).toEqual({ overlays: ['particles', 'cyclones'] });
   });
 
   it('shortens a very long place name', () => {

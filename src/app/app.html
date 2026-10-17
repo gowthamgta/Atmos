@@ -25,14 +25,13 @@
   <app-about></app-about>
 }
 
-<!-- The observed pictures have their own small panels; a weather station opens its readings -->
+<!-- The observed pictures have their own small panels -->
 <!-- their code loads when the browser is idle, after the first picture -->
 @defer (on idle) {
   <app-radar-panel></app-radar-panel>
   <app-radar-bars></app-radar-bars>
   <app-satellite-panel></app-satellite-panel>
   <app-gibs-panel></app-gibs-panel>
-  <app-station-card></app-station-card>
 }
 
 <!-- Bottom: the meteogram when it is open, the model button, then the time bar, then the colour bar -->

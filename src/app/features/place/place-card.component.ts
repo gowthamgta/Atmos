@@ -5,8 +5,6 @@ import { ForecastStateService } from '../../core/forecast/forecast-state.service
 import { rowsForLayer } from '../../core/forecast/point-forecast';
 import { HOME } from '../../core/geo/home';
 import { Place, PlaceSearchService } from '../../core/geo/place-search.service';
-import { ageLabel, compassPoint } from '../../core/forecast/observations';
-import { ObservationsService } from '../../core/forecast/observations.service';
 import { OutlookService } from '../../core/forecast/outlook.service';
 import { currentIcon, temperatureBar } from '../../core/forecast/outlook';
 import { runLines } from '../../core/forecast/model-runs';
@@ -16,11 +14,10 @@ import { RainEtaService } from '../../core/services/rain-eta.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { PanelService } from '../../core/ui/panel.service';
 import { UnitsService } from '../../core/units/units.service';
-import { formatRain, formatTemp, formatWind } from '../../core/units/units';
+import { formatRain, formatTemp } from '../../core/units/units';
 import { IconComponent } from '../../shared/icon.component';
 
 const IST = 'Asia/Kolkata';
-const KT_TO_MS = 0.514444;
 const SEARCH_DELAY_MS = 250;
 
 /** The first number in a text such as "27.2 °C" (null when there is none). */
@@ -32,7 +29,7 @@ export function firstNumber(text: string | undefined): number | null {
 /**
  * The card at the top left, after windy.com: a search box (the name of the place is in it), and under it the place's weather at the time on the
  * bar: the temperature in big figures with a picture of the sky, wind and humidity, and the next days as a strip. "Meteogram" opens the hourly
- * chart; "All values" opens the full list of values at that place and the observations nearby (rain gauge, weather station, airport), which are
+ * chart; "All values" opens the full list of values at that place, which are
  * only read from the forecast when it is opened. The last line says which run of which model the numbers are from. Click anywhere on the map to
  * choose another place.
  */
@@ -109,31 +106,6 @@ export function firstNumber(text: string | undefined): number | null {
               </ul>
             } @else if (outlook.busy()) {
               <div class="note">Loading the next days…</div>
-            }
-
-            @if (observed(); as o) {
-              <div class="heading obs-heading">Observed nearby <span class="obs-note">not the forecast</span></div>
-              @if (o.gauge) {
-                <div class="obs">
-                  <div class="obs-main"><span>Rain gauge</span><strong>{{ o.gauge.value }}</strong></div>
-                  <div class="obs-sub">{{ o.gauge.place }} · {{ o.gauge.km }} km · {{ o.gauge.window }}@if (o.gauge.peak) { · wettest hour {{ o.gauge.peak }} }</div>
-                </div>
-              }
-              @if (o.airport) {
-                <div class="obs">
-                  <div class="obs-main"><span>Airport weather</span><strong>{{ o.airport.value }}</strong></div>
-                  <div class="obs-sub">{{ o.airport.place }} · {{ o.airport.km }} km · {{ o.airport.age }}</div>
-                </div>
-              }
-              @if (o.station) {
-                <div class="obs">
-                  <div class="obs-main"><span>Weather station</span><strong>{{ o.station.value }}</strong></div>
-                  <div class="obs-sub">{{ o.station.place }} · {{ o.station.km }} km · {{ o.station.age }}@if (o.station.rain) { · {{ o.station.rain }} }</div>
-                </div>
-              }
-              @if (!o.gauge && !o.airport && !o.station) {
-                <div class="obs-sub">No rain gauge within 15 km, weather station within 100 km or airport within 120 km.</div>
-              }
             }
 
             <div class="actions">
@@ -246,12 +218,6 @@ export function firstNumber(text: string | undefined): number | null {
     dt { color: var(--text-secondary); }
     dd { margin: 0; font-weight: var(--fw-strong); text-align: right; font-variant-numeric: tabular-nums; }
     .adj { margin-left: var(--sp-1); font-size: 8px; color: var(--accent-strong); vertical-align: middle; }
-    .obs-heading { display: flex; align-items: baseline; justify-content: space-between; }
-    .obs-note { font-size: var(--fs-xs); font-weight: var(--fw-normal); color: var(--text-muted); }
-    .obs { padding: 5px 0; border-top: 1px solid var(--line); }
-    .obs-main { display: flex; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-m); color: var(--text-secondary); }
-    .obs-main strong { color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; }
-    .obs-sub { margin-top: 1px; font-size: var(--fs-xs); color: var(--text-muted); }
     .footer { margin: 6px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
 
     /* which run of which model these numbers are from, and whether it is the newest */
@@ -292,7 +258,6 @@ export class PlaceCardComponent {
   private readonly runs = inject(ModelRunsService);
   private readonly search = inject(PlaceSearchService);
   private readonly mapHost = inject(MapHostService);
-  private readonly observations = inject(ObservationsService);
   private readonly unitsService = inject(UnitsService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
@@ -392,42 +357,6 @@ export class PlaceCardComponent {
   protected bar(lo: number | null, hi: number | null): string {
     return temperatureBar(lo, hi);
   }
-
-  /** The rain gauge, weather station and airport nearest the place, in the chosen units. */
-  protected readonly observed = computed(() => {
-    const sel = this.inspector.selected();
-    const o = sel ? this.observations.near(sel.lat, sel.lon) : null;
-    if (!o) return null;
-    const u = this.unitsService.units();
-    const date = o.rainDate ? new Intl.DateTimeFormat('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(Date.parse(o.rainDate)) : '';
-    const wind = (kt: number | null, dir: number | string | null) => (kt !== null ? `${formatWind(kt * KT_TO_MS, u)} ${compassPoint(dir)}`.trim() : '');
-    const temp = (c: number | null) => (c !== null ? formatTemp(c, u) : '');
-    const g = o.gauge;
-    const a = o.airport;
-    const s = o.station;
-    return {
-      gauge: g && {
-        value: formatRain(g.item.t, u),
-        place: g.item.n,
-        km: Math.round(g.km),
-        window: `24 h to 08:30, ${date}`,
-        peak: g.item.pt && g.item.pk !== null ? `${formatRain(g.item.pk, u)} at ${g.item.pt}` : '',
-      },
-      airport: a && {
-        value: [temp(a.item.temp_c), a.item.rh_pct !== null ? `${a.item.rh_pct.toFixed(0)} %` : '', wind(a.item.wind_kt, a.item.wind_dir)].filter(Boolean).join(' · '),
-        place: a.item.name ?? a.item.station,
-        km: Math.round(a.km),
-        age: ageLabel(a.item.time),
-      },
-      station: s && {
-        value: [temp(s.item.temp_c), s.item.rh_pct !== null ? `${s.item.rh_pct.toFixed(0)} %` : '', wind(s.item.wind_kt, s.item.wind_dir)].filter(Boolean).join(' · '),
-        place: s.item.name,
-        km: Math.round(s.km),
-        age: ageLabel(s.item.time),
-        rain: s.item.rain_mm !== null && s.item.rain_mm > 0 ? `${formatRain(s.item.rain_mm, u)}${s.item.rain_hours ? ` in ${s.item.rain_hours} h` : ''}` : '',
-      },
-    };
-  });
 
   // ---- search behaviour
   protected onFocus(input: HTMLInputElement): void {

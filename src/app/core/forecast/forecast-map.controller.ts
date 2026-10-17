@@ -1,8 +1,6 @@
-import { STATION_CIRCLE_LAYER } from './observations';
 import { rowsForLayer } from './point-forecast';
 import { ConsensusService } from './consensus.service';
 import { INDIA_GRID, blendFields, differenceField, encodeFieldBitmap } from './derived-fields';
-import { StationSelectionService } from './station-selection.service';
 import { EffectRef, Injectable, Injector, effect, inject } from '@angular/core';
 import { Marker } from 'maplibre-gl';
 import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
@@ -42,7 +40,6 @@ export class ForecastMapController {
   private readonly mapLayers = inject(MapLayerService);
   private readonly terrain = inject(TerrainService);
   private readonly inspector = inject(ForecastInspectorService);
-  private readonly stations = inject(StationSelectionService);
   private readonly consensus = inject(ConsensusService);
   private readonly meteogram = inject(MeteogramService);
   private readonly perf = inject(PerfMeterService);
@@ -131,9 +128,6 @@ export class ForecastMapController {
 
   /** Clicking the map while a forecast overlay is shown inspects that point. */
   private readonly onMapClick = (e: MapMouseEvent): void => {
-    // a click on a weather station opens its card instead (see MapComponent)
-    if (this.map?.getLayer(STATION_CIRCLE_LAYER) && this.map.queryRenderedFeatures(e.point, { layers: [STATION_CIRCLE_LAYER] }).length) return;
-    this.stations.close();
     if (this.state.forecastActive()) {
       this.inspector.select(e.lngLat.lat, e.lngLat.lng);
       this.meteogram.noteMapClick();   // the first click on the map opens the meteogram of the place (once; after that it stays as the visitor left it)

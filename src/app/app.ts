@@ -16,7 +16,6 @@ import { ForecastCatalogService } from './core/forecast/forecast-catalog.service
 import { PanelService } from './core/ui/panel.service';
 import { UrlStateService } from './core/ui/url-state.service';
 import { IconComponent } from './shared/icon.component';
-import { StationCardComponent } from './features/observations/station-card.component';
 import { ThemeService } from './shared/theme.service';
 import { PerfMeterComponent } from './features/perf/perf-meter.component';
 
@@ -38,7 +37,6 @@ import { PerfMeterComponent } from './features/perf/perf-meter.component';
     PlaceCardComponent,
     MapControlsComponent,
     IconComponent,
-    StationCardComponent,
     PerfMeterComponent,
   ],
   templateUrl: './app.html',

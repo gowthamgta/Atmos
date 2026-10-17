@@ -49,9 +49,6 @@ const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-l
 import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
-import { ObservationsService } from '../../core/forecast/observations.service';
-import { STATION_CIRCLE_LAYER, STATION_LABEL_LAYER, STATION_SOURCE, SynopRecord } from '../../core/forecast/observations';
-import { StationSelectionService } from '../../core/forecast/station-selection.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
 
@@ -298,8 +295,6 @@ export class MapComponent implements OnInit, OnDestroy {
   private coverage = inject(RadarCoverageService);
   private terrain = inject(TerrainService);
   private forecastState = inject(ForecastStateService);
-  private observations = inject(ObservationsService);
-  private stationSelection = inject(StationSelectionService);
   private forecastInspector = inject(ForecastInspectorService);
 
   readonly hoverInfo = this.radarService.hoverInfo;
@@ -380,62 +375,12 @@ export class MapComponent implements OnInit, OnDestroy {
     this.syncBasemap(basemap);
   });
 
-  // Show or hide the weather station markers (their readings open in the station card)
-  private stationMarkersEffect = effect(() => {
-    const on = this.forecastState.stationMarkers();
-    const stations = this.observations.markers();
-    if (!this.map || !this.isMapLoaded()) return;
-    this.setStationMarkers(on, stations);
-  });
-
   // Show or hide the district lines (the state and country outlines stay either way)
   private districtLinesEffect = effect(() => {
     const visible = this.forecastState.districtLines();
     if (!this.map || !this.isMapLoaded()) return;
     this.setDistrictLinesVisible(visible);
   });
-
-  /** The station markers: a circle with the temperature beside it, one per station, under the boundary lines. */
-  private initStationLayers(): void {
-    if (!this.map || this.map.getSource(STATION_SOURCE)) return;
-    const map = this.map;
-    map.addSource(STATION_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    const before = this.overlayAnchorId();
-    map.addLayer({
-      id: STATION_CIRCLE_LAYER, type: 'circle', source: STATION_SOURCE, layout: { visibility: 'none' },
-      paint: { 'circle-radius': 5, 'circle-color': '#ffffff', 'circle-stroke-color': '#0b1220', 'circle-stroke-width': 1.6 },
-    }, before);
-    map.addLayer({
-      id: STATION_LABEL_LAYER, type: 'symbol', source: STATION_SOURCE, layout: {
-        visibility: 'none', 'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-        'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false,
-      },
-      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(6, 11, 22, 0.92)', 'text-halo-width': 1.4 },
-    }, before);
-    map.on('click', STATION_CIRCLE_LAYER, e => {
-      const id = e.features?.[0]?.properties?.['id'] as string | undefined;
-      const record = this.observations.markers().find(r => r.station === id);
-      if (!record) return;
-      this.forecastInspector.close();
-      this.stationSelection.select(record);
-    });
-    map.on('mouseenter', STATION_CIRCLE_LAYER, () => (map.getCanvas().style.cursor = 'pointer'));
-    map.on('mouseleave', STATION_CIRCLE_LAYER, () => (map.getCanvas().style.cursor = ''));
-    this.setStationMarkers(this.forecastState.stationMarkers(), this.observations.markers());
-  }
-
-  private setStationMarkers(on: boolean, stations: readonly SynopRecord[]): void {
-    if (!this.map || !this.map.getSource(STATION_SOURCE)) return;
-    const features = stations.map(s => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [s.lon, s.lat] },
-      properties: { id: s.station, label: s.temp_c !== null ? `${Math.round(s.temp_c)}°` : '' },
-    }));
-    (this.map.getSource(STATION_SOURCE) as maplibregl.GeoJSONSource).setData({ type: 'FeatureCollection', features });
-    const visibility = on ? 'visible' : 'none';
-    for (const id of [STATION_CIRCLE_LAYER, STATION_LABEL_LAYER]) this.map.setLayoutProperty(id, 'visibility', visibility);
-    if (!on) this.stationSelection.close();
-  }
 
   private setDistrictLinesVisible(visible: boolean): void {
     if (!this.map) return;
@@ -716,7 +661,6 @@ export class MapComponent implements OnInit, OnDestroy {
       // 1b. Tamil Nadu boundary lines (must exist before any overlay layer is mounted)
       this.initBoundaries();
       this.initPlaceLabels();
-      this.initStationLayers();
 
       // 2. Add Radar Range Rings GeoJSON Source & Layer
       this.initRangeRings();

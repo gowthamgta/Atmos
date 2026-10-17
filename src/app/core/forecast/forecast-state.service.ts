@@ -2,7 +2,6 @@ import { Injectable, computed, effect, inject, signal, untracked } from '@angula
 import { MapLayerService } from '../services/map-layer.service';
 import { isPhone } from '../ui/device-profile';
 import { ForecastCatalogService } from './forecast-catalog.service';
-import { ObservationsService } from './observations.service';
 import {
   ALL_LEVELS,
   FORECAST_LAYERS,
@@ -25,7 +24,6 @@ export class ForecastStateService {
 
   private readonly catalog = inject(ForecastCatalogService);
   private readonly mapLayers = inject(MapLayerService);
-  private readonly observations = inject(ObservationsService);
 
   readonly layers = FORECAST_LAYERS;
   readonly activeLayerId = signal<string | null>('wind');   // opens on the wind, as windy.com does: colours, legend and particles
@@ -57,7 +55,6 @@ export class ForecastStateService {
   /** Forecast tracks of tropical cyclones near the region (independent of the colour layer and the timeline). */
   readonly cyclones = signal(false);
   /** The weather station markers on the map (SYNOP stations, observed; click one for its readings). Off by default. */
-  readonly stationMarkers = signal(false);
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
   readonly districtLines = signal(false);
   /** 90 m hill shading of the colour layers and the basemap, on by default (the layer menu switches it off). */
@@ -159,11 +156,6 @@ export class ForecastStateService {
     this.mapLayers.deactivateAll();
     this.isobars.set(true);
     this.start();
-  }
-
-  toggleStationMarkers(): void {
-    this.stationMarkers.update(on => !on);
-    if (this.stationMarkers()) void this.observations.refresh();
   }
 
   toggleDistrictLines(): void {

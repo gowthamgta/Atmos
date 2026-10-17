@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { distanceKm } from '../forecast/observations';
+import { distanceKm } from './distance';
 import { HOME } from './home';
 
 export interface Place {

@@ -108,9 +108,6 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                     <button type="button" class="toggle" [attr.aria-pressed]="state.isobars()" [disabled]="!contourAvailable()" (click)="state.toggleIsobars()" [title]="state.level() === 'surface' ? 'Lines of equal sea-level pressure' : 'Lines of equal height of the ' + state.level() + ' hPa surface'">
                       <app-icon name="isobars" [size]="16" />{{ state.level() === 'surface' ? 'Pressure lines' : 'Height lines' }}
                     </button>
-                    <button type="button" class="toggle" [attr.aria-pressed]="state.stationMarkers()" (click)="state.toggleStationMarkers()" title="Weather stations of Tamil Nadu (observed, last 24 h). Click a station for its readings">
-                      <app-icon name="pin" [size]="16" />Weather stations
-                    </button>
                     <button type="button" class="toggle" [attr.aria-pressed]="state.cyclones()" (click)="state.toggleCyclones()" title="ECMWF forecast tracks of tropical cyclones near India (drawn when there are any)">
                       <app-icon name="cyclone" [size]="16" />Cyclone tracks
                     </button>

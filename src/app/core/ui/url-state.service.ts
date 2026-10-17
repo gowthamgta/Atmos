@@ -4,7 +4,6 @@ import { ForecastInspectorService } from '../forecast/forecast-inspector.service
 import { FORECAST_MODELS } from '../forecast/forecast-models';
 import { ForecastStateService } from '../forecast/forecast-state.service';
 import { forecastLayerById, supportsLevels } from '../forecast/forecast-layers';
-import { ObservationsService } from '../forecast/observations.service';
 import { MapLayerService } from '../services/map-layer.service';
 import { OVERLAYS, ViewState, formatViewState, parseViewState } from './view-state';
 
@@ -21,7 +20,6 @@ export class UrlStateService {
   private readonly catalog = inject(ForecastCatalogService);
   private readonly inspector = inject(ForecastInspectorService);
   private readonly mapLayers = inject(MapLayerService);
-  private readonly observations = inject(ObservationsService);
 
   /** Where the map is (or should start), from the address first. */
   readonly camera = signal<{ lat: number; lon: number; zoom: number } | null>(null);
@@ -60,7 +58,6 @@ export class UrlStateService {
     const on: Record<(typeof OVERLAYS)[number], boolean> = {
       particles: this.state.windParticles(),
       isobars: this.state.isobars(),
-      stations: this.state.stationMarkers(),
       cyclones: this.state.cyclones(),
       districts: this.state.districtLines(),
       relief: this.state.relief(),
@@ -110,8 +107,6 @@ export class UrlStateService {
       const has = (o: string) => view.overlays!.includes(o);
       this.state.windParticles.set(has('particles'));
       this.state.isobars.set(has('isobars'));
-      this.state.stationMarkers.set(has('stations'));
-      if (has('stations')) void this.observations.refresh();
       this.state.cyclones.set(has('cyclones'));
       this.state.districtLines.set(has('districts'));
       this.state.relief.set(has('relief'));
