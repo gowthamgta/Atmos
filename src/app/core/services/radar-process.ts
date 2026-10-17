@@ -16,6 +16,8 @@ export interface RadarPixelOptions {
   palette?: RadarPaletteEntry[];
   isTransparent: boolean;
   isXBand: boolean;
+  /** Keep the whole square of the picture (the PPI is shown as the square it is), not only the circle of the dish. */
+  square?: boolean;
 }
 
 /** Whether the picture still has the layout the station's crop was measured on (IMD swaps in a "maintenance" photo). */
@@ -408,7 +410,10 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
   // High-Resolution Square Output Canvas (1024x1024 for smooth curved contours at deep zoom)
   const outSize = RADAR_FIELD_SIZE;
   const halfSize = outSize / 2;
-  const maxRadius = halfSize - 2; // Strict circular radar sweep boundary limit
+  const square = opts.square === true;
+  // Strict circular radar sweep boundary limit; a square picture reaches past the corners of the circle
+  const maxRadius = square ? halfSize * Math.SQRT2 + 16 : halfSize - 2;
+  const squareEdge = (v: number) => Math.min(v, outSize - 1 - v);
 
   let hasAnyEcho = false;
 
@@ -522,7 +527,7 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
       for (let x = 0; x < outSize; x++) {
         const dx = x - halfSize;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const dishEdgeDist = maxRadius - dist;
+        const dishEdgeDist = square ? squareEdge(x) < squareEdge(y) ? squareEdge(x) + 1 : squareEdge(y) + 1 : maxRadius - dist;
         if (dishEdgeDist <= 0) continue;
 
         let val = Math.max(baseBlur[rowOffset + x], rawGrid[rowOffset + x]);

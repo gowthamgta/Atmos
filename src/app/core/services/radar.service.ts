@@ -621,7 +621,7 @@ export class RadarService implements OnDestroy {
     // No timestamp in the GIF: some pictures print the scan time in their side panel. The server's "last modified" only says
     // when the file was copied, so the printed time wins where there is one (decoded once per new picture).
     const hash = this.hashBytes(new Uint8Array(rawArrayBuf));
-    const pixelOptions = { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band' };
+    const pixelOptions = { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi' };
     let still: StillResult | null = null;
     if (!timing && productConfig.stampBox) {
       const stampId = `${station.id}:${productKey}`;
@@ -783,7 +783,7 @@ export class RadarService implements OnDestroy {
   ): ProcessedRadarResult | null {
     const layoutOk = layoutMatches(productConfig.crop, w, h);
     const field = layoutOk
-      ? processRadarPixels(rgba, w, h, { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band' })
+      ? processRadarPixels(rgba, w, h, { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi' })
       : null;
     return this.buildResult(station, productKey, productConfig, w, h, layoutOk, field, timing, isDisplayed, live);
   }
@@ -926,7 +926,7 @@ export class RadarService implements OnDestroy {
         const key = `${src.station.id}|${scan.timeMs}`;
         if (!decoded.has(key)) {
           const config = src.station.products[product];
-          const out = await this.processor.frame(src.reader, scan.index, { crop: config.crop, palette: config.palette, isTransparent, isXBand: src.station.band === 'X-Band' });
+          const out = await this.processor.frame(src.reader, scan.index, { crop: config.crop, palette: config.palette, isTransparent, isXBand: src.station.band === 'X-Band', square: product === 'ppi' });
           decoded.set(key, out ? this.buildResult(src.station, product, config, src.reader.width, src.reader.height, out.layoutOk, out.field, null, true, false) : null);
         }
         return decoded.get(key)!;
