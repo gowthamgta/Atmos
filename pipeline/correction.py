@@ -1,4 +1,4 @@
-"""Corrects the ECMWF IFS forecast near the airports that the bias table (bias.py) was measured at.
+"""Corrects the ECMWF IFS forecast near the airports that the bias table (data/bias/table.json) was measured at.
 
 Only the variables that improved on the held-out days are corrected (temperature and humidity, see the table); wind is not.
 Each airport's correction (by hour of day, UTC) applies in full within FULL_KM of the airport, fades out linearly to nothing
@@ -118,7 +118,7 @@ RAIN_FADE_KM = 50.0      # and fades out to nothing at this distance
 
 
 def load_rain(path: str) -> dict | None:
-    """The rain factor and the land gauges' positions (bias.py's rain step), when that factor was accepted; else None."""
+    """The rain factor and the land gauges' positions (data/bias/rain.json), when that factor was accepted; else None."""
     try:
         with open(path, encoding="utf-8") as f:
             doc = json.load(f)

@@ -21,7 +21,7 @@ from derive import cumulative_accumulation, derive, forward_accumulation, forwar
 from encode import encode_field
 import correction
 
-# the bias table (bias.py) for the airports near Kallakurichi; a missing table means no correction
+# the bias table (data/bias/table.json) for the airports near Kallakurichi; a missing table means no correction
 BIAS_TABLE = correction.load_table(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "bias", "table.json"))
 RAIN_BIAS = correction.load_rain(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "bias", "rain.json"))
 # where the grid is land (the terrain's land fraction): the corrections never change the sea
