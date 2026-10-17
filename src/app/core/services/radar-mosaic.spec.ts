@@ -50,6 +50,13 @@ describe('composeRadarMosaic', () => {
     expect(valueAt(ppz, diagonal[0], diagonal[1])).toBeCloseTo(4.0, 1);
   });
 
+  it('keeps the corners of a PPI picture (a square), not only its circle', () => {
+    const ppi = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan(karaikal, 'ppi', 4.0)]], 0.5, 2800, 'ppi')!;
+    // 120 km north and 120 km east: 170 km out, beyond the 150 km circle but inside the square of the picture
+    const corner: [number, number] = [karaikal.lat + 120 / 111.32, eastOf(karaikal, 120)[1]];
+    expect(valueAt(ppi, corner[0], corner[1])).toBeCloseTo(4.0, 1);
+  });
+
   it('shows a PPZ picture on its own: it is not left out for lacking a CAZ scan', () => {
     const m = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan(karaikal, 'ppz', 3.0)]], 0.5, 2800, 'ppz')!;
     const [lat, lng] = eastOf(karaikal, 60);

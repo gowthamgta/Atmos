@@ -228,6 +228,7 @@ export function composeRadarMosaic(
       const cx = s.cropW / 2;
       const cy = s.cropH / 2;
       const range = s.rangeKm;
+      const square = defaultProduct === 'ppi';
 
       for (let y = Math.max(yb, g.y0); y <= Math.min(ye - 1, g.y1); y++) {
         const lat = maxLat - (y / (outH - 1)) * latSpan;
@@ -263,10 +264,11 @@ export function composeRadarMosaic(
 
           // Distance to the station centre (the radar's operational range)
           const dLng = g.dLng[x];
-          const distKm = Math.sqrt(dLat * dLat + dLng * dLng);
+          // the PPI is a square picture (its corners are kept), every other product a circle
+          const distKm = square ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
           if (distKm > range) continue;
           const fx = g.fx[x];
-          const cDist = Math.sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
+          const cDist = square ? Math.max(Math.abs(fx - cx), Math.abs(fy - cy)) : Math.sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
           if (cDist > cx - 2) continue;
 
           // Bilinear sample from the station field
