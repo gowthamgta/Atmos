@@ -208,16 +208,40 @@ function infraredShare(blue: number, background: number): number {
 
 // ── Windy's look for the HRV: low, sunlit cloud is sand, thick shaded cloud slate, cold high cloud white with a blue tint ──
 type Rgb = readonly [number, number, number];
-/** Cloud that is not cold, by brightness (0..1 of the HRV): the warm ramp. */
+/**
+ * The two ramps, by brightness (0..1 of the HRV), measured on Windy's picture of the same frame (a pixel-by-pixel fit of its colour to
+ * the HRV's brightness, 0.87 correlation): low sunlit cloud and ground is a bright sand, cold high cloud a lavender white.
+ * The warm ramp is for cloud that is not cold.
+ */
 const WARM_STOPS: readonly (readonly [number, Rgb])[] = [
-  [0.1, [62, 65, 78]],
-  [0.3, [100, 96, 92]],
-  [0.5, [148, 136, 110]],
-  [0.75, [176, 162, 128]],
-  [1, [206, 196, 172]],
+  [0.1, [80, 85, 97]],
+  [0.2, [87, 92, 103]],
+  [0.25, [103, 105, 112]],
+  [0.3, [139, 137, 134]],
+  [0.35, [154, 151, 148]],
+  [0.4, [171, 166, 157]],
+  [0.45, [189, 181, 167]],
+  [0.5, [201, 193, 176]],
+  [0.55, [210, 201, 183]],
+  [0.6, [219, 209, 189]],
+  [0.7, [228, 220, 202]],
+  [0.8, [234, 230, 221]],
+  [1, [240, 238, 232]],
 ];
-const COLD_LOW: Rgb = [86, 92, 118];
-const COLD_HIGH: Rgb = [198, 203, 224];
+/** The ramp of cold cloud tops (the infrared in the blue channel says how cold): lavender grey to white. */
+const COLD_STOPS: readonly (readonly [number, Rgb])[] = [
+  [0.2, [110, 114, 135]],
+  [0.3, [143, 146, 166]],
+  [0.4, [152, 154, 170]],
+  [0.5, [160, 162, 178]],
+  [0.6, [168, 172, 190]],
+  [0.7, [188, 192, 210]],
+  [0.75, [199, 203, 220]],
+  [0.8, [214, 218, 234]],
+  [0.85, [230, 233, 244]],
+  [0.9, [244, 245, 246]],
+  [1, [246, 246, 246]],
+];
 
 function rampColor(stops: readonly (readonly [number, Rgb])[], t: number, out: number[]): void {
   const last = stops.length - 1;
@@ -234,10 +258,10 @@ export function windyCloudColor(r: number, g: number, b: number, background: num
   const lum = Math.min(1, (r + g) / 510);
   const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
   const warm = [0, 0, 0];
+  const coldColour = [0, 0, 0];
   rampColor(WARM_STOPS, lum, warm);
-  // the HRV of thick cloud is nearly saturated: spread the top of its range so the shading of the cloud shows, and only the brightest cores go white
-  const k = Math.pow(Math.min(1, Math.max(0, (lum - 0.3) / 0.7)), 2.4);
-  return [0, 1, 2].map(i => warm[i] + (COLD_LOW[i] + (COLD_HIGH[i] - COLD_LOW[i]) * k - warm[i]) * cold) as [number, number, number];
+  rampColor(COLD_STOPS, lum, coldColour);
+  return [0, 1, 2].map(i => warm[i] + (coldColour[i] - warm[i]) * cold) as [number, number, number];
 }
 
 /**

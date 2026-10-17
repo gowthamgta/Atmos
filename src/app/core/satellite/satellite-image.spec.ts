@@ -65,7 +65,7 @@ describe('shadePixel: the HRV picture by day', () => {
     expect(shade('hrv', 0, 0, 0)[3]).toBe(0);
     const [lr, , lb, la] = shade('hrv', 123, 122, 60); // yellow land / low sunlit cloud: sand, warmer than blue
     expect(la).toBe(255);
-    expect(lr).toBeGreaterThan(lb + 25);
+    expect(lr).toBeGreaterThan(lb + 15);
     const [cr, cg, cb, ca] = shade('hrv', 247, 247, 204); // thick cloud: light
     expect(ca).toBe(255);
     expect(Math.min(cr, cg, cb)).toBeGreaterThan(160);
@@ -75,11 +75,11 @@ describe('shadePixel: the HRV picture by day', () => {
   it('tells high cloud from low: cold tops white with a blue tint, warm ones sand', () => {
     const background = 60;
     const high = windyCloudColor(215, 215, 240, background);
-    const low = windyCloudColor(215, 205, 90, background);
+    const low = windyCloudColor(190, 170, 80, background);
     expect(high[2]).toBeGreaterThan(high[0]);
     expect(Math.min(...high)).toBeGreaterThan(130);
     expect(Math.min(...windyCloudColor(252, 252, 255, background))).toBeGreaterThan(170); // only the brightest cores go white
-    expect(low[0]).toBeGreaterThan(low[2] + 30);
+    expect(low[0]).toBeGreaterThan(low[2] + 15);
   });
 
   it('draws the infrared where the HRV has no data (only the blue): warm ground clear, cloud see-through white', () => {
