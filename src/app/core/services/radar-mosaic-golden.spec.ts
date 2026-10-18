@@ -44,6 +44,6 @@ describe('composeRadarMosaic: unchanged output on a fixed multi-station scene', 
 
   it('gives the same field, picture and corners', () => {
     const m = composeRadarMosaic(IMD_RADAR_STATIONS, sources, 0.5, 1400, 'caz')!;
-    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1118, h: 1400, field: 'd3f95eba', shown: 'd05b6b7f' })   // recorded for the two radars kept (Karaikal and Chennai), the strongest echo where they overlap
+    expect({ w: m.fieldData.cropW, h: m.fieldData.cropH, field: hash(m.fieldData.field), shown: hash(m.displayField!) }).toEqual({ w: 1098, h: 1400, field: '4fd392ea', shown: 'ac3394c1' })   // recorded for the two radars kept (Karaikal and Chennai), the strongest echo where they overlap
   });
 });

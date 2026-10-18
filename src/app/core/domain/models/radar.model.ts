@@ -327,7 +327,7 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     rangeKm: 250,
     animationFile: 'animation/Converted/KKL_MAXZ.gif',
     productRanges: {
-      caz: 255,
+      caz: 250,
       ppi: 150,
       sri: 158,
       pac: 158,
@@ -355,7 +355,7 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     rangeKm: 250,
     animationFile: 'animation/Converted/CNI_MAXZ.gif',
     productRanges: {
-      caz: 255,
+      caz: 250,
       ppi: 150,
       sri: 158,
       pac: 158,

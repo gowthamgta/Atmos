@@ -14,7 +14,7 @@ describe('Radar Domain & Config', () => {
     const { caz } = KARAIKAL_DWR_CONFIG.products;
 
     expect(caz.file).toBe('caz_kkl.gif');
-    expect(caz.rangeKm).toBe(255);
+    expect(caz.rangeKm).toBe(250);
     expect(caz.maplibreCoordinates[0][0]).toBeCloseTo(77.51, 1);
     expect(caz.maplibreCoordinates[0][1]).toBeCloseTo(13.22, 1);
     expect(caz.maplibreCoordinates[2][0]).toBeCloseTo(82.17, 1);
