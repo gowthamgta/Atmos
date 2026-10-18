@@ -15,10 +15,10 @@ describe('Radar Domain & Config', () => {
 
     expect(caz.file).toBe('caz_kkl.gif');
     expect(caz.rangeKm).toBe(250);
-    expect(caz.maplibreCoordinates[0][0]).toBeCloseTo(77.51, 1);
-    expect(caz.maplibreCoordinates[0][1]).toBeCloseTo(13.22, 1);
-    expect(caz.maplibreCoordinates[2][0]).toBeCloseTo(82.17, 1);
-    expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.63, 1);
+    expect(caz.maplibreCoordinates[0][0]).toBeCloseTo(77.55, 1);
+    expect(caz.maplibreCoordinates[0][1]).toBeCloseTo(13.16, 1);
+    expect(caz.maplibreCoordinates[2][0]).toBeCloseTo(82.13, 1);
+    expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.67, 1);
   });
 
   it('should have the two radars kept (Karaikal and Chennai) properly configured', () => {
