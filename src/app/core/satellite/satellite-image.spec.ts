@@ -126,6 +126,11 @@ describe("Windy's colours for the visible picture", () => {
     expect(Math.min(...windyVisibleColor(255, 255, 255, background, land))).toBeGreaterThan(235);
   });
 
+  it('draws clear land flat, whatever its own variation and noise (no mottle), as Windy does', () => {
+    const colours = [land - 20, land - 8, land, land + 5, land + 8].map(l => windyVisibleColor(l, l, 55, background, land));
+    for (const c of colours) for (let k = 0; k < 3; k++) expect(Math.abs(c[k] - colours[2][k])).toBeLessThan(1);
+  });
+
   it('turns gold only where there is cloud: the ground stays slate however warm', () => {
     const ground = windyVisibleColor(land, land, 55, background, land);
     expect(ground[0] - ground[2]).toBeLessThan(12); // the slight warmth of Windy's clear land, not gold (gold is 40 and more)

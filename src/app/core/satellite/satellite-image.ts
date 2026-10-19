@@ -286,7 +286,9 @@ export function groundTone(ground: number): number {
 /** Clear land and clear sea as Windy draws them (the darkest of its cloud-free pixels): a neutral, slightly warm slate, and navy. */
 const CLEAR_LAND: Rgb = [70, 66, 62];
 const CLEAR_SEA: Rgb = [46, 53, 72];
-/** How much brighter than the ground's tone a pixel is drawn for each step it stands above the ground in the HRV. */
+/** How far (0-255) a pixel may stand above the ground in the HRV and still be ground: the land's own variation and the sensor's noise. */
+export const GROUND_NOISE = 12;
+/** How much brighter than the ground's tone a pixel is drawn for each step it stands above the ground (beyond GROUND_NOISE) in the HRV. */
 export const CLOUD_GAIN = 1.6;
 /** The brightness (0-255, the HRV's red and green) of cloud thick enough to hide the ground, and how far above the ground it is at least. */
 export const OPAQUE_CLOUD_LUM = 215;
@@ -296,22 +298,25 @@ export const HRV_COVER_SMOOTH_SIGMA = 2;
 
 /**
  * The colour of an HRV pixel as Windy draws its visible satellite. Its brightness: clear ground dark (groundTone), cloud brighter by how
- * far it stands above the ground around it (`ground`, see hrvCloudLayers), up to white. Its colour: clear ground slate on land and navy at
- * sea (CLEAR_LAND, CLEAR_SEA, with the ground's own light and shade), and where there is cloud (from `smoothLum`, the brightness a little
+ * far it stands above the ground around it (`ground`, see hrvCloudLayers), up to white. Its colour: clear ground a flat slate on land and
+ * navy at sea (CLEAR_LAND, CLEAR_SEA), and where there is cloud (from `smoothLum`, the brightness a little
  * blurred, so the colour follows the shape of the cloud and not single pixels) the cool ramp (blue-grey to blue-white) for a cold top and
  * the gold ramp for one that is not (the infrared in the blue channel). The colour is left in RAMP_SCRATCH.
  */
 function windyVisibleInto(r: number, g: number, b: number, background: number, ground: number, smoothLum: number): void {
   const lum = (r + g) / 2;
-  const tone = Math.min(255, Math.max(0, groundTone(ground) + CLOUD_GAIN * (lum - ground)));
+  // only what stands clearly above the ground is cloud: the land's own variation (fields, hills, shadow, the sensor's noise) is not
+  // (none up to GROUND_NOISE, ramping back to the full excess by twice that, so real cloud is as bright as without the dead zone)
+  const excess = lum - ground;
+  const above = excess < GROUND_NOISE ? 0 : excess < 2 * GROUND_NOISE ? 2 * (excess - GROUND_NOISE) : excess;
+  const tone = Math.min(255, groundTone(ground) + CLOUD_GAIN * above);
   const opaque = Math.max(ground + OPAQUE_ABOVE_GROUND, OPAQUE_CLOUD_LUM);
   const cloud = Math.min(1, Math.max(0, (smoothLum - ground) / (opaque - ground)));
   const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
-  const gold = (1 - cold) * smoothstep(0.05, 0.45, cloud);
-  // clear ground: land or sea by how bright the ground is, with the pixel's own light and shade
+  const gold = (1 - cold) * smoothstep(0.1, 0.45, cloud);
+  // clear ground: land or sea by how bright the ground is, flat, as Windy draws it (no mottle of the land's own light and shade)
   const land = smoothstep(45, 95, ground);
-  const shade = Math.min(1.6, Math.max(0.6, tone / Math.max(groundTone(ground), 1)));
-  const cover = smoothstep(0.03, 0.3, cloud);
+  const cover = smoothstep(0.08, 0.32, cloud);
   const pos = (tone / 255) * RAMP_STEPS;
   const k = Math.min(RAMP_STEPS - 1, Math.floor(pos));
   const f = pos - k;
@@ -319,7 +324,7 @@ function windyVisibleInto(r: number, g: number, b: number, background: number, g
   for (let c = 0; c < 3; c++) {
     const cool = COOL_TABLE[i + c] + (COOL_TABLE[i + 3 + c] - COOL_TABLE[i + c]) * f;
     const warm = GOLD_TABLE[i + c] + (GOLD_TABLE[i + 3 + c] - GOLD_TABLE[i + c]) * f;
-    const clear = (CLEAR_SEA[c] + (CLEAR_LAND[c] - CLEAR_SEA[c]) * land) * shade;
+    const clear = CLEAR_SEA[c] + (CLEAR_LAND[c] - CLEAR_SEA[c]) * land;
     const cloudy = cool + (warm - cool) * gold;
     RAMP_SCRATCH[c] = clear + (cloudy - clear) * cover;
   }
