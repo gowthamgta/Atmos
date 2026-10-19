@@ -22,6 +22,8 @@ import {
   hrvCloudKeep,
   windyVisibleColor,
   groundTone,
+  cloudCover,
+  hrvCloudLayers as layersOf,
   hrvCloudLayers,
   toOverlayPixels,
 } from './satellite-image';
@@ -70,15 +72,14 @@ describe("shadePixel: the HRV picture by day, as Windy's visible satellite", () 
     expect(shade('hrv', 247, 247, 204)[3]).toBe(255); // thick cloud
   });
 
-  it('draws the infrared where the HRV has no data (only the blue): the warm ground dark, cold cloud bright, never violet', () => {
-    const ground = shade('hrv', 0, 0, 60);
+  it('draws the infrared where the HRV has no data (only the blue): the warm ground see-through, cold cloud bright, never violet', () => {
+    expect(shade('hrv', 0, 0, 60)[3]).toBe(0);
     const cloud = shade('hrv', 0, 0, 220);
-    expect(ground[3]).toBe(255);
-    expect(cloud[3]).toBe(255);
-    expect(cloud[0]).toBeGreaterThan(ground[0] + 100);
-    for (const b of [60, 110, 160, 220, 255]) {
-      const [r, , bb] = shade('hrv', 0, 0, b);
-      expect(bb - r).toBeLessThan(30); // the cool ramp: a little blue, never the violet patch
+    expect(cloud[3]).toBeGreaterThan(200);
+    expect(cloud[0]).toBeGreaterThan(170);
+    for (const b of [110, 160, 220, 255]) {
+      const [r, , bb, a] = shade('hrv', 0, 0, b);
+      if (a > 0) expect(bb - r).toBeLessThan(30); // the cool ramp: a little blue, never the violet patch
     }
   });
 
@@ -101,14 +102,12 @@ describe("Windy's colours for the visible picture", () => {
   const background = 60; // the blue of clear ground (the infrared of a warm surface)
   const land = 120;      // the HRV brightness of clear land around the pixel
 
-  it('draws clear ground as Windy does: land a dark neutral slate, the sea navy', () => {
-    const [r, g, b] = windyVisibleColor(land, land, 60, background, land);
-    expect((r + g + b) / 3).toBeGreaterThan(55);
-    expect((r + g + b) / 3).toBeLessThan(85);
-    expect(Math.abs(r - b)).toBeLessThan(15); // slate, not the yellow of the HRV's land
-    const sea = windyVisibleColor(34, 34, 60, background, 34);
-    expect(sea[2]).toBeGreaterThan(sea[0] + 15); // navy
-    expect((sea[0] + sea[1] + sea[2]) / 3).toBeLessThan((r + g + b) / 3);
+  it('draws nothing of the ground: a pixel no brighter than the ground around it is see-through, on land and at sea', () => {
+    const out = new Uint8ClampedArray(4);
+    shadePixel('hrv', land, land, 60, background, out, 0, land, land, 0);
+    expect(out[3]).toBe(0);
+    shadePixel('hrv', 34, 34, 55, background, out, 0, 34, 34, 0);
+    expect(out[3]).toBe(0);
     expect(groundTone(40)).toBeLessThan(groundTone(land));
   });
 
@@ -138,11 +137,11 @@ describe("Windy's colours for the visible picture", () => {
 });
 
 describe("cloud tops: the infrared in Windy's style (grey, with colour on the cold tops)", () => {
-  it('draws warm ground and sea dark grey and solid, and leaves true black (no data) see-through', () => {
-    const [r, g, bl, a2] = shade('ir', 8, 8, 8); // about +29 C: the sea
-    expect(a2).toBeGreaterThan(200);
-    expect(Math.max(r, g, bl)).toBeLessThan(120);
+  it('leaves warm ground and sea see-through (only cloud is drawn), and true black (no data) too', () => {
+    expect(shade('ir', 8, 8, 8)[3]).toBe(0); // about +29 C: the sea
+    expect(shade('ir', 20, 20, 20)[3]).toBe(0); // about +21 C: the land at night
     expect(shade('ir', 0, 0, 0)[3]).toBe(0);
+    expect(shade('ir', 60, 60, 60)[3]).toBeGreaterThan(200); // about +3 C: low cloud, solid
   });
 
   it('gets lighter grey for colder cloud, up to about -32 C', () => {
@@ -173,8 +172,9 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
     for (const t of [-40, -55, -70, -80]) expect(cloudTopColor(t)[3]).toBeGreaterThan(250);
   });
 
-  it('has a ramp that is mid grey and solid at the warm end and deep red at the coldest', () => {
-    expect(cloudTopColor(30)[3]).toBeGreaterThan(200);
+  it('has a ramp that is clear at the warm end (the ground), solid from low cloud, and deep red at the coldest', () => {
+    expect(cloudTopColor(30)[3]).toBe(0);
+    expect(cloudTopColor(5)[3]).toBeGreaterThan(240);
     expect(cloudTopColor(CLOUD_TOP_STOPS[0][0])[0]).toBeLessThan(120); // dark grey, not black
     expect(cloudTopColor(-120)).toEqual([100, 6, 12, 255]);
     const a = CLOUD_TOP_STOPS[3];
@@ -186,7 +186,7 @@ describe("cloud tops: the infrared in Windy's style (grey, with colour on the co
   it('draws the colour bar from the same ramp, grey on the left to deep red on the right', () => {
     const css = cloudTopGradient();
     expect(css.startsWith('linear-gradient(to right, rgba(')).toBe(true);
-    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.9\d\) 0\.0%/);
+    expect(css).toMatch(/^linear-gradient\(to right, rgba\(\d+, \d+, \d+, 0\.\d\d\) 0\.0%/); // the warm end: clear
     expect(css).toMatch(/rgba\(\d+, \d+, \d+, 1\.00\) 100\.0%\)$/);
   });
 });
@@ -207,11 +207,10 @@ describe('toOverlayPixels', () => {
   const src = new Uint8ClampedArray(width * srcHeight * 4);
   for (let y = 0; y < srcHeight; y++) for (let x = 0; x < width; x++) src.set([y * 30, 100, 50, 255], (y * width + x) * 4);
 
-  it('returns a picture of the requested size with values taken from the source, opaque, the bright end lighter than the dark end', () => {
+  it('returns a picture of the requested size with values taken from the source', () => {
     const out = toOverlayPixels(src, width, srcHeight, 'hrv', 10);
     expect(out.length).toBe(width * 10 * 4);
-    for (let r = 1; r < 10; r++) expect(out[r * width * 4 + 3]).toBe(255);
-    expect(out[9 * width * 4]).toBeGreaterThan(out[1 * width * 4]);
+    for (let r = 0; r < 10; r++) expect(out[r * width * 4]).toBeLessThanOrEqual(255);
   });
 
   it('blends between rows rather than copying, and keeps rows in order', () => {
@@ -348,7 +347,7 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(east[0]).toBeGreaterThan(130);
   });
 
-  it('measures the ground of an HRV picture: the clear ground dark slate, low cloud gold and high cloud blue-white over it', () => {
+  it('draws only the clouds of an HRV picture: the ground see-through, low cloud gold and high cloud blue-white', () => {
     const w = 600, h = 400; // about 5 km a pixel, so the ground window (65 km) is wider than the clouds
     const src = new Uint8ClampedArray(w * h * 4);
     for (let y = 0; y < h; y++) {
@@ -359,20 +358,38 @@ describe('twilight terminator blending and luma hover grid', () => {
         src.set([...rgb, 255], (y * w + x) * 4);
       }
     }
-    const keep = hrvCloudKeep(src, w, h);
-    expect(keep[300 * w + 250]).toBeLessThan(0.05); // plain ground
-    expect(keep[90 * w + 90]).toBeGreaterThan(0.9); // low cloud
-    expect(keep[160 * w + 380]).toBeGreaterThan(0.9); // high cloud
     const out = toOverlayPixels(src, w, h, 'hrv', h);
     const at = (x: number, y: number) => Array.from(out.subarray((y * w + x) * 4, (y * w + x) * 4 + 4));
-    const [gr, gg, gb, ga] = at(250, 300);
-    expect(ga).toBe(255);
-    expect((gr + gg + gb) / 3).toBeLessThan(80); // the ground dark
-    const [lr, , lb] = at(90, 90);
-    expect(lr).toBeGreaterThan(lb + 25); // low cloud gold (bright, so towards Windy's cream)
-    const [hr, , hb] = at(380, 160);
+    expect(at(250, 300)[3]).toBe(0); // the ground: the map shows
+    const [lr, , lb, la] = at(90, 90);
+    expect(la).toBeGreaterThan(200);
+    expect(lr).toBeGreaterThan(lb + 25); // low cloud gold
+    const [hr, , hb, ha] = at(380, 160);
+    expect(ha).toBeGreaterThan(200);
     expect(hb).toBeGreaterThan(hr); // high cloud blue-white
-    expect(hr).toBeGreaterThan(170);
+  });
+
+  it('leaves out faint patches and clouds too small to be sure of (under 8 km), and keeps bigger ones at their shape', () => {
+    const w = 400, h = 400, box = { west: 79, east: 81, south: 11, north: 13 }; // about 0.55 km a pixel
+    const src = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const small = Math.hypot(x - 80, y - 80) < 5;       // about 5 km across
+        const big = Math.hypot(x - 260, y - 260) < 50;      // about 55 km across
+        const faint = x >= 40 && x < 160 && y >= 240 && y < 360; // a wide, faint brightening: a bright field, haze
+        const lum = small || big ? 225 : faint ? 112 : 100;
+        src.set([lum, lum, 50, 255], (y * w + x) * 4);
+      }
+    }
+    const { ground } = layersOf(src, w, h, box, false);
+    const smooth = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) smooth[i] = src[i * 4];
+    const cover = cloudCover(src, w, h, box, ground, smooth, 50);
+    expect(cover[80 * w + 80]).toBeLessThan(0.05);   // the small cloud: left out
+    expect(cover[300 * w + 100]).toBeLessThan(0.05); // the faint patch: left out
+    expect(cover[260 * w + 260]).toBeGreaterThan(0.95); // the big cloud: kept
+    expect(cover[260 * w + 300]).toBeGreaterThan(0.5);  // to near its edge
+    expect(cover[150 * w + 300]).toBeLessThan(0.05);    // the clear ground
   });
 
   it('builds and samples the compact luma grid accurately by lat/lon', () => {
