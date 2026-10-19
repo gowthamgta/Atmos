@@ -6,6 +6,8 @@ export interface RadarCropConfig {
   y: number;
   w: number;
   h: number;
+  /** For a stamp box: the digits of the printed time, 6 for "HH:MM:SS" (default) or 4 for "HH:MM". */
+  digits?: 4 | 6;
 }
 
 /** One legend swatch of an IMD radar image, converted to an equivalent reflectivity (dBZ). */
@@ -225,6 +227,8 @@ const KKL_CAZ_PALETTE: RadarPaletteEntry[] = KKL_RAMP.map(([r, g, b, dbz]) => ({
 const KKL_PPI_RAMP: [number, number, number, number][] = [
   [200, 0, 79, 72.0], [200, 0, 58, 64.8], [200, 0, 42, 63.6], [200, 0, 33, 62.4], [200, 0, 11, 61.2], [200, 1, 5, 60.0], [212, 14, 8, 59.0], [223, 27, 15, 58.0], [234, 39, 22, 57.0], [247, 54, 31, 56.0], [255, 63, 35, 55.0], [255, 62, 28, 54.6], [255, 61, 20, 54.2], [255, 60, 12, 53.8], [255, 59, 9, 53.4], [255, 58, 0, 53.0], [255, 59, 0, 52.4], [255, 60, 0, 51.8], [255, 61, 0, 51.2], [255, 62, 0, 50.6], [255, 63, 0, 50.0], [255, 76, 0, 48.8], [255, 90, 0, 47.6], [255, 103, 0, 46.4], [255, 118, 0, 45.2], [255, 129, 0, 44.0], [255, 141, 0, 43.0], [255, 153, 0, 42.0], [255, 165, 0, 41.0], [255, 177, 0, 40.0], [255, 189, 0, 39.0], [255, 197, 0, 38.6], [255, 206, 0, 38.2], [255, 214, 0, 37.8], [255, 220, 0, 37.4], [255, 226, 0, 37.0], [254, 236, 67, 36.4], [255, 240, 104, 35.8], [255, 245, 151, 35.2], [255, 250, 199, 34.6], [255, 255, 254, 34.0], [221, 246, 255, 32.8], [185, 236, 255, 31.6], [153, 228, 255, 30.4], [121, 219, 255, 29.2], [84, 209, 255, 28.0], [74, 202, 255, 27.0], [63, 193, 255, 26.0], [49, 182, 255, 25.0], [38, 173, 255, 24.0], [27, 164, 255, 23.0], [20, 154, 255, 22.6], [15, 146, 255, 22.2], [10, 137, 255, 21.8], [5, 128, 255, 21.4], [0, 120, 255, 21.0], [0, 110, 255, 20.4], [0, 93, 255, 19.8], [0, 80, 255, 19.2], [0, 67, 255, 18.6], [0, 53, 255, 18.0], [0, 43, 245, 16.8], [0, 31, 233, 15.6], [0, 20, 221, 14.4], [0, 12, 212, 13.2], [0, 1, 201, 12.0], [9, 0, 194, 11.0], [20, 0, 186, 10.0], [31, 0, 179, 9.0], [45, 0, 169, 8.0], [56, 0, 161, 7.0], [58, 0, 160, 6.0],
 ];
+/** Karaikal's pictures are all 880 x 720 with the scan time in big bold figures at the same place in the side panel. */
+const KKL_STAMP: RadarCropConfig = { x: 724, y: 217, w: 152, h: 30 };
 const KKL_PPI_PALETTE: RadarPaletteEntry[] = KKL_PPI_RAMP.map(([r, g, b, dbz]) => ({ rgb: [r, g, b], dbz, tol: 12, context: dbz >= 34 }));
 
 /**
@@ -326,6 +330,10 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     band: 'S-Band',
     rangeKm: 250,
     animationFile: 'animation/Converted/KKL_MAXZ.gif',
+    // the scan time is printed in the side panel ("16:12:22Z"); the file's own time is only when IMD copied it, 10 to 15 minutes later
+    stamps: {
+      caz: KKL_STAMP, ppi: KKL_STAMP, ppz: KKL_STAMP, sri: KKL_STAMP, pac: KKL_STAMP
+    },
     productRanges: {
       caz: 250,
       ppi: 150,
@@ -354,6 +362,12 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     band: 'S-Band',
     rangeKm: 250,
     animationFile: 'animation/Converted/CNI_MAXZ.gif',
+    // the scan time is printed at the top of the picture ("16:10 / 18-Oct-2026": no seconds); the PPZ and PAC pictures have another layout and keep the file's time
+    stamps: {
+      caz: { x: 715, y: 29, w: 200, h: 18, digits: 4 },
+      ppi: { x: 814, y: 29, w: 200, h: 18, digits: 4 },
+      sri: { x: 614, y: 29, w: 200, h: 18, digits: 4 }
+    },
     productRanges: {
       caz: 250,
       ppi: 150,

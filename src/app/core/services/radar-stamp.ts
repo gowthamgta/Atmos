@@ -9,7 +9,14 @@
  */
 import { STAMP_COLS, STAMP_FONTS, STAMP_ROWS } from './radar-stamp-templates';
 
-export interface StampBox { x: number; y: number; w: number; h: number }
+export interface StampBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** The digits printed: 6 for "HH:MM:SS" (the default), 4 for "HH:MM" (Chennai prints no seconds). */
+  digits?: 4 | 6;
+}
 
 export interface StampTime { hours: number; minutes: number; seconds: number }
 
@@ -60,11 +67,11 @@ function cellOf(mid: Float32Array, w: number, x: number, p: number): Float32Arra
 }
 
 /**
- * The time "HH:MM:SS" at the start of a text line, given the line as ink (1 = text), `h` rows by `w` columns, trimmed to the
+ * The time "HH:MM:SS" (or "HH:MM", `digitCount` 4) at the start of a text line, given the line as ink (1 = text), `h` rows by `w` columns, trimmed to the
  * line's own rows. The six digits sit at fixed spacing (digit, digit, colon, digit, digit, colon, digit, digit); the spacing,
  * the start and the font are searched for the best fit. Null when nothing fits well enough or the time is not a time.
  */
-export function readTimeFromInk(ink: Uint8Array, w: number, h: number): StampTime | null {
+export function readTimeFromInk(ink: Uint8Array, w: number, h: number, digitCount: 4 | 6 = 6): StampTime | null {
   let x0 = -1;
   for (let c = 0; c < w && x0 < 0; c++) for (let y = 0; y < h; y++) if (ink[y * w + c]) { x0 = c; break; }
   if (x0 < 0 || h < 6) return null;
@@ -84,7 +91,7 @@ export function readTimeFromInk(ink: Uint8Array, w: number, h: number): StampTim
     const p0 = widthOverHeight * h;
     for (let p = p0 * 0.92; p <= p0 * 1.08; p += 0.1) {
       const c = colonRatio * p;
-      const starts = [0, p, 2 * p + c, 3 * p + c, 4 * p + 2 * c, 5 * p + 2 * c];
+      const starts = digitCount === 6 ? [0, p, 2 * p + c, 3 * p + c, 4 * p + 2 * c, 5 * p + 2 * c] : [0, p, 2 * p + c, 3 * p + c];
       for (let d = -3; d < 3; d++) {
         let cost = 0;
         let digits = '';
@@ -103,14 +110,14 @@ export function readTimeFromInk(ink: Uint8Array, w: number, h: number): StampTim
           digits += bestDigit;
           if (best && cost >= best.cost) break;
         }
-        if (digits.length === 6 && (!best || cost < best.cost)) best = { cost, digits };
+        if (digits.length === digitCount && (!best || cost < best.cost)) best = { cost, digits };
       }
     }
   }
-  if (!best || best.cost / 6 > MAX_CELL_ERROR) return null;
+  if (!best || best.cost / digitCount > MAX_CELL_ERROR) return null;
   const hours = +best.digits.slice(0, 2);
   const minutes = +best.digits.slice(2, 4);
-  const seconds = +best.digits.slice(4, 6);
+  const seconds = digitCount === 6 ? +best.digits.slice(4, 6) : 0;
   return hours < 24 && minutes < 60 && seconds < 60 ? { hours, minutes, seconds } : null;
 }
 
@@ -135,7 +142,7 @@ export function readStampTime(rgba: Uint8ClampedArray | Uint8Array, w: number, h
   if (last < 0) return null;
   let first = last;
   while (first > 0 && rows[first - 1]) first--;
-  return readTimeFromInk(ink.subarray(first * bw, (last + 1) * bw), bw, last - first + 1);
+  return readTimeFromInk(ink.subarray(first * bw, (last + 1) * bw), bw, last - first + 1, box.digits ?? 6);
 }
 
 /**

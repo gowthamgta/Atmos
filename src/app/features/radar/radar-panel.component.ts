@@ -92,6 +92,9 @@ const FRESHNESS_LABEL: Record<string, string> = {
               </button>
             }
           </div>
+          @if (scanGap(); as gap) {
+            <div class="gap-note" role="status">The radars scanned {{ gap }} min apart: where they overlap, cells can sit in different places.</div>
+          }
         </div>
 
         <label class="opacity full-only">
@@ -172,6 +175,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; min-height: 28px; border-radius: 14px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
     .chip:hover { background: var(--surface-4); }
     .chip.active { border-color: var(--accent-line); color: var(--text-primary); }
+    .gap-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--warn, var(--text-muted)); }
     .chip-age { color: var(--text-muted); font-size: var(--fs-xs); }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
     .dot[data-state='fresh'] { background: var(--ok); }
@@ -279,6 +283,14 @@ export class RadarPanelComponent {
   protected stationStateLabel(id: string): string {
     return FRESHNESS_LABEL[this.radar.getStationFreshness(id)] ?? '';
   }
+
+  /** Minutes between the oldest and the newest scan of the radars that are showing, when it is long enough to move a cell (null otherwise). */
+  protected readonly scanGap = computed(() => {
+    const ages = this.stations.map(st => this.radar.getStationAge(st.id)).filter((m): m is number => m !== null && m <= 180);
+    if (ages.length < 2) return null;
+    const gap = Math.max(...ages) - Math.min(...ages);
+    return gap >= 10 ? gap : null;
+  });
 
   protected stationAge(id: string): string {
     const m = this.radar.getStationAge(id);

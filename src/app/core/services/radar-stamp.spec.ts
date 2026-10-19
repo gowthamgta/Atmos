@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { IMD_RADAR_STATIONS, RadarProductKey } from '../domain/models/radar.model';
+import { decodeLastGifFrame } from './radar-process';
 import { readStampTime, readTimeFromInk, stampEpoch } from './radar-stamp';
 
 // The start of the printed time line of two real pictures ("12:20:01 UTC / 05-Oct-2026" in Mangaluru's small Arial Bold,
@@ -83,4 +87,21 @@ describe('radar picture time stamp', () => {
     // just after midnight UTC, serving yesterday's last scan
     expect(stampEpoch({ hours: 23, minutes: 58, seconds: 0 }, Date.UTC(2026, 9, 7, 0, 3, 0))).toBe(Date.UTC(2026, 9, 6, 23, 58, 0));
   });
+
+  // real pictures saved from mausam.imd.gov.in on 18-19 Oct 2026, with the time each prints (read off the picture by eye)
+  const PICTURES: [string, string, RadarProductKey, { hours: number; minutes: number; seconds: number }][] = [
+    ['karaikal-caz-stamp.gif', 'karaikal', 'caz', { hours: 16, minutes: 12, seconds: 22 }],
+    ['karaikal-ppi-stamp.gif', 'karaikal', 'ppi', { hours: 5, minutes: 22, seconds: 22 }],
+    ['chennai-caz-stamp.gif', 'chennai', 'caz', { hours: 16, minutes: 10, seconds: 0 }],
+    ['chennai-sri-stamp.gif', 'chennai', 'sri', { hours: 5, minutes: 20, seconds: 0 }],
+  ];
+  for (const [file, id, product, expected] of PICTURES) {
+    it(`reads the scan time printed on the ${id} ${product} picture, with the box of the station's configuration`, () => {
+      const bytes = readFileSync(join(__dirname, 'testdata', file));
+      const img = decodeLastGifFrame(new Uint8Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)))!;
+      const box = IMD_RADAR_STATIONS.find(st => st.id === id)!.products[product].stampBox!;
+      expect(box).toBeTruthy();
+      expect(readStampTime(img.rgba, img.w, img.h, box)).toEqual(expected);
+    });
+  }
 });

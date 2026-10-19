@@ -634,7 +634,9 @@ export class RadarService implements OnDestroy {
       }
       if (entry.time) {
         const served = sweepHeaderDate && !isNaN(sweepHeaderDate.getTime()) ? sweepHeaderDate.getTime() : Date.now();
-        timing = this.timingFromDate(new Date(stampEpoch(entry.time, served)), 'printed_stamp', false);
+        const scanned = stampEpoch(entry.time, served);
+        // a time that puts the scan most of a day before the file was copied is a misread digit (the file is copied minutes after a scan): not used
+        if (served - scanned < 20 * 3_600_000) timing = this.timingFromDate(new Date(scanned), 'printed_stamp', false);
       }
     }
     if (!timing && sweepHeaderDate && !isNaN(sweepHeaderDate.getTime())) {
