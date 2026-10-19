@@ -44,6 +44,12 @@ const DARK_LAND = '#2b2e35';
 const DARK_SEA = '#171b22';
 const PLAIN_LAND = '#585b64';
 const PLAIN_SEA = '#3d424d';
+// Under the satellite picture, which draws only the clouds, the ground is Windy's: measured on its visible satellite over South India, the
+// clear land a dark warm brown-grey and the sea a dark slate, so the clouds sit on a dark ground as they do there
+const SATELLITE_LAND = '#3e3a37';
+const SATELLITE_SEA = '#343741';
+/** Basemap lines Windy does not draw under its satellite picture (it keeps only the coasts and borders): rivers and roads. */
+const SATELLITE_HIDDEN_LINES = ['plain-waterway', 'plain-roads', 'base-waterway', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor'];
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
@@ -400,14 +406,15 @@ export class MapComponent implements OnInit, OnDestroy {
     const visible = this.forecastState.relief() && !this.satelliteOn();
     if (!this.map || !this.isMapLoaded()) return;
     this.setHillshadeVisible(visible);
-    this.showPlainLines(this.plainBasemap());
+    this.showPlainLines(this.plainBasemap(), this.satelliteOn());
   });
 
   /**
    * Under a radar or satellite picture the roads and rivers of the basemap would be covered by it: draw them again above it, thin and
-   * faint (like Windy), only while one of those layers is on.
+   * faint (like Windy), only while one of those layers is on. Under the satellite the ground is Windy's dark ground and only the coasts and
+   * borders are drawn (`satellite`).
    */
-  private showPlainLines(on: boolean): void {
+  private showPlainLines(on: boolean, satellite = false): void {
     const map = this.map;
     if (!map) return;
     const before = this.observationAnchorId();
@@ -426,9 +433,17 @@ export class MapComponent implements OnInit, OnDestroy {
       }, before);
     }
     for (const id of ['plain-waterway', 'plain-roads']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-    // Windy's flat, mid-grey land and slightly darker sea under radar and satellite
-    if (map.getLayer('map-background-layer')) map.setPaintProperty('map-background-layer', 'background-color', on ? PLAIN_LAND : DARK_LAND);
-    if (map.getLayer('base-water')) map.setPaintProperty('base-water', 'fill-color', on ? PLAIN_SEA : DARK_SEA);
+    // the basemap's own rivers and roads: hidden under the satellite, shown again otherwise (the plain copies are set above)
+    for (const id of SATELLITE_HIDDEN_LINES) {
+      if (!map.getLayer(id)) continue;
+      const plainCopy = id.startsWith('plain-');
+      map.setLayoutProperty(id, 'visibility', satellite ? 'none' : plainCopy ? (on ? 'visible' : 'none') : 'visible');
+    }
+    // Windy's flat, mid-grey land and slightly darker sea under the radar, its dark ground under the satellite
+    const land = satellite ? SATELLITE_LAND : on ? PLAIN_LAND : DARK_LAND;
+    const sea = satellite ? SATELLITE_SEA : on ? PLAIN_SEA : DARK_SEA;
+    if (map.getLayer('map-background-layer')) map.setPaintProperty('map-background-layer', 'background-color', land);
+    if (map.getLayer('base-water')) map.setPaintProperty('base-water', 'fill-color', sea);
   }
 
   private setHillshadeVisible(visible: boolean): void {
@@ -1111,6 +1126,7 @@ export class MapComponent implements OnInit, OnDestroy {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
     this.setHillshadeVisible(this.forecastState.relief() && !this.satelliteOn());
+    this.showPlainLines(this.plainBasemap(), this.satelliteOn()); // the satellite's ground and lines, if it is on
   }
 
   private syncZoomVisuals(): void {

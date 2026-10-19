@@ -287,8 +287,8 @@ export function groundTone(ground: number): number {
 }
 /** How far (0-255) a pixel may stand above the ground in the HRV and still be ground: the land's own variation and the sensor's noise. */
 export const GROUND_NOISE = 12;
-/** The darkest a cloud is drawn (0-255 on the ramps): its faint edge and shaded side stay a mid grey or gold, never a dark outline. */
-export const CLOUD_TONE_FLOOR = 115;
+/** The darkest a cloud is drawn (0-255 on the ramps): about the tone of Windy's dark ground under it, so a faint edge fades into it. */
+export const CLOUD_TONE_FLOOR = 70;
 /** How much brighter than the ground's tone a pixel is drawn for each step it stands above the ground (beyond GROUND_NOISE) in the HRV. */
 export const CLOUD_GAIN = 1.6;
 /** The brightness (0-255, the HRV's red and green) of cloud thick enough to hide the ground, and how far above the ground it is at least. */
@@ -310,7 +310,7 @@ function windyVisibleInto(r: number, g: number, b: number, background: number, g
   // (none up to GROUND_NOISE, ramping back to the full excess by twice that, so real cloud is as bright as without the dead zone)
   const excess = lum - ground;
   const above = excess < GROUND_NOISE ? 0 : excess < 2 * GROUND_NOISE ? 2 * (excess - GROUND_NOISE) : excess;
-  // never darker than a mid grey: only cloud is drawn now, and a cloud's faint edge in the palette's dark slate made a dark rim on the map
+  // never darker than the dark ground the clouds are drawn on (see the satellite's ground in map.component.ts), so no dark rim
   const tone = Math.min(255, Math.max(CLOUD_TONE_FLOOR, groundTone(ground) + CLOUD_GAIN * above));
   const opaque = Math.max(ground + OPAQUE_ABOVE_GROUND, OPAQUE_CLOUD_LUM);
   const cloud = Math.min(1, Math.max(0, (smoothLum - ground) / (opaque - ground)));

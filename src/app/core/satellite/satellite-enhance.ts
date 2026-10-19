@@ -137,12 +137,13 @@ export function enhancePicture(px: Uint8ClampedArray, width: number, height: num
 }
 
 /**
- * The blur (picture pixels, at the reference size of 1.5 km a pixel) that takes the noise out of the HRV's brightness: about one pixel.
+ * The blur (picture pixels, at the reference size of 1.5 km a pixel) that takes the noise out of the HRV's brightness: under a pixel, so
+ * the cumulus keep their texture (the map's smooth magnification, see satellite-image.layer.ts, keeps a close zoom free of squares).
  * Detail finer than that is the sensor's noise, the JPEG's residue and, in a closer window, the pixels the service repeats where it is
  * asked for a little finer than the satellite sees (over South India its HRV pixel is wider than the 1.25 km asked for): magnified on
  * the map, all of these show as a mottle and a grid of soft squares. The clouds' own shapes are several pixels across and stay.
  */
-export const HRV_DENOISE_SIGMA = 0.9;
+export const HRV_DENOISE_SIGMA = 0.6;
 
 /**
  * Takes the noise out of the HRV's brightness (red and green) in place: a Gaussian blur of their mean, each channel keeping its own
