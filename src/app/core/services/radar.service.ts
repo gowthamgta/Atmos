@@ -24,6 +24,8 @@ import { RadarCoverageService } from './radar-coverage.service';
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
   field: Uint8Array;
+  /** How fully each pixel is drawn (255: in full): an echo older than another radar's scan of the same place is fainter. Absent: all in full. */
+  fade?: Uint8Array;
   width: number;
   height: number;
   coordinates: [[number, number], [number, number], [number, number], [number, number]];
@@ -153,6 +155,7 @@ export class RadarService implements OnDestroy {
     return live && live.displayField && live.isDisplayed !== false && !stale
       ? {
           field: live.displayField,
+          fade: live.displayFade,
           width: live.fieldData.cropW,
           height: live.fieldData.cropH,
           coordinates: live.coordinates,
@@ -953,6 +956,7 @@ export class RadarService implements OnDestroy {
         if (composed?.displayField) {
           frames.push({
             field: composed.displayField,
+            fade: composed.displayFade,
             width: composed.fieldData.cropW,
             height: composed.fieldData.cropH,
             coordinates: composed.coordinates,

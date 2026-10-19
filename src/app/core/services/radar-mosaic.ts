@@ -13,6 +13,18 @@ export const MAX_SCAN_AGE_MIN = 45;
 /** Resolution of the composite: 0.5 km per pixel. */
 export const MOSAIC_KM_PER_PX = 0.5;
 
+/**
+ * Where radars overlap and one scanned later than another, the older radar's echo is drawn fainter: the rain has moved on since. Scans
+ * less than this many minutes apart are the same moment (the radars scan every 10 minutes, a little out of step with each other).
+ */
+export const OVERLAP_STALE_MIN = 8;
+/** How faint an older echo is drawn (its opacity, 0..1): one scan behind, and this much older or more. */
+export const OVERLAP_FADE_ONE_SCAN = 0.6;
+export const OVERLAP_FADE_OLDEST = 0.35;
+export const OVERLAP_FADE_OLDEST_MIN = 30;
+/** Over this much of the newer radar's range (km, inward from its edge) the fade sets in, so its edge draws no line on the map. */
+export const OVERLAP_FADE_EDGE_KM = 10;
+
 /** One station's scan being composed: where it lies and its intensity field. */
 interface ActiveStation {
   station: RadarStationConfig;
@@ -27,6 +39,8 @@ interface ActiveStation {
   cropH: number;
   field: Float32Array;
   cosLat: number;
+  /** When it scanned (epoch ms), NaN when that is not known. */
+  timeMs: number;
 }
 
 /** What one scan needs at every output column (it does not change from row to row), and where its picture has echo. */
@@ -148,7 +162,8 @@ export function composeRadarMosaic(
       cropW: res.fieldData.cropW,
       cropH: res.fieldData.cropH,
       field: res.fieldData.field,
-      cosLat: Math.cos((st.lat * Math.PI) / 180)
+      cosLat: Math.cos((st.lat * Math.PI) / 180),
+      timeMs: res.timing?.epochMs ?? NaN,
     });
 
     if (res.timing && (!latestTiming || (res.timing.epochMs && (!latestTiming.epochMs || res.timing.epochMs > latestTiming.epochMs)))) {
@@ -200,14 +215,36 @@ export function composeRadarMosaic(
   const stationOf = new Int16Array(outW * bandRows);
   const stationVal = new Float32Array(outW * bandRows);
   const stationWeight = new Float32Array(outW * bandRows);
+  // for the fade of older echoes: which station gave the peak, and the newest scan with echo here and its strength
+  const peakStation = new Int16Array(outW * bandRows);
+  const newestEchoTime = new Float64Array(outW * bandRows);
+  const newestEchoVal = new Float32Array(outW * bandRows);
+  const timeOf = new Float64Array(stations.length).fill(NaN);
+  for (const s of activeStations) timeOf[s.stationIndex] = s.timeMs;
   const commit = (i: number): void => {
     const v = stationVal[i];
-    if (stationOf[i] < 0 || v <= 0) return;
-    if (v > peak[i]) peak[i] = v;
+    const st = stationOf[i];
+    if (st < 0 || v <= 0) return;
+    if (v > peak[i]) {
+      peak[i] = v;
+      peakStation[i] = st;
+    }
+    const t = timeOf[st];
+    if (t > newestEchoTime[i]) {
+      newestEchoTime[i] = t;
+      newestEchoVal[i] = v;
+    } else if (t === newestEchoTime[i] && v > newestEchoVal[i]) {
+      newestEchoVal[i] = v;
+    }
     weightedSum[i] += v * stationWeight[i];
     weightTotal[i] += stationWeight[i];
     radarCount[i]++;
   };
+  // the fade of every pixel (255: drawn in full); only made when some echo is older than a radar that covers it
+  let fade: Uint8Array | null = null;
+  const timed = activeStations.filter(s => !Number.isNaN(s.timeMs));
+  const newestScan = timed.reduce((m, s) => Math.max(m, s.timeMs), -Infinity);
+  const staleMs = OVERLAP_STALE_MIN * 60_000;
 
   for (let yb = 0; yb < outH; yb += bandRows) {
     const ye = Math.min(outH, yb + bandRows);
@@ -219,6 +256,9 @@ export function composeRadarMosaic(
     stationOf.fill(-1, 0, n);
     stationVal.fill(0, 0, n);
     stationWeight.fill(0, 0, n);
+    peakStation.fill(-1, 0, n);
+    newestEchoTime.fill(-Infinity, 0, n);
+    newestEchoVal.fill(0, 0, n);
     let touched = false;
 
     for (const g of preps) {
@@ -307,6 +347,31 @@ export function composeRadarMosaic(
       // Where radars overlap, the strongest echo of any of them (this is a maximum-reflectivity picture: the column maximum of the
       // combined volume is the larger of the two), never a blend, so no cell is weaker than on either radar's own picture
       compositeField[base + i] = peak[i];
+
+      // an echo from a scan older than another radar's that covers this place is drawn fainter (see OVERLAP_STALE_MIN)
+      const peakTime = peakStation[i] >= 0 ? timeOf[peakStation[i]] : NaN;
+      if (!(peakTime < newestScan - staleMs)) continue; // the newest there is, or its time is not known
+      const x = i % outW;
+      const y = yb + Math.floor(i / outW);
+      const lat = maxLat - (y / (outH - 1)) * latSpan;
+      const lng = minLng + (x / (outW - 1)) * lngSpan;
+      let coverTime = -Infinity;
+      let cover = 0;
+      for (const s of timed) {
+        if (!(s.timeMs > peakTime + staleMs)) continue;
+        const dLat = (lat - s.station.lat) * 111.32;
+        const dLng = (lng - s.station.lng) * 111.32 * s.cosLat;
+        const dist = defaultProduct === 'ppi' ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
+        const c = Math.min(1, (s.rangeKm - dist) / OVERLAP_FADE_EDGE_KM);
+        if (c <= 0) continue;
+        if (s.timeMs > coverTime) coverTime = s.timeMs;
+        if (c > cover) cover = c;
+      }
+      if (cover <= 0) continue;
+      const f = overlapFade(peak[i], peakTime, coverTime, newestEchoTime[i] >= coverTime - staleMs ? newestEchoVal[i] : 0, cover);
+      if (f >= 1) continue;
+      if (!fade) fade = new Uint8Array(total).fill(255);
+      fade[base + i] = Math.round(f * 255);
     }
   }
 
@@ -314,6 +379,7 @@ export function composeRadarMosaic(
     stationId: 'composite-mosaic',
     dataUrl: '',
     displayField: quantizeRadarField(compositeField),
+    ...(fade ? { displayFade: fade } : {}),
     coordinates: [
       [minLng, maxLat], // NW
       [maxLng, maxLat], // NE
@@ -336,3 +402,17 @@ export function composeRadarMosaic(
   return result;
 }
 
+/**
+ * The opacity (0..1) of an echo of strength `peak` from a scan at `peakTime`, where a radar that scanned at `coverTime` (later) covers the
+ * place and saw `fresh` there (0: dry). One scan behind it is OVERLAP_FADE_ONE_SCAN, fading on to OVERLAP_FADE_OLDEST at
+ * OVERLAP_FADE_OLDEST_MIN older; where the newer radar sees rain too the echo fades less (it is still there). `cover` (0..1) eases the
+ * fade in from the edge of the newer radar's range.
+ */
+export function overlapFade(peak: number, peakTime: number, coverTime: number, fresh: number, cover: number): number {
+  const olderMin = (coverTime - peakTime) / 60_000;
+  if (!(olderMin > OVERLAP_STALE_MIN) || peak <= 0) return 1;
+  const k = Math.min(1, Math.max(0, (olderMin - 10) / (OVERLAP_FADE_OLDEST_MIN - 10)));
+  const floor = OVERLAP_FADE_ONE_SCAN + (OVERLAP_FADE_OLDEST - OVERLAP_FADE_ONE_SCAN) * k;
+  const target = floor + (1 - floor) * Math.min(1, fresh / peak);
+  return 1 + (target - 1) * Math.min(1, Math.max(0, cover));
+}

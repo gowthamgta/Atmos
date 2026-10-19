@@ -63,6 +63,7 @@ precision highp float;
 precision highp int;
 precision lowp sampler2DArray;   // the terrain tiles (GLSL ES 3.00 wants a precision for every sampler type)
 uniform sampler2D u_field;   // R8: intensity / ${RADAR_FIELD_MAX}
+uniform sampler2D u_fade;    // R8: how fully each pixel is drawn (1: in full; less where the echo is older than another radar's scan there)
 uniform vec4 u_box;          // mercator x0 and x1 of the mosaic (its west and east edges); y0, y1 unused
 uniform vec2 u_lat;          // latitude (degrees) of the top and the bottom row
 uniform ivec2 u_size;
@@ -156,7 +157,7 @@ void main() {
 
   vec4 c = band(v);
   float feather = smoothstep(${f(ECHO_FADE_START)}, ${f(ECHO_FADE_FULL)}, v);
-  float a = c.a * feather * u_opacity;
+  float a = c.a * feather * u_opacity * texture(u_fade, tc).r;
   if (a <= 0.001) discard;
   vec3 rgb = c.rgb;
   if (u_terrainOn == 1 && u_relief > 0.0) rgb *= reliefShade(lat, v_merc.x * 360.0 - 180.0);
@@ -166,6 +167,8 @@ void main() {
 export interface RadarLayerFrame {
   /** Intensity, one byte per pixel (intensity / RADAR_FIELD_MAX * 255), row 0 at the north edge. */
   field: Uint8Array;
+  /** How fully each pixel is drawn, one byte per pixel like `field` (255: in full). Absent: everything in full. */
+  fade?: Uint8Array;
   width: number;
   height: number;
   /** Corners [lng, lat]: NW, NE, SE, SW. */
@@ -186,6 +189,9 @@ export class RadarFieldLayer implements CustomLayerInterface {
   private vbo: WebGLBuffer | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
   private readonly textures = new Map<Uint8Array, WebGLTexture>(); // insertion order = least recently used first
+  private readonly fadeTextures = new Map<Uint8Array, WebGLTexture>();
+  /** One white pixel: the fade of a picture that has none (everything drawn in full). */
+  private noFade: WebGLTexture | null = null;
   private frame: RadarLayerFrame | null = null;
   private box: [number, number, number, number] = [0, 0, 1, 1];
   private lat: [number, number] = [1, 0];
@@ -249,7 +255,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`radar program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_field', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen', 'u_relief', 'u_terrainOn', 'u_lite', 'u_terrainBox', ...TERRAIN_TILE_UNIFORMS]) {
+    for (const name of ['u_matrix', 'u_field', 'u_fade', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen', 'u_relief', 'u_terrainOn', 'u_lite', 'u_terrainBox', ...TERRAIN_TILE_UNIFORMS]) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.tiles.attach(map, gl);
@@ -260,6 +266,10 @@ export class RadarFieldLayer implements CustomLayerInterface {
 
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
+    for (const tex of this.fadeTextures.values()) gl.deleteTexture(tex);
+    this.fadeTextures.clear();
+    if (this.noFade) gl.deleteTexture(this.noFade);
+    this.noFade = null;
     this.textures.clear();
     this.tiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
@@ -283,48 +293,67 @@ export class RadarFieldLayer implements CustomLayerInterface {
     gl.bindVertexArray(null);
   }
 
-  private textureFor(gl: WebGL2RenderingContext, frame: RadarLayerFrame): WebGLTexture {
-    const cached = this.textures.get(frame.field);
+  /** A one-byte-per-pixel picture of the frame (its intensity or its fade) on the GPU, uploaded once and kept for the last few frames. */
+  private textureFor(gl: WebGL2RenderingContext, frame: RadarLayerFrame, data: Uint8Array = frame.field, cache = this.textures): WebGLTexture {
+    const cached = cache.get(data);
     if (cached) {
-      this.textures.delete(frame.field);
-      this.textures.set(frame.field, cached); // most recently used
+      cache.delete(data);
+      cache.set(data, cached); // most recently used
       return cached;
     }
     const tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); // rows are not a multiple of four bytes
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, frame.width, frame.height, 0, gl.RED, gl.UNSIGNED_BYTE, frame.field);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, frame.width, frame.height, 0, gl.RED, gl.UNSIGNED_BYTE, data);
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    this.textures.set(frame.field, tex);
-    while (this.textures.size > RadarFieldLayer.MAX_TEXTURES) {
-      const oldest = this.textures.keys().next().value as Uint8Array;
-      if (oldest === frame.field) break;
-      gl.deleteTexture(this.textures.get(oldest)!);
-      this.textures.delete(oldest);
+    cache.set(data, tex);
+    while (cache.size > RadarFieldLayer.MAX_TEXTURES) {
+      const oldest = cache.keys().next().value as Uint8Array;
+      if (oldest === data) break;
+      gl.deleteTexture(cache.get(oldest)!);
+      cache.delete(oldest);
     }
     return tex;
+  }
+
+  /** The frame's fade on the GPU, or one white pixel when it has none. */
+  private fadeTextureFor(gl: WebGL2RenderingContext, frame: RadarLayerFrame): WebGLTexture {
+    if (frame.fade) return this.textureFor(gl, frame, frame.fade, this.fadeTextures);
+    if (!this.noFade) {
+      this.noFade = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.noFade);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([255]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    }
+    return this.noFade;
   }
 
   render(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
     const { program, frame } = this;
     if (!program || !frame || this.opacity <= 0.001) return;
     const tex = this.textureFor(gl, frame);
+    const fadeTex = this.fadeTextureFor(gl, frame);
     // the ground is only read (and its tiles only loaded) while the relief is wanted
     const wantRelief = this.relief > 0 && this.tiles.data !== null;
     if (wantRelief) this.tiles.update(gl);
     const terrainOn = wantRelief && this.tiles.ready;
     gl.useProgram(program);
     gl.bindVertexArray(this.vao);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, fadeTex);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
     this.tiles.bind(gl, terrainOn);
     const u = this.uniforms;
     gl.uniformMatrix4fv(u['u_matrix'], false, options.defaultProjectionData.mainMatrix as unknown as Float32List);
     gl.uniform1i(u['u_field'], 0);
+    gl.uniform1i(u['u_fade'], 1);
     gl.uniform4f(u['u_box'], this.box[0], this.box[1], this.box[2], this.box[3]);
     gl.uniform2f(u['u_lat'], this.lat[0], this.lat[1]);
     gl.uniform2i(u['u_size'], frame.width, frame.height);
