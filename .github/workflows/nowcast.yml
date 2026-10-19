@@ -40,11 +40,11 @@ jobs:
       - name: Browser
         run: npx playwright install --with-deps chromium
       - run: npm test
-      # what the last post was (so a storm is not posted again every ten minutes): kept between runs in the cache
+      # what the last post was (so a storm is not posted again every ten minutes): kept between runs in the cache, the newest entry
       - uses: actions/cache/restore@v4
         with:
           path: bot/state
-          key: nowcast-state-${{ github.run_id }}
+          key: nowcast-state-latest
           restore-keys: nowcast-state-
       - name: Nowcast
         env:
@@ -58,11 +58,12 @@ jobs:
           FORCE: ${{ inputs.force && '1' || '0' }}
           INCLUDE_LINK: ${{ vars.NOWCAST_INCLUDE_LINK == 'true' && '1' || '0' }}
         run: node nowcast.mjs
+      # saved only when it changed (after a post): the key is its content, so a quiet run saves nothing
       - uses: actions/cache/save@v4
-        if: always()
+        if: always() && hashFiles('bot/state/state.json') != ''
         with:
           path: bot/state
-          key: nowcast-state-${{ github.run_id }}
+          key: nowcast-state-${{ hashFiles('bot/state/state.json') }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
