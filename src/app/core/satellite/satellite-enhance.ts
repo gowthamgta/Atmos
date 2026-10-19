@@ -61,6 +61,47 @@ export function blurPlane(plane: Float32Array, width: number, height: number, si
   }
 }
 
+/**
+ * A Gaussian blur of a plane, approximated by three box blurs (in place; the edges repeat). Each box is a running sum, so the cost is the
+ * same whatever `sigma`: for a wide blur of a big picture far cheaper than blurPlane, and as smooth to the eye.
+ */
+export function fastBlurPlane(plane: Float32Array, width: number, height: number, sigma: number): void {
+  const r = Math.max(1, Math.round((Math.sqrt((12 * sigma * sigma) / 3 + 1) - 1) / 2));
+  const norm = 1 / (2 * r + 1);
+  const row = new Float32Array(width);
+  const colSum = new Float64Array(width);
+  const copy = new Float32Array(plane.length);
+  for (let pass = 0; pass < 3; pass++) {
+    // along each row
+    for (let y = 0; y < height; y++) {
+      const o = y * width;
+      let acc = 0;
+      for (let k = -r; k <= r; k++) acc += plane[o + Math.min(width - 1, Math.max(0, k))];
+      for (let x = 0; x < width; x++) {
+        row[x] = acc * norm;
+        acc += plane[o + Math.min(width - 1, x + r + 1)] - plane[o + Math.max(0, x - r)];
+      }
+      plane.set(row, o);
+    }
+    // down the columns, a whole row at a time so the reads stay in order
+    copy.set(plane);
+    colSum.fill(0);
+    for (let k = -r; k <= r; k++) {
+      const o = Math.min(height - 1, Math.max(0, k)) * width;
+      for (let x = 0; x < width; x++) colSum[x] += copy[o + x];
+    }
+    for (let y = 0; y < height; y++) {
+      const o = y * width;
+      const add = Math.min(height - 1, y + r + 1) * width;
+      const sub = Math.max(0, y - r) * width;
+      for (let x = 0; x < width; x++) {
+        plane[o + x] = colSum[x] * norm;
+        colSum[x] += copy[add + x] - copy[sub + x];
+      }
+    }
+  }
+}
+
 /** One channel of an RGBA picture as a plane. */
 function channelPlane(px: Uint8ClampedArray, width: number, height: number, channel: number): Float32Array {
   const plane = new Float32Array(width * height);
@@ -124,15 +165,18 @@ export function sharpenHrv(
   // the blur is normalised by how much of the neighbourhood has data, so the empty edge of the picture does not read as a dark edge
   const blurred = new Float32Array(n);
   const valid = new Float32Array(n);
+  let empty = 0;
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     lum[i] = (px[p] + px[p + 1]) / 2;
-    if (px[p] + px[p + 1] + px[p + 2] === 0) continue;
+    if (px[p] + px[p + 1] + px[p + 2] === 0) {
+      empty++;
+      continue;
+    }
     blurred[i] = lum[i];
     valid[i] = 1;
   }
-  const scratch = new Float32Array(n);
-  blurPlane(blurred, width, height, sigma, scratch);
-  blurPlane(valid, width, height, sigma, scratch);
+  fastBlurPlane(blurred, width, height, sigma);
+  if (empty > 0) fastBlurPlane(valid, width, height, sigma); // a picture with no empty edge (most) has nothing to normalise
   for (let i = 0, p = 0; i < n; i++, p += 4) {
     if (px[p] + px[p + 1] + px[p + 2] === 0) continue; // the empty edge stays empty
     const d = lum[i] - blurred[i] / valid[i];

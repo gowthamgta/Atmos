@@ -13,7 +13,7 @@ import {
   TWILIGHT_BLEND_LO_DEG,
   sunElevationDeg,
 } from './satellite.config';
-import { blurPlane, sharpenHrv } from './satellite-enhance';
+import { fastBlurPlane, sharpenHrv } from './satellite-enhance';
 
 const RAD = Math.PI / 180;
 
@@ -207,41 +207,54 @@ function infraredShare(blue: number, background: number): number {
   return Math.min(1, Math.max(0, (blue - floor) / Math.max(1, 255 - floor)));
 }
 
-// ── Windy's look for the HRV: low, sunlit cloud is sand, thick shaded cloud slate, cold high cloud white with a blue tint ──
+// ── Windy's visible picture: dark slate ground, gold low cloud, blue-white cold cloud, opaque, the borders drawn over it ──
 type Rgb = readonly [number, number, number];
 /**
- * The two ramps, by brightness (0..1 of the HRV), measured on Windy's picture of the same frame (a pixel-by-pixel fit of its colour to
- * the HRV's brightness, 0.87 correlation): low sunlit cloud and ground is a bright sand, cold high cloud a lavender white.
- * The warm ramp is for cloud that is not cold.
+ * The two ramps of Windy's visible satellite, by the brightness of the picture drawn (0..1), measured on a screenshot of Windy over South
+ * India (13:26 IST): the mean colour of its pixels in each band of brightness. The cool ramp is the clear ground (dark slate) and cold
+ * cloud (blue-grey to blue-white); the gold ramp is the most golden third of its warm pixels, low sunlit cloud (amber to cream). The few
+ * bands where the screenshot's own markers (wind badges, lightning) crept into the means are smoothed.
  */
-const WARM_STOPS: readonly (readonly [number, Rgb])[] = [
-  [0.1, [80, 85, 97]],
-  [0.2, [87, 92, 103]],
-  [0.25, [103, 105, 112]],
-  [0.3, [139, 137, 134]],
-  [0.35, [154, 151, 148]],
-  [0.4, [171, 166, 157]],
-  [0.45, [189, 181, 167]],
-  [0.5, [201, 193, 176]],
-  [0.55, [210, 201, 183]],
-  [0.6, [219, 209, 189]],
-  [0.7, [228, 220, 202]],
-  [0.8, [234, 230, 221]],
-  [1, [240, 238, 232]],
+const COOL_STOPS: readonly (readonly [number, Rgb])[] = [
+  [0, [3, 4, 9]],
+  [0.05, [12, 13, 15]],
+  [0.1, [25, 26, 29]],
+  [0.15, [36, 37, 43]],
+  [0.2, [52, 54, 61]],
+  [0.25, [61, 63, 73]],
+  [0.3, [72, 73, 82]],
+  [0.35, [79, 84, 97]],
+  [0.4, [87, 96, 113]],
+  [0.45, [99, 110, 129]],
+  [0.5, [118, 122, 142]],
+  [0.55, [130, 134, 155]],
+  [0.6, [142, 147, 169]],
+  [0.65, [154, 160, 182]],
+  [0.7, [167, 173, 195]],
+  [0.75, [179, 186, 207]],
+  [0.8, [193, 200, 217]],
+  [0.85, [207, 213, 228]],
+  [0.9, [222, 225, 240]],
+  [0.95, [239, 240, 251]],
+  [1, [249, 254, 255]],
 ];
-/** The ramp of cold cloud tops (the infrared in the blue channel says how cold): lavender grey to white. */
-const COLD_STOPS: readonly (readonly [number, Rgb])[] = [
-  [0.2, [110, 114, 135]],
-  [0.3, [143, 146, 166]],
-  [0.4, [152, 154, 170]],
-  [0.5, [160, 162, 178]],
-  [0.6, [168, 172, 190]],
-  [0.7, [188, 192, 210]],
-  [0.75, [199, 203, 220]],
-  [0.8, [214, 218, 234]],
-  [0.85, [230, 233, 244]],
-  [0.9, [244, 245, 246]],
-  [1, [246, 246, 246]],
+const GOLD_STOPS: readonly (readonly [number, Rgb])[] = [
+  [0, [6, 5, 4]],
+  [0.1, [30, 26, 20]],
+  [0.2, [70, 58, 40]],
+  [0.3, [100, 84, 60]],
+  [0.4, [135, 110, 72]],
+  [0.5, [172, 138, 80]],
+  [0.55, [184, 149, 95]],
+  [0.6, [196, 160, 110]],
+  [0.65, [210, 174, 122]],
+  [0.7, [225, 187, 130]],
+  [0.75, [240, 201, 137]],
+  [0.8, [245, 208, 145]],
+  [0.85, [246, 221, 172]],
+  [0.9, [250, 236, 196]],
+  [0.95, [255, 245, 221]],
+  [1, [255, 250, 236]],
 ];
 
 /** Steps per unit of brightness in the ramp tables: every stop above sits on a multiple of 1/20, so a table this fine is exact. */
@@ -260,82 +273,84 @@ function rampTable(stops: readonly (readonly [number, Rgb])[]): Float64Array {
   }
   return table;
 }
-const WARM_TABLE = rampTable(WARM_STOPS);
-const COLD_TABLE = rampTable(COLD_STOPS);
+const COOL_TABLE = rampTable(COOL_STOPS);
+const GOLD_TABLE = rampTable(GOLD_STOPS);
 
-/** Scratch for windyCloudColorInto: the colour is left at 0..2 (no allocation: this runs for every pixel of every picture). */
+/** Scratch for windyVisibleInto: the colour is left at 0..2 (no allocation: this runs for every pixel of every picture). */
 const RAMP_SCRATCH = new Float64Array(3);
 
-/** windyCloudColor without allocating: the colour is left in RAMP_SCRATCH. */
-function windyCloudColorInto(r: number, g: number, b: number, background: number): void {
-  const pos = Math.min(1, (r + g) / 510) * RAMP_STEPS;
+/** Clear ground as Windy draws it: its brightness (0-255) for a ground of HRV brightness `ground` (land about 70, sea darker). */
+export function groundTone(ground: number): number {
+  return 18 + 0.44 * ground;
+}
+/** Clear land and clear sea as Windy draws them (the darkest of its cloud-free pixels): a neutral, slightly warm slate, and navy. */
+const CLEAR_LAND: Rgb = [70, 66, 62];
+const CLEAR_SEA: Rgb = [46, 53, 72];
+/** How much brighter than the ground's tone a pixel is drawn for each step it stands above the ground in the HRV. */
+export const CLOUD_GAIN = 1.6;
+/** The brightness (0-255, the HRV's red and green) of cloud thick enough to hide the ground, and how far above the ground it is at least. */
+export const OPAQUE_CLOUD_LUM = 215;
+const OPAQUE_ABOVE_GROUND = 60;
+/** The blur (picture pixels) of the brightness that says how much of a pixel is cloud: about one, so the gold follows the cloud and not single pixels. */
+export const HRV_COVER_SMOOTH_SIGMA = 1;
+
+/**
+ * The colour of an HRV pixel as Windy draws its visible satellite. Its brightness: clear ground dark (groundTone), cloud brighter by how
+ * far it stands above the ground around it (`ground`, see hrvCloudLayers), up to white. Its colour: clear ground slate on land and navy at
+ * sea (CLEAR_LAND, CLEAR_SEA, with the ground's own light and shade), and where there is cloud (from `smoothLum`, the brightness a little
+ * blurred, so the colour follows the shape of the cloud and not single pixels) the cool ramp (blue-grey to blue-white) for a cold top and
+ * the gold ramp for one that is not (the infrared in the blue channel). The colour is left in RAMP_SCRATCH.
+ */
+function windyVisibleInto(r: number, g: number, b: number, background: number, ground: number, smoothLum: number): void {
+  const lum = (r + g) / 2;
+  const tone = Math.min(255, Math.max(0, groundTone(ground) + CLOUD_GAIN * (lum - ground)));
+  const opaque = Math.max(ground + OPAQUE_ABOVE_GROUND, OPAQUE_CLOUD_LUM);
+  const cloud = Math.min(1, Math.max(0, (smoothLum - ground) / (opaque - ground)));
+  const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
+  const gold = (1 - cold) * smoothstep(0.05, 0.45, cloud);
+  // clear ground: land or sea by how bright the ground is, with the pixel's own light and shade
+  const land = smoothstep(45, 95, ground);
+  const shade = Math.min(1.6, Math.max(0.6, tone / Math.max(groundTone(ground), 1)));
+  const cover = smoothstep(0.03, 0.3, cloud);
+  const pos = (tone / 255) * RAMP_STEPS;
   const k = Math.min(RAMP_STEPS - 1, Math.floor(pos));
   const f = pos - k;
-  const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
   const i = k * 3;
   for (let c = 0; c < 3; c++) {
-    const warm = WARM_TABLE[i + c] + (WARM_TABLE[i + 3 + c] - WARM_TABLE[i + c]) * f;
-    const cool = COLD_TABLE[i + c] + (COLD_TABLE[i + 3 + c] - COLD_TABLE[i + c]) * f;
-    RAMP_SCRATCH[c] = warm + (cool - warm) * cold;
+    const cool = COOL_TABLE[i + c] + (COOL_TABLE[i + 3 + c] - COOL_TABLE[i + c]) * f;
+    const warm = GOLD_TABLE[i + c] + (GOLD_TABLE[i + 3 + c] - GOLD_TABLE[i + c]) * f;
+    const clear = (CLEAR_SEA[c] + (CLEAR_LAND[c] - CLEAR_SEA[c]) * land) * shade;
+    const cloudy = cool + (warm - cool) * gold;
+    RAMP_SCRATCH[c] = clear + (cloudy - clear) * cover;
   }
 }
 
-/** The colour of an HRV pixel in Windy's palette, from its brightness (red and green) and how cold its top is (blue, the infrared). */
-export function windyCloudColor(r: number, g: number, b: number, background: number): [number, number, number] {
-  windyCloudColorInto(r, g, b, background);
+/** windyVisibleInto as a value: [r, g, b]. `smoothLum` defaults to the pixel's own brightness. */
+export function windyVisibleColor(r: number, g: number, b: number, background: number, ground: number, smoothLum = (r + g) / 2): [number, number, number] {
+  windyVisibleInto(r, g, b, background, ground, smoothLum);
   return [RAMP_SCRATCH[0], RAMP_SCRATCH[1], RAMP_SCRATCH[2]];
 }
 
-// ── Blending with the map: each pixel of the picture is a mix of the ground and the cloud over it ──
-/** The brightness (0-255, the HRV's red and green) of cloud thick enough to hide the ground, and how far above the ground it is at least. */
-export const OPAQUE_CLOUD_LUM = 215;
-/** The blur (picture pixels) of the brightness that says how much of a pixel is cloud: about one, so the opacity follows the cloud and not single pixels. */
-export const HRV_COVER_SMOOTH_SIGMA = 1;
-const OPAQUE_ABOVE_GROUND = 60;
-/** How quickly thin cloud gains opacity: the share of cloud raised to this power (1 would be a straight line; less shows thin cloud more). */
-export const THIN_CLOUD_CURVE = 0.6;
-/** Cloud whose infrared says it is cold is cloud however dark it looks (its shaded side): the opacity it gets at the coldest. */
-const COLD_CLOUD_ALPHA = 0.85;
-
-/**
- * An HRV pixel unmixed from the ground under it: the pixel's brightness L is the ground's G with a fraction `a` of
- * cloud over it, L = G (1 - a) + C a, with C the brightness of opaque cloud. So thin cloud and haze come out see-through over the map
- * (not as an opaque dark patch), thick cloud is solid and keeps its own light and shade, and clear ground is clear. The colour is the
- * RGB composite's (Windy's palette) for the pixel as it is, exactly as the opaque picture had it: sand and cream low cloud, slate where
- * it is thick and shaded, lavender-white cold tops; only how much of it covers the map changes. `ground` is the clear-ground brightness
- * around the pixel (see hrvCloudLayers). `smoothLum`, the
- * brightness a little blurred, sets how much is cloud: the opacity then follows the shape of the cloud, not the noise of single pixels,
- * which a magnified picture would show as squares (the pixel's own brightness still gives its colour, so the texture stays).
- * The colour is left in RAMP_SCRATCH; returns the opacity.
- */
-export function naturalCloudInto(r: number, g: number, b: number, background: number, ground: number, smoothLum = (r + g) / 2): number {
-  const opaque = Math.max(ground + OPAQUE_ABOVE_GROUND, OPAQUE_CLOUD_LUM);
-  const share = Math.min(1, Math.max(0, (smoothLum - ground) / (opaque - ground)));
-  const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
-  // thin cloud rises quickly to a good part of full (a curve, not a straight line), so its colour shows while the ground stays clear
-  const alpha = Math.min(1, Math.pow(Math.max(share, COLD_CLOUD_ALPHA * cold), THIN_CLOUD_CURVE) * 1.1);
-  windyCloudColorInto(r, g, b, background);
-  return alpha;
-}
-
-/** naturalCloudInto as a value: [r, g, b, opacity 0..1]. */
-export function naturalCloudColor(r: number, g: number, b: number, background: number, ground: number, smoothLum?: number): [number, number, number, number] {
-  const alpha = naturalCloudInto(r, g, b, background, ground, smoothLum);
-  return [RAMP_SCRATCH[0], RAMP_SCRATCH[1], RAMP_SCRATCH[2], alpha];
+/** The colour of a cool-ramp brightness (0-255): the no-data patch of the HRV is drawn with it, from the infrared. */
+function coolInto(tone: number): void {
+  const pos = (Math.min(255, Math.max(0, tone)) / 255) * RAMP_STEPS;
+  const k = Math.min(RAMP_STEPS - 1, Math.floor(pos));
+  const f = pos - k;
+  for (let c = 0; c < 3; c++) RAMP_SCRATCH[c] = COOL_TABLE[k * 3 + c] + (COOL_TABLE[k * 3 + 3 + c] - COOL_TABLE[k * 3 + c]) * f;
 }
 
 /**
  * Colour and opacity (0..255) of one pixel; the result is written into `out` at `o`.
  *
- * HRV (by day): the picture as the service draws it (yellow land, dark sea, white and lavender cloud); only true black, the
- * empty edge of the picture, is see-through. Where the HRV has no data (a large patch of the north-east, and the night side
- * at dawn and dusk) the service shows only the infrared in the blue channel, a violet patch, so there the infrared is drawn
- * instead as see-through white cloud, brighter and more solid the colder it is.
+ * HRV (by day): Windy's visible picture (see windyVisibleInto), opaque: the ground is part of it; only true black, the empty edge of
+ * the picture, is see-through. Where the HRV has no data (a large patch of the north-east, and the night side at dawn and dusk) the
+ * service shows only the infrared in the blue channel, a violet patch, so there the infrared is drawn instead in the cool ramp, darker
+ * for the warm ground and brighter the colder the cloud.
  *
  * Infrared (by night): the cloud-top colours (see cloudTopColor); the warm ground and sea are see-through.
  *
- * `ground` >= 0 (the clear-ground brightness around the pixel) blends the HRV with the map (see naturalCloudInto, with `smoothLum` the
- * pixel's brightness a little blurred); without it every cloud pixel is drawn opaque.
+ * `ground` is the clear-ground brightness around the pixel (see hrvCloudLayers; the pixel's own when it is not known) and `smoothLum` the
+ * pixel's brightness a little blurred.
  */
 export function shadePixel(
   kind: SatelliteChannel,
@@ -345,7 +360,6 @@ export function shadePixel(
   background: number,
   out: Uint8ClampedArray,
   o: number,
-  keep = 1,
   ground = -1,
   smoothLum = (r + g) / 2,
 ): void {
@@ -359,11 +373,10 @@ export function shadePixel(
     // the red and green (a real HRV pixel has about as much blue as red, or much less) counts as no data too, which clears the violet line
     const blueHeavy = smoothstep(1.7, 2.8, b / Math.max(hrv, 1));
     const hasHrv = Math.min(smoothstep(2, 7, hrv), 1 - blueHeavy);
-    // `keep` (see hrvCloudKeep) is how much of the pixel is cloud rather than clear ground; its colour is left as it is
-    let hrvAlpha = smoothstep(3, 14, Math.max(r, g, b)) * keep;
+    const hrvAlpha = smoothstep(3, 14, Math.max(r, g, b)); // only the empty edge of the picture is see-through
+    const ir = infraredShare(b, background);
     if (hasHrv > 0) {
-      if (ground >= 0) hrvAlpha *= naturalCloudInto(r, g, b, background, ground, smoothLum);
-      else windyCloudColorInto(r, g, b, background);
+      windyVisibleInto(r, g, b, background, ground >= 0 ? ground : Math.min(hrv, 100), smoothLum);
       r = RAMP_SCRATCH[0];
       g = RAMP_SCRATCH[1];
       b = RAMP_SCRATCH[2];
@@ -373,20 +386,20 @@ export function shadePixel(
       out[o + 3] = Math.round(255 * hrvAlpha);
       return;
     }
-    const ir = infraredShare(b, background);
-    const fillAlpha = smoothstep(0.22, 0.6, ir) * 0.92;
-    const fill = 175 + 80 * smoothstep(0.1, 0.9, ir);
+    // where the HRV has no data, the infrared in the cool ramp: the warm ground dark, cold cloud bright
+    coolInto(60 + 190 * smoothstep(0.1, 0.9, ir));
+    const [fr, fg, fb] = [RAMP_SCRATCH[0], RAMP_SCRATCH[1], RAMP_SCRATCH[2]];
     // premultiplied mix of the HRV pixel (where it has data) and the infrared fill, so the edge of the data has no seam
     const wHrv = hrvAlpha * hasHrv;
-    const wFill = fillAlpha * (1 - hasHrv);
+    const wFill = 1 - hasHrv;
     const total = wHrv + wFill;
     if (total <= 0) {
       out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
       return;
     }
-    out[o] = (r * wHrv + fill * wFill) / total;
-    out[o + 1] = (g * wHrv + fill * wFill) / total;
-    out[o + 2] = (b * wHrv + Math.min(255, fill + 8) * wFill) / total;
+    out[o] = (r * wHrv + fr * wFill) / total;
+    out[o + 1] = (g * wHrv + fg * wFill) / total;
+    out[o + 2] = (b * wHrv + fb * wFill) / total;
     out[o + 3] = Math.round(255 * Math.min(1, total));
     return;
   }
@@ -406,7 +419,7 @@ const KEEP_FROM = 7;
 const KEEP_FULL = 30;
 
 /** The `pct` percentile (0..1) of a coarse plane (values 0..255, -1 for no data) in a square window of `radius` around each cell. */
-function windowPercentile(plane: Int16Array, w: number, h: number, radius: number, pct: number): Float32Array {
+function windowPercentile(plane: Int16Array, w: number, h: number, radius: number, pct: number, empty = 60): Float32Array {
   const out = new Float32Array(w * h);
   const hist = new Int32Array(128);
   for (let y = 0; y < h; y++) {
@@ -431,7 +444,7 @@ function windowPercentile(plane: Int16Array, w: number, h: number, radius: numbe
         edit(x + radius, 1);
       }
       if (n === 0) {
-        out[y * w + x] = 60;
+        out[y * w + x] = empty;
         continue;
       }
       const target = n * pct;
@@ -564,7 +577,7 @@ function upsample(plane: Float32Array, w: number, h: number, width: number, heig
  * it. `width` x `height` is the picture, which covers `b`.
  */
 function cloudKeepAt(
-  src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number,
+  src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number, withKeep = true,
 ): { keep: Float32Array; ground: Float32Array } {
   const midLat = (b.north + b.south) / 2;
   const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
@@ -591,9 +604,24 @@ function cloudKeepAt(
     lumGround[i] = Math.min(lumGround[i], lumCap);
     blueGround[i] = Math.min(blueGround[i], blueCap);
   }
+  // The ground to draw (see windyVisibleInto) is measured for land and sea apart: near a coast the window holds both, and its low
+  // percentile is the dark sea, so clear land within a window of the coast would stand out as cloud (a band of false cloud along every
+  // coast). Sea is the cells far darker than most of the picture; each kind's ground is the low percentile of its own cells, and a pixel
+  // takes the ground of the kind it is nearer (below).
+  const seaMax = 0.55 * lumCap;
+  const landCells = lumPlane.map(v => (v >= seaMax ? v : -1));
+  const seaCells = lumPlane.map(v => (v >= 0 && v < seaMax ? v : -1));
+  const landGround = windowPercentile(landCells, gw, gh, radius, GROUND_PERCENTILE, -1);
+  const seaGround = windowPercentile(seaCells, gw, gh, radius, GROUND_PERCENTILE, -1);
+  for (let i = 0; i < landGround.length; i++) {
+    landGround[i] = landGround[i] < 0 ? lumGround[i] : Math.min(landGround[i], lumCap);
+    seaGround[i] = seaGround[i] < 0 ? lumGround[i] : seaGround[i];
+  }
   // a percentile over a square window leaves square contours: blur them away (about 5 cells) so the cloud edge does not follow squares
   boxBlur(lumGround, gw, gh, 3, 3);
   boxBlur(blueGround, gw, gh, 3, 3);
+  boxBlur(landGround, gw, gh, 3, 3);
+  boxBlur(seaGround, gw, gh, 3, 3);
 
   // each column's and row's place on the coarse grid
   const cx0 = new Int32Array(width);
@@ -624,12 +652,18 @@ function cloudKeepAt(
       const wx = cwx[x];
       const lum = (lumGround[a0] * (1 - wx) + lumGround[a1] * wx) * (1 - wy) + (lumGround[b0] * (1 - wx) + lumGround[b1] * wx) * wy;
       const blue = (blueGround[a0] * (1 - wx) + blueGround[a1] * wx) * (1 - wy) + (blueGround[b0] * (1 - wx) + blueGround[b1] * wx) * wy;
-      ground[y * width + x] = lum;
+      // the ground drawn: the land's or the sea's, whichever the pixel is nearer (a pixel as bright as the land is land or cloud over it)
+      const gl = (landGround[a0] * (1 - wx) + landGround[a1] * wx) * (1 - wy) + (landGround[b0] * (1 - wx) + landGround[b1] * wx) * wy;
+      const gs = (seaGround[a0] * (1 - wx) + seaGround[a1] * wx) * (1 - wy) + (seaGround[b0] * (1 - wx) + seaGround[b1] * wx) * wy;
+      const mid = (gl + gs) / 2;
+      ground[y * width + x] = gs + (gl - gs) * smoothstep(mid - 8, mid + 8, (src[p] + src[p + 1]) / 2);
+      if (!withKeep) continue;
       const e = Math.max((src[p] + src[p + 1]) / 2 - lum, 0.8 * (src[p + 2] - blue));
       excess[y * width + x] = e;
       keep[y * width + x] = smoothstep(KEEP_FROM, KEEP_FULL, e);
     }
   }
+  if (!withKeep) return { keep, ground };
   // thin cloud beside thick cloud belongs to it: strong opacity spreads two pixels (a round reach), where there is some excess at all
   const spread = morph(keep, width, height, spreadRadius, true);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.85 * spread[i] * smoothstep(3, 9, excess[i]));
@@ -642,13 +676,15 @@ function cloudKeepAt(
 
 /**
  * How much of each pixel of an HRV picture is cloud (`keep`, see cloudKeepAt) and the brightness of the clear ground around it (`ground`,
- * the HRV's red and green, 0-255; 0 on the empty edge).
+ * the HRV's red and green, 0-255; 0 on the empty edge). `withKeep` false skips the cloud mask (all zero), which only the ground is not.
  */
-export function hrvCloudLayers(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS): { keep: Float32Array; ground: Float32Array } {
+export function hrvCloudLayers(
+  src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS, withKeep = true,
+): { keep: Float32Array; ground: Float32Array } {
   // both are smooth, so a big picture is judged at half the size (a quarter of the work) and stretched back
-  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3);
+  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3, withKeep);
   const half = halve(src, width, height);
-  const layers = cloudKeepAt(half.data, half.w, half.h, b, 1, 2);
+  const layers = cloudKeepAt(half.data, half.w, half.h, b, 1, 2, withKeep);
   return { keep: upsample(layers.keep, half.w, half.h, width, height), ground: upsample(layers.ground, half.w, half.h, width, height) };
 }
 
@@ -661,9 +697,8 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
  * opacity (see shadePixel). `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
  * When `twilightIr` and `timeMs` are provided for an HRV frame near sunrise/sunset, pixels on the dark side of the solar
  * terminator smoothly transition to the infrared picture instead of going black.
- * `sharpenSigma` > 0 sharpens the clouds of an HRV picture (see sharpenHrv), in place in `src`, after the cloud mask is measured on the
- * picture as it came, so the crisper texture does not make clear ground count as cloud. An HRV picture is blended with the map (see
- * naturalCloudInto).
+ * `sharpenSigma` > 0 sharpens the clouds of an HRV picture (see sharpenHrv), in place in `src`, after the ground and the cloud are
+ * measured on the picture as it came. An HRV picture is drawn as Windy's visible satellite (see windyVisibleInto).
  */
 export function toOverlayPixels(
   src: Uint8ClampedArray,
@@ -679,15 +714,13 @@ export function toOverlayPixels(
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
-  const layers = kind === 'hrv' ? hrvCloudLayers(src, width, srcHeight, b) : null;
-  const cloud = layers?.keep ?? null;
-  const ground = layers?.ground ?? null;
-  // the brightness a little blurred (about one pixel), for how much of each pixel is cloud: see naturalCloudInto
+  const ground = kind === 'hrv' ? hrvCloudLayers(src, width, srcHeight, b, false).ground : null;
+  // the brightness a little blurred (about one pixel), for how much of each pixel is cloud: see windyVisibleInto
   let smooth: Float32Array | null = null;
-  if (layers) {
+  if (ground) {
     smooth = new Float32Array(width * srcHeight);
     for (let i = 0, p = 0; i < smooth.length; i++, p += 4) smooth[i] = (src[p] + src[p + 1]) / 2;
-    blurPlane(smooth, width, srcHeight, HRV_COVER_SMOOTH_SIGMA);
+    fastBlurPlane(smooth, width, srcHeight, HRV_COVER_SMOOTH_SIGMA);
   }
   if (kind === 'hrv' && sharpenSigma > 0) sharpenHrv(src, width, srcHeight, sharpenSigma);
   const irOverlay =
@@ -714,7 +747,6 @@ export function toOverlayPixels(
         src[a + i + 1] * (1 - w) + src[c + i + 1] * w,
         src[a + i + 2] * (1 - w) + src[c + i + 2] * w,
         background, out, o,
-        cloud ? cloud[y0 * width + x] * (1 - w) + cloud[y1 * width + x] * w : 1,
         ground ? ground[y0 * width + x] * (1 - w) + ground[y1 * width + x] * w : -1,
         smooth ? smooth[y0 * width + x] * (1 - w) + smooth[y1 * width + x] * w : undefined,
       );

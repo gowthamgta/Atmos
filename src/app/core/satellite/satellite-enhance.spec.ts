@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
-import { HRV_SHARPEN_MAX_STEP, blurPlane, enhancePicture, gaussianKernel, sharpenHrv, smoothChannel, smoothGrey } from './satellite-enhance';
+import { HRV_SHARPEN_MAX_STEP, blurPlane, enhancePicture, fastBlurPlane, gaussianKernel, sharpenHrv, smoothChannel, smoothGrey } from './satellite-enhance';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
 function lcg(seed: number): () => number {
@@ -44,6 +44,27 @@ describe('gaussianKernel and blurPlane', () => {
     expect(plane[20 * 41 + 20]).toBeLessThan(200);
     expect(plane[20 * 41 + 20]).toBeGreaterThan(plane[20 * 41 + 23]);
     expect(plane[20 * 41 + 21]).toBeCloseTo(plane[21 * 41 + 20], 3);
+  });
+});
+
+describe('fastBlurPlane (three box blurs for a Gaussian)', () => {
+  it('leaves a flat plane flat, edges included', () => {
+    const plane = new Float32Array(40 * 30).fill(91);
+    fastBlurPlane(plane, 40, 30, 2.4);
+    for (const v of plane) expect(v).toBeCloseTo(91, 3);
+  });
+
+  it('spreads a point without losing any of it, much as the true Gaussian does', () => {
+    const n = 61;
+    const fast = new Float32Array(n * n);
+    const exact = new Float32Array(n * n);
+    fast[30 * n + 30] = exact[30 * n + 30] = 1000;
+    fastBlurPlane(fast, n, n, 2.4);
+    blurPlane(exact, n, n, 2.4);
+    expect(fast.reduce((a, v) => a + v, 0)).toBeCloseTo(1000, 0);
+    let diff = 0;
+    for (let i = 0; i < fast.length; i++) diff += Math.abs(fast[i] - exact[i]);
+    expect(diff / 1000).toBeLessThan(0.12); // under an eighth of the mass is placed differently
   });
 });
 
