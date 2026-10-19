@@ -19,14 +19,57 @@ export interface ViewState {
   zoom: number;
 }
 
-/** Screen speed of a particle: this many pixels per second for each m/s of wind. */
+/** Screen speed of a particle: this many pixels per second for each m/s of wind, up to SPEED_KNEE_MS (see screenSpeed). */
 export const PX_PER_MS = 4.5;
+/**
+ * Up to this wind (m/s) a particle's screen speed grows in proportion; beyond it, with the square root of the excess ratio. A strong wind
+ * still looks clearly faster, but a 30 m/s jet no longer races across the screen at five times the speed of a breeze, which looks
+ * mechanical rather than like moving air (Windy and earth.nullschool compress the fast end too).
+ */
+export const SPEED_KNEE_MS = 6;
+/** Zoomed out over all India (zoom 4 and less) the flow is drawn this much slower, rising to full speed at zoom 6. */
+export const ZOOMED_OUT_SPEED = 0.8;
 /** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha. */
 export const INSTANCE_FLOATS = 5;
 
-const MIN_LIFE_S = 1.6;
-const MAX_LIFE_S = 3.6;
+/**
+ * How long a particle lives (s). Long enough that the eye follows each one along the flow: short lives (1.6-3.6 s before) made the whole
+ * picture flicker, thousands of streaks appearing and vanishing at random, which was most restless zoomed out over all India.
+ */
+export const MIN_LIFE_S = 3.5;
+export const MAX_LIFE_S = 7.5;
+/** Fade in and out (s), so a particle eases into and out of view. */
+const FADE_IN_S = 0.6;
+const FADE_OUT_S = 1;
 const SPAWN_MARGIN = 0.05; // fraction of the view added around it so particles are already moving at the edge
+
+/** The screen speed (px/s) of a particle in a wind of `ms` m/s at a map zoom: in proportion up to SPEED_KNEE_MS, gentler beyond. */
+export function screenSpeed(ms: number, zoom: number): number {
+  const curved = ms <= SPEED_KNEE_MS ? ms : SPEED_KNEE_MS * Math.sqrt(ms / SPEED_KNEE_MS);
+  const zoomFactor = ZOOMED_OUT_SPEED + (1 - ZOOMED_OUT_SPEED) * Math.min(1, Math.max(0, (zoom - 4) / 2));
+  return curved * PX_PER_MS * zoomFactor;
+}
+
+/** Latitude tables of a grid (step LUT_STEP_DEG): mercator y and cos(lat), so a frame needs no log, tan or cos per particle. */
+const LUT_STEP_DEG = 0.02;
+interface LatTables {
+  grid: ForecastGrid;
+  lat0: number;
+  mercY: Float64Array;
+  cos: Float64Array;
+}
+function latTables(grid: ForecastGrid): LatTables {
+  const latMin = grid.latMax - (grid.ny - 1) * grid.step - 1;
+  const n = Math.ceil((grid.latMax + 1 - latMin) / LUT_STEP_DEG) + 2;
+  const mercY = new Float64Array(n);
+  const cos = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const lat = latMin + k * LUT_STEP_DEG;
+    mercY[k] = mercatorUnitY(lat);
+    cos[k] = Math.cos((lat * Math.PI) / 180);
+  }
+  return { grid, lat0: latMin, mercY, cos };
+}
 
 /**
  * Wind particles advected in map space, so panning and zooming never invalidates them. Screen speed is kept
@@ -40,7 +83,10 @@ export class ParticleSystem {
   /** Screen velocity in px/s (x to the right, y down) from the last step. */
   readonly vx: Float32Array;
   readonly vy: Float32Array;
+  /** Wind speed (m/s) at the particle from the last step. */
+  readonly speed: Float32Array;
   count: number;
+  private tables: LatTables | null = null;
 
   constructor(
     readonly maxCount: number,
@@ -53,6 +99,7 @@ export class ParticleSystem {
     this.life = new Float32Array(maxCount);
     this.vx = new Float32Array(maxCount);
     this.vy = new Float32Array(maxCount);
+    this.speed = new Float32Array(maxCount);
     this.count = Math.min(count, maxCount);
   }
 
@@ -76,6 +123,14 @@ export class ParticleSystem {
     const mixB = wind.mix;
     const mixA = 1 - mixB;
     const { uA, vA, uB, vB } = wind;
+    if (this.tables?.grid !== g) this.tables = latTables(g);
+    const { lat0, cos } = this.tables;
+    const invStep = 1 / LUT_STEP_DEG;
+    const lastLut = cos.length - 1.000001; // the tables reach a degree past the grid; a particle beyond reads their end
+    // the speed curve is the same for every particle in a frame but for its wind: px/s per m/s up to the knee, then a square root
+    const linear = screenSpeed(1, view.zoom);
+    const kneeMs = SPEED_KNEE_MS;
+    const kneeRoot = Math.sqrt(kneeMs);
 
     for (let i = 0; i < this.count; i++) {
       this.age[i] += dt;
@@ -108,26 +163,43 @@ export class ParticleSystem {
         this.age[i] = this.life[i]; // no data here: respawn next step
         this.vx[i] = 0;
         this.vy[i] = 0;
+        this.speed[i] = 0;
         continue;
       }
-      this.vx[i] = u * PX_PER_MS;
-      this.vy[i] = -v * PX_PER_MS;
+      const ms = Math.sqrt(u * u + v * v);
+      // px/s per m/s for this wind (see screenSpeed): `linear` up to the knee, then falling off as 1/sqrt
+      const k = ms <= kneeMs ? linear : (linear * kneeRoot) / Math.sqrt(ms);
+      this.speed[i] = ms;
+      this.vx[i] = u * k;
+      this.vy[i] = -v * k;
+      const t = Math.min(Math.max((lat - lat0) * invStep, 0), lastLut);
+      const j = t | 0;
+      const cosLat = cos[j] + (cos[j + 1] - cos[j]) * (t - j);
       this.lon[i] = lon + (this.vx[i] * dt) / pxPerDegLon;
-      this.lat[i] = lat - (this.vy[i] * dt * Math.cos((lat * Math.PI) / 180)) / pxPerDegLon;
+      this.lat[i] = lat - (this.vy[i] * dt * cosLat) / pxPerDegLon;
     }
   }
 
   /** Fills `out` with INSTANCE_FLOATS per live particle and returns how many particles were written. */
   writeInstances(out: Float32Array): number {
     let n = 0;
+    const tables = this.tables;
     for (let i = 0; i < this.count; i++) {
-      const speed = Math.hypot(this.vx[i], this.vy[i]) / PX_PER_MS; // m/s
+      const speed = this.speed[i]; // m/s
       if (speed < 0.05) continue; // calm air: nothing to draw
-      const fadeIn = Math.min(this.age[i] / 0.3, 1);
-      const fadeOut = Math.min((this.life[i] - this.age[i]) / 0.5, 1);
+      const fadeIn = Math.min(this.age[i] / FADE_IN_S, 1);
+      const fadeOut = Math.min((this.life[i] - this.age[i]) / FADE_OUT_S, 1);
       const o = n * INSTANCE_FLOATS;
       out[o] = mercatorUnitX(this.lon[i]);
-      out[o + 1] = mercatorUnitY(this.lat[i]);
+      let y: number;
+      if (tables) {
+        const t = Math.min(Math.max((this.lat[i] - tables.lat0) / LUT_STEP_DEG, 0), tables.mercY.length - 1.000001);
+        const j = t | 0;
+        y = tables.mercY[j] + (tables.mercY[j + 1] - tables.mercY[j]) * (t - j);
+      } else {
+        y = mercatorUnitY(this.lat[i]);
+      }
+      out[o + 1] = y;
       out[o + 2] = this.vx[i];
       out[o + 3] = this.vy[i];
       out[o + 4] = Math.max(fadeIn * fadeOut, 0) * (0.3 + 0.7 * Math.min(speed / 12, 1));

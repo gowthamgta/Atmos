@@ -55,7 +55,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
   private needsReset = true;
   private lastTime = 0;
 
-  constructor(maxCount = 11000) {
+  constructor(maxCount = 16000) {
     this.system = new ParticleSystem(maxCount);
     this.instances = new Float32Array(maxCount * INSTANCE_FLOATS);
     this.budget = new AdaptiveCount(Math.min(MIN_COUNT, Math.max(500, Math.floor(maxCount * 0.4))), maxCount);

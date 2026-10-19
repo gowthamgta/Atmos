@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
-import { ForecastGrid } from './forecast.model';
-import { AdaptiveCount, INSTANCE_FLOATS, PX_PER_MS, ParticleSystem, ViewState, WindFrame, spawnRegion } from './particle-system';
+import { ForecastGrid, mercatorUnitY } from './forecast.model';
+import {
+  AdaptiveCount, INSTANCE_FLOATS, MAX_LIFE_S, MIN_LIFE_S, PX_PER_MS, ParticleSystem, SPEED_KNEE_MS, ViewState, WindFrame, screenSpeed, spawnRegion,
+} from './particle-system';
 
 const GRID: ForecastGrid = { latMax: 22, latMin: 4, lonMin: 68, lonMax: 90, step: 0.1, nx: 221, ny: 181 };
 const VIEW: ViewState = { west: 74, south: 8, east: 80, north: 14, zoom: 6 };
@@ -61,9 +63,9 @@ describe('ParticleSystem', () => {
     ps.step(0.5, uniformWind(10, 0), { west: 0, south: 0, east: 180, north: 90, zoom: 6 });
     const pxPerDegLon = (512 * 2 ** 6) / 360;
     for (let i = 0; i < 50; i++) {
-      expect((ps.lon[i] - lon0[i]) * pxPerDegLon).toBeCloseTo(10 * PX_PER_MS * 0.5, 1); // pixels travelled
+      expect((ps.lon[i] - lon0[i]) * pxPerDegLon).toBeCloseTo(screenSpeed(10, 6) * 0.5, 1); // pixels travelled
       expect(ps.lat[i]).toBeCloseTo(lat0[i], 4);
-      expect(ps.vx[i]).toBeCloseTo(10 * PX_PER_MS, 3);
+      expect(ps.vx[i]).toBeCloseTo(screenSpeed(10, 6), 3);
       expect(ps.vy[i]).toBeCloseTo(0, 6);
     }
   });
@@ -103,7 +105,7 @@ describe('ParticleSystem', () => {
     north.step(0.5, uniformWind(0, 8), { west: 0, south: 0, east: 180, north: 90, zoom });
     const e = px(east.lon[0], east.lat[0]);
     const n = px(north.lon[0], north.lat[0]);
-    const expected = 8 * PX_PER_MS * 0.5; // 8 m/s for half a second, in screen pixels
+    const expected = screenSpeed(8, zoom) * 0.5; // 8 m/s for half a second, in screen pixels
     expect(Math.hypot(e.x - start.x, e.y - start.y)).toBeCloseTo(expected, 1);
     expect(Math.hypot(n.x - start.x, n.y - start.y)).toBeCloseTo(expected, 1);
   });
@@ -186,6 +188,59 @@ describe('ParticleSystem', () => {
     });
     console.info(`particle step + pack, 9000 particles: ${msPerFrame.toFixed(2)} ms/frame (best of 5 batches)`);
     expect(msPerFrame).toBeLessThan(6); // a 60 fps frame is 16.7 ms; leave most of it for drawing
+  });
+});
+
+describe('how the wind looks', () => {
+  it('moves in proportion to the wind up to the knee, and gentler beyond, so a strong wind is faster but does not race', () => {
+    expect(screenSpeed(3, 6)).toBeCloseTo(3 * PX_PER_MS, 6);
+    expect(screenSpeed(SPEED_KNEE_MS, 6)).toBeCloseTo(SPEED_KNEE_MS * PX_PER_MS, 6);
+    const ratio = screenSpeed(30, 6) / screenSpeed(6, 6);
+    expect(ratio).toBeGreaterThan(1.8); // still clearly faster
+    expect(ratio).toBeLessThan(2.6);    // not five times as fast
+    for (let ms = 0.5; ms < 40; ms += 0.5) expect(screenSpeed(ms + 0.5, 6)).toBeGreaterThan(screenSpeed(ms, 6)); // always faster with more wind
+  });
+
+  it('draws the flow a little slower zoomed out over all India, full speed from zoom 6', () => {
+    expect(screenSpeed(10, 4)).toBeCloseTo(0.8 * screenSpeed(10, 6), 6);
+    expect(screenSpeed(10, 3)).toBeCloseTo(screenSpeed(10, 4), 6);
+    expect(screenSpeed(10, 9)).toBeCloseTo(screenSpeed(10, 6), 6);
+  });
+
+  it('a strong wind moves particles by the curve, not in proportion', () => {
+    const ps = new ParticleSystem(10, 10, rng());
+    ps.reset(VIEW, GRID);
+    ps.life.fill(100);
+    ps.step(0.1, uniformWind(24, 0), VIEW);
+    for (let i = 0; i < 10; i++) {
+      expect(ps.vx[i]).toBeCloseTo(screenSpeed(24, VIEW.zoom), 2);
+      expect(ps.speed[i]).toBeCloseTo(24, 4);
+    }
+  });
+
+  it('lets particles live long enough to be followed (no flicker of short-lived streaks)', () => {
+    const ps = new ParticleSystem(500, 500, rng());
+    ps.reset(VIEW, GRID);
+    for (let i = 0; i < 500; i++) {
+      expect(ps.life[i]).toBeGreaterThanOrEqual(MIN_LIFE_S);
+      expect(ps.life[i]).toBeLessThanOrEqual(MAX_LIFE_S);
+    }
+    expect(MIN_LIFE_S).toBeGreaterThanOrEqual(3);
+  });
+
+  it('places particles on the map exactly, from its latitude tables (no log or tan per particle)', () => {
+    const grid: ForecastGrid = { latMax: 37.5, latMin: 5, lonMin: 68, lonMax: 97.5, step: 0.25, nx: 119, ny: 131 };
+    const ps = new ParticleSystem(200, 200, rng(7));
+    const view: ViewState = { west: 66, south: 4, east: 100, north: 38, zoom: 4 };
+    ps.reset(view, grid);
+    ps.age.fill(1);
+    ps.life.fill(100);
+    const n = grid.nx * grid.ny;
+    ps.step(0.016, { grid, uA: new Float32Array(n).fill(3), vA: new Float32Array(n).fill(2), uB: new Float32Array(n).fill(3), vB: new Float32Array(n).fill(2), mix: 0 }, view);
+    const out = new Float32Array(200 * INSTANCE_FLOATS);
+    const written = ps.writeInstances(out);
+    expect(written).toBe(200);
+    for (let i = 0; i < written; i++) expect(out[i * INSTANCE_FLOATS + 1]).toBeCloseTo(mercatorUnitY(ps.lat[i]), 7);
   });
 });
 
