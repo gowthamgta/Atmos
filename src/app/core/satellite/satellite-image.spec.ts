@@ -388,7 +388,7 @@ describe('twilight terminator blending and luma hover grid', () => {
   });
 });
 
-describe('the natural look of the visible picture', () => {
+describe('the natural look of the visible picture: the RGB composite blended with the map', () => {
   const background = 60; // the blue of clear ground (the infrared of a warm surface)
   const ground = 70;     // the brightness of clear ground around the pixel
 
@@ -396,7 +396,7 @@ describe('the natural look of the visible picture', () => {
     expect(naturalCloudColor(70, 70, 60, background, ground)[3]).toBeLessThan(0.02);
   });
 
-  it('draws thin cloud as see-through white over the map, not as an opaque grey patch', () => {
+  it('draws thin cloud see-through over the map, in the colour of cloud, not as an opaque grey patch', () => {
     const lum = ground + 0.3 * (OPAQUE_CLOUD_LUM - ground);
     const [r, g, b, a] = naturalCloudColor(lum, lum, 70, background, ground);
     expect(a).toBeGreaterThan(0.2);
@@ -404,15 +404,15 @@ describe('the natural look of the visible picture', () => {
     expect(Math.min(r, g, b)).toBeGreaterThan(lum + 40); // the cloud itself is much brighter than cloud and ground mixed
   });
 
-  it('draws thick cloud solid, in near-neutral white, keeping its shading', () => {
+  it('draws thick cloud solid, in the colours of the RGB composite (as the classic look), keeping its shading', () => {
     const bright = naturalCloudColor(235, 235, 120, background, ground);
     const shaded = naturalCloudColor(190, 190, 120, background, ground);
     expect(bright[3]).toBe(1);
-    expect(Math.max(...bright.slice(0, 3)) - Math.min(...bright.slice(0, 3))).toBeLessThan(14);
+    windyCloudColor(235, 235, 120, background).forEach((c, k) => expect(bright[k]).toBeCloseTo(c, 6));
     expect(shaded[0]).toBeLessThan(bright[0]);
   });
 
-  it('tints cold high cloud a little cool and low cloud a little warm, and keeps cold cloud solid on its shaded side', () => {
+  it('colours low cloud sand and cold high cloud lavender, as the composite does, and keeps cold cloud solid on its shaded side', () => {
     const low = naturalCloudColor(220, 220, 70, background, ground);
     const high = naturalCloudColor(220, 220, 250, background, ground);
     expect(low[0]).toBeGreaterThan(low[2]);

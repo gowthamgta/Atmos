@@ -68,7 +68,7 @@ export class SatelliteService {
   readonly active = signal(false);
   /** Show the infrared picture also by day (the switch in the panel); off: the visible HRV by day, infrared at night. */
   readonly infraredOnly = signal(readFlag('atmosiq.satellite.infrared', false));
-  /** How the visible picture is coloured (the switch in the panel): natural cloud over the map, or the classic palette. */
+  /** How the visible picture is drawn (the switch in the panel): the RGB composite blended with the map (thin cloud see-through), or opaque. */
   readonly look = signal<SatelliteLook>(readFlag('atmosiq.satellite.classic', false) ? 'classic' : 'natural');
 
   /** The picture the loop is nearest to. */

@@ -61,8 +61,8 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
           @if (!sat.infraredOnly() && !night()) {
             <div class="look" role="group" aria-label="Look of the visible picture">
               <span class="look-label">Look</span>
-              <button type="button" [class.on]="sat.look() === 'natural'" [attr.aria-pressed]="sat.look() === 'natural'" (click)="sat.setLook('natural')" title="Cloud as a camera sees it: white, thin cloud see-through over the map">Natural</button>
-              <button type="button" [class.on]="sat.look() === 'classic'" [attr.aria-pressed]="sat.look() === 'classic'" (click)="sat.setLook('classic')" title="The earlier palette: sand low cloud, lavender high cloud">Classic</button>
+              <button type="button" [class.on]="sat.look() === 'natural'" [attr.aria-pressed]="sat.look() === 'natural'" (click)="sat.setLook('natural')" title="RGB composite colours, blended with the map: thin cloud and haze see-through, thick cloud solid">Natural</button>
+              <button type="button" [class.on]="sat.look() === 'classic'" [attr.aria-pressed]="sat.look() === 'classic'" (click)="sat.setLook('classic')" title="RGB composite colours, every cloud pixel drawn opaque">Classic</button>
             </div>
           }
           <div class="scan">

@@ -286,7 +286,10 @@ export function windyCloudColor(r: number, g: number, b: number, background: num
   return [RAMP_SCRATCH[0], RAMP_SCRATCH[1], RAMP_SCRATCH[2]];
 }
 
-/** How the HRV picture is drawn: `natural`, cloud as a camera sees it over the map; `classic`, Windy's palette (sand low cloud, lavender high). */
+/**
+ * How the HRV picture is drawn. Both colour the cloud with Windy's RGB composite (sand low cloud, lavender-white high cloud); `natural`
+ * blends it with the map as a camera would see it (thin cloud see-through), `classic` draws every pixel that is cloud as it is, opaque.
+ */
 export type SatelliteLook = 'natural' | 'classic';
 
 // ── The natural look: each pixel of the picture is a mix of the ground and the cloud over it ──
@@ -298,10 +301,11 @@ const COLD_CLOUD_ALPHA = 0.85;
 
 /**
  * The natural look of an HRV pixel, unmixed from the ground under it: the pixel's brightness L is the ground's G with a fraction `a` of
- * cloud over it, L = G (1 - a) + C a, with C the brightness of opaque cloud. So thin cloud and haze come out as see-through white over
- * the map (not as an opaque grey-brown patch), thick cloud is solid and keeps its own light and shade, and clear ground is clear. The
- * colour is the cloud's, neutral like a photograph's: a little warm for low cloud, a little cool where the infrared says the top is cold.
- * `ground` is the clear-ground brightness around the pixel (see hrvCloudLayers). The colour is left in RAMP_SCRATCH; returns the opacity.
+ * cloud over it, L = G (1 - a) + C a, with C the brightness of opaque cloud. So thin cloud and haze come out see-through over the map
+ * (not as an opaque dark patch), thick cloud is solid and keeps its own light and shade, and clear ground is clear. The colour is the
+ * RGB composite's (Windy's palette, as the classic look), taken for the cloud's own brightness with the ground taken out, so thin cloud
+ * has the colour of cloud, not of cloud and ground mixed. `ground` is the clear-ground brightness around the pixel (see hrvCloudLayers).
+ * The colour is left in RAMP_SCRATCH; returns the opacity.
  */
 export function naturalCloudInto(r: number, g: number, b: number, background: number, ground: number): number {
   const lum = (r + g) / 2;
@@ -309,12 +313,9 @@ export function naturalCloudInto(r: number, g: number, b: number, background: nu
   const share = Math.min(1, Math.max(0, (lum - ground) / (opaque - ground)));
   const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
   const alpha = Math.min(1, Math.max(share, COLD_CLOUD_ALPHA * cold) * 1.1);
-  // the cloud's own brightness: the pixel with the ground taken out (thin cloud is white, not the grey of cloud and ground together)
+  // the cloud's own brightness: the pixel with the ground taken out (thin cloud is cloud-coloured, not the grey of cloud and ground together)
   const cloudLum = Math.min(250, Math.max(lum, ground + (lum - ground) / Math.max(share, 0.25)));
-  const v = Math.max(70, 255 * Math.pow(cloudLum / 255, 0.9));
-  RAMP_SCRATCH[0] = v * (0.997 - 0.03 * cold);
-  RAMP_SCRATCH[1] = v * (0.99 - 0.008 * cold);
-  RAMP_SCRATCH[2] = Math.min(255, v * (0.965 + 0.04 * cold));
+  windyCloudColorInto(cloudLum, cloudLum, b, background);
   return alpha;
 }
 
