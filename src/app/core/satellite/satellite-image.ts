@@ -292,6 +292,8 @@ export const OPAQUE_CLOUD_LUM = 215;
 /** The blur (picture pixels) of the brightness that says how much of a pixel is cloud: about one, so the opacity follows the cloud and not single pixels. */
 export const HRV_COVER_SMOOTH_SIGMA = 1;
 const OPAQUE_ABOVE_GROUND = 60;
+/** How quickly thin cloud gains opacity: the share of cloud raised to this power (1 would be a straight line; less shows thin cloud more). */
+export const THIN_CLOUD_CURVE = 0.6;
 /** Cloud whose infrared says it is cold is cloud however dark it looks (its shaded side): the opacity it gets at the coldest. */
 const COLD_CLOUD_ALPHA = 0.85;
 
@@ -299,21 +301,20 @@ const COLD_CLOUD_ALPHA = 0.85;
  * An HRV pixel unmixed from the ground under it: the pixel's brightness L is the ground's G with a fraction `a` of
  * cloud over it, L = G (1 - a) + C a, with C the brightness of opaque cloud. So thin cloud and haze come out see-through over the map
  * (not as an opaque dark patch), thick cloud is solid and keeps its own light and shade, and clear ground is clear. The colour is the
- * RGB composite's (Windy's palette), taken for the cloud's own brightness with the ground taken out, so thin cloud has the colour of
- * cloud, not of cloud and ground mixed. `ground` is the clear-ground brightness around the pixel (see hrvCloudLayers). `smoothLum`, the
+ * RGB composite's (Windy's palette) for the pixel as it is, exactly as the opaque picture had it: sand and cream low cloud, slate where
+ * it is thick and shaded, lavender-white cold tops; only how much of it covers the map changes. `ground` is the clear-ground brightness
+ * around the pixel (see hrvCloudLayers). `smoothLum`, the
  * brightness a little blurred, sets how much is cloud: the opacity then follows the shape of the cloud, not the noise of single pixels,
  * which a magnified picture would show as squares (the pixel's own brightness still gives its colour, so the texture stays).
  * The colour is left in RAMP_SCRATCH; returns the opacity.
  */
 export function naturalCloudInto(r: number, g: number, b: number, background: number, ground: number, smoothLum = (r + g) / 2): number {
-  const lum = (r + g) / 2;
   const opaque = Math.max(ground + OPAQUE_ABOVE_GROUND, OPAQUE_CLOUD_LUM);
   const share = Math.min(1, Math.max(0, (smoothLum - ground) / (opaque - ground)));
   const cold = smoothstep(0.15, 0.6, infraredShare(b, background));
-  const alpha = Math.min(1, Math.max(share, COLD_CLOUD_ALPHA * cold) * 1.1);
-  // the cloud's own brightness: the pixel with the ground taken out (thin cloud is cloud-coloured, not the grey of cloud and ground together)
-  const cloudLum = Math.min(250, Math.max(lum, ground + (lum - ground) / Math.max(share, 0.25)));
-  windyCloudColorInto(cloudLum, cloudLum, b, background);
+  // thin cloud rises quickly to a good part of full (a curve, not a straight line), so its colour shows while the ground stays clear
+  const alpha = Math.min(1, Math.pow(Math.max(share, COLD_CLOUD_ALPHA * cold), THIN_CLOUD_CURVE) * 1.1);
+  windyCloudColorInto(r, g, b, background);
   return alpha;
 }
 

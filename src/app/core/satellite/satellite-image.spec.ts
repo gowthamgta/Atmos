@@ -395,12 +395,13 @@ describe('the natural look of the visible picture: the RGB composite blended wit
     expect(naturalCloudColor(70, 70, 60, background, ground)[3]).toBeLessThan(0.02);
   });
 
-  it('draws thin cloud see-through over the map, in the colour of cloud, not as an opaque grey patch', () => {
+  it('draws thin cloud see-through over the map, in the colours of the RGB composite, not as an opaque patch', () => {
     const lum = ground + 0.3 * (OPAQUE_CLOUD_LUM - ground);
     const [r, g, b, a] = naturalCloudColor(lum, lum, 70, background, ground);
-    expect(a).toBeGreaterThan(0.2);
-    expect(a).toBeLessThan(0.5);
-    expect(Math.min(r, g, b)).toBeGreaterThan(lum + 40); // the cloud itself is much brighter than cloud and ground mixed
+    expect(a).toBeGreaterThan(0.35); // thin cloud shows (its colour reads)
+    expect(a).toBeLessThan(0.7);     // but the map still shows through it
+    // the colour is the composite's for the pixel as it is (as the opaque picture had it): only its opacity is less
+    windyCloudColor(lum, lum, 70, background).forEach((c, k) => expect([r, g, b][k]).toBeCloseTo(c, 6));
   });
 
   it('draws thick cloud solid, in the colours of the RGB composite (as the classic look), keeping its shading', () => {
