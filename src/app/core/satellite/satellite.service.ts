@@ -14,7 +14,7 @@ import {
   satelliteCapabilitiesUrl,
   satelliteFrameUrl,
 } from './satellite.config';
-import { LUMA_GRID_SIZE, SatelliteHoverReading, SatelliteLook, sampleLumaGrid } from './satellite-image';
+import { LUMA_GRID_SIZE, SatelliteHoverReading, sampleLumaGrid } from './satellite-image';
 
 /** One picture of the loop to fetch. */
 interface PlanItem {
@@ -68,8 +68,6 @@ export class SatelliteService {
   readonly active = signal(false);
   /** Show the infrared picture also by day (the switch in the panel); off: the visible HRV by day, infrared at night. */
   readonly infraredOnly = signal(readFlag('atmosiq.satellite.infrared', false));
-  /** How the visible picture is coloured (the switch in the panel): natural cloud over the map, or the classic palette. */
-  readonly look = signal<SatelliteLook>(readFlag('atmosiq.satellite.classic', false) ? 'classic' : 'natural');
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -107,18 +105,6 @@ export class SatelliteService {
     this.infraredOnly.set(on);
     writeFlag('atmosiq.satellite.infrared', on);
     if (this.active()) void this.load();
-  }
-
-  /** Switch the look of the visible picture; the pictures already downloaded are built again, and the old ones let go once replaced. */
-  setLook(look: SatelliteLook): void {
-    if (this.look() === look) return;
-    this.look.set(look);
-    writeFlag('atmosiq.satellite.classic', look === 'classic');
-    const old = [...this.built.values()];
-    this.built.clear();
-    const release = () => setTimeout(() => old.forEach(p => void p.then(f => f && URL.revokeObjectURL(f.url))), 5000);
-    if (this.active()) void this.load().finally(release);
-    else release();
   }
 
   /** Start (or resume) fetching; looks for newer pictures every couple of minutes while on. */
@@ -388,7 +374,7 @@ export class SatelliteService {
     const id = this.nextRequest++;
     return new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless, look: this.look() } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless } satisfies SatelliteWorkerRequest);
     });
   }
 

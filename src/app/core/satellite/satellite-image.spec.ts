@@ -203,13 +203,12 @@ describe('toOverlayPixels', () => {
   const src = new Uint8ClampedArray(width * srcHeight * 4);
   for (let y = 0; y < srcHeight; y++) for (let x = 0; x < width; x++) src.set([y * 30, 100, 50, 255], (y * width + x) * 4);
 
-  it('returns a picture of the requested size with values taken from the source', () => {
+  it('returns a picture of the requested size with values taken from the source: the bright end cloud, the dark end clear ground', () => {
     const out = toOverlayPixels(src, width, srcHeight, 'hrv', 10);
     expect(out.length).toBe(width * 10 * 4);
-    for (let r = 0; r < 10; r++) {
-      expect(out[r * width * 4]).toBeLessThanOrEqual(255);
-      expect(out[r * width * 4 + 3]).toBeGreaterThan(0);
-    }
+    for (let r = 0; r < 10; r++) expect(out[r * width * 4]).toBeLessThanOrEqual(255);
+    expect(out[9 * width * 4 + 3]).toBeGreaterThan(0); // the brightest rows: cloud
+    expect(out[3]).toBe(0); // the darkest: the ground, see-through to the map
   });
 
   it('blends between rows rather than copying, and keeps rows in order', () => {
@@ -388,7 +387,7 @@ describe('twilight terminator blending and luma hover grid', () => {
   });
 });
 
-describe('the natural look of the visible picture', () => {
+describe('the natural look of the visible picture: the RGB composite blended with the map', () => {
   const background = 60; // the blue of clear ground (the infrared of a warm surface)
   const ground = 70;     // the brightness of clear ground around the pixel
 
@@ -396,23 +395,24 @@ describe('the natural look of the visible picture', () => {
     expect(naturalCloudColor(70, 70, 60, background, ground)[3]).toBeLessThan(0.02);
   });
 
-  it('draws thin cloud as see-through white over the map, not as an opaque grey patch', () => {
+  it('draws thin cloud see-through over the map, in the colours of the RGB composite, not as an opaque patch', () => {
     const lum = ground + 0.3 * (OPAQUE_CLOUD_LUM - ground);
     const [r, g, b, a] = naturalCloudColor(lum, lum, 70, background, ground);
-    expect(a).toBeGreaterThan(0.2);
-    expect(a).toBeLessThan(0.5);
-    expect(Math.min(r, g, b)).toBeGreaterThan(lum + 40); // the cloud itself is much brighter than cloud and ground mixed
+    expect(a).toBeGreaterThan(0.35); // thin cloud shows (its colour reads)
+    expect(a).toBeLessThan(0.7);     // but the map still shows through it
+    // the colour is the composite's for the pixel as it is (as the opaque picture had it): only its opacity is less
+    windyCloudColor(lum, lum, 70, background).forEach((c, k) => expect([r, g, b][k]).toBeCloseTo(c, 6));
   });
 
-  it('draws thick cloud solid, in near-neutral white, keeping its shading', () => {
+  it('draws thick cloud solid, in the colours of the RGB composite (as the classic look), keeping its shading', () => {
     const bright = naturalCloudColor(235, 235, 120, background, ground);
     const shaded = naturalCloudColor(190, 190, 120, background, ground);
     expect(bright[3]).toBe(1);
-    expect(Math.max(...bright.slice(0, 3)) - Math.min(...bright.slice(0, 3))).toBeLessThan(14);
+    windyCloudColor(235, 235, 120, background).forEach((c, k) => expect(bright[k]).toBeCloseTo(c, 6));
     expect(shaded[0]).toBeLessThan(bright[0]);
   });
 
-  it('tints cold high cloud a little cool and low cloud a little warm, and keeps cold cloud solid on its shaded side', () => {
+  it('colours low cloud sand and cold high cloud lavender, as the composite does, and keeps cold cloud solid on its shaded side', () => {
     const low = naturalCloudColor(220, 220, 70, background, ground);
     const high = naturalCloudColor(220, 220, 250, background, ground);
     expect(low[0]).toBeGreaterThan(low[2]);
