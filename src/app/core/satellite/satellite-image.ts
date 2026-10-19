@@ -294,8 +294,6 @@ export const CLOUD_GAIN = 1.6;
 /** The brightness (0-255, the HRV's red and green) of cloud thick enough to hide the ground, and how far above the ground it is at least. */
 export const OPAQUE_CLOUD_LUM = 215;
 const OPAQUE_ABOVE_GROUND = 60;
-/** Cloud whose infrared says it is cold is cloud however dark it looks (its shaded side): how far towards thick cloud it counts at the coldest. */
-const COLD_CLOUD_SHARE = 0.85;
 /** The blur (picture pixels) of the brightness that says how much of a pixel is cloud: about two, so the gold follows whole clouds and does not flicker from pixel to pixel. */
 export const HRV_COVER_SMOOTH_SIGMA = 2;
 
@@ -303,8 +301,8 @@ export const HRV_COVER_SMOOTH_SIGMA = 2;
  * The colour of an HRV pixel as Windy draws its visible satellite. Its brightness: clear ground dark (groundTone), cloud brighter by how
  * far it stands above the ground around it (`ground`, see hrvCloudLayers), up to white. Its colour: the cool ramp (blue-grey to blue-white)
  * for a cold top and the gold ramp for one that is not (the infrared in the blue channel), the gold following the shape of the cloud
- * (`smoothLum`, the brightness a little blurred) and not single pixels. Only cloud is drawn (see cloudCover): the ground has no colour of
- * its own, the map shows there. The colour is left in RAMP_SCRATCH.
+ * (`smoothLum`, the brightness a little blurred) and not single pixels. Only cloud is drawn (the classic cloud mask, see hrvCloudKeep):
+ * the ground has no colour of its own, the map shows there. The colour is left in RAMP_SCRATCH.
  */
 function windyVisibleInto(r: number, g: number, b: number, background: number, ground: number, smoothLum: number): void {
   const lum = (r + g) / 2;
@@ -343,68 +341,11 @@ function coolInto(tone: number): void {
   for (let c = 0; c < 3; c++) RAMP_SCRATCH[c] = COOL_TABLE[k * 3 + c] + (COOL_TABLE[k * 3 + 3 + c] - COOL_TABLE[k * 3 + c]) * f;
 }
 
-// ── Only the clouds: the ground and the sea are see-through, and so are faint and small patches that may be the ground itself ──
-/** How much of the way from the ground to thick cloud (0..1) a pixel must be to count as cloud: from here it fades in, solid by the second. */
-export const CLOUD_FROM = 0.13;
-export const CLOUD_FULL = 0.32;
-/** Clouds narrower than this (km) are left out: specks of a couple of the satellite's pixels, which may be a bright field, a town or a sandbank. */
-export const MIN_CLOUD_KM = 4;
-
-/** A plane half the size, each value the mean of a 2 x 2 block. */
-function halvePlane(plane: Float32Array, width: number, height: number): { data: Float32Array; w: number; h: number } {
-  const w = width >> 1;
-  const h = height >> 1;
-  const data = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const p = 2 * y * width + 2 * x;
-      data[y * w + x] = (plane[p] + plane[p + 1] + plane[p + width] + plane[p + width + 1]) / 4;
-    }
-  }
-  return { data, w, h };
-}
-
-/**
- * How much of each pixel of an HRV picture is drawn (0..1): cloud only. A pixel is cloud when it stands well above the ground around it
- * (`ground`, see hrvCloudLayers; `smooth`, its brightness a little blurred, so single noisy pixels do not count), from CLOUD_FROM to
- * CLOUD_FULL of the way to thick cloud, or when the infrared says its top is cold. Land and sea, and anything faint enough to be them,
- * are see-through. Then every cloud narrower than MIN_CLOUD_KM goes (an opening: the mask shrunk by half that, then grown back), so only
- * clouds that are surely clouds are left, at their own shape.
- */
-export function cloudCover(
-  src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, ground: Float32Array, smooth: Float32Array, background: number,
-): Float32Array {
-  const cover = new Float32Array(width * height);
-  for (let i = 0, p = 0; i < cover.length; i++, p += 4) {
-    if (src[p] + src[p + 1] + src[p + 2] < 12) continue; // the empty edge
-    const g = ground[i];
-    const opaque = Math.max(g + OPAQUE_ABOVE_GROUND, OPAQUE_CLOUD_LUM);
-    const share = Math.min(1, Math.max(0, (smooth[i] - g) / (opaque - g)));
-    const cold = smoothstep(0.15, 0.6, infraredShare(src[p + 2], background));
-    cover[i] = smoothstep(CLOUD_FROM, CLOUD_FULL, Math.max(share, COLD_CLOUD_SHARE * cold));
-  }
-  const midLat = (b.north + b.south) / 2;
-  const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
-  const radius = Math.max(1, Math.round(MIN_CLOUD_KM / 2 / kmPerPx));
-  // a big picture with a wide opening is opened at half the size (a quarter of the work) and stretched back; a narrow one at full size,
-  // where halving would make it leave out more than MIN_CLOUD_KM
-  let opened: Float32Array;
-  if (width >= 1200 && radius >= 3) {
-    const half = halvePlane(cover, width, height);
-    const r = Math.max(1, Math.round(radius / 2));
-    opened = upsample(morph(morph(half.data, half.w, half.h, r, false), half.w, half.h, r, true), half.w, half.h, width, height);
-  } else {
-    opened = morph(morph(cover, width, height, radius, false), width, height, radius, true);
-  }
-  for (let i = 0; i < cover.length; i++) cover[i] = Math.min(cover[i], opened[i]);
-  return cover;
-}
-
 /**
  * Colour and opacity (0..255) of one pixel; the result is written into `out` at `o`.
  *
- * HRV (by day): only the clouds, in Windy's colours (see windyVisibleInto), `cover` saying how much of the pixel is cloud (see
- * cloudCover); the ground, the sea and the empty edge are see-through. Where the HRV has no data (a large patch of the north-east, and
+ * HRV (by day): only the clouds, in Windy's colours (see windyVisibleInto), `cover` saying how much of the pixel is cloud (the classic
+ * cloud mask, see hrvCloudKeep); the ground, the sea and the empty edge are see-through. Where the HRV has no data (a large patch of the north-east, and
  * the night side at dawn and dusk) the service shows only the infrared in the blue channel, a violet patch, so there the infrared is
  * drawn instead in the cool ramp: the warm ground see-through, cold cloud brighter and more solid the colder it is.
  *
@@ -759,7 +700,7 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
  * opacity (see shadePixel). `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
  * When `twilightIr` and `timeMs` are provided for an HRV frame near sunrise/sunset, pixels on the dark side of the solar
  * terminator smoothly transition to the infrared picture instead of going black.
- * An HRV picture is drawn as its clouds only (see cloudCover), in Windy's colours (see windyVisibleInto).
+ * An HRV picture is drawn as its clouds only (the classic cloud mask, see hrvCloudKeep), in Windy's colours (see windyVisibleInto).
  */
 export function toOverlayPixels(
   src: Uint8ClampedArray,
@@ -774,7 +715,9 @@ export function toOverlayPixels(
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
-  const ground = kind === 'hrv' ? hrvCloudLayers(src, width, srcHeight, b, false).ground : null;
+  // the classic cloud mask (how much of each pixel stands out from the ground around it as cloud) and the ground, for the colours
+  const layers = kind === 'hrv' ? hrvCloudLayers(src, width, srcHeight, b) : null;
+  const ground = layers?.ground ?? null;
   // the brightness a little blurred (about one pixel), for how much of each pixel is cloud: see windyVisibleInto
   let smooth: Float32Array | null = null;
   if (ground) {
@@ -782,7 +725,7 @@ export function toOverlayPixels(
     for (let i = 0, p = 0; i < smooth.length; i++, p += 4) smooth[i] = (src[p] + src[p + 1]) / 2;
     fastBlurPlane(smooth, width, srcHeight, HRV_COVER_SMOOTH_SIGMA);
   }
-  const cover = ground && smooth ? cloudCover(src, width, srcHeight, b, ground, smooth, background) : null;
+  const cover = layers?.keep ?? null;
   const irOverlay =
     twilightIr && kind === 'hrv' && timeMs !== undefined
       ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', outHeight, undefined, undefined, b)
