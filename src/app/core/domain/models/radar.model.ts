@@ -81,10 +81,23 @@ export interface RadarHoverInfo {
   y: number;
   lat: number;
   lng: number;
-  dbz: number;
+  /** The echo under the pointer, or null where the radars see nothing there (the tooltip then shows only the beam heights). */
+  dbz: number | null;
   label: string;
   color: string;
   rate: string;
+  /** How high each radar's lowest sweep passes over the place (km above sea level), nearest radar first. */
+  beams: RadarBeamHeight[];
+  /** What the heights mean for the picture shown (the column maximum looks from the lowest sweep upwards). */
+  beamNote: string;
+}
+
+export interface RadarBeamHeight {
+  name: string;
+  distanceKm: number;
+  centreKm: number;
+  bottomKm: number;
+  topKm: number;
 }
 
 export interface RadarFieldData {

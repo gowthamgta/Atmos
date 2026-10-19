@@ -71,6 +71,7 @@ import { UrlStateService } from '../../core/ui/url-state.service';
           [style.left.px]="hoverInfo()!.x"
           [style.top.px]="hoverInfo()!.y"
         >
+          @if (hoverInfo()!.dbz !== null) {
           <div class="tooltip-top-row">
             <span
               class="tooltip-badge-dot"
@@ -82,6 +83,7 @@ import { UrlStateService } from '../../core/ui/url-state.service';
             </span>
             <span class="tooltip-rate-lbl">{{ hoverInfo()!.rate }}</span>
           </div>
+          }
           <div class="tooltip-desc-row">
             <strong style="color: #f8fafc">{{ hoverInfo()!.label }}</strong>
             <span class="tooltip-sep">•</span>
@@ -89,6 +91,18 @@ import { UrlStateService } from '../../core/ui/url-state.service';
               {{ hoverInfo()!.lat.toFixed(3) }}°N, {{ hoverInfo()!.lng.toFixed(3) }}°E
             </span>
           </div>
+          @if (hoverInfo()!.beams.length > 0) {
+            <div class="tooltip-beams">
+              @for (b of hoverInfo()!.beams; track b.name) {
+                <div class="tooltip-beam">
+                  <span>{{ b.name }} <span class="tooltip-beam-dist">{{ b.distanceKm.toFixed(0) }} km</span></span>
+                  <strong>{{ b.centreKm.toFixed(1) }} km up</strong>
+                  <span class="tooltip-beam-dist">{{ b.bottomKm.toFixed(1) }}–{{ b.topKm.toFixed(1) }}</span>
+                </div>
+              }
+              <div class="tooltip-beam-note">{{ hoverInfo()!.beamNote }}</div>
+            </div>
+          }
         </div>
       }
     </div>
@@ -169,6 +183,24 @@ import { UrlStateService } from '../../core/ui/url-state.service';
       align-items: center;
       gap: 0.35rem;
     }
+    .tooltip-beams {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(148, 163, 184, 0.25);
+      display: grid;
+      gap: 2px;
+      font-size: 11px;
+      color: #cbd5e1;
+    }
+    .tooltip-beam {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .tooltip-beam strong { color: #f8fafc; }
+    .tooltip-beam-dist { color: #94a3b8; font-size: 11px; }
+    .tooltip-beam-note { margin-top: 2px; color: #94a3b8; font-size: 11px; max-width: 240px; }
     .tooltip-sep {
       color: #475569;
     }

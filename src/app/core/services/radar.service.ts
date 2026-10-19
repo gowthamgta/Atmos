@@ -16,6 +16,7 @@ import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels, removeRadialInterf
 import { HistoryHandle, RadarProcessor, StillResult } from './radar-processor';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
+import { LOWEST_SWEEP_DEG, beamsOverPlace } from './radar-beam';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
@@ -1178,10 +1179,6 @@ export class RadarService implements OnDestroy {
       }
     } else {
       const all = this.allRadarResults();
-      if (all.size === 0) {
-        this.hoverInfo.set(null);
-        return;
-      }
 
       for (const [stationId, res] of all) {
         if (res.isDisplayed === false || !res.fieldData || this.hiddenStations().has(stationId)) continue;
@@ -1224,6 +1221,13 @@ export class RadarService implements OnDestroy {
       }
     }
 
+    const product = this.activeProduct();
+    const beams = beamsOverPlace(this.stations, product, lat, lng, id => !this.hiddenStations().has(id) && !this.unavailableStations().has(id));
+    const beamNote =
+      product === 'caz'
+        ? `Column maximum: the strongest echo from the lowest sweep (${LOWEST_SWEEP_DEG}°) upwards`
+        : `Lowest sweep (${LOWEST_SWEEP_DEG}°): rain below the beam is not seen`;
+
     if (maxV >= 0.15 && bestStation) {
       const dbz = Math.min(65, Math.max(12, Math.round(12 + maxV * 9.6)));
       let label = 'Light Echo';
@@ -1264,8 +1268,13 @@ export class RadarService implements OnDestroy {
         dbz,
         label: `${label} (${dbz} dBZ)`,
         color,
-        rate
+        rate,
+        beams,
+        beamNote
       });
+    } else if (beams.length > 0) {
+      // no echo here, but inside a radar's picture: how high it looks is still worth knowing (a blank far away is not a dry sky)
+      this.hoverInfo.set({ x: screenPoint.x, y: screenPoint.y, lat, lng, dbz: null, label: 'No echo', color: '#94a3b8', rate: '', beams, beamNote });
     } else {
       this.hoverInfo.set(null);
     }
