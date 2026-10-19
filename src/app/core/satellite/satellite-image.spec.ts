@@ -369,15 +369,16 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(hb).toBeGreaterThan(hr); // high cloud blue-white
   });
 
-  it('leaves out faint patches and clouds too small to be sure of (under 8 km), and keeps bigger ones at their shape', () => {
+  it('leaves out faint patches and specks too small to be sure of (under 4 km), and keeps clouds from about 6 km at their shape', () => {
     const w = 400, h = 400, box = { west: 79, east: 81, south: 11, north: 13 }; // about 0.55 km a pixel
     const src = new Uint8ClampedArray(w * h * 4);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const small = Math.hypot(x - 80, y - 80) < 5;       // about 5 km across
+        const small = Math.hypot(x - 80, y - 80) < 2.5;     // about 3 km across
+        const mid = Math.hypot(x - 320, y - 80) < 6;        // about 6.5 km across
         const big = Math.hypot(x - 260, y - 260) < 50;      // about 55 km across
         const faint = x >= 40 && x < 160 && y >= 240 && y < 360; // a wide, faint brightening: a bright field, haze
-        const lum = small || big ? 225 : faint ? 112 : 100;
+        const lum = small || mid || big ? 225 : faint ? 110 : 100;
         src.set([lum, lum, 50, 255], (y * w + x) * 4);
       }
     }
@@ -385,7 +386,8 @@ describe('twilight terminator blending and luma hover grid', () => {
     const smooth = new Float32Array(w * h);
     for (let i = 0; i < w * h; i++) smooth[i] = src[i * 4];
     const cover = cloudCover(src, w, h, box, ground, smooth, 50);
-    expect(cover[80 * w + 80]).toBeLessThan(0.05);   // the small cloud: left out
+    expect(cover[80 * w + 80]).toBeLessThan(0.05);   // the speck: left out
+    expect(cover[80 * w + 320]).toBeGreaterThan(0.9); // a small cumulus: kept
     expect(cover[300 * w + 100]).toBeLessThan(0.05); // the faint patch: left out
     expect(cover[260 * w + 260]).toBeGreaterThan(0.95); // the big cloud: kept
     expect(cover[260 * w + 300]).toBeGreaterThan(0.5);  // to near its edge

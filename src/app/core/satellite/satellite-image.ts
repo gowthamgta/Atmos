@@ -345,10 +345,10 @@ function coolInto(tone: number): void {
 
 // ── Only the clouds: the ground and the sea are see-through, and so are faint and small patches that may be the ground itself ──
 /** How much of the way from the ground to thick cloud (0..1) a pixel must be to count as cloud: from here it fades in, solid by the second. */
-export const CLOUD_FROM = 0.2;
-export const CLOUD_FULL = 0.45;
-/** Clouds narrower than this (km) are left out: at the satellite's pixel they cannot be told from a bright field, a town or a sandbank. */
-export const MIN_CLOUD_KM = 8;
+export const CLOUD_FROM = 0.13;
+export const CLOUD_FULL = 0.32;
+/** Clouds narrower than this (km) are left out: specks of a couple of the satellite's pixels, which may be a bright field, a town or a sandbank. */
+export const MIN_CLOUD_KM = 4;
 
 /** A plane half the size, each value the mean of a 2 x 2 block. */
 function halvePlane(plane: Float32Array, width: number, height: number): { data: Float32Array; w: number; h: number } {
@@ -386,9 +386,10 @@ export function cloudCover(
   const midLat = (b.north + b.south) / 2;
   const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
   const radius = Math.max(1, Math.round(MIN_CLOUD_KM / 2 / kmPerPx));
-  // the opening is smooth at this scale, so a big picture is opened at half the size (a quarter of the work) and stretched back
+  // a big picture with a wide opening is opened at half the size (a quarter of the work) and stretched back; a narrow one at full size,
+  // where halving would make it leave out more than MIN_CLOUD_KM
   let opened: Float32Array;
-  if (width >= 1200) {
+  if (width >= 1200 && radius >= 3) {
     const half = halvePlane(cover, width, height);
     const r = Math.max(1, Math.round(radius / 2));
     opened = upsample(morph(morph(half.data, half.w, half.h, r, false), half.w, half.h, r, true), half.w, half.h, width, height);
