@@ -4,8 +4,10 @@
  * changes the look (the terrain relief switch in the layer menu).
  */
 export function isPhone(): boolean {
-  if (typeof window === 'undefined') return false;
-  return window.innerWidth < 700 || ('ontouchstart' in window && window.innerWidth < 900);
+  // through globalThis, not `window`: this module is also part of the satellite worker, which has no window (and is never a phone's screen)
+  const screen = globalThis as { innerWidth?: number; ontouchstart?: unknown };
+  if (typeof screen.innerWidth !== 'number') return false;
+  return screen.innerWidth < 700 || ('ontouchstart' in screen && screen.innerWidth < 900);
 }
 
 /**

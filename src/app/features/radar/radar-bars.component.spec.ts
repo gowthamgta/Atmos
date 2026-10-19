@@ -120,6 +120,26 @@ describe('the radar bar', () => {
     expect(radar.setCursor).toHaveBeenCalledWith(1);
   });
 
+  it('lets the time badge on the amber line be dragged along the strip, as on the forecast bar, snapping to the pictures', () => {
+    const { fixture, el, radar } = setup(6, 3);
+    const inner = el.querySelector('.inner') as HTMLElement;
+    inner.getBoundingClientRect = () => ({ left: 100, width: 900, right: 1000, top: 0, bottom: 40, height: 40, x: 100, y: 0, toJSON: () => ({}) });
+    const tip = el.querySelector('.playhead .tip') as HTMLElement;
+    expect(getComputedStyle(tip).cursor).toBe('grab');
+
+    tip.dispatchEvent(new PointerEvent('pointerdown', { clientX: 1000, bubbles: true, cancelable: true }));
+    expect(radar.pause).toHaveBeenCalled();
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 100 + 900 * (2 / 9) + 20 }));
+    expect(radar.setCursor).toHaveBeenLastCalledWith(2);
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 5 })); // past the left end: the oldest picture
+    expect(radar.setCursor).toHaveBeenLastCalledWith(0);
+    window.dispatchEvent(new PointerEvent('pointerup', {}));
+    radar.setCursor.mockClear();
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 900 }));
+    expect(radar.setCursor).not.toHaveBeenCalled(); // let go: the drag is over
+    fixture.detectChanges();
+  });
+
   it('plays, steps with the buttons and with the arrow keys, and plays with Space', () => {
     const { el, radar, fixture } = setup(3, 2);
     el.querySelector<HTMLButtonElement>('.play')!.click();

@@ -2,15 +2,18 @@ name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
 # India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
-# Every 3 hours. Each model is built on all four cycles (00Z, 06Z, 12Z, 18Z), which are published about 6 hours after they start, so a
-# scheduled run waits for the newest cycle that is due by now (tries again every 30 minutes, up to six times). A run with nothing
-# new exits at once. A change to the pipeline also rebuilds at once.
+# Every 3 hours. Each model is built on all four cycles (00Z, 06Z, 12Z, 18Z), which Open-Meteo publishes 6 to 7.5 hours after they
+# start, so a scheduled run builds the newest cycle that is surely out by now (one that began at least 7 hours ago). The runs at 01:30,
+# 07:30, 13:30 and 19:30 pick each cycle up as it comes out; the ones between find it already live and exit at once. A cycle that is
+# late is tried again after 20 minutes, twice at most; any other failure is not retried. A change to the pipeline also rebuilds at once.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 on:
   schedule:
-    - cron: "30 */3 * * *"    # every 3 hours, at 30 minutes past (the 00Z, 06Z, 12Z and 18Z cycles)
-  # a change to how the models are built rebuilds and deploys at once
+    - cron: "30 1-23/3 * * *"    # every 3 hours from 01:30: 07:30 for the 00Z cycle, 13:30 for 06Z, 19:30 for 12Z, 01:30 for 18Z
+  # a change to how the models are built rebuilds and deploys at once (on main only: the site is the live one, and GitHub Pages
+  # takes deploys from the main branch alone, so a push to another branch would build for nothing and fail to deploy)
   push:
+    branches: [main]
     paths:
       - "pipeline/data/**"
       - "pipeline/run.py"
@@ -61,30 +64,38 @@ jobs:
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
-          # a scheduled run waits for the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 4 hours ago. It is worked out from
-          # the clock, not from which cron fired: GitHub often starts a scheduled job hours late, possibly after midnight UTC.
+          # a scheduled run builds the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 7 hours ago, so it is published by
+          # now (4 hours made nearly every run wait, up to 2.5 hours). It is worked out from the clock, not from which cron fired:
+          # GitHub often starts a scheduled job an hour or more late, possibly after midnight UTC, and a late start then still
+          # asks for a cycle that is out.
           expect=""
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            ref=$(date -u -d '-4 hours' +%Y%m%dT%H)
+            ref=$(date -u -d '-7 hours' +%Y%m%dT%H)
             h=$(( 10#${ref#*T} ))
             expect="--expect-run ${ref%T*}T$(printf %02d $(( h - h % 6 )))Z"
             echo "waiting for the cycle $expect"
           fi
           pending="$models"
-          for attempt in $(seq 1 6); do
+          for attempt in $(seq 1 3); do
             waiting=""
             for model in $pending; do
               # one model failing must not stop the other
-              python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force $expect && continue
-              echo "::notice::$model: attempt $attempt did not complete (run not published yet, or a failure)"
-              waiting="$waiting $model"
+              code=0
+              python run.py --model "$model" --out site --live-url "$base/$model/latest.json" $force $expect || code=$?
+              [ "$code" -eq 0 ] && continue
+              if [ "$code" -eq 3 ]; then
+                echo "::notice::$model: the cycle is not published yet (attempt $attempt)"
+                waiting="$waiting $model"
+              else
+                echo "::warning::$model failed (exit $code); not retried, the live copy stays in place"
+              fi
             done
             pending="${waiting# }"
             [ -z "$pending" ] && break
             [ -z "$expect" ] && break        # not a scheduled run: one try
-            sleep 1800        # not published yet: try again in 30 minutes
+            [ "$attempt" -lt 3 ] && sleep 1200        # a late cycle: try again in 20 minutes
           done
-          for model in $pending; do echo "::warning::$model failed; the live copy stays in place"; done
+          for model in $pending; do echo "::warning::$model: the cycle was still not published; the live copy stays in place"; done
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
@@ -112,7 +123,8 @@ jobs:
 
   deploy:
     needs: build
-    if: needs.build.outputs.deploy == 'true'
+    # only main deploys to the live site (a run started by hand on another branch builds, as a check, but does not deploy)
+    if: needs.build.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write

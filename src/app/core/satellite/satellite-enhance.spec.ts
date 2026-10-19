@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
-import { blurPlane, enhancePicture, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
+import { HRV_SHARPEN_MAX_STEP, blurPlane, enhancePicture, gaussianKernel, sharpenHrv, smoothChannel, smoothGrey } from './satellite-enhance';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
 function lcg(seed: number): () => number {
@@ -156,5 +156,56 @@ describe('enhancePicture', () => {
     // both include making the picture, so only the order of magnitude counts
     expect(hrvMs).toBeLessThan(3000);
     expect(irMs).toBeLessThan(3000);
+  });
+});
+
+describe('sharpenHrv', () => {
+  const w = 32;
+  const h = 16;
+  /** A cloud edge: dark ground on the left, bright cloud on the right; the blue (infrared) is a constant. */
+  const edge = () => rgba(w, h, i => (i % w < w / 2 ? 60 : 160), i => (i % w < w / 2 ? 60 : 160), () => 90);
+
+  it('leaves a flat picture as it is', () => {
+    const px = rgba(w, h, () => 120, () => 110, () => 80);
+    const copy = Uint8ClampedArray.from(px);
+    sharpenHrv(px, w, h);
+    expect(px).toEqual(copy);
+  });
+
+  it('makes a cloud edge crisper: darker on the dark side, brighter on the bright side, and the same away from it', () => {
+    const px = edge();
+    sharpenHrv(px, w, h);
+    const row = 8 * w * 4;
+    expect(px[row + (w / 2 - 1) * 4]).toBeLessThan(60);
+    expect(px[row + (w / 2) * 4]).toBeGreaterThan(160);
+    expect(px[row + 2 * 4]).toBe(60);
+    expect(px[row + (w - 3) * 4]).toBe(160);
+  });
+
+  it('moves red and green together, so the colour does not shift, and leaves the blue (the infrared) and alpha alone', () => {
+    const px = edge();
+    const copy = Uint8ClampedArray.from(px);
+    sharpenHrv(px, w, h);
+    for (let i = 0; i < w * h; i++) {
+      expect(px[i * 4] - copy[i * 4]).toBe(px[i * 4 + 1] - copy[i * 4 + 1]);
+      expect(px[i * 4 + 2]).toBe(copy[i * 4 + 2]);
+      expect(px[i * 4 + 3]).toBe(255);
+    }
+  });
+
+  it('never moves a pixel by more than the cap, so a bright edge has no halo', () => {
+    const px = rgba(w, h, i => (i % w < w / 2 ? 0 + 10 : 250), i => (i % w < w / 2 ? 10 : 250), () => 5);
+    const copy = Uint8ClampedArray.from(px);
+    sharpenHrv(px, w, h, 1, 3);
+    for (let i = 0; i < w * h; i++) expect(Math.abs(px[i * 4] - copy[i * 4])).toBeLessThanOrEqual(HRV_SHARPEN_MAX_STEP);
+  });
+
+  it('ignores differences below the threshold (noise and JPEG residue) and keeps the empty edge empty', () => {
+    const rand = lcg(3);
+    const px = rgba(w, h, () => 100 + Math.round(rand()), () => 100, () => 60);
+    px.fill(0, 0, w * 4); // the first row is the empty edge of the picture
+    const copy = Uint8ClampedArray.from(px);
+    sharpenHrv(px, w, h);
+    expect(px).toEqual(copy);
   });
 });

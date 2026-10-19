@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, HostListener, computed, inject } fr
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { IconComponent } from '../../shared/icon.component';
+import { followDrag, fractionAlong } from '../../shared/pointer-drag';
 
 const IST = 'Asia/Kolkata';
 const DAY_MS = 86_400_000;
@@ -266,12 +267,10 @@ export class ForecastTimelineComponent {
     const r = this.range();
     const origin = { from: this.state.rangeStartMs(), to: this.state.rangeEndMs() };
     if (!r || origin.from === null || origin.to === null) return;
-    event.preventDefault();
-    const rect = track.getBoundingClientRect();
-    const msAt = (clientX: number) => r.start + ((clientX - rect.left) / rect.width) * (r.end - r.start);
+    const msAt = (clientX: number) => r.start + fractionAlong(track, clientX) * (r.end - r.start);
     const snap = (ms: number) => Math.round(ms / HOUR_MS) * HOUR_MS;
     const grabbed = msAt(event.clientX);
-    const move = (e: PointerEvent) => {
+    followDrag(event, e => {
       const ms = msAt(e.clientX);
       if (part === 'start') this.state.setRangeStart(snap(ms));
       else if (part === 'end') this.state.setRangeEnd(snap(ms));
@@ -280,39 +279,18 @@ export class ForecastTimelineComponent {
         this.state.rangeEndMs.set(origin.to!);
         this.state.shiftRange(snap(ms - grabbed));
       }
-    };
-    const stop = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-      window.removeEventListener('pointercancel', stop);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
-    window.addEventListener('pointercancel', stop);
+    });
   }
 
   /** Drags the playhead tooltip badge directly along the track (snapping to 10-minute steps, matching the range input). */
   protected beginPlayheadDrag(event: PointerEvent, track: HTMLElement): void {
     const r = this.range();
     if (!r) return;
-    event.preventDefault();
     this.state.pause();
-    const rect = track.getBoundingClientRect();
-    const setFromX = (clientX: number) => {
-      const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      const rawMs = r.start + frac * (r.end - r.start);
-      const snapped = Math.min(r.end, Math.max(r.start, Math.round(rawMs / 600_000) * 600_000));
-      this.state.setTime(snapped);
-    };
-    const move = (e: PointerEvent) => setFromX(e.clientX);
-    const stop = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', stop);
-      window.removeEventListener('pointercancel', stop);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', stop);
-    window.addEventListener('pointercancel', stop);
+    followDrag(event, e => {
+      const rawMs = r.start + fractionAlong(track, e.clientX) * (r.end - r.start);
+      this.state.setTime(Math.min(r.end, Math.max(r.start, Math.round(rawMs / 600_000) * 600_000)));
+    });
   }
 
   protected onScrub(event: Event): void {

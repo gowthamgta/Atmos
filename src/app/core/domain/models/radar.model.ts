@@ -102,6 +102,8 @@ export interface ProcessedRadarResult {
   dataUrl: string;
   /** The mosaic's intensity as one byte per pixel (see quantizeRadarField), for the GPU layer. */
   displayField?: Uint8Array;
+  /** How fully each pixel of the mosaic is drawn (255: in full); fainter where the echo is older than a radar that covers it. Absent: all in full. */
+  displayFade?: Uint8Array;
   fieldData: RadarFieldData;
   timing: RadarObservationTiming | null;
   coordinates: [[number, number], [number, number], [number, number], [number, number]];

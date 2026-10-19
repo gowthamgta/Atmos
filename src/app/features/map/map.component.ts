@@ -828,7 +828,7 @@ export class MapComponent implements OnInit, OnDestroy {
       return;
     }
     if (!this.satelliteDetailLayer) {
-      this.satelliteDetailLayer = new SatelliteImageLayer({ id: 'satellite-detail-layer', featherFraction: 0.06 });
+      this.satelliteDetailLayer = new SatelliteImageLayer({ id: 'satellite-detail-layer', featherFraction: 0.06, colourSoften: 0.25 });
       // right above the main satellite layer
       this.map.addLayer(this.satelliteDetailLayer, this.observationAnchorId());
       this.satelliteLayer.setWindow(this.satelliteDetailLayer);

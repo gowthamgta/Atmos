@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult, RadarProductKey } from '../domain/models/radar.model';
-import { MAX_SCAN_AGE_MIN, composeRadarMosaic } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, OVERLAP_FADE_OLDEST, OVERLAP_FADE_ONE_SCAN, composeRadarMosaic, overlapFade } from './radar-mosaic';
 import { dequantizeRadar } from './radar-field';
 
 const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
@@ -111,5 +111,64 @@ describe('live scans', () => {
     // without a clock (history frames) nothing is dropped
     expect(composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', stale]])).not.toBeNull();
     expect(MAX_SCAN_AGE_MIN).toBe(45);
+  });
+});
+
+/** How fully the composite is drawn at a place (0..1; 1 when it has no fade at all). */
+function fadeAt(result: ProcessedRadarResult, lat: number, lng: number): number {
+  if (!result.displayFade) return 1;
+  const { cropW, cropH, bounds } = result.fieldData;
+  const [[south, west], [north, east]] = bounds;
+  const x = Math.round(((lng - west) / (east - west)) * (cropW - 1));
+  const y = Math.round(((north - lat) / (north - south)) * (cropH - 1));
+  return result.displayFade[y * cropW + x] / 255;
+}
+
+describe('older echoes where radars overlap', () => {
+  const MIN = 60_000;
+
+  it('overlapFade: in full within one scan, fainter one scan behind, faintest half an hour behind; less where the newer radar sees rain too', () => {
+    expect(overlapFade(4, 0, 5 * MIN, 0, 1)).toBe(1);
+    expect(overlapFade(4, 0, 10 * MIN, 0, 1)).toBeCloseTo(OVERLAP_FADE_ONE_SCAN, 5);
+    expect(overlapFade(4, 0, 30 * MIN, 0, 1)).toBeCloseTo(OVERLAP_FADE_OLDEST, 5);
+    expect(overlapFade(4, 0, 60 * MIN, 0, 1)).toBeCloseTo(OVERLAP_FADE_OLDEST, 5);
+    expect(overlapFade(4, 0, 10 * MIN, 4, 1)).toBe(1); // the newer radar sees it as strong: it is still there
+    expect(overlapFade(4, 0, 10 * MIN, 2, 1)).toBeGreaterThan(OVERLAP_FADE_ONE_SCAN);
+    expect(overlapFade(4, 0, 10 * MIN, 0, 0)).toBe(1); // outside the newer radar's reach
+    expect(overlapFade(4, 0, 10 * MIN, 0, 0.5)).toBeCloseTo(1 - (1 - OVERLAP_FADE_ONE_SCAN) / 2, 5); // eased in at its edge
+  });
+
+  it('draws everything in full when the radars scanned together', () => {
+    const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 4.0, 0)],
+      ['chennai', scan(cni, 'caz', 0, 3)],
+    ])!;
+    expect(mosaic.displayFade).toBeUndefined();
+  });
+
+  it('fades the echo of a radar that scanned before another one that covers the same place and sees it dry', () => {
+    const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 4.0, -20)],
+      ['chennai', scan(cni, 'caz', 0, 0)],
+    ])!;
+    const overlap = between(0.5);
+    expect(valueAt(mosaic, ...overlap)).toBeCloseTo(4.0, 1); // the echo is still drawn, as strong as it was
+    expect(fadeAt(mosaic, ...overlap)).toBeLessThan(OVERLAP_FADE_ONE_SCAN + 0.01);
+    expect(fadeAt(mosaic, ...overlap)).toBeGreaterThan(OVERLAP_FADE_OLDEST - 0.01);
+    // beyond Chennai's reach only Karaikal sees the place: drawn in full
+    expect(fadeAt(mosaic, ...eastOf(karaikal, -150))).toBe(1);
+  });
+
+  it('keeps the echo of the newer radar in full, and of the older one too where the newer radar sees the same rain', () => {
+    const newerKaraikal = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 4.0, 0)],
+      ['chennai', scan(cni, 'caz', 0, -20)],
+    ])!;
+    expect(fadeAt(newerKaraikal, ...between(0.5))).toBe(1);
+    const bothSeeIt = composeRadarMosaic(IMD_RADAR_STATIONS, [
+      ['karaikal', scan(karaikal, 'caz', 4.0, -20)],
+      ['chennai', scan(cni, 'caz', 4.0, 0)],
+    ])!;
+    expect(fadeAt(bothSeeIt, ...between(0.5))).toBe(1);
   });
 });
