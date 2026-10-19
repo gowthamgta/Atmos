@@ -21,6 +21,9 @@ import {
   shadePixel,
   hrvCloudKeep,
   windyCloudColor,
+  naturalCloudColor,
+  OPAQUE_CLOUD_LUM,
+  hrvCloudLayers,
   toOverlayPixels,
 } from './satellite-image';
 
@@ -382,5 +385,53 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(east!.tempC).toBeLessThan(west!.tempC - 40);
     expect(east!.heightKm).toBeGreaterThan(west!.heightKm + 5);
     expect(sampleLumaGrid(grid, LUMA_GRID_SIZE, 2, 72)).toBeNull(); // outside bounds
+  });
+});
+
+describe('the natural look of the visible picture', () => {
+  const background = 60; // the blue of clear ground (the infrared of a warm surface)
+  const ground = 70;     // the brightness of clear ground around the pixel
+
+  it('leaves clear ground clear, so the map shows', () => {
+    expect(naturalCloudColor(70, 70, 60, background, ground)[3]).toBeLessThan(0.02);
+  });
+
+  it('draws thin cloud as see-through white over the map, not as an opaque grey patch', () => {
+    const lum = ground + 0.3 * (OPAQUE_CLOUD_LUM - ground);
+    const [r, g, b, a] = naturalCloudColor(lum, lum, 70, background, ground);
+    expect(a).toBeGreaterThan(0.2);
+    expect(a).toBeLessThan(0.5);
+    expect(Math.min(r, g, b)).toBeGreaterThan(lum + 40); // the cloud itself is much brighter than cloud and ground mixed
+  });
+
+  it('draws thick cloud solid, in near-neutral white, keeping its shading', () => {
+    const bright = naturalCloudColor(235, 235, 120, background, ground);
+    const shaded = naturalCloudColor(190, 190, 120, background, ground);
+    expect(bright[3]).toBe(1);
+    expect(Math.max(...bright.slice(0, 3)) - Math.min(...bright.slice(0, 3))).toBeLessThan(14);
+    expect(shaded[0]).toBeLessThan(bright[0]);
+  });
+
+  it('tints cold high cloud a little cool and low cloud a little warm, and keeps cold cloud solid on its shaded side', () => {
+    const low = naturalCloudColor(220, 220, 70, background, ground);
+    const high = naturalCloudColor(220, 220, 250, background, ground);
+    expect(low[0]).toBeGreaterThan(low[2]);
+    expect(high[2]).toBeGreaterThan(high[0]);
+    expect(naturalCloudColor(90, 90, 250, background, ground)[3]).toBeGreaterThan(0.8);
+  });
+
+  it('gives the clear-ground brightness with the cloud mask, the same size as the picture', () => {
+    const w = 64;
+    const h = 64;
+    const px = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      const cloud = i % w > 40;
+      px.set([cloud ? 230 : 80, cloud ? 230 : 80, cloud ? 200 : 60, 255], i * 4);
+    }
+    const { keep, ground: plane } = hrvCloudLayers(px, w, h);
+    expect(plane.length).toBe(w * h);
+    expect(plane[20 * w + 10]).toBeGreaterThan(70);
+    expect(plane[20 * w + 10]).toBeLessThan(95); // clear ground reads as the ground
+    expect(keep[20 * w + 60]).toBeGreaterThan(0.9);
   });
 });

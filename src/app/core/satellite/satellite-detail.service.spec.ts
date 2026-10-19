@@ -14,6 +14,7 @@ class FakeSatelliteService {
   readonly frames = signal<SatelliteFrame[]>([]);
   readonly active = signal(true);
   readonly loading = signal(false);
+  readonly look = signal<'natural' | 'classic'>('natural');
   built = 0;
   readonly downloadUrl = vi.fn(async (url: string): Promise<Blob | null> => new Blob([url], { type: 'image/jpeg' }));
   readonly process = vi.fn(async () => ({ url: `blob:built-${++this.built}` }));
