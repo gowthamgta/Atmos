@@ -1,0 +1,72 @@
+name: nowcast
+
+# The nowcast bot (bot/README.md): every ten minutes it opens the live radar of the app in a headless browser, and when there are storms
+# over Tamil Nadu or Puducherry posts the radar picture with a short alert to X. Until the X keys are set as repository secrets it only
+# dry-runs: each run's picture and the post it would make are kept as the run's artifact, to look at first.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Decide and keep the picture and the post as the run's artifact, but do not post"
+        type: boolean
+        default: true
+      force:
+        description: "Post (or dry-run) even with no storm, or a recent post: to try the whole chain"
+        type: boolean
+        default: false
+
+# one run at a time, and a run that starts while another is still going waits rather than both posting
+concurrency:
+  group: nowcast
+  cancel-in-progress: false
+
+jobs:
+  nowcast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bot/package-lock.json
+      - run: npm ci
+      - name: Browser
+        run: npx playwright install --with-deps chromium
+      - run: npm test
+      # what the last post was (so a storm is not posted again every ten minutes): kept between runs in the cache
+      - uses: actions/cache/restore@v4
+        with:
+          path: bot/state
+          key: nowcast-state-${{ github.run_id }}
+          restore-keys: nowcast-state-
+      - name: Nowcast
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          # a scheduled run posts once the keys are set (and NOWCAST_LIVE is "true", a switch to stop it without removing them);
+          # a run started by hand posts only when asked
+          DRY_RUN: ${{ ((github.event_name == 'schedule' && vars.NOWCAST_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) && '0' || '1' }}
+          FORCE: ${{ inputs.force && '1' || '0' }}
+          INCLUDE_LINK: ${{ vars.NOWCAST_INCLUDE_LINK == 'true' && '1' || '0' }}
+        run: node nowcast.mjs
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: bot/state
+          key: nowcast-state-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nowcast-${{ github.run_id }}
+          path: bot/out
+          retention-days: 3
+          if-no-files-found: ignore

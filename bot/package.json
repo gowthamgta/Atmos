@@ -1,0 +1,14 @@
+{
+  "name": "atmos-nowcast-bot",
+  "private": true,
+  "type": "module",
+  "description": "Posts the AtmosIQ radar to X when there are storms over Tamil Nadu (see README.md)",
+  "scripts": {
+    "start": "node nowcast.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "playwright": "1.56.1",
+    "twitter-api-v2": "1.29.1"
+  }
+}

@@ -57,3 +57,8 @@ __pycache__/
 .dem-cache/
 pipeline/data/observations/
 pipeline/data/rain_history/
+
+# The nowcast bot (bot/): its dependencies, and what a local run writes
+/bot/node_modules
+/bot/out
+/bot/state

@@ -18,6 +18,7 @@ import { UrlStateService } from './core/ui/url-state.service';
 import { IconComponent } from './shared/icon.component';
 import { ThemeService } from './shared/theme.service';
 import { PerfMeterComponent } from './features/perf/perf-meter.component';
+import { BOT_CAPTURE } from './core/ui/bot-capture';
 
 @Component({
   selector: 'app-root',
@@ -48,6 +49,8 @@ export class App {
   // created at the start: the saved theme is applied before the first paint, and a shared link is applied before the map opens
   private readonly theme = inject(ThemeService);
   private readonly urlState = inject(UrlStateService);
+  // the nowcast bot's screenshot is the radar map alone: the panels are hidden (see bot-capture.ts and styles.css)
+  private readonly botCapture = BOT_CAPTURE && document.documentElement.classList.add('bot-capture');
 
   protected retry(): void {
     void this.catalog.refresh();

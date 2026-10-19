@@ -1,5 +1,6 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { SteeringWindService } from '../forecast/steering-wind.service';
+import { NowcastCell, publishNowcast } from '../ui/bot-capture';
 import { MapLayerService } from './map-layer.service';
 import { RadarService } from './radar.service';
 import {
@@ -57,7 +58,7 @@ export class StormTracksService {
   readonly summary = signal<StormSummary>({ count: 0, source: null });
   readonly visible = computed(() => this.enabled() && this.layers.layers().some(l => l.id === 'radar' && l.active));
 
-  private readonly cache = new Map<string, { geojson: StormFeatureCollection; summary: StormSummary }>();
+  private readonly cache = new Map<string, { geojson: StormFeatureCollection; summary: StormSummary; cells: NowcastCell[] }>();
   private token = 0;
 
   /** The loop is loaded once, in the background, so the cells move the way the radar shows them and not with the forecast wind. */
@@ -100,6 +101,7 @@ export class StormTracksService {
     const hit = this.cache.get(key);
     if (hit) {
       this.publish(hit.geojson, hit.summary);
+      if (index === null) this.publishLive(current.timeMs, hit.summary, history.length, hit.cells);
       return;
     }
 
@@ -125,6 +127,7 @@ export class StormTracksService {
     }
 
     const features: Feature[] = [];
+    const found: NowcastCell[] = [];
     let usedWind = false;
     for (const c of cells) {
       const lon = grid.west + c.x * grid.step;
@@ -139,13 +142,23 @@ export class StormTracksService {
         }
       }
       features.push(...this.stormFeatures(c, lat, lon, m, grid.step));
+      found.push({
+        lat, lon, dbz: Math.round(12 + c.peak * 9.6), radiusKm: Math.max(3, c.radius * grid.step * 111.2),
+        speedKmh: m ? Math.round(m.speedKmh) : null, towardsDeg: m ? Math.round(m.towardsDeg) : null,
+      });
     }
     if (my !== this.token) return;
     const summary: StormSummary = { count: cells.length, source: source ?? (usedWind ? 'wind' : null) };
     const geojson: StormFeatureCollection = { type: 'FeatureCollection', features };
     if (this.cache.size > 40) this.cache.clear();
-    this.cache.set(key, { geojson, summary });
+    this.cache.set(key, { geojson, summary, cells: found });
     this.publish(geojson, summary);
+    if (index === null) this.publishLive(current.timeMs, summary, history.length, found);
+  }
+
+  /** The live picture's cells, for the nowcast bot (only in bot mode, see bot-capture.ts). */
+  private publishLive(timeMs: number, summary: StormSummary, historyLength: number, cells: NowcastCell[]): void {
+    publishNowcast({ radarTimeMs: timeMs, motionSource: summary.source, loopLoaded: historyLength > 0, cells });
   }
 
   private publish(geojson: StormFeatureCollection, summary: StormSummary): void {

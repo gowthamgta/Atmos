@@ -451,3 +451,17 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* The nowcast bot's screenshot (bot=1 in the address, see core/ui/bot-capture.ts): the radar map, its time bar and colour scale only */
+.bot-capture app-place-card,
+.bot-capture .brand,
+.bot-capture .menu-btn,
+.bot-capture app-layer-rail,
+.bot-capture app-radar-panel,
+.bot-capture app-map-controls,
+.bot-capture app-perf-meter,
+.bot-capture .status,
+.bot-capture .maplibregl-ctrl-bottom-right,
+.bot-capture .maplibregl-ctrl-bottom-left {
+  display: none !important;
+}
