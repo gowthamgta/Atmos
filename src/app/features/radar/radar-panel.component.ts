@@ -54,8 +54,9 @@ const FRESHNESS_LABEL: Record<string, string> = {
         </header>
 
         <div class="scan full-only">
-          <span>{{ scanLabel() }}</span>
-          @if (age() !== null) {
+          <span>{{ allOff() ? 'All radars are off: tap one below to turn it on' : scanLabel() }}</span>
+          @if (allOff()) {
+          } @else if (age() !== null) {
             <span class="age" [attr.data-state]="freshness()">{{ age() }} min ago · {{ freshnessLabel() }}</span>
           } @else {
             <span class="age" data-state="syncing">Syncing…</span>
@@ -82,7 +83,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
         }
 
         <div class="stations full-only">
-          <div class="label">Radars online: {{ online() }} of {{ stations.length }} · tap to turn one off</div>
+          <div class="label">Radars online: {{ online() }} of {{ stations.length }} · tap to turn on or off</div>
           <div class="chips">
             @for (st of stations; track st.id) {
               <button type="button" class="chip" [class.active]="activeId() === st.id" [class.off]="!shown(st.id)" [attr.aria-pressed]="shown(st.id)"
@@ -232,6 +233,7 @@ export class RadarPanelComponent {
   /** One-line status for the compact panel: scan age and freshness. */
   protected readonly compactStatus = computed(() => {
     const age = this.age();
+    if (this.allOff()) return 'All radars off';
     if (age === null) return 'Syncing…';
     return `${age} min · ${FRESHNESS_LABEL[this.freshness()] ?? ''} · ${this.online()}/${this.stations.length} on`;
   });
@@ -313,12 +315,13 @@ export class RadarPanelComponent {
     return this.radar.isStationShown(id);
   }
 
-  /** A tap turns the radar off or on (the last one on stays on); turning one on also makes it the radar the status line is about. */
+  /** A tap turns the radar off or on (the map does not move). */
   protected toggle(id: string): void {
-    const wasShown = this.shown(id);
     this.radar.toggleStation(id);
-    if (!wasShown) this.radar.selectStation(id);
   }
+
+  /** True when every radar is turned off. */
+  protected readonly allOff = computed(() => this.stations.every(st => this.radar.hiddenStations().has(st.id)));
 
   protected refresh(): void {
     this.radar.fetchRadarSweep();

@@ -89,8 +89,7 @@ function readHiddenStations(): ReadonlySet<string> {
   try {
     const ids = JSON.parse(localStorage.getItem(HIDDEN_STATIONS_KEY) ?? '[]');
     const known = IMD_RADAR_STATIONS.map(s => s.id);
-    const hidden = new Set((Array.isArray(ids) ? ids : []).filter((id): id is string => known.includes(id)));
-    return hidden.size < known.length ? hidden : new Set(); // never all of them off
+    return new Set((Array.isArray(ids) ? ids : []).filter((id): id is string => known.includes(id)));
   } catch {
     return new Set();
   }
@@ -117,7 +116,7 @@ export class RadarService implements OnDestroy {
 
   /**
    * The radars turned off in the panel: left out of the mosaic, the loop and the readout. Their pictures are still fetched, so
-   * turning one back on shows it at once. Remembered between visits; at least one radar stays on.
+   * turning one back on shows it at once. Both can be off (the map then shows no radar). Remembered between visits.
    */
   readonly hiddenStations = signal<ReadonlySet<string>>(readHiddenStations());
 
@@ -433,15 +432,19 @@ export class RadarService implements OnDestroy {
     return !this.hiddenStations().has(stationId);
   }
 
-  /** Turns one radar on or off (the last one on stays on), and rebuilds the mosaic and the loop without it. */
+  /**
+   * Turns one radar on or off and rebuilds the mosaic and the loop without it. The map stays where it is: a radar turned on
+   * becomes the one the status line is about, one turned off hands that to a radar still on.
+   */
   toggleStation(stationId: string): void {
     const hidden = new Set(this.hiddenStations());
-    if (hidden.has(stationId)) hidden.delete(stationId);
-    else if (this.stations.some(s => s.id !== stationId && !hidden.has(s.id))) hidden.add(stationId);
-    else return;
+    const turningOn = hidden.has(stationId);
+    if (turningOn) hidden.delete(stationId);
+    else hidden.add(stationId);
     this.hiddenStations.set(hidden);
     writeHiddenStations(hidden);
-    if (hidden.has(this.activeStationId())) {
+    if (turningOn) this.activeStationId.set(stationId);
+    else if (hidden.has(this.activeStationId())) {
       const next = this.stations.find(s => !hidden.has(s.id));
       if (next) this.activeStationId.set(next.id);
     }
