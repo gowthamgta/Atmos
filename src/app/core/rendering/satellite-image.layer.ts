@@ -38,6 +38,7 @@ uniform int u_hasB;
 uniform float u_feather;   // > 0: fade the picture out over this much (map units) inside its own edge (a window over the main picture)
 uniform vec4 u_hole;       // mercator box of a window drawn over this picture, which this picture fades out inside
 uniform float u_holeFeather; // > 0 when there is a window to make room for
+uniform float u_soften;    // 0..1: how much of the colour is softened when magnified
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -83,7 +84,7 @@ vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnify
   if (!magnifying) return premultiplied(textureGrad(tex, uv, gx, gy)); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
   if (c.a <= 0.001 && around(tex, px, 1.0).a <= 0.001) return c; // clear ground, well away from any cloud
-  c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5);
+  c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, u_soften);
   c.a = clamp(mix(c.a, around(tex, px, 0.5).a, 0.6), 0.0, 1.0);
   c.rgb = min(c.rgb, vec3(c.a));
   return c;
@@ -135,6 +136,11 @@ export interface SatelliteLayerOptions {
   id?: string;
   /** Fraction of the picture's width over which its edge fades out (0: only the short fade of the main picture). */
   featherFraction?: number;
+  /**
+   * How much of the colour is softened when the picture is magnified (0..1, default 0.5): enough to hide a JPEG's blocks. A lossless
+   * window at the satellite's own pixel has none, and keeps more of its detail with less.
+   */
+  colourSoften?: number;
 }
 
 /** MapLibre custom layer drawing the Meteosat picture with smooth magnification and a GPU cross-fade between two pictures. */
@@ -155,12 +161,14 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private position = 0;
   private opacity = 0.9;
   private readonly featherFraction: number;
+  private readonly colourSoften: number;
   /** A closer window drawn over this picture: this picture makes room for it while it can be drawn. */
   private window: SatelliteImageLayer | null = null;
 
   constructor(options: SatelliteLayerOptions = {}) {
     this.id = options.id ?? 'satellite-image-layer';
     this.featherFraction = options.featherFraction ?? 0;
+    this.colourSoften = Math.min(1, Math.max(0, options.colourSoften ?? 0.5));
   }
 
   /** The pictures of the loop, oldest first (null: not there yet). Pictures no longer listed are released. */
@@ -242,7 +250,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather']) {
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather', 'u_soften']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.vao = gl.createVertexArray();
@@ -351,6 +359,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
+    gl.uniform1f(u['u_soften'], this.colourSoften);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
     gl.uniform1f(u['u_feather'], this.featherFraction > 0 ? this.featherFraction * Math.abs(mercatorUnitX(bounds.east) - mercatorUnitX(bounds.west)) : 0);
     const hole = this.window?.windowBox() ?? null;

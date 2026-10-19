@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { buildLumaGrid, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
-import { enhancePicture } from './satellite-enhance';
+import { HRV_SHARPEN_SIGMA, enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
 import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel } from './satellite.config';
@@ -51,7 +51,9 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     enhancePicture(src, width, height, kind, scale);
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
-    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
+    // the cloud texture is sharpened at the picture's own pixel: about one pixel, a little less on a phone's coarse picture
+    const sharpen = HRV_SHARPEN_SIGMA * Math.min(1.2, Math.max(0.8, scale));
+    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, sharpen);
     const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);
   } catch (e) {
