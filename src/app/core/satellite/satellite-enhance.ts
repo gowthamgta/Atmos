@@ -96,8 +96,8 @@ export function enhancePicture(px: Uint8ClampedArray, width: number, height: num
 }
 
 /** Unsharp mask of the HRV's brightness: the blur (picture pixels) it is measured against, how much of the difference is added back, */
-export const HRV_SHARPEN_SIGMA = 1;
-export const HRV_SHARPEN_AMOUNT = 0.6;
+export const HRV_SHARPEN_SIGMA = 2;
+export const HRV_SHARPEN_AMOUNT = 0.4;
 /** differences smaller than this (0-255) are noise and JPEG residue, not detail, and are left alone, */
 export const HRV_SHARPEN_THRESHOLD = 2;
 /** and the most a pixel moves, so a bright cloud edge gets crisper without a halo. */
@@ -107,7 +107,8 @@ export const HRV_SHARPEN_MAX_STEP = 24;
  * Brings out the texture of the clouds in an HRV picture (in place): the convective towers, cloud streets and the edges of anvils that the
  * satellite's 1.3 km pixel does see but that reprojection and magnification soften. An unsharp mask on the brightness (the mean of red and
  * green, the HRV itself), added equally to red and green so the colour does not shift; the blue (the infrared) and the empty edge are not
- * touched. `sigma` is in picture pixels, so it acts at the satellite's own scale, before the picture is resampled.
+ * touched. `sigma` is in picture pixels: about two, so it brings out the shapes of the clouds and not single pixels, which a magnified
+ * (HD) picture would show as squares; it acts before the picture is resampled.
  */
 export function sharpenHrv(
   px: Uint8ClampedArray,

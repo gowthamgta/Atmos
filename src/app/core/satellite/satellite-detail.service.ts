@@ -81,16 +81,6 @@ export class SatelliteDetailService {
       this.sat.loading();
       untracked(() => this.schedule());
     });
-    // a new look: the closer pictures are built again from their downloads
-    let look = this.sat.look();
-    effect(() => {
-      if (this.sat.look() === look) return;
-      look = this.sat.look();
-      untracked(() => {
-        this.prune(null);
-        this.schedule();
-      });
-    });
   }
 
   /** The map says where it is looking; called when it stops moving and when it changes size. */

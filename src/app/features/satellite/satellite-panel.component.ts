@@ -58,13 +58,6 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
             <button type="button" [class.on]="!sat.infraredOnly() && !night()" [attr.aria-pressed]="!sat.infraredOnly()" [disabled]="night()" (click)="sat.setInfrared(false)" [title]="night() ? nightHint : ''">Visible</button>
             <button type="button" [class.on]="sat.infraredOnly() || night()" [attr.aria-pressed]="sat.infraredOnly() || night()" [disabled]="night()" (click)="sat.setInfrared(true)" [title]="night() ? nightHint : 'Infrared: cloud-top temperature, day and night'">Infrared</button>
           </div>
-          @if (!sat.infraredOnly() && !night()) {
-            <div class="look" role="group" aria-label="Look of the visible picture">
-              <span class="look-label">Look</span>
-              <button type="button" [class.on]="sat.look() === 'natural'" [attr.aria-pressed]="sat.look() === 'natural'" (click)="sat.setLook('natural')" title="RGB composite colours, blended with the map: thin cloud and haze see-through, thick cloud solid">Natural</button>
-              <button type="button" [class.on]="sat.look() === 'classic'" [attr.aria-pressed]="sat.look() === 'classic'" (click)="sat.setLook('classic')" title="RGB composite colours, every cloud pixel drawn opaque">Classic</button>
-            </div>
-          }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
@@ -129,10 +122,6 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
     .channel button { flex: 1; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 600; cursor: pointer; }
     .channel.off button { opacity: 0.5; cursor: default; }
     .channel button.on { background: var(--accent); color: #fff; }
-    .look { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 11px; }
-    .look-label { color: var(--text-muted); margin-right: 2px; }
-    .look button { padding: 2px 9px; min-height: 24px; border: 1px solid var(--glass-border); border-radius: 12px; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 600; cursor: pointer; }
-    .look button.on { background: var(--surface-4); color: var(--text-primary); border-color: var(--accent-line); }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
     .ends { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }

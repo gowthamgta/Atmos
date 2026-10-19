@@ -203,13 +203,12 @@ describe('toOverlayPixels', () => {
   const src = new Uint8ClampedArray(width * srcHeight * 4);
   for (let y = 0; y < srcHeight; y++) for (let x = 0; x < width; x++) src.set([y * 30, 100, 50, 255], (y * width + x) * 4);
 
-  it('returns a picture of the requested size with values taken from the source', () => {
+  it('returns a picture of the requested size with values taken from the source: the bright end cloud, the dark end clear ground', () => {
     const out = toOverlayPixels(src, width, srcHeight, 'hrv', 10);
     expect(out.length).toBe(width * 10 * 4);
-    for (let r = 0; r < 10; r++) {
-      expect(out[r * width * 4]).toBeLessThanOrEqual(255);
-      expect(out[r * width * 4 + 3]).toBeGreaterThan(0);
-    }
+    for (let r = 0; r < 10; r++) expect(out[r * width * 4]).toBeLessThanOrEqual(255);
+    expect(out[9 * width * 4 + 3]).toBeGreaterThan(0); // the brightest rows: cloud
+    expect(out[3]).toBe(0); // the darkest: the ground, see-through to the map
   });
 
   it('blends between rows rather than copying, and keeps rows in order', () => {
