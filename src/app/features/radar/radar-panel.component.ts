@@ -82,13 +82,15 @@ const FRESHNESS_LABEL: Record<string, string> = {
         }
 
         <div class="stations full-only">
-          <div class="label">Radars online: {{ online() }} of {{ stations.length }}</div>
+          <div class="label">Radars online: {{ online() }} of {{ stations.length }} · tap to turn one off</div>
           <div class="chips">
             @for (st of stations; track st.id) {
-              <button type="button" class="chip" [class.active]="activeId() === st.id" [title]="st.fullName + ' · ' + stationStateLabel(st.id)" (click)="select(st.id)">
+              <button type="button" class="chip" [class.active]="activeId() === st.id" [class.off]="!shown(st.id)" [attr.aria-pressed]="shown(st.id)"
+                [title]="st.fullName + ' · ' + (shown(st.id) ? stationStateLabel(st.id) + ' · tap to turn off' : 'off · tap to turn on')" (click)="toggle(st.id)">
+                <span class="switch" aria-hidden="true"></span>
                 <span class="dot" [attr.data-state]="stationState(st.id)"></span>
                 {{ shortName(st.name) }}
-                <span class="chip-age">{{ stationAge(st.id) }}</span>
+                <span class="chip-age">{{ shown(st.id) ? stationAge(st.id) : 'off' }}</span>
               </button>
             }
           </div>
@@ -175,6 +177,11 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; min-height: 28px; border-radius: 14px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
     .chip:hover { background: var(--surface-4); }
     .chip.active { border-color: var(--accent-line); color: var(--text-primary); }
+    .chip.off { opacity: 0.55; border-color: transparent; text-decoration: line-through; text-decoration-color: var(--text-muted); }
+    .switch { position: relative; width: 20px; height: 11px; flex: none; border-radius: 6px; background: var(--accent-line, var(--neon-cyan)); transition: background 0.15s; }
+    .switch::after { content: ''; position: absolute; top: 1.5px; left: 10.5px; width: 8px; height: 8px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+    .chip.off .switch { background: var(--surface-4); }
+    .chip.off .switch::after { left: 1.5px; }
     .gap-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--warn, var(--text-muted)); }
     .chip-age { color: var(--text-muted); font-size: var(--fs-xs); }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
@@ -286,7 +293,7 @@ export class RadarPanelComponent {
 
   /** Minutes between the oldest and the newest scan of the radars that are showing, when it is long enough to move a cell (null otherwise). */
   protected readonly scanGap = computed(() => {
-    const ages = this.stations.map(st => this.radar.getStationAge(st.id)).filter((m): m is number => m !== null && m <= 180);
+    const ages = this.stations.filter(st => this.shown(st.id)).map(st => this.radar.getStationAge(st.id)).filter((m): m is number => m !== null && m <= 180);
     if (ages.length < 2) return null;
     const gap = Math.max(...ages) - Math.min(...ages);
     return gap >= 10 ? gap : null;
@@ -302,8 +309,15 @@ export class RadarPanelComponent {
     this.radar.setProduct(key);
   }
 
-  protected select(id: string): void {
-    this.radar.selectStation(id);
+  protected shown(id: string): boolean {
+    return this.radar.isStationShown(id);
+  }
+
+  /** A tap turns the radar off or on (the last one on stays on); turning one on also makes it the radar the status line is about. */
+  protected toggle(id: string): void {
+    const wasShown = this.shown(id);
+    this.radar.toggleStation(id);
+    if (!wasShown) this.radar.selectStation(id);
   }
 
   protected refresh(): void {

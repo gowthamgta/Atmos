@@ -83,6 +83,27 @@ export function pictureNotDue(nowMs: number, writtenMs: number, fetchedMs: numbe
   return age >= 0 && age < IMD_WRITE_GAP_MS - LOOK_LEAD_MS;
 }
 
+const HIDDEN_STATIONS_KEY = 'atmosiq.radar.hiddenStations';
+
+function readHiddenStations(): ReadonlySet<string> {
+  try {
+    const ids = JSON.parse(localStorage.getItem(HIDDEN_STATIONS_KEY) ?? '[]');
+    const known = IMD_RADAR_STATIONS.map(s => s.id);
+    const hidden = new Set((Array.isArray(ids) ? ids : []).filter((id): id is string => known.includes(id)));
+    return hidden.size < known.length ? hidden : new Set(); // never all of them off
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenStations(hidden: ReadonlySet<string>): void {
+  try {
+    localStorage.setItem(HIDDEN_STATIONS_KEY, JSON.stringify([...hidden]));
+  } catch {
+    // the choice is simply not remembered
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class RadarService implements OnDestroy {
   readonly stations = IMD_RADAR_STATIONS;
@@ -93,6 +114,12 @@ export class RadarService implements OnDestroy {
     const id = this.activeStationId();
     return this.stations.find(s => s.id === id) || this.stations[0];
   });
+
+  /**
+   * The radars turned off in the panel: left out of the mosaic, the loop and the readout. Their pictures are still fetched, so
+   * turning one back on shows it at once. Remembered between visits; at least one radar stays on.
+   */
+  readonly hiddenStations = signal<ReadonlySet<string>>(readHiddenStations());
 
   readonly activeProduct = signal<RadarProductKey>('caz');
   readonly transparentMode = signal<boolean>(true);
@@ -400,6 +427,26 @@ export class RadarService implements OnDestroy {
         }
       });
     }
+  }
+
+  isStationShown(stationId: string): boolean {
+    return !this.hiddenStations().has(stationId);
+  }
+
+  /** Turns one radar on or off (the last one on stays on), and rebuilds the mosaic and the loop without it. */
+  toggleStation(stationId: string): void {
+    const hidden = new Set(this.hiddenStations());
+    if (hidden.has(stationId)) hidden.delete(stationId);
+    else if (this.stations.some(s => s.id !== stationId && !hidden.has(s.id))) hidden.add(stationId);
+    else return;
+    this.hiddenStations.set(hidden);
+    writeHiddenStations(hidden);
+    if (hidden.has(this.activeStationId())) {
+      const next = this.stations.find(s => !hidden.has(s.id));
+      if (next) this.activeStationId.set(next.id);
+    }
+    this.clearHistory();
+    this.generateComposite();
   }
 
   setProduct(product: RadarProductKey): void {
@@ -849,7 +896,9 @@ export class RadarService implements OnDestroy {
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
 
   private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number): ProcessedRadarResult | null {
-    return composeRadarMosaic(this.stations, sources, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, this.activeProduct(), nowMs);
+    const hidden = this.hiddenStations();
+    const shown = [...sources].filter(([id]) => !hidden.has(id));
+    return composeRadarMosaic(this.stations, shown, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, this.activeProduct(), nowMs);
   }
 
   /** Rebuilds the live composite from the latest still of every radar. */
@@ -889,7 +938,7 @@ export class RadarService implements OnDestroy {
       const sources = (
         await Promise.all(
           this.stations.map(async station => {
-            if (this.unavailableStations().has(station.id)) return null;
+            if (this.unavailableStations().has(station.id) || this.hiddenStations().has(station.id)) return null;
             const file = animationFile(station.code, product);
             // The Pallikaranai X-band and Sriharikota animations are over 20 MB each, so the loop leaves them out (their live
             // stills are still used).
@@ -1115,6 +1164,7 @@ export class RadarService implements OnDestroy {
           // Find closest active station for name attribution
           let minD = Infinity;
           for (const s of this.stations) {
+            if (this.hiddenStations().has(s.id)) continue;
             const d = Math.hypot((lat - s.lat) * 111.32, (lng - s.lng) * 111.32 * Math.cos((s.lat * Math.PI) / 180));
             if (d < minD) {
               minD = d;
@@ -1131,7 +1181,7 @@ export class RadarService implements OnDestroy {
       }
 
       for (const [stationId, res] of all) {
-        if (res.isDisplayed === false || !res.fieldData) continue;
+        if (res.isDisplayed === false || !res.fieldData || this.hiddenStations().has(stationId)) continue;
         const { field, cropW, cropH, bounds, cx, cy, radius } = res.fieldData;
         const [southWest, northEast] = bounds;
         const minLat = southWest[0];
