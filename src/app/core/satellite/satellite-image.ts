@@ -13,7 +13,7 @@ import {
   TWILIGHT_BLEND_LO_DEG,
   sunElevationDeg,
 } from './satellite.config';
-import { fastBlurPlane, sharpenHrv } from './satellite-enhance';
+import { fastBlurPlane } from './satellite-enhance';
 
 const RAD = Math.PI / 180;
 
@@ -291,8 +291,8 @@ export const CLOUD_GAIN = 1.6;
 /** The brightness (0-255, the HRV's red and green) of cloud thick enough to hide the ground, and how far above the ground it is at least. */
 export const OPAQUE_CLOUD_LUM = 215;
 const OPAQUE_ABOVE_GROUND = 60;
-/** The blur (picture pixels) of the brightness that says how much of a pixel is cloud: about one, so the gold follows the cloud and not single pixels. */
-export const HRV_COVER_SMOOTH_SIGMA = 1;
+/** The blur (picture pixels) of the brightness that says how much of a pixel is cloud: about two, so the gold follows whole clouds and does not flicker from pixel to pixel. */
+export const HRV_COVER_SMOOTH_SIGMA = 2;
 
 /**
  * The colour of an HRV pixel as Windy draws its visible satellite. Its brightness: clear ground dark (groundTone), cloud brighter by how
@@ -697,8 +697,7 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
  * opacity (see shadePixel). `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
  * When `twilightIr` and `timeMs` are provided for an HRV frame near sunrise/sunset, pixels on the dark side of the solar
  * terminator smoothly transition to the infrared picture instead of going black.
- * `sharpenSigma` > 0 sharpens the clouds of an HRV picture (see sharpenHrv), in place in `src`, after the ground and the cloud are
- * measured on the picture as it came. An HRV picture is drawn as Windy's visible satellite (see windyVisibleInto).
+ * An HRV picture is drawn as Windy's visible satellite (see windyVisibleInto).
  */
 export function toOverlayPixels(
   src: Uint8ClampedArray,
@@ -709,7 +708,6 @@ export function toOverlayPixels(
   twilightIr?: Uint8ClampedArray,
   timeMs?: number,
   b = SATELLITE_BOUNDS,
-  sharpenSigma = 0,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
@@ -722,7 +720,6 @@ export function toOverlayPixels(
     for (let i = 0, p = 0; i < smooth.length; i++, p += 4) smooth[i] = (src[p] + src[p + 1]) / 2;
     fastBlurPlane(smooth, width, srcHeight, HRV_COVER_SMOOTH_SIGMA);
   }
-  if (kind === 'hrv' && sharpenSigma > 0) sharpenHrv(src, width, srcHeight, sharpenSigma);
   const irOverlay =
     twilightIr && kind === 'hrv' && timeMs !== undefined
       ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', outHeight, undefined, undefined, b)

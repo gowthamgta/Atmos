@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
-import { HRV_SHARPEN_MAX_STEP, blurPlane, enhancePicture, fastBlurPlane, gaussianKernel, sharpenHrv, smoothChannel, smoothGrey } from './satellite-enhance';
+import { blurPlane, denoiseHrv, enhancePicture, fastBlurPlane, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
 function lcg(seed: number): () => number {
@@ -180,53 +180,55 @@ describe('enhancePicture', () => {
   });
 });
 
-describe('sharpenHrv', () => {
-  const w = 32;
-  const h = 16;
-  /** A cloud edge: dark ground on the left, bright cloud on the right; the blue (infrared) is a constant. */
-  const edge = () => rgba(w, h, i => (i % w < w / 2 ? 60 : 160), i => (i % w < w / 2 ? 60 : 160), () => 90);
+describe('denoiseHrv', () => {
+  const w = 40;
+  const h = 30;
 
   it('leaves a flat picture as it is', () => {
-    const px = rgba(w, h, () => 120, () => 110, () => 80);
+    const px = rgba(w, h, () => 120, () => 118, () => 80);
     const copy = Uint8ClampedArray.from(px);
-    sharpenHrv(px, w, h);
+    denoiseHrv(px, w, h);
     expect(px).toEqual(copy);
   });
 
-  it('makes a cloud edge crisper: darker on the dark side, brighter on the bright side, and the same away from it', () => {
-    const px = edge();
-    sharpenHrv(px, w, h);
-    const row = 8 * w * 4;
-    expect(px[row + (w / 2 - 1) * 4]).toBeLessThan(60);
-    expect(px[row + (w / 2) * 4]).toBeGreaterThan(160);
-    expect(px[row + 2 * 4]).toBe(60);
-    expect(px[row + (w - 3) * 4]).toBe(160);
+  it('takes out pixel noise and a grid of repeated pixels, the mottle and the squares a magnified picture shows', () => {
+    const rand = lcg(11);
+    // 2 x 2 blocks of the same value (pixels the service repeats) plus noise
+    const block = Array.from({ length: (w / 2) * (h / 2) }, () => 100 + rand() * 60);
+    const v = (i: number) => block[Math.floor((i % w) / 2) + Math.floor(Math.floor(i / w) / 2) * (w / 2)] + (rand() - 0.5) * 10;
+    const values = Array.from({ length: w * h }, (_, i) => v(i));
+    const px = rgba(w, h, i => values[i], i => values[i], () => 70);
+    const rough = (a: Uint8ClampedArray) => {
+      let s = 0;
+      for (let y = 0; y < h; y++) for (let x = 1; x < w; x++) s += Math.abs(a[(y * w + x) * 4] - a[(y * w + x - 1) * 4]);
+      return s;
+    };
+    const before = rough(px);
+    denoiseHrv(px, w, h);
+    expect(rough(px)).toBeLessThan(before * 0.6);
   });
 
-  it('moves red and green together, so the colour does not shift, and leaves the blue (the infrared) and alpha alone', () => {
-    const px = edge();
+  it('keeps a cloud edge where it is, moves red and green together and leaves the blue (the infrared) and alpha alone', () => {
+    const px = rgba(w, h, i => (i % w < w / 2 ? 60 : 200), i => (i % w < w / 2 ? 58 : 198), () => 90);
     const copy = Uint8ClampedArray.from(px);
-    sharpenHrv(px, w, h);
+    denoiseHrv(px, w, h);
+    const row = 15 * w * 4;
+    expect(px[row + 5 * 4]).toBe(60); // far from the edge: as it was
+    expect(px[row + (w - 5) * 4]).toBe(200);
+    expect(px[row + (w / 2 - 1) * 4]).toBeLessThan(130); // the edge is softened, not moved
+    expect(px[row + (w / 2) * 4]).toBeGreaterThan(130);
     for (let i = 0; i < w * h; i++) {
-      expect(px[i * 4] - copy[i * 4]).toBe(px[i * 4 + 1] - copy[i * 4 + 1]);
+      expect(px[i * 4] - copy[i * 4]).toBeCloseTo(px[i * 4 + 1] - copy[i * 4 + 1], -0.5);
       expect(px[i * 4 + 2]).toBe(copy[i * 4 + 2]);
       expect(px[i * 4 + 3]).toBe(255);
     }
   });
 
-  it('never moves a pixel by more than the cap, so a bright edge has no halo', () => {
-    const px = rgba(w, h, i => (i % w < w / 2 ? 0 + 10 : 250), i => (i % w < w / 2 ? 10 : 250), () => 5);
-    const copy = Uint8ClampedArray.from(px);
-    sharpenHrv(px, w, h, 1, 3);
-    for (let i = 0; i < w * h; i++) expect(Math.abs(px[i * 4] - copy[i * 4])).toBeLessThanOrEqual(HRV_SHARPEN_MAX_STEP);
-  });
-
-  it('ignores differences below the threshold (noise and JPEG residue) and keeps the empty edge empty', () => {
-    const rand = lcg(3);
-    const px = rgba(w, h, () => 100 + Math.round(rand()), () => 100, () => 60);
+  it('keeps the empty edge empty and does not darken the picture next to it', () => {
+    const px = rgba(w, h, () => 150, () => 150, () => 60);
     px.fill(0, 0, w * 4); // the first row is the empty edge of the picture
-    const copy = Uint8ClampedArray.from(px);
-    sharpenHrv(px, w, h);
-    expect(px).toEqual(copy);
+    denoiseHrv(px, w, h);
+    for (let x = 0; x < w; x++) expect(px[x * 4 + 3]).toBe(0);
+    expect(px[(1 * w + 10) * 4]).toBe(150);
   });
 });

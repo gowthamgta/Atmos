@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { buildLumaGrid, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
-import { HRV_SHARPEN_SIGMA, enhancePicture } from './satellite-enhance';
+import { HRV_DENOISE_SIGMA, denoiseHrv, enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
 import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel } from './satellite.config';
@@ -35,7 +35,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     sctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     const src = sctx.getImageData(0, 0, width, height).data;
-    if (!lossless) deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
+    if (!lossless) deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams
     const lumaGrid = bounds ? undefined : buildLumaGrid(src, width, height, kind); // the hover readout reads the whole-India picture
     let irPixels: Uint8ClampedArray | undefined;
     if (twilightIr && kind === 'hrv' && timeMs !== undefined) {
@@ -51,9 +51,9 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     enhancePicture(src, width, height, kind, scale);
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
-    // the shapes of the clouds are sharpened at about two of the picture's pixels, a little less on a phone's coarse picture
-    const sharpen = HRV_SHARPEN_SIGMA * Math.min(1.2, Math.max(0.8, scale));
-    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, sharpen);
+    // the HRV's noise goes (about a pixel; a little less on a phone's coarse picture, a little more on a closer window's)
+    if (kind === 'hrv') denoiseHrv(src, width, height, HRV_DENOISE_SIGMA * Math.min(1.3, Math.max(0.7, scale)));
+    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
     const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);
   } catch (e) {

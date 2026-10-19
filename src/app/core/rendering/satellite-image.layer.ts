@@ -13,9 +13,11 @@ void main() {
 
 /**
  * The satellite picture is far coarser than a zoomed-in screen (one satellite pixel is 1-3 km), and the browser's own
- * bilinear magnification turns that into square, blobby patches. Here the picture is magnified with a bicubic
- * (Catmull-Rom) filter, with a small softening of colour and of the cloud's edge (opacity), so the picture's pixels and the
- * staircase of a cloud's boundary do not show. (AMD FidelityFX CAS sharpening was tried and removed: it added almost nothing
+ * bilinear magnification turns that into square, blobby patches. Here the picture is magnified with a cubic B-spline, with a
+ * small softening of colour and of the cloud's edge (opacity), so the picture's pixels and the staircase of a cloud's boundary do not
+ * show. (A Catmull-Rom filter, used before, passes exactly through every picture pixel: zoomed in to a district, 20 to 30 screen pixels
+ * to each of the satellite's, that left a grid of soft squares. The B-spline's weights are never negative, so it has no grid, no ringing
+ * and no halo; it costs the same 16 reads.) (AMD FidelityFX CAS sharpening was tried and removed: it added almost nothing
  * at this magnification.)
  *
  * Pictures are stored as straight RGBA and premultiplied in the shader (in float), so cloud edges (transparent land and sea) blend
@@ -41,10 +43,12 @@ uniform float u_holeFeather; // > 0 when there is a window to make room for
 in vec2 v_merc;
 out vec4 outColor;
 
+// cubic B-spline weights of the four pixels around a point at fraction t: smooth, never negative, adding up to one
 vec4 weights(float t) {
   float t2 = t * t;
   float t3 = t2 * t;
-  return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
+  float s = 1.0 - t;
+  return vec4(s * s * s, 3.0 * t3 - 6.0 * t2 + 4.0, -3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0, t3) / 6.0;
 }
 
 // The pictures are stored with straight (not premultiplied) colour, so that faint cloud keeps its exact colour; every filter below
