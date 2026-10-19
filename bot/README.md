@@ -4,7 +4,7 @@ Every ten minutes (`.github/workflows/nowcast.yml`) the bot opens the live radar
 (`https://atmosradar.netlify.app/#l=radar&…&bot=1`) in a headless browser. In bot mode the app hides its panels and
 publishes the storm cells it finds on the live IMD radar (strength, place, motion from the last hour's loop). When a cell
 of **45 dBZ or more** is over a district of **Tamil Nadu or Puducherry**, the bot posts the radar picture with a short
-alert to the Telegram channel **@tnweatheralerts** and to X (each once its keys are set):
+alert to the Telegram channel **@tnweatheralerts**, a Discord channel and X (each once its keys are set):
 
 ```
 ⛈️ Severe thunderstorm over Kallakurichi, Puducherry
@@ -13,6 +13,12 @@ Heavy rain & lightning likely in and near these areas in the next hour.
 IMD radar 15:40 IST · automated nowcast, not an official warning
 #TamilNaduRains #TNWeather
 ```
+
+**Where**, in the alert's words: every district a storm covers (sampled over its whole size, so a storm on a border names
+both sides); a storm over the sea within 25 km of the coast is *off the Cuddalore coast*; a storm just across a state border
+is *near Krishnagiri*; and the districts it reaches in the next 30-60 minutes along its measured motion are named after the
+arrow (*→ Chennai within the hour*). A storm still outside the region but heading into it within the hour is alerted too
+(*approaching Chennai*). A storm over Bengaluru, say, is not: it is not on the border and not coming in.
 
 It does not repeat itself: after a post it keeps quiet for an hour, unless the storms get clearly stronger (+5 dBZ) or reach
 new districts. It never posts about a radar picture older than 40 minutes, or the same picture twice.
@@ -38,6 +44,19 @@ The thresholds, the region, the cooldown and the wording are at the top of `lib.
 4. **Go live.** *Settings → Secrets and variables → Actions → Variables*, add `NOWCAST_LIVE` = `true`.
 
 Another channel: set the variable `TELEGRAM_CHAT_ID` (for example `@otherchannel`, or the numeric id of a private channel).
+
+## Turning it on: Discord (free)
+
+1. **A webhook.** In your server: *Server Settings → Integrations → Webhooks → New Webhook*, choose the channel the alerts
+   should go to, name it (for example *TN Weather Alerts*), and *Copy Webhook URL*.
+2. **The URL as a secret.** In GitHub, a new repository secret `DISCORD_WEBHOOK_URL` with that URL. Anyone with the URL can
+   post in that channel, so it is a secret like a token.
+3. **Try it** as for Telegram (*Run workflow*, dry_run off, force on), and **go live** with `NOWCAST_LIVE` = `true` (one
+   switch for every outlet).
+
+Each alert is an embed: the headline, the details, the radar picture, the radar's time, a colour bar by strength (amber
+heavy rain, orange strong, red severe) and the link to the live radar. Nobody is pinged; to ping a role, say so and the bot
+can mention it.
 
 ## Turning it on: X
 

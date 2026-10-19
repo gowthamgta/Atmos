@@ -1,7 +1,7 @@
 name: nowcast
 
 # The nowcast bot (bot/README.md): every ten minutes it opens the live radar of the app in a headless browser, and when there are storms
-# over Tamil Nadu or Puducherry posts the radar picture with a short alert to the Telegram channel and to X (each once its keys are set
+# over Tamil Nadu or Puducherry posts the radar picture with a short alert to the Telegram channel, the Discord server and X (each once its keys are set
 # as repository secrets). Until then, and until the variable NOWCAST_LIVE is "true", it only dry-runs: each run's picture and the post it
 # would make are kept as the run's artifact, to look at first.
 on:
@@ -51,6 +51,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID || '@tnweatheralerts' }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}

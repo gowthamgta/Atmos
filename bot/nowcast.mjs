@@ -1,5 +1,5 @@
 // The nowcast bot: opens the live radar of AtmosIQ in a headless browser, reads the storm cells the app finds on it, and when there are
-// storms in Tamil Nadu or Puducherry posts the radar picture with a short alert to Telegram and to X (each when its keys are set). Run
+// storms in Tamil Nadu or Puducherry posts the radar picture with a short alert to Telegram, Discord and X (each when its keys are set). Run
 // every ten minutes by .github/workflows/nowcast.yml; see README.md in this folder.
 //
 // Environment:
@@ -9,12 +9,15 @@
 //   STATE_FILE     where the last post is remembered (default bot/state/state.json; kept between runs by the workflow's cache)
 //   INCLUDE_LINK   "1": add the app's address to the post (X charges a post with a link more)
 //   TELEGRAM_BOT_TOKEN  the Telegram bot's token (from @BotFather); TELEGRAM_CHAT_ID the channel (default @tnweatheralerts)
+//   DISCORD_WEBHOOK_URL a Discord channel's webhook (Server settings → Integrations → Webhooks)
 //   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET   the X app's keys and the account's access token (OAuth 1.0a)
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { TELEGRAM_CHAT, alertCells, altText, composePost, composeTelegram, decide, regionDistricts, sendTelegram, stateAfterPost } from './lib.mjs';
+import {
+  TELEGRAM_CHAT, alertCells, altText, composePost, composeTelegram, decide, discordPayload, regionDistricts, sendDiscord, sendTelegram, stateAfterPost,
+} from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SITE = (process.env.SITE_URL || 'https://atmosradar.netlify.app').replace(/\/$/, '');
@@ -24,7 +27,8 @@ const X_KEYS = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_SECRET'
 const haveX = X_KEYS.every(k => process.env[k]);
 const haveTelegram = Boolean(process.env.TELEGRAM_BOT_TOKEN);
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || TELEGRAM_CHAT;
-const haveKeys = haveX || haveTelegram;
+const haveDiscord = Boolean(process.env.DISCORD_WEBHOOK_URL);
+const haveKeys = haveX || haveTelegram || haveDiscord;
 const DRY_RUN = process.env.DRY_RUN === '1' || !haveKeys;
 const FORCE = process.env.FORCE === '1';
 /** Tamil Nadu and Puducherry fill the picture at this view. */
@@ -92,26 +96,29 @@ async function postToX(text, png, alt) {
 
 async function main() {
   await mkdir(OUT, { recursive: true });
-  const outlets = [haveTelegram && `Telegram ${TELEGRAM_CHAT_ID}`, haveX && 'X'].filter(Boolean).join(' and ');
+  const outlets = [haveTelegram && `Telegram ${TELEGRAM_CHAT_ID}`, haveDiscord && 'Discord', haveX && 'X'].filter(Boolean).join(', ');
   log(DRY_RUN ? `dry run${haveKeys ? '' : ' (no keys set)'}: nothing will be posted` : `live: storms will be posted to ${outlets}`);
-  const districts = regionDistricts(JSON.parse(await readFile(join(HERE, '..', 'public', 'data', 'south-india-districts.geojson'), 'utf8')));
+  const boundaries = JSON.parse(await readFile(join(HERE, '..', 'public', 'data', 'south-india-districts.geojson'), 'utf8'));
+  const districts = regionDistricts(boundaries);
+  const land = regionDistricts(boundaries, [...new Set(boundaries.features.map(f => f.properties?.state).filter(Boolean))]); // every state: sea or land
   const state = await readJson(STATE_FILE, {});
   const now = Date.now();
 
   const { snapshot, png } = await capture();
   await writeFile(join(OUT, 'radar.png'), png);
-  const cells = alertCells(snapshot, districts);
+  const cells = alertCells(snapshot, districts, land);
   let decision = decide(cells, snapshot, state, now);
   if (FORCE && !decision.post) decision = { post: true, reason: `forced (would not post: ${decision.reason})` };
   log(decision.post ? 'post:' : 'no post:', decision.reason);
 
   // a forced run with no storm still writes a sample post, from the strongest cell anywhere on the radar
-  const shown = cells.length > 0 ? cells : snapshot.cells.slice().sort((a, b) => b.dbz - a.dbz).slice(0, 1).map(c => ({ ...c, district: { name: 'Tamil Nadu' } }));
+  const shown = cells.length > 0 ? cells : snapshot.cells.slice().sort((a, b) => b.dbz - a.dbz).slice(0, 1).map(c => ({ ...c, places: { over: ['Tamil Nadu (test post)'], near: null, towards: [] } }));
   const text = shown.length > 0 ? composePost(shown, snapshot.radarTimeMs, { link: process.env.INCLUDE_LINK === '1' ? SITE.replace(/^https:\/\//, '') : '' }) : '';
   const alt = shown.length > 0 ? altText(shown, snapshot.radarTimeMs) : '';
   const caption = shown.length > 0 ? composeTelegram(shown, snapshot.radarTimeMs, SITE) : '';
+  const discord = shown.length > 0 ? discordPayload(shown, snapshot.radarTimeMs, SITE) : null;
   await writeFile(join(OUT, 'decision.json'), JSON.stringify({ decision, dryRun: DRY_RUN, radarTimeMs: snapshot.radarTimeMs, alertCells: cells, allCells: snapshot.cells, state, text, alt }, null, 2));
-  if (text) await writeFile(join(OUT, 'post.txt'), `--- X ---\n${text}\n\n--- alt text ---\n${alt}\n\n--- Telegram (${TELEGRAM_CHAT_ID}) ---\n${caption}\n`);
+  if (text) await writeFile(join(OUT, 'post.txt'), `--- X ---\n${text}\n\n--- alt text ---\n${alt}\n\n--- Telegram (${TELEGRAM_CHAT_ID}) ---\n${caption}\n\n--- Discord ---\n${JSON.stringify(discord, null, 2)}\n`);
 
   if (!decision.post || !text) return;
   if (DRY_RUN) {
@@ -127,6 +134,16 @@ async function main() {
       posted = true;
     } catch (e) {
       log(`Telegram post to ${TELEGRAM_CHAT_ID} failed: ${e.message}`);
+      process.exitCode = 1;
+    }
+  }
+  if (haveDiscord) {
+    try {
+      const id = await sendDiscord(process.env.DISCORD_WEBHOOK_URL, png, discord);
+      log(`posted to Discord (message ${id})`);
+      posted = true;
+    } catch (e) {
+      log(`Discord post failed: ${e.message}`);
       process.exitCode = 1;
     }
   }

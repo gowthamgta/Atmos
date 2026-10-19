@@ -7,6 +7,7 @@ import {
   CONE_MINUTES,
   MAX_STORM_SPEED_KMH,
   StormCell,
+  cellPlace,
   detectCells,
   displacementToMotion,
   estimateMotion,
@@ -130,8 +131,7 @@ export class StormTracksService {
     const found: NowcastCell[] = [];
     let usedWind = false;
     for (const c of cells) {
-      const lon = grid.west + c.x * grid.step;
-      const lat = grid.north - c.y * grid.step;
+      const { lat, lon, radiusKm } = cellPlace(c, grid);
       let m = motion?.(c, lat) ?? null;
       if (!m) {
         const wind = await this.steering.at(lat, lon, current.timeMs);
@@ -143,7 +143,7 @@ export class StormTracksService {
       }
       features.push(...this.stormFeatures(c, lat, lon, m, grid.step));
       found.push({
-        lat, lon, dbz: Math.round(12 + c.peak * 9.6), radiusKm: Math.max(3, c.radius * grid.step * 111.2),
+        lat, lon, dbz: Math.round(12 + c.peak * 9.6), radiusKm,
         speedKmh: m ? Math.round(m.speedKmh) : null, towardsDeg: m ? Math.round(m.towardsDeg) : null,
       });
     }

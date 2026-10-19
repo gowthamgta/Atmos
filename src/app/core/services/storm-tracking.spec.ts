@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONE_SPREAD,
+  cellPlace,
   detectCells,
   displacementToMotion,
   estimateMotion,
@@ -104,5 +105,55 @@ describe('motion and geometry', () => {
     expect(out.length).toBe(16);
     expect(Math.max(...out)).toBe(4);
     expect(out.filter(v => v > 0).length).toBe(1);
+  });
+});
+
+describe('from the radar picture to a place on the map (what the alerts name)', () => {
+  /** A radar mosaic like the app's (rows evenly spaced in latitude, north first) with a storm of `peak` centred at lat, lon. */
+  function mosaic(storms: { lat: number; lon: number; peak: number; km: number }[]) {
+    const south = 7.5, west = 75.5, north = 15.5, east = 82.5, width = 1400, height = 1600;
+    const field = new Float32Array(width * height);
+    for (let r = 0; r < height; r++) {
+      const lat = north - (r / (height - 1)) * (north - south);
+      for (let c = 0; c < width; c++) {
+        const lon = west + (c / (width - 1)) * (east - west);
+        let v = 0;
+        for (const s of storms) {
+          const dy = (lat - s.lat) * 111.2;
+          const dx = (lon - s.lon) * 111.2 * Math.cos((s.lat * Math.PI) / 180);
+          v = Math.max(v, s.peak * Math.exp(-(dx * dx + dy * dy) / (2 * s.km * s.km)));
+        }
+        field[r * width + c] = v;
+      }
+    }
+    return { field, width, height, south, west, north, east };
+  }
+  const grid = trackingGrid(7, 75, 16, 83);
+  const km = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) =>
+    Math.hypot((a.lat - b.lat) * 111.2, (a.lon - b.lon) * 111.2 * Math.cos((a.lat * Math.PI) / 180));
+
+  it('puts a storm where it is: over Kallakurichi and over Chennai, within 2 km', () => {
+    const kallakurichi = { lat: 11.738, lon: 78.962 };
+    const chennai = { lat: 13.083, lon: 80.27 };
+    const cells = detectCells(sampleToGrid(mosaic([{ ...kallakurichi, peak: 4.5, km: 8 }, { ...chennai, peak: 3.8, km: 6 }]), grid), grid.nx, grid.ny);
+    expect(cells.length).toBe(2);
+    const [first, second] = cells.map(c => cellPlace(c, grid));
+    expect(km(first, kallakurichi)).toBeLessThan(2); // the stronger first
+    expect(km(second, chennai)).toBeLessThan(2);
+    expect(first.radiusKm).toBeGreaterThan(5);
+  });
+
+  it('finds the motion of a storm that moved 10 km north-east in half an hour: about 20 km/h towards NE', () => {
+    const start = { lat: 11.5, lon: 79.2 };
+    const end = { lat: start.lat + 7.07 / 111.2, lon: start.lon + 7.07 / (111.2 * Math.cos((start.lat * Math.PI) / 180)) };
+    const prev = sampleToGrid(mosaic([{ ...start, peak: 4, km: 9 }]), grid);
+    const curr = sampleToGrid(mosaic([{ ...end, peak: 4, km: 9 }]), grid);
+    const cell = detectCells(curr, grid.nx, grid.ny)[0];
+    const m = motionAt(cell.x, cell.y, estimateMotion(prev, curr, grid.nx, grid.ny, 6));
+    expect(m).not.toBeNull();
+    const motion = displacementToMotion(m!.dx, m!.dy, 30, grid, cellPlace(cell, grid).lat);
+    expect(motion.speedKmh).toBeGreaterThan(14);
+    expect(motion.speedKmh).toBeLessThan(26);
+    expect(Math.abs(motion.towardsDeg - 45)).toBeLessThan(20);
   });
 });

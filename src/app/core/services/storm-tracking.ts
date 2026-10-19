@@ -223,6 +223,11 @@ export function motionAt(x: number, y: number, vectors: readonly MotionVector[],
   return sw > 0 ? { dx: sx / sw, dy: sy / sw } : null;
 }
 
+/** Where a cell is: its centre (lat, lon in degrees; `x`, `y` are already cell centres, see detectCells) and its radius in km. */
+export function cellPlace(c: StormCell, grid: TrackingGrid): { lat: number; lon: number; radiusKm: number } {
+  return { lat: grid.north - c.y * grid.step, lon: grid.west + c.x * grid.step, radiusKm: Math.max(3, c.radius * grid.step * KM_PER_DEG) };
+}
+
 /** Grid displacement over `minutes` to speed (km/h) and the compass direction the storm is moving towards. */
 export function displacementToMotion(dx: number, dy: number, minutes: number, grid: TrackingGrid, lat: number): { speedKmh: number; towardsDeg: number } {
   const eastKm = dx * grid.step * KM_PER_DEG * Math.cos((lat * Math.PI) / 180);
