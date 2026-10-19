@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { buildLumaGrid, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
-import { HRV_DENOISE_SIGMA, denoiseHrv, enhancePicture } from './satellite-enhance';
+import { HRV_DENOISE_SIGMA, HRV_WINDOW_DENOISE_SIGMA, denoiseHrv, enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
 import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel } from './satellite.config';
@@ -51,8 +51,9 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     enhancePicture(src, width, height, kind, scale);
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
-    // the HRV's noise goes (about a pixel; a little less on a phone's coarse picture, a little more on a closer window's)
-    if (kind === 'hrv') denoiseHrv(src, width, height, HRV_DENOISE_SIGMA * Math.min(1.3, Math.max(0.7, scale)));
+    // the HRV's noise goes: lightly on the whole-India picture (the cumulus keep their texture), more on a closer window (its repeated pixels)
+    const denoise = bounds ? HRV_WINDOW_DENOISE_SIGMA : HRV_DENOISE_SIGMA;
+    if (kind === 'hrv') denoiseHrv(src, width, height, denoise * Math.min(1.3, Math.max(0.7, scale)));
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
     const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);

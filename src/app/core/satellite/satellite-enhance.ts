@@ -144,6 +144,11 @@ export function enhancePicture(px: Uint8ClampedArray, width: number, height: num
  * the map, all of these show as a mottle and a grid of soft squares. The clouds' own shapes are several pixels across and stay.
  */
 export const HRV_DENOISE_SIGMA = 0.6;
+/**
+ * The same for a closer (HD) window, magnified far more on the map and asked for finer than the satellite sees, so its pixels come in
+ * repeated pairs: about one pixel, which takes that grid out.
+ */
+export const HRV_WINDOW_DENOISE_SIGMA = 0.9;
 
 /**
  * Takes the noise out of the HRV's brightness (red and green) in place: a Gaussian blur of their mean, each channel keeping its own

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
-import { blurPlane, denoiseHrv, enhancePicture, fastBlurPlane, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
+import { HRV_DENOISE_SIGMA, HRV_WINDOW_DENOISE_SIGMA, blurPlane, denoiseHrv, enhancePicture, fastBlurPlane, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
 function lcg(seed: number): () => number {
@@ -191,7 +191,7 @@ describe('denoiseHrv', () => {
     expect(px).toEqual(copy);
   });
 
-  it('takes out pixel noise and a grid of repeated pixels, the mottle and the squares a magnified picture shows', () => {
+  it('takes out the grid of repeated pixels and the noise of a closer (HD) window, the mottle and the squares a magnified picture shows', () => {
     const rand = lcg(11);
     // 2 x 2 blocks of the same value (pixels the service repeats) plus noise
     const block = Array.from({ length: (w / 2) * (h / 2) }, () => 100 + rand() * 60);
@@ -204,8 +204,13 @@ describe('denoiseHrv', () => {
       return s;
     };
     const before = rough(px);
-    denoiseHrv(px, w, h);
+    const light = Uint8ClampedArray.from(px);
+    denoiseHrv(px, w, h, HRV_WINDOW_DENOISE_SIGMA);
     expect(rough(px)).toBeLessThan(before * 0.6);
+    // the whole-India picture is denoised more lightly, so its cumulus keep their texture: less taken out, but still some
+    denoiseHrv(light, w, h, HRV_DENOISE_SIGMA);
+    expect(rough(light)).toBeLessThan(before * 0.75);
+    expect(rough(light)).toBeGreaterThan(rough(px));
   });
 
   it('keeps a cloud edge where it is, moves red and green together and leaves the blue (the infrared) and alpha alone', () => {
