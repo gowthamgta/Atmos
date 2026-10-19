@@ -145,3 +145,29 @@ export function stateAfterPost(cells, snapshot, nowMs) {
     lastRadarMs: snapshot.radarTimeMs,
   };
 }
+
+/** The Telegram channel the alerts go to (the bot must be one of its admins, allowed to post). */
+export const TELEGRAM_CHAT = '@tnweatheralerts';
+
+/**
+ * The Telegram caption (at most 1024 characters): the same alert as on X, and the live radar's address, which costs nothing there.
+ */
+export function composeTelegram(cells, radarTimeMs, link = 'https://atmosradar.netlify.app') {
+  return `${composePost(cells, radarTimeMs)}\n\nLive radar: ${link}`.slice(0, 1024);
+}
+
+/**
+ * Sends the radar picture with its caption to a Telegram chat through the Bot API (`fetchFn` is the global fetch; the tests give their
+ * own). Returns the message id; throws with Telegram's own explanation when it refuses (a wrong token, a bot that is not an admin of the
+ * channel...).
+ */
+export async function sendTelegram(token, chatId, png, caption, fetchFn = fetch) {
+  const form = new FormData();
+  form.set('chat_id', chatId);
+  form.set('caption', caption);
+  form.set('photo', new Blob([png], { type: 'image/png' }), 'radar.png');
+  const res = await fetchFn(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) throw new Error(`Telegram refused the post: ${body.description ?? res.status}`);
+  return body.result.message_id;
+}

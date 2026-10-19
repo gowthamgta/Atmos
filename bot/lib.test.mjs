@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
-  ALERT_DBZ, COOLDOWN_MIN, alertCells, altText, compass, composePost, decide, districtAt, regionDistricts, stateAfterPost, xLength,
+  ALERT_DBZ, COOLDOWN_MIN, TELEGRAM_CHAT, alertCells, altText, compass, composePost, composeTelegram, decide, districtAt, regionDistricts,
+  sendTelegram, stateAfterPost, xLength,
 } from './lib.mjs';
 
 const districts = regionDistricts(JSON.parse(readFileSync(new URL('../public/data/south-india-districts.geojson', import.meta.url), 'utf8')));
@@ -57,4 +58,32 @@ test('writes a post that fits X, says where, how strong, where it goes and when,
   assert.match(altText(alertCells(s, districts), s.radarTimeMs), /IMD Doppler radar/);
   assert.equal(compass(350), 'N');
   assert.equal(compass(225), 'SW');
+});
+
+test('writes the Telegram caption: the same alert, with the live radar link, within Telegram\'s 1024 characters', () => {
+  const s = snap([cell(11.74, 78.96, 51, 15, 90)]);
+  const caption = composeTelegram(alertCells(s, districts), s.radarTimeMs);
+  assert.match(caption, /Strong thunderstorms over Kallakurichi/);
+  assert.match(caption, /moving E ~15 km\/h/);
+  assert.match(caption, /Live radar: https:\/\/atmosradar\.netlify\.app$/);
+  assert.ok(caption.length <= 1024);
+  assert.equal(TELEGRAM_CHAT, '@tnweatheralerts');
+});
+
+test('sends the picture and caption to the channel through the Bot API, and explains a refusal', async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  let seen = null;
+  const ok = async (url, init) => {
+    seen = { url, form: init.body };
+    return { ok: true, json: async () => ({ ok: true, result: { message_id: 42 } }) };
+  };
+  assert.equal(await sendTelegram('TOKEN', '@tnweatheralerts', png, 'storm!', ok), 42);
+  assert.equal(seen.url, 'https://api.telegram.org/botTOKEN/sendPhoto');
+  assert.equal(seen.form.get('chat_id'), '@tnweatheralerts');
+  assert.equal(seen.form.get('caption'), 'storm!');
+  const photo = seen.form.get('photo');
+  assert.equal(photo.type, 'image/png');
+  assert.deepEqual(Buffer.from(await photo.arrayBuffer()), png);
+  const refused = async () => ({ ok: false, status: 403, json: async () => ({ ok: false, description: 'Forbidden: bot is not a member of the channel chat' }) });
+  await assert.rejects(sendTelegram('TOKEN', '@tnweatheralerts', png, 'x', refused), /not a member of the channel/);
 });
