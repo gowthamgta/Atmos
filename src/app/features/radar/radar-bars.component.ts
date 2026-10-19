@@ -4,6 +4,7 @@ import { RADAR_COLOR_STOPS } from '../../core/services/radar-field';
 import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
 import { RadarService } from '../../core/services/radar.service';
 import { IconComponent } from '../../shared/icon.component';
+import { followDrag, fractionAlong } from '../../shared/pointer-drag';
 
 /** "14:45" (IST) for a time in epoch ms. */
 export function istClock(ms: number): string {
@@ -29,7 +30,7 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
 /**
  * The bar along the bottom while the radar is on, as the forecast layers have: a play button, then the time as a strip of pictures, the last hour
  * of radar to the left of "Now" and the nowcast (the radar slid ahead along the motion of the rain) to the right, in stripes so a guess is never
- * mistaken for what the radar saw; and under it the colour bar. Drag the amber line, click the strip or use the arrow keys.
+ * mistaken for what the radar saw; and under it the colour bar. Drag the amber line or its time badge, click the strip or use the arrow keys.
  */
 @Component({
   selector: 'app-radar-bars',
@@ -43,7 +44,7 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
         </button>
 
         <div class="track">
-          <div class="inner">
+          <div class="inner" #inner>
             <div class="zone observed" [style.width.%]="nowPct()" aria-hidden="true"><span>{{ notches().length < 2 ? '' : 'Observed' }}</span></div>
             @if (ahead() > 0) {
               <div class="zone guess" [style.left.%]="nowPct()" [style.width.%]="100 - nowPct()" aria-hidden="true"><span>Nowcast</span></div>
@@ -51,7 +52,9 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
             @for (n of notches(); track n.i) {
               <span class="notch" [class.now]="n.now" [class.guess]="n.guess" [class.odd]="n.odd" [class.third]="n.third" [style.left.%]="n.pct" aria-hidden="true"><span class="lbl">{{ n.label }}</span></span>
             }
-            <div class="playhead" [class.guess]="isGuess()" [style.left.%]="headPct()" aria-hidden="true"><span class="tip">{{ tip() }}</span></div>
+            <div class="playhead" [class.guess]="isGuess()" [style.left.%]="headPct()" aria-hidden="true">
+              <span class="tip" (pointerdown)="beginPlayheadDrag($event, inner)">{{ tip() }}</span>
+            </div>
             @if (notches().length > 1) {
               <input type="range" aria-label="Radar time" [attr.aria-valuetext]="tipFull()" min="0" [max]="radar.cursorMax()" step="1" [value]="radar.cursor()" (input)="onScrub($event)" />
             }
@@ -98,7 +101,8 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
     @container (max-width: 560px) { .notch.odd:not(.now) .lbl { display: none; } }
     @container (max-width: 330px) { .notch.third:not(.now) .lbl { display: none; } }
     .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 2; }
-    .playhead .tip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 4px 12px 3px; border-radius: 9px 9px 0 0; background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); }
+    .playhead .tip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 4px 12px 3px; border-radius: 9px 9px 0 0; background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
+    .playhead .tip:active { cursor: grabbing; }
     .playhead.guess .tip { background: repeating-linear-gradient(135deg, var(--accent) 0 8px, color-mix(in srgb, var(--accent) 80%, white) 8px 16px); }
     input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; touch-action: none; z-index: 3; }
     .track:has(input:focus-visible) { outline: 2px solid var(--accent-strong); outline-offset: -2px; }
@@ -196,6 +200,17 @@ export class RadarBarsComponent {
   protected onScrub(event: Event): void {
     this.radar.pause();
     this.radar.setCursor(Number((event.target as HTMLInputElement).value));
+  }
+
+  /** Drags the time badge on the amber line along the strip, as on the forecast bar: it snaps to the pictures, as the strip does. */
+  protected beginPlayheadDrag(event: PointerEvent, inner: HTMLElement): void {
+    const max = this.radar.cursorMax();
+    if (max < 1) return;
+    this.radar.pause();
+    followDrag(event, e => {
+      const cursor = Math.round(fractionAlong(inner, e.clientX) * this.radar.cursorMax());
+      if (cursor !== this.radar.cursor()) this.radar.setCursor(cursor);
+    });
   }
 
   protected stepBy(delta: number): void {
