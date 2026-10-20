@@ -89,7 +89,10 @@ export class SatelliteService {
   private checkTimer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
   private loadToken = 0;
-  /** The newest picture time the service has reported so far (0: not asked yet). */
+  /**
+   * The newest picture time the service last reported (0: not asked yet, or it did not answer). The loop ends there, even when that is
+   * older than the clock's guess: EUMETView sometimes runs hours behind, and asks for pictures it does not have yet only get 502s.
+   */
   private knownNewest = 0;
   /** The picture kept from last time, shown until the fresh newest one is built. */
   private preview: SatelliteFrame | null = null;
@@ -147,18 +150,16 @@ export class SatelliteService {
     if (this.hoverReading() !== null) this.hoverReading.set(null);
   }
 
-  /** Newest picture time the service has, or a guess from the clock when it cannot be asked. */
-  private async newestTime(nowMs: number): Promise<number> {
-    const fallback = latestFrameTime(nowMs);
+  /** Newest picture time the service has, or null when it cannot be asked (or gives a time in the future or many hours old). */
+  private async newestTime(nowMs: number): Promise<number | null> {
     try {
       // both layers are updated together, so either one says how recent the data is
-      const res = await fetch(satelliteCapabilitiesUrl(productForTime(fallback)));
-      if (!res.ok) return fallback;
+      const res = await fetch(satelliteCapabilitiesUrl(productForTime(latestFrameTime(nowMs))));
+      if (!res.ok) return null;
       const newest = parseNewestTime(await res.text());
-      // never trust a time in the future or one that is hours old
-      return newest !== null && newest <= nowMs && nowMs - newest < 6 * 3_600_000 ? newest : fallback;
+      return newest !== null && newest <= nowMs && nowMs - newest < 6 * 3_600_000 ? newest : null;
     } catch {
-      return fallback;
+      return null;
     }
   }
 
@@ -191,14 +192,15 @@ export class SatelliteService {
     const token = ++this.loadToken;
     const nowMs = Date.now();
     this.now.set(nowMs);
-    // Start at once from the newest time the clock says is safe (or the one the service gave last time): asking the service for its
-    // newest time takes a second on its own, so it is asked alongside, and a newer picture, if there is one, is loaded when it answers.
-    const startAt = Math.max(latestFrameTime(nowMs), this.knownNewest);
+    // Start at once from the newest time the service gave last time (or, before it has answered, the one the clock says is safe): asking
+    // the service takes a second on its own, so it is asked alongside, and when its newest picture is another one (newer, or older because
+    // the service is running late) the loop is planned again around it.
+    const startAt = this.knownNewest > 0 ? this.knownNewest : latestFrameTime(nowMs);
     const plan = this.plan(startAt);
     void this.newestTime(nowMs).then(newest => {
-      if (token !== this.loadToken) return;
-      this.knownNewest = Math.max(this.knownNewest, newest);
-      if (newest > startAt) void this.load();
+      if (token !== this.loadToken || newest === null) return;
+      this.knownNewest = newest;
+      if (newest !== startAt) void this.load();
     });
     const rawKeys = plan.map(p => p.rawKey);
     // first only the newest picture; the rest of the hour once the loop is wanted
