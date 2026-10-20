@@ -4,8 +4,7 @@
  * Everything on EUMETView except the high-resolution visible channel (HRV) is a 3 km sensor seen at a slant, so over India its
  * pixels are 4-6 km wide: on the finer grid of the picture they show as steps, and sharpening makes the steps stand out. The
  * infrared picture, and the infrared that sits in the blue channel of the HRV picture, are blurred a little (about a third of a
- * source pixel) so the steps go and the clouds keep their shape. The HRV's own red and green lose their noise (denoiseHrv), which a
- * magnified picture would show as a mottle.
+ * source pixel) so the steps go and the clouds keep their shape. The HRV's own red and green, which are sharp, are left alone.
  */
 import type { SatelliteChannel } from './satellite.config';
 
@@ -61,47 +60,6 @@ export function blurPlane(plane: Float32Array, width: number, height: number, si
   }
 }
 
-/**
- * A Gaussian blur of a plane, approximated by three box blurs (in place; the edges repeat). Each box is a running sum, so the cost is the
- * same whatever `sigma`: for a wide blur of a big picture far cheaper than blurPlane, and as smooth to the eye.
- */
-export function fastBlurPlane(plane: Float32Array, width: number, height: number, sigma: number): void {
-  const r = Math.max(1, Math.round((Math.sqrt((12 * sigma * sigma) / 3 + 1) - 1) / 2));
-  const norm = 1 / (2 * r + 1);
-  const row = new Float32Array(width);
-  const colSum = new Float64Array(width);
-  const copy = new Float32Array(plane.length);
-  for (let pass = 0; pass < 3; pass++) {
-    // along each row
-    for (let y = 0; y < height; y++) {
-      const o = y * width;
-      let acc = 0;
-      for (let k = -r; k <= r; k++) acc += plane[o + Math.min(width - 1, Math.max(0, k))];
-      for (let x = 0; x < width; x++) {
-        row[x] = acc * norm;
-        acc += plane[o + Math.min(width - 1, x + r + 1)] - plane[o + Math.max(0, x - r)];
-      }
-      plane.set(row, o);
-    }
-    // down the columns, a whole row at a time so the reads stay in order
-    copy.set(plane);
-    colSum.fill(0);
-    for (let k = -r; k <= r; k++) {
-      const o = Math.min(height - 1, Math.max(0, k)) * width;
-      for (let x = 0; x < width; x++) colSum[x] += copy[o + x];
-    }
-    for (let y = 0; y < height; y++) {
-      const o = y * width;
-      const add = Math.min(height - 1, y + r + 1) * width;
-      const sub = Math.max(0, y - r) * width;
-      for (let x = 0; x < width; x++) {
-        plane[o + x] = colSum[x] * norm;
-        colSum[x] += copy[add + x] - copy[sub + x];
-      }
-    }
-  }
-}
-
 /** One channel of an RGBA picture as a plane. */
 function channelPlane(px: Uint8ClampedArray, width: number, height: number, channel: number): Float32Array {
   const plane = new Float32Array(width * height);
@@ -134,48 +92,4 @@ export function enhancePicture(px: Uint8ClampedArray, width: number, height: num
   const sigma = GREY_SMOOTH_SIGMA * scale;
   if (kind === 'hrv') smoothChannel(px, width, height, 2, sigma);
   else smoothGrey(px, width, height, sigma);
-}
-
-/**
- * The blur (picture pixels, at the reference size of 1.5 km a pixel) that takes the noise out of the HRV's brightness: under a pixel, so
- * the cumulus keep their texture (the map's smooth magnification, see satellite-image.layer.ts, keeps a close zoom free of squares).
- * Detail finer than that is the sensor's noise, the JPEG's residue and, in a closer window, the pixels the service repeats where it is
- * asked for a little finer than the satellite sees (over South India its HRV pixel is wider than the 1.25 km asked for): magnified on
- * the map, all of these show as a mottle and a grid of soft squares. The clouds' own shapes are several pixels across and stay.
- */
-export const HRV_DENOISE_SIGMA = 0.6;
-/**
- * The same for a closer (HD) window, magnified far more on the map and asked for finer than the satellite sees, so its pixels come in
- * repeated pairs: about one pixel, which takes that grid out.
- */
-export const HRV_WINDOW_DENOISE_SIGMA = 0.9;
-
-/**
- * Takes the noise out of the HRV's brightness (red and green) in place: a Gaussian blur of their mean, each channel keeping its own
- * small difference from it so the colour does not shift; the blue (the infrared, smoothed by enhancePicture) and the empty edge are not
- * touched, and the blur is normalised by how much of the neighbourhood has data so the empty edge does not bleed in as a dark rim.
- */
-export function denoiseHrv(px: Uint8ClampedArray, width: number, height: number, sigma = HRV_DENOISE_SIGMA): void {
-  const n = width * height;
-  const lum = new Float32Array(n);
-  const valid = new Float32Array(n);
-  let empty = 0;
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    if (px[p] + px[p + 1] + px[p + 2] === 0) {
-      empty++;
-      continue;
-    }
-    lum[i] = (px[p] + px[p + 1]) / 2;
-    valid[i] = 1;
-  }
-  const blurred = Float32Array.from(lum);
-  const scratch = new Float32Array(n);
-  blurPlane(blurred, width, height, sigma, scratch);
-  if (empty > 0) blurPlane(valid, width, height, sigma, scratch); // a picture with no empty edge (most) has nothing to normalise
-  for (let i = 0, p = 0; i < n; i++, p += 4) {
-    if (px[p] + px[p + 1] + px[p + 2] === 0) continue; // the empty edge stays empty
-    const step = (empty > 0 ? blurred[i] / valid[i] : blurred[i]) - lum[i];
-    px[p] += step;
-    px[p + 1] += step;
-  }
 }

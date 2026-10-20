@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs } from '../testing/bench';
-import { HRV_DENOISE_SIGMA, HRV_WINDOW_DENOISE_SIGMA, blurPlane, denoiseHrv, enhancePicture, fastBlurPlane, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
+import { blurPlane, enhancePicture, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
 function lcg(seed: number): () => number {
@@ -44,27 +44,6 @@ describe('gaussianKernel and blurPlane', () => {
     expect(plane[20 * 41 + 20]).toBeLessThan(200);
     expect(plane[20 * 41 + 20]).toBeGreaterThan(plane[20 * 41 + 23]);
     expect(plane[20 * 41 + 21]).toBeCloseTo(plane[21 * 41 + 20], 3);
-  });
-});
-
-describe('fastBlurPlane (three box blurs for a Gaussian)', () => {
-  it('leaves a flat plane flat, edges included', () => {
-    const plane = new Float32Array(40 * 30).fill(91);
-    fastBlurPlane(plane, 40, 30, 2.4);
-    for (const v of plane) expect(v).toBeCloseTo(91, 3);
-  });
-
-  it('spreads a point without losing any of it, much as the true Gaussian does', () => {
-    const n = 61;
-    const fast = new Float32Array(n * n);
-    const exact = new Float32Array(n * n);
-    fast[30 * n + 30] = exact[30 * n + 30] = 1000;
-    fastBlurPlane(fast, n, n, 2.4);
-    blurPlane(exact, n, n, 2.4);
-    expect(fast.reduce((a, v) => a + v, 0)).toBeCloseTo(1000, 0);
-    let diff = 0;
-    for (let i = 0; i < fast.length; i++) diff += Math.abs(fast[i] - exact[i]);
-    expect(diff / 1000).toBeLessThan(0.12); // under an eighth of the mass is placed differently
   });
 });
 
@@ -177,63 +156,5 @@ describe('enhancePicture', () => {
     // both include making the picture, so only the order of magnitude counts
     expect(hrvMs).toBeLessThan(3000);
     expect(irMs).toBeLessThan(3000);
-  });
-});
-
-describe('denoiseHrv', () => {
-  const w = 40;
-  const h = 30;
-
-  it('leaves a flat picture as it is', () => {
-    const px = rgba(w, h, () => 120, () => 118, () => 80);
-    const copy = Uint8ClampedArray.from(px);
-    denoiseHrv(px, w, h);
-    expect(px).toEqual(copy);
-  });
-
-  it('takes out the grid of repeated pixels and the noise of a closer (HD) window, the mottle and the squares a magnified picture shows', () => {
-    const rand = lcg(11);
-    // 2 x 2 blocks of the same value (pixels the service repeats) plus noise
-    const block = Array.from({ length: (w / 2) * (h / 2) }, () => 100 + rand() * 60);
-    const v = (i: number) => block[Math.floor((i % w) / 2) + Math.floor(Math.floor(i / w) / 2) * (w / 2)] + (rand() - 0.5) * 10;
-    const values = Array.from({ length: w * h }, (_, i) => v(i));
-    const px = rgba(w, h, i => values[i], i => values[i], () => 70);
-    const rough = (a: Uint8ClampedArray) => {
-      let s = 0;
-      for (let y = 0; y < h; y++) for (let x = 1; x < w; x++) s += Math.abs(a[(y * w + x) * 4] - a[(y * w + x - 1) * 4]);
-      return s;
-    };
-    const before = rough(px);
-    const light = Uint8ClampedArray.from(px);
-    denoiseHrv(px, w, h, HRV_WINDOW_DENOISE_SIGMA);
-    expect(rough(px)).toBeLessThan(before * 0.6);
-    // the whole-India picture is denoised more lightly, so its cumulus keep their texture: less taken out, but still some
-    denoiseHrv(light, w, h, HRV_DENOISE_SIGMA);
-    expect(rough(light)).toBeLessThan(before * 0.75);
-    expect(rough(light)).toBeGreaterThan(rough(px));
-  });
-
-  it('keeps a cloud edge where it is, moves red and green together and leaves the blue (the infrared) and alpha alone', () => {
-    const px = rgba(w, h, i => (i % w < w / 2 ? 60 : 200), i => (i % w < w / 2 ? 58 : 198), () => 90);
-    const copy = Uint8ClampedArray.from(px);
-    denoiseHrv(px, w, h);
-    const row = 15 * w * 4;
-    expect(px[row + 5 * 4]).toBe(60); // far from the edge: as it was
-    expect(px[row + (w - 5) * 4]).toBe(200);
-    expect(px[row + (w / 2 - 1) * 4]).toBeLessThan(130); // the edge is softened, not moved
-    expect(px[row + (w / 2) * 4]).toBeGreaterThan(130);
-    for (let i = 0; i < w * h; i++) {
-      expect(px[i * 4] - copy[i * 4]).toBeCloseTo(px[i * 4 + 1] - copy[i * 4 + 1], -0.5);
-      expect(px[i * 4 + 2]).toBe(copy[i * 4 + 2]);
-      expect(px[i * 4 + 3]).toBe(255);
-    }
-  });
-
-  it('keeps the empty edge empty and does not darken the picture next to it', () => {
-    const px = rgba(w, h, () => 150, () => 150, () => 60);
-    px.fill(0, 0, w * 4); // the first row is the empty edge of the picture
-    denoiseHrv(px, w, h);
-    for (let x = 0; x < w; x++) expect(px[x * 4 + 3]).toBe(0);
-    expect(px[(1 * w + 10) * 4]).toBe(150);
   });
 });
