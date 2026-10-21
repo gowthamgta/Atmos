@@ -19,6 +19,7 @@ import { IconComponent } from './shared/icon.component';
 import { ThemeService } from './shared/theme.service';
 import { PerfMeterComponent } from './features/perf/perf-meter.component';
 import { BOT_CAPTURE } from './core/ui/bot-capture';
+import { DataAgeBadgeComponent } from './features/map/data-age-badge.component';
 
 @Component({
   selector: 'app-root',
@@ -39,6 +40,7 @@ import { BOT_CAPTURE } from './core/ui/bot-capture';
     MapControlsComponent,
     IconComponent,
     PerfMeterComponent,
+    DataAgeBadgeComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',

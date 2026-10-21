@@ -15,6 +15,7 @@ import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForS
 import { stampEpoch, type StampTime } from './radar-stamp';
 import { lowestBeamHeights, withAloftFade } from './radar-beam';
 import { decodeRadarGif } from './radar-gif-decode';
+import { cachedRadarPicture, keepRadarPicture } from './radar-picture-cache';
 import { inspectRadar } from './radar-inspector';
 import { readHiddenStations, writeHiddenStations } from './radar-station-prefs';
 import { IMD_WRITE_GAP_MS, LOOK_LEAD_MS, extractRadarIsoTimestamp, pictureNotDue, radarTimingFromDate, scanNotDue } from './radar-timing';
@@ -571,6 +572,7 @@ export class RadarService implements OnDestroy {
               if (lastMod) {
                 sweepHeaderDate = new Date(lastMod);
               }
+              void keepRadarPicture(`${station.id}:${productKey}`, buf, response.headers.get('last-modified'));
               break;
             }
           }
@@ -580,11 +582,21 @@ export class RadarService implements OnDestroy {
       }
     }
 
-    if (!rawArrayBuf) return null;
+    // IMD cannot be reached: the last good picture kept in the browser, with its own time (too old a one is left out below, as always)
+    let fromKept = false;
+    if (!rawArrayBuf) {
+      const kept = await cachedRadarPicture(`${station.id}:${productKey}`);
+      if (!kept) return null;
+      rawArrayBuf = kept.bytes;
+      binaryTiming = extractRadarIsoTimestamp(kept.bytes);
+      sweepHeaderDate = kept.lastModified ? new Date(kept.lastModified) : null;
+      sweepHeaderIsWriteTime = !!kept.lastModified;
+      fromKept = true;
+    }
 
     // when the picture was written and when it was asked for: the next look is timed from these (see notDueYet)
     const pictureKey = `${station.id}:${productKey}`;
-    this.pictureFetchedAt.set(pictureKey, Date.now());
+    if (!fromKept) this.pictureFetchedAt.set(pictureKey, Date.now());
     if (sweepHeaderIsWriteTime && sweepHeaderDate && !isNaN(sweepHeaderDate.getTime())) this.pictureWrittenAt.set(pictureKey, sweepHeaderDate.getTime());
 
     // ── Observation Timestamp Extraction & Per-Station Freshness Calculation ──

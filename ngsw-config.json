@@ -1,0 +1,82 @@
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "assetGroups": [
+    {
+      "name": "app",
+      "installMode": "prefetch",
+      "resources": {
+        "files": [
+          "/favicon.ico",
+          "/index.html",
+          "/manifest.webmanifest",
+          "/icon.svg",
+          "/main-*.js",
+          "/styles-*.css"
+        ]
+      }
+    },
+    {
+      "name": "chunks",
+      "installMode": "lazy",
+      "updateMode": "lazy",
+      "resources": {
+        "files": [
+          "/chunk-*.js",
+          "/worker-*.js",
+          "/*.mjs"
+        ]
+      }
+    },
+    {
+      "name": "data",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/data/**",
+          "/**/*.(svg|png|webp|jpg|json)"
+        ]
+      }
+    }
+  ],
+  "dataGroups": [
+    {
+      "name": "forecast",
+      "urls": [
+        "https://gowthamgta.github.io/Atmos/**"
+      ],
+      "cacheConfig": {
+        "strategy": "freshness",
+        "maxSize": 800,
+        "maxAge": "3d",
+        "timeout": "8s"
+      }
+    },
+    {
+      "name": "basemap",
+      "urls": [
+        "https://tiles.openfreemap.org/**",
+        "https://demotiles.maplibre.org/font/**",
+        "https://services.arcgisonline.com/**"
+      ],
+      "cacheConfig": {
+        "strategy": "performance",
+        "maxSize": 3000,
+        "maxAge": "14d"
+      }
+    },
+    {
+      "name": "point-forecast",
+      "urls": [
+        "https://api.open-meteo.com/**"
+      ],
+      "cacheConfig": {
+        "strategy": "freshness",
+        "maxSize": 40,
+        "maxAge": "1d",
+        "timeout": "8s"
+      }
+    }
+  ]
+}
