@@ -49,8 +49,17 @@ fingerprint only together with this file, on the owner's request.
   enforces it).
 - Personal, non-commercial project; every data source must stay free with no billing account.
 
+## Data that is late or missing
+
+- **A badge on the map says when the live picture is old**: radar scan 30+ min, satellite 90+ min, or no radar picture at all.
+- **The last good radar picture is kept in the browser** and shown with its real age when IMD cannot be reached (the 3 h limit stays).
+- **A service worker (production only) keeps the app, forecast data (network first), basemap tiles and point forecast** for use offline;
+  the app is installable. A new release is put in place the next time the page is out of sight.
+
 ## Pipeline
 
 - **The nwp workflow runs at 05:00, 10:00, 13:30, 17:30, 21:00 and 00:00 IST** (403de3a). Each run builds the newest cycle surely
   published by then.
+- **Forecast accuracy is scored daily** (verify workflow, 07:00 IST) at 13 South Indian airports, 1 to 3 days ahead; the model list
+  shows the last 14 days a day ahead. The scores only inform; they do not change any forecast.
 - Commits go straight to `main`; if a push is rejected, `git pull --rebase origin main` first (the Actions bot commits data to `main`).
