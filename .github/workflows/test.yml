@@ -1,0 +1,51 @@
+name: test
+
+# Unit tests, the production build and the end-to-end tests (Playwright, Chromium at desktop and phone size, with saved radar pictures,
+# see e2e/fixtures.ts) on every push to main that touches the app, and on demand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "e2e/**"
+      - "public/**"
+      - "angular.json"
+      - "ngsw-config.json"
+      - "package.json"
+      - "package-lock.json"
+      - "playwright.config.ts"
+      - "scripts/preview.js"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npx ng test --watch=false
+      - name: Build
+        run: npx ng build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: npx playwright test
+        env:
+          CI: "true"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7

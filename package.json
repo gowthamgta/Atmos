@@ -7,7 +7,8 @@
     "build": "ng build",
     "preview": "node scripts/preview.js",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "e2e": "playwright test"
   },
   "private": true,
   "packageManager": "npm@11.9.0",
@@ -29,6 +30,7 @@
     "@angular/build": "^21.2.3",
     "@angular/cli": "^21.2.3",
     "@angular/compiler-cli": "^21.2.0",
+    "@playwright/test": "^1.64.0",
     "@types/node": "^26.6.4",
     "jsdom": "^29.1.1",
     "prettier": "^3.8.1",
