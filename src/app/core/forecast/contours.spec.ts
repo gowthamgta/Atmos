@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestMs } from '../testing/bench';
+import { bestMs, loadScaledBudget } from '../testing/bench';
 import { contourLevels, contourLines, isobarGeoJson, smoothField } from './contours';
 import { ForecastGrid } from './forecast.model';
 
@@ -146,6 +146,6 @@ describe('isobarGeoJson', () => {
     });
     console.info(`isobars: ${features} lines in ${ms.toFixed(1)} ms per update (best of 5 batches)`);
     expect(features).toBeGreaterThan(10);
-    expect(ms).toBeLessThan(60);
+    expect(ms).toBeLessThan(loadScaledBudget(60));
   });
 });

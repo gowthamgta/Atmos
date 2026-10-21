@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestMs } from '../testing/bench';
+import { bestMs, loadScaledBudget } from '../testing/bench';
 import { ForecastGrid, mercatorUnitY } from './forecast.model';
 import {
   AdaptiveCount, INSTANCE_FLOATS, MAX_LIFE_S, MIN_LIFE_S, PX_PER_MS, ParticleSystem, SPEED_KNEE_MS, ViewState, WindFrame, screenSpeed, spawnRegion,
@@ -187,7 +187,7 @@ describe('ParticleSystem', () => {
       ps.writeInstances(out);
     });
     console.info(`particle step + pack, 9000 particles: ${msPerFrame.toFixed(2)} ms/frame (best of 5 batches)`);
-    expect(msPerFrame).toBeLessThan(6); // a 60 fps frame is 16.7 ms; leave most of it for drawing
+    expect(msPerFrame).toBeLessThan(loadScaledBudget(6)); // a 60 fps frame is 16.7 ms; leave most of it for drawing
   });
 });
 

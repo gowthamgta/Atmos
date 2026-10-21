@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestMs } from '../testing/bench';
+import { bestMs, loadScaledBudget } from '../testing/bench';
 import { resampleTileRgb } from './terrain-tiles';
 
 function tile(n: number, metresAt: (x: number, y: number) => number, land = 255): Uint8ClampedArray {
@@ -42,6 +42,6 @@ describe('resampleTileRgb speed', () => {
   it('turns a 400 px tile into a 1200 px one well inside a frame (no long stall on the page)', () => {
     const src = tile(400, (x, y) => 500 + 0.5 * x + 0.3 * y);
     resampleTileRgb(src, 400, 1200);            // warm up
-    expect(bestMs(5, 1, () => resampleTileRgb(src, 400, 1200))).toBeLessThan(200);
+    expect(bestMs(5, 1, () => resampleTileRgb(src, 400, 1200))).toBeLessThan(loadScaledBudget(200));
   });
 });

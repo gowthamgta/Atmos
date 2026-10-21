@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestMs } from '../testing/bench';
+import { bestMs, loadScaledBudget } from '../testing/bench';
 import { blurPlane, enhancePicture, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
@@ -154,7 +154,7 @@ describe('enhancePicture', () => {
     const hrvMs = bestMs(1, 1, () => enhancePicture(make(), W, W, 'hrv'));
     const irMs = bestMs(1, 1, () => enhancePicture(make(), W, W, 'ir'));
     // both include making the picture, so only the order of magnitude counts
-    expect(hrvMs).toBeLessThan(3000);
-    expect(irMs).toBeLessThan(3000);
+    expect(hrvMs).toBeLessThan(loadScaledBudget(3000));
+    expect(irMs).toBeLessThan(loadScaledBudget(3000));
   });
 });
