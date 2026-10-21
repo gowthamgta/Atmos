@@ -111,6 +111,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <div class="scale full-only">
             @for (t of legendTicks(); track t) { <span>{{ t }}</span> }
           </div>
+          <p class="aloft-note full-only">See-through faint echoes: the radars see them only from 2 km or more up, so that rain may not reach the ground.</p>
         </div>
       </section>
     }
@@ -193,6 +194,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .legend { margin-top: 10px; }
+    .aloft-note { margin: 6px 0 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-muted); }
     .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #241898 0%, #0e609a 14%, #02998f 28%, #3ecd7d 42%, #afd42c 55%, #ebcf16 64%, #f19f21 76%, #cd5846 88%, #91126a 100%); }
     .scale { display: flex; justify-content: space-between; margin-top: 3px; font-size: var(--fs-xs); color: var(--text-secondary); }
     @media (max-width: 700px) { .panel { width: min(260px, calc(100vw - 24px)); } }

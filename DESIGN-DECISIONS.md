@@ -27,8 +27,9 @@ fingerprint only together with this file, on the owner's request.
 
 - **The echoes are drawn as IMD's own pictures have them**: no filtering of echoes at all (789e9a3; the spoke remover and the far-range
   filter were removed), intense cores always kept (166aade), intensity the same as the picture.
-- **Faint echoes where the beams pass high are drawn see-through, never removed** ("rain aloft": may not reach the ground; see Radar
-  notes in the app). Strong echoes stay solid.
+- **Faint echoes where the beams pass high are drawn see-through, never removed** ("rain aloft": may not reach the ground). Under
+  25 dBZ where the lowest beam of every radar that reaches the place is 3.5 km or more up: 45% opacity; full from 30 dBZ or under a 2 km
+  beam, with smooth steps between (`aloftOpacity` in `core/services/radar-beam.ts`). The hover says "Rain aloft" there.
 - 🔒 **Colours: the Windy-style radar palette with red and orange cores** (08c6184).
 - **Where radars overlap, the strongest echo is drawn** (783a81b); an echo from an older scan is drawn fainter (3a793df).
 - **PPI is shown as the whole square picture**, not cut to a circle (b7a758b, 4e951d8). **CAZ covers 250 km** for both radars (3ab5fa6).

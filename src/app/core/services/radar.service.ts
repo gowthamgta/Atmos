@@ -16,7 +16,7 @@ import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels, removeRadialInterf
 import { HistoryHandle, RadarProcessor, StillResult } from './radar-processor';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
-import { LOWEST_SWEEP_DEG, beamsOverPlace } from './radar-beam';
+import { LOWEST_SWEEP_DEG, beamsOverPlace, isRainAloft, lowestBeamHeights, withAloftFade } from './radar-beam';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
@@ -902,7 +902,25 @@ export class RadarService implements OnDestroy {
   private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number): ProcessedRadarResult | null {
     const hidden = this.hiddenStations();
     const shown = [...sources].filter(([id]) => !hidden.has(id));
-    return composeRadarMosaic(this.stations, shown, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, this.activeProduct(), nowMs);
+    const product = this.activeProduct();
+    const res = composeRadarMosaic(this.stations, shown, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, product, nowMs);
+    if (!res?.fieldData || !res.displayField) return res;
+    // faint echoes seen only from a beam high up: drawn see-through, never removed (rain that may not reach the ground)
+    const ids = shown.map(([id]) => id).sort();
+    const heights = this.beamHeightsFor(ids, product, res.coordinates, res.fieldData.cropW, res.fieldData.cropH);
+    const fade = withAloftFade(res.fieldData.field, heights, res.displayFade);
+    return fade === res.displayFade ? res : { ...res, displayFade: fade };
+  }
+
+  /** Lowest beam height over each pixel of the mosaic, kept while the radars, the product and the grid stay the same (see lowestBeamHeights). */
+  private beamHeightCache: { key: string; heights: Float32Array } | null = null;
+  private beamHeightsFor(ids: string[], product: RadarProductKey, coordinates: ProcessedRadarResult['coordinates'], w: number, h: number): Float32Array {
+    const key = [ids.join(','), product, w, h, ...coordinates.flat()].join('|');
+    if (this.beamHeightCache?.key !== key) {
+      const stations = this.stations.filter(s => ids.includes(s.id));
+      this.beamHeightCache = { key, heights: lowestBeamHeights(stations, product, coordinates, w, h) };
+    }
+    return this.beamHeightCache.heights;
   }
 
   /** Rebuilds the live composite from the latest still of every radar. */
@@ -1260,13 +1278,15 @@ export class RadarService implements OnDestroy {
         rate = '< 1.0 mm/h';
       }
 
+      const lowest = Math.min(...beams.map(b => b.centreKm));
+      const aloft = beams.length > 0 && isRainAloft(dbz, lowest);
       this.hoverInfo.set({
         x: screenPoint.x,
         y: screenPoint.y,
         lat,
         lng,
         dbz,
-        label: `${label} (${dbz} dBZ)`,
+        label: aloft ? `Rain aloft (${dbz} dBZ): may not reach the ground` : `${label} (${dbz} dBZ)`,
         color,
         rate,
         beams,
