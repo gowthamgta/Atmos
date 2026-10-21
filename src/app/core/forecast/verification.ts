@@ -18,6 +18,8 @@ export interface RainScore {
 
 export interface LeadScores {
   temp?: ErrorScore;
+  /** The same after the model's correction (learn_bias.py), where it has one. */
+  temp_c?: ErrorScore;
   dewp?: ErrorScore;
   wind?: ErrorScore;
   rain?: RainScore;
@@ -37,6 +39,8 @@ export interface ModelSkill {
   /** Mean absolute error of temperature (C) and its bias (+: too warm), weighted by hours. */
   tempMae: number | null;
   tempBias: number | null;
+  /** The temperature error after the model's correction (null where it has none). */
+  tempMaeCorrected: number | null;
   windMae: number | null;
   /** Share of the rainy hours the model had rain in, and share of its rainy hours that stayed dry (null: too few to say). */
   rainCaught: number | null;
@@ -59,13 +63,17 @@ function pool(scores: (ErrorScore | undefined)[]): { mae: number; bias: number }
   return n === 0 ? null : { mae: abs / n, bias: sum / n };
 }
 
-/** Each model's skill over the last `windowDays` days of the file at `lead` days ahead, ranked by temperature error. */
-export function summarizeSkill(file: VerificationFile, windowDays = 14, lead = 1): ModelSkill[] {
+/**
+ * Each model's skill over the last `windowDays` days of the file at `lead` days ahead, ranked by temperature error; `only`: the models to
+ * give (and rank among), all of them by default.
+ */
+export function summarizeSkill(file: VerificationFile, windowDays = 14, lead = 1, only?: readonly string[]): ModelSkill[] {
   const days = file.days.slice(-windowDays);
-  const ids = [...new Set(days.flatMap(d => Object.keys(d.models)))];
+  const ids = [...new Set(days.flatMap(d => Object.keys(d.models ?? {})))].filter(id => !only || only.includes(id));
   const out: ModelSkill[] = ids.map(id => {
-    const at = days.map(d => d.models[id]?.[String(lead)]).filter((s): s is LeadScores => !!s);
+    const at = days.map(d => d.models?.[id]?.[String(lead)]).filter((s): s is LeadScores => !!s);
     const temp = pool(at.map(s => s.temp));
+    const tempC = pool(at.map(s => s.temp_c));
     const wind = pool(at.map(s => s.wind));
     const rain = at.reduce((acc, s) => ({ hits: acc.hits + (s.rain?.hits ?? 0), misses: acc.misses + (s.rain?.misses ?? 0), false: acc.false + (s.rain?.false ?? 0) }), { hits: 0, misses: 0, false: 0 });
     const wet = rain.hits + rain.misses;
@@ -75,6 +83,7 @@ export function summarizeSkill(file: VerificationFile, windowDays = 14, lead = 1
       days: at.length,
       tempMae: temp?.mae ?? null,
       tempBias: temp?.bias ?? null,
+      tempMaeCorrected: tempC?.mae ?? null,
       windMae: wind?.mae ?? null,
       rainCaught: wet >= MIN_RAIN_HOURS ? rain.hits / wet : null,
       rainFalse: forecastWet >= MIN_RAIN_HOURS ? rain.false / forecastWet : null,
@@ -91,6 +100,7 @@ export function skillLine(s: ModelSkill): string {
   if (s.tempMae === null) return '';
   const parts = [`${s.tempMae.toFixed(1)} °C off on average`];
   if (s.tempBias !== null && Math.abs(s.tempBias) >= 0.3) parts[0] += ` (${Math.abs(s.tempBias).toFixed(1)} too ${s.tempBias < 0 ? 'cold' : 'warm'})`;
+  if (s.tempMaeCorrected !== null && s.tempMaeCorrected < s.tempMae - 0.05) parts.push(`${s.tempMaeCorrected.toFixed(1)} °C corrected`);
   if (s.rainCaught !== null) parts.push(`rain caught ${Math.round(s.rainCaught * 100)}%`);
   if (s.rainFalse !== null) parts.push(`false alarms ${Math.round(s.rainFalse * 100)}%`);
   return parts.join(' · ');

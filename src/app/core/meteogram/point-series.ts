@@ -32,8 +32,10 @@ export interface PointSeries {
   elevationM: number | null;
   /** Hourly times, epoch ms, ascending. */
   times: number[];
-  /** By our model id. */
+  /** By our model id (the Blend, when it could be made, under 'blend'; see blend.ts). */
   models: Record<string, ModelSeries>;
+  /** The Blend's chance of rain in each hour (0-1); absent without the Blend. */
+  rainChance?: Series;
 }
 
 export interface ApiModel {

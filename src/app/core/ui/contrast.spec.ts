@@ -71,13 +71,13 @@ describe.each([
 
   it('keeps the colour of each model and each chart line at 3:1 on a panel (WCAG non-text contrast)', () => {
     const back = over(parseColor(theme['--surface-solid'])!, parseColor(theme['--surface-0'])!);
-    for (const token of ['--m-ecmwf_ifs', '--m-aifs', '--m-ukmo', '--m-gfs', '--m-aigfs', '--s-temp', '--s-rain', '--s-wind', '--s-pressure']) {
+    for (const token of ['--m-ecmwf_ifs', '--m-aifs', '--m-ukmo', '--m-gfs', '--m-aigfs', '--m-blend', '--m-icon', '--s-temp', '--s-rain', '--s-wind', '--s-pressure']) {
       expect(contrastRatio(onPanel(theme, token, '--surface-solid'), back), token).toBeGreaterThanOrEqual(3);
     }
   });
 
   it('tells the models apart: no two of them share a colour', () => {
-    const colours = ['--m-ecmwf_ifs', '--m-aifs', '--m-ukmo', '--m-gfs', '--m-aigfs'].map(t => theme[t]);
+    const colours = ['--m-ecmwf_ifs', '--m-aifs', '--m-ukmo', '--m-gfs', '--m-aigfs', '--m-blend', '--m-icon'].map(t => theme[t]);
     expect(new Set(colours).size).toBe(colours.length);
   });
 });

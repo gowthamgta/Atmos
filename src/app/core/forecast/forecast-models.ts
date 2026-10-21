@@ -65,6 +65,40 @@ export function forecastModelById(id: string): ForecastModelDef {
   return FORECAST_MODELS.find(m => m.id === id) ?? FORECAST_MODELS[0];
 }
 
+/** What the meteogram needs to name a model it draws. */
+export interface PointModelDef {
+  id: string;
+  label: string;
+  short: string;
+  ai: boolean;
+}
+
+/**
+ * The AtmosIQ Blend: the corrected models weighted by how right each has been lately (core/meteogram/blend.ts). It is not a map model, only a
+ * line and a row in the meteogram's comparison.
+ */
+export const BLEND_MODEL: PointModelDef = { id: 'blend', label: 'AtmosIQ Blend', short: 'Blend', ai: false };
+
+/**
+ * Models compared in the meteogram that are not on the map, with Open-Meteo's names: DWD ICON scores among the best at the South Indian airports
+ * (pipeline/verify.py) and is one of the Blend's models.
+ */
+export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [
+  { id: 'icon', label: 'DWD ICON', short: 'ICON', ai: false, apiId: 'icon_global' },
+];
+
+/** The models of the meteogram's comparison: the Blend first, then the map's models, then the others. */
+export const POINT_MODELS: readonly PointModelDef[] = [BLEND_MODEL, ...FORECAST_MODELS, ...POINT_ONLY_MODELS];
+
+/** True for a model that can be shown on the map (the Blend and the point-only models cannot). */
+export function isMapModel(id: string): boolean {
+  return FORECAST_MODELS.some(m => m.id === id);
+}
+
+export function pointModelById(id: string): PointModelDef {
+  return POINT_MODELS.find(m => m.id === id) ?? FORECAST_MODELS[0];
+}
+
 /** The model's colour as a CSS value (the tokens of styles.css, so it follows the theme). */
 export function modelColor(id: string): string {
   return `var(--m-${id})`;

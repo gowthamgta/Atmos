@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DOCUMENT, ElementRef, HostListener, OnDestroy, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
-import { FORECAST_MODELS, forecastModelById, modelColor } from '../../core/forecast/forecast-models';
+import { FORECAST_MODELS, POINT_MODELS, forecastModelById, modelColor } from '../../core/forecast/forecast-models';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { istStamp, istValid, leadHours, leadLabel, runHourLabel, utcStamp } from '../../core/forecast/model-runs';
 import { ModelRunsService } from '../../core/forecast/model-runs.service';
@@ -101,7 +101,7 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
                     }
                   </div>
                   <div class="legend" role="group" aria-label="Models drawn">
-                    @for (def of models; track def.id) {
+                    @for (def of models(); track def.id) {
                       <button type="button" class="key" [class.off]="m.hidden().has(def.id)" [attr.aria-pressed]="!m.hidden().has(def.id)" (click)="m.toggleModel(def.id)" [title]="(m.hidden().has(def.id) ? 'Show ' : 'Hide ') + def.label">
                         <span class="model-dot" [class.ai]="def.ai" [style.--model-color]="color(def.id)"></span>{{ def.short }}@if (def.ai) { <span class="ai-tag">AI</span> }
                       </button>
@@ -231,7 +231,8 @@ export class MeteogramComponent implements OnDestroy {
   protected readonly units = this.unitsService.units;
   protected readonly rangeDays = RANGE_DAYS;
   protected readonly compareTabs = COMPARE_TABS;
-  protected readonly models = FORECAST_MODELS;
+  /** The models of the comparison: the Blend (when it could be made for this place), then the map's models. */
+  protected readonly models = computed(() => POINT_MODELS.filter(def => def.id !== 'blend' || !!this.series.data()?.models['blend']));
 
   private readonly sheet = viewChild<ElementRef<HTMLElement>>('sheet');
   private stopWatching: (() => void) | null = null;
@@ -329,12 +330,12 @@ export class MeteogramComponent implements OnDestroy {
   protected color = modelColor;
   /** The source line under the chart is open (behind the info button, where the screen is too short to show it). */
   protected readonly noteOpen = signal(false);
-  protected readonly shownModels = computed(() => FORECAST_MODELS.map(def => def.id).filter(id => !this.m.hidden().has(id)));
+  protected readonly shownModels = computed(() => POINT_MODELS.map(def => def.id).filter(id => !this.m.hidden().has(id)));
 
   /** The time the readout and the table are for: the hour under the pointer, else the time on the map's bar. */
   private readonly focusMs = computed(() => this.m.hoverMs() ?? this.state.timeMs() ?? this.runs.nowMs());
 
-  protected readonly table = computed(() => compareAt(this.series.data()!, FORECAST_MODELS.map(def => def.id), this.focusMs()));
+  protected readonly table = computed(() => compareAt(this.series.data()!, POINT_MODELS.map(def => def.id), this.focusMs()));
   protected readonly tableWhen = computed(() => `At ${istValid(this.table().timeMs)}${this.m.hoverMs() === null ? ', the time on the map' : ''}`);
 
   protected readonly readout = computed(() => this.readoutAt(this.focusMs()));

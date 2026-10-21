@@ -60,6 +60,11 @@ fingerprint only together with this file, on the owner's request.
 
 - **The nwp workflow runs at 05:00, 10:00, 13:30, 17:30, 21:00 and 00:00 IST** (403de3a). Each run builds the newest cycle surely
   published by then.
-- **Forecast accuracy is scored daily** (verify workflow, 07:00 IST) at 13 South Indian airports, 1 to 3 days ahead; the model list
-  shows the last 14 days a day ahead. The scores only inform; they do not change any forecast.
+- **Forecast accuracy is scored daily** (verify workflow, 07:00 IST): ten models and the Blend at 13 South Indian airports, 1 to 3 days
+  ahead, and their rain against the TN-SMART gauges (0.5 degree cells). The model list shows the last 14 days a day ahead.
+- **Corrections are learned daily** (learn_bias.py): each model's usual temperature and humidity error by airport and hour, kept only where
+  it lowers the error on held-back days. They correct the meteogram and the comparison table for every model, and the ECMWF IFS map
+  near the airports (the other map models are not corrected).
+- **The AtmosIQ Blend**: the corrected models weighted by recent error (rain by the square of the threat score), only in the meteogram's
+  comparison, not a map layer. **DWD ICON** is compared there too (it scores well) but is not built for the map.
 - Commits go straight to `main`; if a push is rejected, `git pull --rebase origin main` first (the Actions bot commits data to `main`).

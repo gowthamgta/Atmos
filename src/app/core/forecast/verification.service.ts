@@ -1,5 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { summarizeSkill, type ModelSkill, type VerificationFile } from './verification';
+import type { CorrectionsFile } from '../meteogram/blend';
+import { FORECAST_MODELS } from './forecast-models';
 
 /** Days the model list sums the scores over. */
 export const SKILL_WINDOW_DAYS = 14;
@@ -13,10 +15,35 @@ export class VerificationService {
   /** Skill by model id, a day ahead, over the last SKILL_WINDOW_DAYS days (empty until loaded, or when the file is missing). */
   readonly skill = computed<ReadonlyMap<string, ModelSkill>>(() => {
     const f = this.file();
-    return new Map((f ? summarizeSkill(f, SKILL_WINDOW_DAYS, 1) : []).map(s => [s.modelId, s]));
+    return new Map((f ? summarizeSkill(f, SKILL_WINDOW_DAYS, 1, FORECAST_MODELS.map(m => m.id)) : []).map(s => [s.modelId, s]));
+  });
+  /** The Blend's skill over the same days (null until it has been scored). */
+  readonly blendSkill = computed<ModelSkill | null>(() => {
+    const f = this.file();
+    return (f && summarizeSkill(f, SKILL_WINDOW_DAYS, 1, ['blend'])[0]) || null;
   });
   /** The airports the scores come from. */
   readonly airportCount = computed(() => this.file()?.airports.length ?? 0);
+
+  private correctionsPromise: Promise<CorrectionsFile | null> | null = null;
+  /** The corrections and Blend weights (learn_bias.py), once loaded; null until then or when they cannot be had. */
+  readonly corrections = signal<CorrectionsFile | null>(null);
+
+  /** Loads the corrections once (a failure is asked again next time). */
+  loadCorrections(): Promise<CorrectionsFile | null> {
+    this.correctionsPromise ??= fetch('/data/verification/corrections.json')
+      .then(r => (r.ok ? (r.json() as Promise<CorrectionsFile>) : null))
+      .then(c => {
+        const ok = c && c.models && c.airports ? c : null;
+        this.corrections.set(ok);
+        return ok;
+      })
+      .catch(() => {
+        this.correctionsPromise = null;
+        return null;
+      });
+    return this.correctionsPromise;
+  }
 
   load(): void {
     if (this.asked) return;

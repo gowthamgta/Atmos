@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import { FORECAST_MODELS, ForecastModelDef, modelColor } from '../../core/forecast/forecast-models';
+import { BLEND_MODEL, PointModelDef, isMapModel, modelColor, pointModelById } from '../../core/forecast/forecast-models';
 import { ModelRunsService } from '../../core/forecast/model-runs.service';
 import { leadHours, leadLabel, runHourLabel, utcStamp, istStamp } from '../../core/forecast/model-runs';
 import { CompareTable } from '../../core/meteogram/compare';
@@ -30,9 +30,9 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
       </thead>
       <tbody>
         @for (r of rows(); track r.def.id) {
-          <tr [class.on-map]="r.def.id === mapModelId()" [class.off]="r.hidden" [style.--model-color]="r.color" (click)="chooseModel.emit(r.def.id)" title="Show {{ r.def.label }} on the map">
+          <tr [class.on-map]="r.def.id === mapModelId()" [class.off]="r.hidden" [class.blend]="r.blend" [style.--model-color]="r.color" (click)="choose(r.def.id)" [title]="r.blend ? r.def.label + ': the models corrected and weighted by how right each has been lately (not a map layer)' : r.mapModel ? 'Show ' + r.def.label + ' on the map' : r.def.label + ': compared here only, not a map layer'">
             <th scope="row" class="model">
-              <button type="button" class="pick" (click)="$event.stopPropagation(); chooseModel.emit(r.def.id)" [attr.aria-label]="'Show ' + r.def.label + ' on the map'" [attr.aria-pressed]="r.def.id === mapModelId()">
+              <button type="button" class="pick" [disabled]="!r.mapModel" (click)="$event.stopPropagation(); choose(r.def.id)" [attr.aria-label]="r.mapModel ? 'Show ' + r.def.label + ' on the map' : r.def.label" [attr.aria-pressed]="r.def.id === mapModelId()">
                 <span class="model-dot" [class.ai]="r.def.ai" [style.--model-color]="r.color"></span>
                 <span class="name">{{ r.def.short }}</span>
                 @if (r.def.id === mapModelId()) { <span class="tag">on map</span> }
@@ -95,23 +95,32 @@ export class CompareTableComponent {
   readonly hiddenIds = input<ReadonlySet<string>>(new Set());
   readonly chooseModel = output<string>();
 
+  /** A row was picked: its model goes on the map (the Blend and the models only compared here are not map layers: nothing happens). */
+  protected choose(id: string): void {
+    if (isMapModel(id)) this.chooseModel.emit(id);
+  }
+
   protected readonly rows = computed(() => {
     const t = this.table();
     const u = this.units();
     const infos = this.runs.infos();
     const dash = '–';
     return t.rows.map(r => {
-      const def: ForecastModelDef = FORECAST_MODELS.find(m => m.id === r.modelId)!;
+      const def: PointModelDef = pointModelById(r.modelId);
+      const blend = def.id === BLEND_MODEL.id;
+      const mapModel = isMapModel(def.id);
       const upstream = infos.find(i => i.model.id === def.id)?.upstream ?? null;
       const init = upstream?.latestInitMs ?? null;
       const hours = init !== null ? leadHours(init, t.timeMs) : null;
       const compass = r.windDir !== null && r.wind !== null ? ` ${degToCompass(r.windDir)}` : '';
       return {
         def,
+        blend,
+        mapModel,
         color: modelColor(def.id),
         hidden: this.hiddenIds().has(def.id),
         covered: r.covered,
-        run: init !== null ? runHourLabel(init) : dash,
+        run: blend ? 'Mix' : init !== null ? runHourLabel(init) : dash,
         runTitle: init !== null ? `Run began ${istStamp(init)} (${utcStamp(init)})` : 'Run not known',
         hour: hours !== null ? (r.covered ? leadLabel(hours) : 'ended') : dash,
         temp: r.temp !== null ? formatTemp(r.temp, u, 1) : dash,

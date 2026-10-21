@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, afterNextRender, computed, inject, input, output, signal, viewChild } from '@angular/core';
-import { forecastModelById, modelColor } from '../../core/forecast/forecast-models';
+import { forecastModelById, modelColor, pointModelById } from '../../core/forecast/forecast-models';
 import { CompareVar } from '../../core/meteogram/meteogram.service';
 import {
   Pt, areaPath, bandPath, barsPath, daySpans, everyNth, hourAtX, istHour12, linePath, linear, niceScale, nightSpans,
@@ -550,7 +550,7 @@ export class MeteogramChartComponent implements OnDestroy {
   protected readonly modelLines = computed(() => {
     const y = this.yMain();
     return this.compareSeries().map(s => {
-      const def = forecastModelById(s.id);
+      const def = pointModelById(s.id);
       return { id: s.id, ai: def.ai, color: modelColor(s.id), d: linePath(this.points(s.hours, s.convert, y)) };
     });
   });
@@ -682,7 +682,7 @@ export class MeteogramChartComponent implements OnDestroy {
     const u = this.units();
     if (this.mode() === 'compare') {
       const what = { temp: 'Temperature', rain: 'Rain added up', wind: 'Wind speed', pressure: 'Sea level pressure' }[this.compareVar()];
-      return `${what}, ${this.modelIds().map(id => forecastModelById(id).label).join(', ')}.`;
+      return `${what}, ${this.modelIds().map(id => pointModelById(id).label).join(', ')}.`;
     }
     const m = this.model();
     const t = extent(m.temp.slice(w.from, w.to + 1));
