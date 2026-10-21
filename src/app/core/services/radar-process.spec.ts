@@ -6,6 +6,7 @@ import { IMD_RADAR_STATIONS, RadarProductKey } from '../domain/models/radar.mode
 import { RADAR_FIELD_SIZE, decodeLastGifFrame, layoutMatches, processRadarPixels } from './radar-process';
 import { RadarProcessor } from './radar-processor';
 import { RadarService } from './radar.service';
+import { decodeRadarGif } from './radar-gif-decode';
 
 /** FNV-1a of a field's bytes: the fields below were recorded from the implementation before it moved into a web worker. */
 function hash(f: Float32Array): string {
@@ -45,7 +46,7 @@ describe('radar picture processing (the same code runs in the worker and on the 
       expect(still.decoded && still.layoutOk).toBe(true);
       expect(hash(still.field!)).toBe(expected);
       const svc = TestBed.runInInjectionContext(() => new RadarService()) as any;
-      const img = await svc.decodeImage(load(file));
+      const img = (await decodeRadarGif(load(file)))!;
       const res = svc.processRgba(station, product, config, true, img.rgba, img.w, img.h, null, true, false);
       expect(hash(res.fieldData.field)).toBe(expected);
     });

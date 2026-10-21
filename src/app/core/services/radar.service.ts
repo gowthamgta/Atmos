@@ -1,5 +1,4 @@
 import { Injectable, signal, computed, effect, inject, untracked, OnDestroy } from '@angular/core';
-import { GifReader } from 'omggif';
 import {
   IMD_RADAR_STATIONS,
   RadarStationConfig,
@@ -11,12 +10,16 @@ import {
   ProcessedRadarResult
 } from '../domain/models/radar.model';
 
-import { dequantizeRadar, quantizeRadarField } from './radar-field';
+import { quantizeRadarField } from './radar-field';
 import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels, removeRadialInterference } from './radar-process';
 import { HistoryHandle, RadarProcessor, StillResult } from './radar-processor';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
-import { LOWEST_SWEEP_DEG, beamsOverPlace, isRainAloft, lowestBeamHeights, withAloftFade } from './radar-beam';
+import { lowestBeamHeights, withAloftFade } from './radar-beam';
+import { decodeRadarGif } from './radar-gif-decode';
+import { inspectRadar } from './radar-inspector';
+import { readHiddenStations, writeHiddenStations } from './radar-station-prefs';
+import { IMD_WRITE_GAP_MS, LOOK_LEAD_MS, extractRadarIsoTimestamp, pictureNotDue, radarTimingFromDate, scanNotDue } from './radar-timing';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
@@ -51,58 +54,8 @@ const yieldToBrowser = () => new Promise<void>(r => setTimeout(r, 0));
 export { RADAR_COLOR_STOPS, sampleRadarColorRamp } from './radar-field';
 
 export { removeRadialInterference } from './radar-process';
+export { IMD_WRITE_GAP_MS, pictureNotDue, scanNotDue } from './radar-timing';
 
-
-/**
- * True while a station's newest scan is too recent for another one to be due, so downloading it again would return the same
- * picture. Only a time that says when the scan was written counts (read off the picture, or the file's last-modified time); the
- * send time of the response (the server's date header, when there is no last-modified) says nothing about the scan.
- */
-export function scanNotDue(timing: { epochMs?: number; source?: string } | null | undefined, nowMs: number, recheckMs: number): boolean {
-  if (timing?.epochMs === undefined) return false;
-  if (timing.source !== 'radar_metadata' && timing.source !== 'printed_stamp' && timing.source !== 'http_last_modified') return false;
-  const age = nowMs - timing.epochMs;
-  return age >= 0 && age < recheckMs;
-}
-
-/** IMD writes every radar picture (CAZ, PPZ and PPI alike) on the five-minute mark, a few seconds after it. */
-export const IMD_WRITE_GAP_MS = 5 * 60_000;
-/** A look is due this long before the next picture is written, so a refresh each minute lands just after the write. */
-const LOOK_LEAD_MS = 6_000;
-/** A radar whose newest picture is over an hour old has stopped publishing: it is looked at every 15 minutes, not every minute. */
-const STALE_PICTURE_MS = 60 * 60_000;
-const STALE_RECHECK_MS = 15 * 60_000;
-
-/**
- * True while a station's next picture is not due: its newest picture was written less than 4 min 54 s ago. Both times are
- * the file's own (its Last-Modified time, and when it was last asked for), not the time printed inside the picture, which
- * can trail the write by twenty minutes or more and would make every radar look overdue on every refresh.
- */
-export function pictureNotDue(nowMs: number, writtenMs: number, fetchedMs: number): boolean {
-  const age = nowMs - writtenMs;
-  if (age >= STALE_PICTURE_MS) return nowMs - fetchedMs < STALE_RECHECK_MS;
-  return age >= 0 && age < IMD_WRITE_GAP_MS - LOOK_LEAD_MS;
-}
-
-const HIDDEN_STATIONS_KEY = 'atmosiq.radar.hiddenStations';
-
-function readHiddenStations(): ReadonlySet<string> {
-  try {
-    const ids = JSON.parse(localStorage.getItem(HIDDEN_STATIONS_KEY) ?? '[]');
-    const known = IMD_RADAR_STATIONS.map(s => s.id);
-    return new Set((Array.isArray(ids) ? ids : []).filter((id): id is string => known.includes(id)));
-  } catch {
-    return new Set();
-  }
-}
-
-function writeHiddenStations(hidden: ReadonlySet<string>): void {
-  try {
-    localStorage.setItem(HIDDEN_STATIONS_KEY, JSON.stringify([...hidden]));
-  } catch {
-    // the choice is simply not remembered
-  }
-}
 
 @Injectable({ providedIn: 'root' })
 export class RadarService implements OnDestroy {
@@ -648,7 +601,7 @@ export class RadarService implements OnDestroy {
             // Verify binary GIF magic header 'GIF87a' or 'GIF89a' (ASCII 0x47, 0x49, 0x46)
             if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
               rawArrayBuf = buf;
-              binaryTiming = this.extractRadarIsoTimestamp(buf);
+              binaryTiming = extractRadarIsoTimestamp(buf);
               const lastMod = response.headers.get('last-modified') || response.headers.get('date');
               sweepHeaderIsWriteTime = !!response.headers.get('last-modified');
               if (lastMod) {
@@ -690,12 +643,12 @@ export class RadarService implements OnDestroy {
         const served = sweepHeaderDate && !isNaN(sweepHeaderDate.getTime()) ? sweepHeaderDate.getTime() : Date.now();
         const scanned = stampEpoch(entry.time, served);
         // a time that puts the scan most of a day before the file was copied is a misread digit (the file is copied minutes after a scan): not used
-        if (served - scanned < 20 * 3_600_000) timing = this.timingFromDate(new Date(scanned), 'printed_stamp', false);
+        if (served - scanned < 20 * 3_600_000) timing = radarTimingFromDate(new Date(scanned), 'printed_stamp', false);
       }
     }
     if (!timing && sweepHeaderDate && !isNaN(sweepHeaderDate.getTime())) {
       // Upload time, not the scan time printed on the image: marked as approximate
-      timing = this.timingFromDate(sweepHeaderDate, sweepHeaderIsWriteTime ? 'http_last_modified' : 'http_header', true);
+      timing = radarTimingFromDate(sweepHeaderDate, sweepHeaderIsWriteTime ? 'http_last_modified' : 'http_header', true);
     }
 
     const now = Date.now();
@@ -752,58 +705,6 @@ export class RadarService implements OnDestroy {
     return processed;
   }
 
-  /** The last frame of a GIF as RGBA, or null when it cannot be decoded. */
-  private async decodeImage(rawArrayBuf: ArrayBuffer): Promise<{ rgba: Uint8ClampedArray | Uint8Array; w: number; h: number } | null> {
-    let w = 0;
-    let h = 0;
-    let rgba: Uint8ClampedArray | Uint8Array | null = null;
-
-    if (rawArrayBuf) {
-      try {
-        const reader = new GifReader(new Uint8Array(rawArrayBuf));
-        w = reader.width;
-        h = reader.height;
-        const numFrames = reader.numFrames();
-        const frameIdx = Math.max(0, numFrames - 1);
-        const decoded = new Uint8Array(w * h * 4);
-        reader.decodeAndBlitFrameRGBA(frameIdx, decoded);
-        rgba = decoded;
-      } catch (gifErr) {
-        console.warn('omggif decode error, attempting canvas fallback:', gifErr);
-      }
-    }
-
-    // Fallback: HTMLImageElement via Blob
-    if (!rgba && rawArrayBuf) {
-      try {
-        const blob = new Blob([rawArrayBuf], { type: 'image/gif' });
-        const blobUrl = URL.createObjectURL(blob);
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = (e) => reject(e);
-          img.src = blobUrl;
-        });
-
-        w = img.naturalWidth || img.width;
-        h = img.naturalHeight || img.height;
-        const rawCanvas = document.createElement('canvas');
-        rawCanvas.width = w;
-        rawCanvas.height = h;
-        const rawCtx = rawCanvas.getContext('2d', { willReadFrequently: true });
-        if (rawCtx) {
-          rawCtx.drawImage(img, 0, 0);
-          rgba = rawCtx.getImageData(0, 0, w, h).data;
-        }
-        URL.revokeObjectURL(blobUrl);
-      } catch (fallbackErr) {
-        console.warn('Canvas GIF fallback error:', fallbackErr);
-      }
-    }
-
-    return rgba ? { rgba, w, h } : null;
-  }
-
   private async decodeAndProcessSweep(
     station: RadarStationConfig,
     productKey: RadarProductKey,
@@ -815,7 +716,7 @@ export class RadarService implements OnDestroy {
     primary = true,
     predecoded: { rgba: Uint8ClampedArray | Uint8Array; w: number; h: number } | null = null
   ): Promise<ProcessedRadarResult | null> {
-    const image = predecoded ?? await this.decodeImage(rawArrayBuf);
+    const image = predecoded ?? await decodeRadarGif(rawArrayBuf);
     if (!image || image.w < 50 || image.h < 50) return null;
     const { rgba, w, h } = image;
     return this.processRgba(station, productKey, productConfig, isTransparent, rgba, w, h, timing, isDisplayed, primary);
@@ -1150,220 +1051,22 @@ export class RadarService implements OnDestroy {
    */
 
 
-  // 📡 Real-time dBZ Hover Inspector across all active radars in India
+  // the readout under the pointer (see radar-inspector.ts)
   inspectLocation(lat: number, lng: number, screenPoint: { x: number; y: number }): void {
-    let maxV = 0.0;
-    let bestStation: RadarStationConfig | null = null;
-
-    // read the picture on screen: the live mosaic, or the loop frame being played or scrubbed
-    const shown = this.displayed();
-    if (shown) {
-      const { field, width: cropW, height: cropH, coordinates } = shown;
-      const maxLat = coordinates[0][1];
-      const minLat = coordinates[2][1];
-      const minLng = coordinates[0][0];
-      const maxLng = coordinates[1][0];
-
-      if (lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng) {
-        // rows are evenly spaced in latitude, columns in longitude, first and last on the edges
-        const srcX = ((lng - minLng) / (maxLng - minLng)) * (cropW - 1);
-        const srcY = ((maxLat - lat) / (maxLat - minLat)) * (cropH - 1);
-
-        if (srcX >= 0 && srcX < cropW && srcY >= 0 && srcY < cropH) {
-          const x0 = Math.floor(srcX);
-          const x1 = Math.min(x0 + 1, cropW - 1);
-          const y0 = Math.floor(srcY);
-          const y1 = Math.min(y0 + 1, cropH - 1);
-          const wx = srcX - x0;
-          const wy = srcY - y0;
-
-          const s00 = field[y0 * cropW + x0];
-          const s10 = field[y0 * cropW + x1];
-          const s01 = field[y1 * cropW + x0];
-          const s11 = field[y1 * cropW + x1];
-          maxV = dequantizeRadar((s00 * (1 - wx) + s10 * wx) * (1 - wy) + (s01 * (1 - wx) + s11 * wx) * wy);
-
-          // Find closest active station for name attribution
-          let minD = Infinity;
-          for (const s of this.stations) {
-            if (this.hiddenStations().has(s.id)) continue;
-            const d = Math.hypot((lat - s.lat) * 111.32, (lng - s.lng) * 111.32 * Math.cos((s.lat * Math.PI) / 180));
-            if (d < minD) {
-              minD = d;
-              bestStation = s;
-            }
-          }
-        }
-      }
-    } else {
-      const all = this.allRadarResults();
-
-      for (const [stationId, res] of all) {
-        if (res.isDisplayed === false || !res.fieldData || this.hiddenStations().has(stationId)) continue;
-        const { field, cropW, cropH, bounds, cx, cy, radius } = res.fieldData;
-        const [southWest, northEast] = bounds;
-        const minLat = southWest[0];
-        const minLng = southWest[1];
-        const maxLat = northEast[0];
-        const maxLng = northEast[1];
-
-        if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) continue;
-
-        const normY = (maxLat - lat) / (maxLat - minLat);
-        const normX = (lng - minLng) / (maxLng - minLng);
-        const srcX = normX * (cropW - 1);
-        const srcY = normY * (cropH - 1);
-
-        if (srcX < 0 || srcX >= cropW || srcY < 0 || srcY >= cropH) continue;
-        const dx = srcX - cx;
-        const dy = srcY - cy;
-        if (dx * dx + dy * dy > (radius - 2) * (radius - 2)) continue;
-
-        const x0 = Math.floor(srcX);
-        const x1 = Math.min(x0 + 1, cropW - 1);
-        const y0 = Math.floor(srcY);
-        const y1 = Math.min(y0 + 1, cropH - 1);
-        const wx = srcX - x0;
-        const wy = srcY - y0;
-
-        const s00 = field[y0 * cropW + x0];
-        const s10 = field[y0 * cropW + x1];
-        const s01 = field[y1 * cropW + x0];
-        const s11 = field[y1 * cropW + x1];
-        const v = (s00 * (1 - wx) + s10 * wx) * (1 - wy) + (s01 * (1 - wx) + s11 * wx) * wy;
-
-        if (v > maxV) {
-          maxV = v;
-          bestStation = this.stations.find(s => s.id === stationId) || null;
-        }
-      }
-    }
-
-    const product = this.activeProduct();
-    const beams = beamsOverPlace(this.stations, product, lat, lng, id => !this.hiddenStations().has(id) && !this.unavailableStations().has(id));
-    const beamNote =
-      product === 'caz'
-        ? `Column maximum: the strongest echo from the lowest sweep (${LOWEST_SWEEP_DEG}°) upwards`
-        : `Lowest sweep (${LOWEST_SWEEP_DEG}°): rain below the beam is not seen`;
-
-    if (maxV >= 0.15 && bestStation) {
-      const dbz = Math.min(65, Math.max(12, Math.round(12 + maxV * 9.6)));
-      let label = 'Light Echo';
-      let color = '#3ad9e4ff'; // Deep Blue
-      let rate = '< 1.0 mm/h';
-
-      if (dbz >= 55) {
-        label = 'Severe Storm / Hail';
-        color = '#a855f7'; // Purple
-        rate = '> 50 mm/h';
-      } else if (dbz >= 45) {
-        label = 'Torrential Rain';
-        color = '#ef4444'; // Red
-        rate = '30 – 50 mm/h';
-      } else if (dbz >= 36) {
-        label = 'Heavy Rain';
-        color = '#facc15'; // Yellow
-        rate = '10 – 30 mm/h';
-      } else if (dbz >= 26) {
-        label = 'Moderate Rain';
-        color = '#afc600ff'; // Green
-        rate = '2.5 – 10 mm/h';
-      } else if (dbz >= 18) {
-        label = 'Light Rain';
-        color = '#00a33fff'; // Sky Blue
-        rate = '1.0 – 2.5 mm/h';
-      } else {
-        label = 'Light Echo';
-        color = '#3ad9e4ff'; // Deep Blue
-        rate = '< 1.0 mm/h';
-      }
-
-      const lowest = Math.min(...beams.map(b => b.centreKm));
-      const aloft = beams.length > 0 && isRainAloft(dbz, lowest);
-      this.hoverInfo.set({
-        x: screenPoint.x,
-        y: screenPoint.y,
-        lat,
-        lng,
-        dbz,
-        label: aloft ? `Rain aloft (${dbz} dBZ): may not reach the ground` : `${label} (${dbz} dBZ)`,
-        color,
-        rate,
-        beams,
-        beamNote
-      });
-    } else if (beams.length > 0) {
-      // no echo here, but inside a radar's picture: how high it looks is still worth knowing (a blank far away is not a dry sky)
-      this.hoverInfo.set({ x: screenPoint.x, y: screenPoint.y, lat, lng, dbz: null, label: 'No echo', color: '#94a3b8', rate: '', beams, beamNote });
-    } else {
-      this.hoverInfo.set(null);
-    }
+    const input = {
+      shown: this.displayed(),
+      allResults: this.allRadarResults(),
+      stations: this.stations,
+      hidden: this.hiddenStations(),
+      unavailable: this.unavailableStations(),
+      product: this.activeProduct(),
+    };
+    this.hoverInfo.set(inspectRadar(input, lat, lng, screenPoint));
   }
 
   clearHover(): void {
     this.hoverInfo.set(null);
   }
 
-  private timingFromDate(date: Date, source: string, approximate: boolean): RadarObservationTiming {
-    const tilde = approximate ? '~' : '';
-    const ist = date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' }) + ' IST';
-    const utc = date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' }) + ' UTC';
-    const day = date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Kolkata' }).replace(/\//g, '-');
-    return { ist: tilde + ist, utc: tilde + utc, date: day, raw: date.toISOString(), epochMs: date.getTime(), source };
-  }
 
-  private extractRadarIsoTimestamp(arrayBuffer: ArrayBuffer): RadarObservationTiming | null {
-    try {
-      const bytes = new Uint8Array(arrayBuffer);
-      // Scan for all embedded ISO timestamps (e.g. "2026-09-29T22:12:22")
-      // In animated GIFs, multiple timestamps exist across frames; pick the latest one (maximum epochMs)
-      let str = '';
-      const step = Math.max(1, Math.floor(bytes.length / 50000));
-      for (let i = 0; i < bytes.length; i += step) {
-        str += String.fromCharCode(bytes[i]);
-      }
-      const head = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(bytes.length, 4096)));
-      const tail = new TextDecoder('latin1').decode(bytes.subarray(Math.max(0, bytes.length - 65536)));
-      const fullText = head + ' ' + str + ' ' + tail;
-
-      const regex = /(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/g;
-      const matches = [...fullText.matchAll(regex)];
-      if (matches.length === 0) return null;
-
-      let bestMatch = matches[0];
-      let maxEpoch = 0;
-
-      for (const m of matches) {
-        const epoch = new Date(`${m[0]}+05:30`).getTime();
-        if (!isNaN(epoch) && epoch > maxEpoch) {
-          maxEpoch = epoch;
-          bestMatch = m;
-        }
-      }
-
-      const [full, yyyy, mm, dd, hh, min, ss] = bestMatch;
-      const h = parseInt(hh, 10);
-      const m = parseInt(min, 10);
-      const s = parseInt(ss, 10);
-      const h12 = h % 12 || 12;
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const istTime = `${pad(h12)}:${pad(m)}:${pad(s)} ${ampm} IST`;
-
-      let totalMin = h * 60 + m - 330;
-      if (totalMin < 0) totalMin += 1440;
-      const utcH = Math.floor(totalMin / 60) % 24;
-      const utcM = totalMin % 60;
-      const utcTime = `${pad(utcH)}:${pad(utcM)}:${pad(s)} UTC`;
-      const dateStr = `${dd}-${mm}-${yyyy}`;
-
-      const sweepEpoch = new Date(`${full}+05:30`).getTime();
-      const epochMs = maxEpoch > 0 ? maxEpoch : (!isNaN(sweepEpoch) ? sweepEpoch : undefined);
-
-      return { ist: istTime, utc: utcTime, date: dateStr, raw: full, epochMs, source: 'radar_metadata' };
-    } catch {
-      // Ignore
-    }
-    return null;
-  }
 }
