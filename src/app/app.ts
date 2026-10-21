@@ -20,6 +20,7 @@ import { ThemeService } from './shared/theme.service';
 import { PerfMeterComponent } from './features/perf/perf-meter.component';
 import { BOT_CAPTURE } from './core/ui/bot-capture';
 import { DataAgeBadgeComponent } from './features/map/data-age-badge.component';
+import { AppUpdateService } from './core/ui/app-update.service';
 
 @Component({
   selector: 'app-root',
@@ -53,6 +54,10 @@ export class App {
   private readonly urlState = inject(UrlStateService);
   // the nowcast bot's screenshot is the radar map alone: the panels are hidden (see bot-capture.ts and styles.css)
   private readonly botCapture = BOT_CAPTURE && document.documentElement.classList.add('bot-capture');
+
+  constructor() {
+    inject(AppUpdateService).start(); // a new release is put in place the next time the page is out of sight
+  }
 
   protected retry(): void {
     void this.catalog.refresh();

@@ -4,6 +4,8 @@ import { FORECAST_MODELS, modelColor } from '../../core/forecast/forecast-models
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { agoLabel, istValid, runLines } from '../../core/forecast/model-runs';
 import { ModelRunsService } from '../../core/forecast/model-runs.service';
+import { skillLine } from '../../core/forecast/verification';
+import { SKILL_WINDOW_DAYS, VerificationService } from '../../core/forecast/verification.service';
 
 /**
  * The forecast models with what is needed to judge how current each is: its colour, its grid spacing, the run it is on (when it began, in India
@@ -33,11 +35,17 @@ import { ModelRunsService } from '../../core/forecast/model-runs.service';
             @if (r.lines.published) { <span class="line muted">{{ r.lines.published }}</span> }
             @if (r.showDetail) { <span class="line detail" [class.warn]="r.tone === 'warn'" [class.bad]="r.tone === 'bad'">{{ r.detail }}</span> }
             @if (r.lines.next) { <span class="line muted">{{ r.lines.next }}</span> }
+            @if (r.skill) {
+              <span class="line skill" [title]="skillTitle"><span>{{ r.skill }}</span>@if (r.rank === 1) { <span class="best" title="The smallest temperature error a day ahead among the models, over the same days">Best temperature</span> }</span>
+            }
           </button>
         </li>
       }
     </ul>
     <p class="foot">
+      @if (verification.airportCount()) {
+        Accuracy: a day ahead, the last {{ windowDays }} days at {{ verification.airportCount() }} South Indian airports (temperature error, and the rainy hours each model forecast rain in).
+      }
       Run is when the model started its forecast (UTC hour). Hour is how many hours into that run the time on the bar is.
       @if (checked()) { Checked {{ checked() }}. }
       <button type="button" class="again" (click)="runs.refresh()" [disabled]="runs.checking()">{{ runs.checking() ? 'Checking…' : 'Check again' }}</button>
@@ -62,6 +70,8 @@ import { ModelRunsService } from '../../core/forecast/model-runs.service';
     .hour { font-weight: var(--fw-strong); white-space: nowrap; }
     .hour.off { color: var(--text-muted); font-weight: var(--fw-normal); }
     .muted { color: var(--text-muted); }
+    .skill { color: var(--text-secondary); justify-content: flex-start; }
+    .best { margin-left: auto; padding: 0 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-strong); font-size: var(--fs-xs); font-weight: var(--fw-medium); white-space: nowrap; }
     .detail { color: var(--text-secondary); }
     .detail.warn { color: var(--warn); }
     .detail.bad { color: var(--danger); }
@@ -74,12 +84,16 @@ export class ModelListComponent {
   protected readonly runs = inject(ModelRunsService);
   protected readonly catalog = inject(ForecastCatalogService);
   private readonly state = inject(ForecastStateService);
+  protected readonly verification = inject(VerificationService);
+  protected readonly windowDays = SKILL_WINDOW_DAYS;
+  protected readonly skillTitle = 'How far its temperature forecast a day ahead was from the airport reports, and the share of rainy hours it forecast rain in';
 
   /** A model was chosen (the popover closes). */
   readonly chosen = output<string>();
 
   constructor() {
     void this.runs.watch(FORECAST_MODELS.map(m => m.id));
+    this.verification.load();
   }
 
   protected readonly valid = computed(() => {
@@ -91,6 +105,7 @@ export class ModelListComponent {
     const now = this.runs.nowMs();
     const valid = this.state.timeMs();
     const active = this.catalog.activeModelId();
+    const skill = this.verification.skill();
     const looking = this.runs.checkedMs() === null; // nothing has been asked yet: a model without a run is not missing, it is not known
     return this.runs.infos().map(info => {
       const unknown = looking && !info.published && !info.upstream;
@@ -107,6 +122,8 @@ export class ModelListComponent {
         // the sentence under the badge is only for what needs attention
         showDetail: !unknown && (info.status !== 'current' || info.tone === 'warn'),
         lines: unknown ? { run: 'Looking up the latest run…', hour: '–', covered: false, published: '', next: '' } : runLines(info, valid, now),
+        skill: skill.get(info.model.id) ? skillLine(skill.get(info.model.id)!) : '',
+        rank: skill.get(info.model.id)?.tempRank ?? null,
       };
     });
   });

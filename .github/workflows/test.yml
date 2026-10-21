@@ -9,6 +9,7 @@ on:
       - "src/**"
       - "e2e/**"
       - "public/**"
+      - "!public/data/verification/**"   # the daily scores (verify workflow) are data, not a change to test
       - "angular.json"
       - "ngsw-config.json"
       - "package.json"
