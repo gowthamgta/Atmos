@@ -10,8 +10,8 @@ import {
   isDevMode
 } from '@angular/core';
 import type * as maplibregl from 'maplibre-gl';
-import type { Map as MapLibreMap, Marker } from 'maplibre-gl';
-import { loadMapLibre, maplibre } from '../../core/map/maplibre-lazy';
+import type { Map as MapLibreMap } from 'maplibre-gl';
+import { loadMapLibre } from '../../core/map/maplibre-lazy';
 import { MapLayerService, LayerConfig } from '../../core/services/map-layer.service';
 import { RadarDisplayFrame, RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
@@ -25,7 +25,6 @@ import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
 import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM, SatelliteChannel } from '../../core/satellite/satellite.config';
 import { SatelliteDetailService, ShownWindow } from '../../core/satellite/satellite-detail.service';
 import type { MapView } from '../../core/satellite/satellite-window';
-import { RadarProductKey } from '../../core/domain/models/radar.model';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
 import { TerrainService } from '../../core/forecast/terrain.service';
 import { syncCoverageLayer } from './radar-coverage-overlay';
@@ -52,53 +51,15 @@ import { ForecastStateService } from '../../core/forecast/forecast-state.service
 import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
+import { RadarHoverTooltipComponent } from './radar-hover-tooltip.component';
 
 @Component({
   selector: 'app-map',
   standalone: true,
+  imports: [RadarHoverTooltipComponent],
   template: `
     <div id="map-container">
-      <!-- 📡 Real-time IMD Radar dBZ Hover Inspector Tooltip -->
-      @if (hoverInfo()) {
-        <div
-          class="radar-hover-tooltip"
-          [style.left.px]="hoverInfo()!.x"
-          [style.top.px]="hoverInfo()!.y"
-        >
-          @if (hoverInfo()!.dbz !== null) {
-          <div class="tooltip-top-row">
-            <span
-              class="tooltip-badge-dot"
-              [style.background-color]="hoverInfo()!.color"
-              [style.box-shadow]="'0 0 10px ' + hoverInfo()!.color"
-            ></span>
-            <span class="tooltip-dbz-val" [style.color]="hoverInfo()!.color">
-              {{ hoverInfo()!.dbz }} dBZ
-            </span>
-            <span class="tooltip-rate-lbl">{{ hoverInfo()!.rate }}</span>
-          </div>
-          }
-          <div class="tooltip-desc-row">
-            <strong style="color: #f8fafc">{{ hoverInfo()!.label }}</strong>
-            <span class="tooltip-sep">•</span>
-            <span class="tooltip-coords">
-              {{ hoverInfo()!.lat.toFixed(3) }}°N, {{ hoverInfo()!.lng.toFixed(3) }}°E
-            </span>
-          </div>
-          @if (hoverInfo()!.beams.length > 0) {
-            <div class="tooltip-beams">
-              @for (b of hoverInfo()!.beams; track b.name) {
-                <div class="tooltip-beam">
-                  <span>{{ b.name }} <span class="tooltip-beam-dist">{{ b.distanceKm.toFixed(0) }} km</span></span>
-                  <strong>{{ b.centreKm.toFixed(1) }} km up</strong>
-                  <span class="tooltip-beam-dist">{{ b.bottomKm.toFixed(1) }}–{{ b.topKm.toFixed(1) }}</span>
-                </div>
-              }
-              <div class="tooltip-beam-note">{{ hoverInfo()!.beamNote }}</div>
-            </div>
-          }
-        </div>
-      }
+      <app-radar-hover-tooltip />
     </div>
   `,
   styles: [`
@@ -116,205 +77,7 @@ import { UrlStateService } from '../../core/ui/url-state.service';
       z-index: 1;
       background: #2b2e35;
     }
-    ::ng-deep .custom-marker {
-      width: 24px;
-      height: 24px;
-      position: relative;
-      pointer-events: none;
-    }
     /* ── Live Radar Hover dBZ Tooltip ── */
-    .radar-hover-tooltip {
-      position: absolute;
-      transform: translate(14px, -110%);
-      pointer-events: none;
-      z-index: 1000;
-      background: rgba(15, 23, 42, 0.94);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.15);
-      border-radius: 10px;
-      padding: 0.55rem 0.85rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      white-space: nowrap;
-      animation: tooltipFadeIn 0.15s ease-out;
-    }
-    @keyframes tooltipFadeIn {
-      from { opacity: 0; transform: translate(14px, -95%) scale(0.95); }
-      to { opacity: 1; transform: translate(14px, -110%) scale(1); }
-    }
-    .tooltip-top-row {
-      display: flex;
-      align-items: center;
-      gap: 0.45rem;
-    }
-    .tooltip-badge-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .tooltip-dbz-val {
-      font-size: 0.95rem;
-      font-weight: 800;
-      font-family: monospace;
-      letter-spacing: -0.02em;
-    }
-    .tooltip-rate-lbl {
-      font-size: 0.75rem;
-      color: #cbd5e1;
-      background: rgba(255, 255, 255, 0.08);
-      padding: 1px 6px;
-      border-radius: 4px;
-      font-weight: 500;
-    }
-    .tooltip-desc-row {
-      font-size: 0.75rem;
-      color: #94a3b8;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-    }
-    .tooltip-beams {
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px solid rgba(148, 163, 184, 0.25);
-      display: grid;
-      gap: 2px;
-      font-size: 11px;
-      color: #cbd5e1;
-    }
-    .tooltip-beam {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px;
-      align-items: baseline;
-    }
-    .tooltip-beam strong { color: #f8fafc; }
-    .tooltip-beam-dist { color: #94a3b8; font-size: 11px; }
-    .tooltip-beam-note { margin-top: 2px; color: #94a3b8; font-size: 11px; max-width: 240px; }
-    .tooltip-sep {
-      color: #475569;
-    }
-    .tooltip-coords {
-      font-family: monospace;
-      font-size: 0.72rem;
-      color: #64748b;
-    }
-    .mc-tooltip-close-btn {
-      background: transparent;
-      border: none;
-      color: #94a3b8;
-      font-size: 0.8rem;
-      cursor: pointer;
-      padding: 0 4px;
-      margin-left: 6px;
-      border-radius: 3px;
-      line-height: 1;
-      transition: all 0.15s ease;
-    }
-    .mc-tooltip-close-btn:hover {
-      color: #ef4444;
-      background: rgba(239, 68, 68, 0.2);
-    }
-    /* ── Radar Station Pins & Range Rings ── */
-    ::ng-deep .radar-station-marker {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-      user-select: none;
-      transform: translate(-50%, -50%);
-      z-index: 35;
-      transition: transform 0.18s ease-out, filter 0.18s ease-out;
-    }
-    ::ng-deep .radar-station-marker:hover {
-      z-index: 60;
-      transform: translate(-50%, -50%) scale(1.18);
-    }
-    ::ng-deep .radar-station-marker .station-dot-container {
-      position: relative;
-      width: 14px;
-      height: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    ::ng-deep .radar-station-marker .station-center-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #0ea5e9;
-      box-shadow: 0 0 6px #0ea5e9;
-      border: 1px solid #ffffff;
-      transition: all 0.2s ease;
-    }
-    ::ng-deep .radar-station-marker.active-station {
-      z-index: 55;
-    }
-    ::ng-deep .radar-station-marker.active-station .station-center-dot {
-      width: 9px;
-      height: 9px;
-      background: #22c55e;
-      box-shadow: 0 0 10px #22c55e, 0 0 20px rgba(34, 197, 94, 0.5);
-      border: 1.5px solid #ffffff;
-    }
-    ::ng-deep .radar-station-marker.active-station .station-pulse-ring {
-      position: absolute;
-      top: -4px;
-      left: -4px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      border: 1.5px solid rgba(34, 197, 94, 0.85);
-      animation: radarStationPulse 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-      pointer-events: none;
-    }
-    ::ng-deep .station-badge-label {
-      background: rgba(15, 23, 42, 0.92);
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      color: #93c5fd;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      font-size: var(--fs-xs);
-      font-weight: 700;
-      padding: 1.5px 6px;
-      border-radius: 4px;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
-      white-space: nowrap;
-      backdrop-filter: blur(6px);
-      display: none;
-    }
-    ::ng-deep .radar-station-marker.active-station .station-badge-label {
-      border-color: rgba(34, 197, 94, 0.6);
-      color: #4ade80;
-      display: block;
-    }
-    ::ng-deep .radar-station-marker:hover .station-badge-label,
-    ::ng-deep .radar-station-marker.show-label .station-badge-label {
-      display: block;
-    }
-    ::ng-deep .dwr-ring-label-marker {
-      pointer-events: none;
-      user-select: none;
-    }
-    ::ng-deep .dwr-ring-badge {
-      background: rgba(15, 23, 42, 0.9);
-      color: #38bdf8;
-      font-family: monospace;
-      font-size: var(--fs-xs);
-      font-weight: 700;
-      padding: 1px 5px;
-      border-radius: 4px;
-      border: 1px solid rgba(56, 189, 248, 0.4);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-      white-space: nowrap;
-    }
-    ::ng-deep .dwr-ring-badge.outer {
-      color: #ef4444;
-      border-color: rgba(239, 68, 68, 0.5);
-    }
   `]
 })
 export class MapComponent implements OnInit, OnDestroy {
@@ -330,9 +93,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private forecastState = inject(ForecastStateService);
   private forecastInspector = inject(ForecastInspectorService);
 
-  readonly hoverInfo = this.radarService.hoverInfo;
   private map: MapLibreMap | null = null;
-  private ringLabelMarkers: Marker[] = [];
   readonly isMapLoaded = signal<boolean>(false);
   private isRadarActive = true;
 
@@ -479,25 +240,6 @@ export class MapComponent implements OnInit, OnDestroy {
   });
 
   // Reactive Effect: Recenter Mosaic Request
-  private centerStationEffect = effect(() => {
-    const req = this.radarService.centerStationRequest();
-    if (req > 0 && this.map) {
-      this.flyToMosaicCenter();
-    }
-  });
-
-  // Reactive Effect: Active Station Focus & Range Rings sync (camera stays locked over South India)
-  private activeStationEffect = effect(() => {
-    this.radarService.activeStationId();
-    if (!this.map || !this.isMapLoaded()) return;
-    const product = this.radarService.activeProduct();
-    const ringsSource = this.map.getSource('radar-rings-source') as maplibregl.GeoJSONSource;
-    if (ringsSource) {
-      ringsSource.setData(this.buildRingsGeoJson(product));
-    }
-    this.createRingLabelMarkers(product);
-  });
-
   private readonly mapHost = inject(MapHostService);
   private readonly urlState = inject(UrlStateService);
 
@@ -520,8 +262,6 @@ export class MapComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed = true;
     this.mapHost.register(null);
-    this.ringLabelMarkers.forEach(m => m.remove());
-    this.ringLabelMarkers = [];
 
     this.removeRadarLayer();
 
@@ -701,9 +441,6 @@ export class MapComponent implements OnInit, OnDestroy {
       this.initBoundaries();
       this.initPlaceLabels();
 
-      // 2. Add Radar Range Rings GeoJSON Source & Layer
-      this.initRangeRings();
-
       // 4. Initial Radar Mosaic Mount
       this.updateRadarMosaicOverlay(this.radarService.displayed());
 
@@ -750,11 +487,6 @@ export class MapComponent implements OnInit, OnDestroy {
     map.on('mouseout', () => {
       this.radarService.clearHover();
       this.satellite.clearHover();
-    });
-
-    // Adaptive zoom detail scaling
-    map.on('zoom', () => {
-      this.syncZoomVisuals();
     });
 
     // The satellite detail window follows the map's position and size
@@ -1037,122 +769,12 @@ export class MapComponent implements OnInit, OnDestroy {
     symbol('label-town', 'place', ['==', ['get', 'class'], 'town'], 7, 24, ['interpolate', ['linear'], ['zoom'], 7, 10.5, 12, 13.5], 'rgba(244, 247, 252, 0.95)');
     symbol('label-village', 'place', ['match', ['get', 'class'], ['village', 'suburb', 'hamlet'], true, false], 9.5, 24, 11, 'rgba(226, 233, 245, 0.88)');
   }
-  // --- 2. Concentric Radar Range Rings & Station Pins ---
-
-  private initRangeRings(): void {
-    if (!this.map) return;
-
-    const product = this.radarService.activeProduct();
-    this.map.addSource('radar-rings-source', {
-      type: 'geojson',
-      data: this.buildRingsGeoJson(product)
-    });
-
-    this.map.addLayer(
-      {
-        id: 'radar-rings-lines',
-        type: 'line',
-        source: 'radar-rings-source',
-        paint: {
-          'line-color': ['case', ['get', 'isOuter'], 'rgba(239, 68, 68, 0.65)', 'rgba(56, 189, 248, 0.4)'],
-          'line-width': 1.0,
-          'line-dasharray': [4, 4]
-        },
-        layout: {
-          visibility: 'none'
-        }
-      },
-      this.overlayAnchorId()
-    );
-
-    this.createRingLabelMarkers(product);
-  }
-
-  private buildRingsGeoJson(productKey: RadarProductKey): any {
-    const center = this.radarService.activeStation();
-    const prod = center.products[productKey] || center.products.caz;
-    const rings = prod.rings;
-    const maxKm = rings[rings.length - 1];
-
-    const features = rings.map(km => {
-      const coords = this.createCircleCoordinates(center.lng, center.lat, km);
-      return {
-        type: 'Feature',
-        properties: {
-          km,
-          isOuter: km === maxKm
-        },
-        geometry: {
-          type: 'LineString',
-          coordinates: coords
-        }
-      };
-    });
-
-    return {
-      type: 'FeatureCollection',
-      features
-    };
-  }
-
-  private createCircleCoordinates(centerLng: number, centerLat: number, radiusKm: number, steps = 72): [number, number][] {
-    const coords: [number, number][] = [];
-    const latRadius = radiusKm / 111.32;
-    const lonRadius = radiusKm / (111.32 * Math.cos((centerLat * Math.PI) / 180));
-
-    for (let i = 0; i <= steps; i++) {
-      const angle = (i * 2 * Math.PI) / steps;
-      const lon = centerLng + Math.sin(angle) * lonRadius;
-      const lat = centerLat + Math.cos(angle) * latRadius;
-      coords.push([lon, lat]);
-    }
-    return coords;
-  }
-
-  private createRingLabelMarkers(productKey: RadarProductKey): void {
-    if (!this.map) return;
-
-    this.ringLabelMarkers.forEach(m => m.remove());
-    this.ringLabelMarkers = [];
-
-    const center = this.radarService.activeStation();
-    const prod = center.products[productKey] || center.products.caz;
-    const rings = prod.rings;
-    const maxKm = rings[rings.length - 1];
-
-    for (const km of rings) {
-      const isOuter = km === maxKm;
-      const labelLat = center.lat + (km / 111.32);
-
-      const el = document.createElement('div');
-      el.className = 'dwr-ring-label-marker';
-      el.innerHTML = `<span class="dwr-ring-badge ${isOuter ? 'outer' : ''}">${km}km</span>`;
-
-      const marker = new (maplibre().Marker)({ element: el, anchor: 'center' })
-        .setLngLat([center.lng, labelLat])
-        .addTo(this.map);
-
-      el.style.display = 'none';
-      this.ringLabelMarkers.push(marker);
-    }
-  }
-
   private syncBasemap(type: string = 'dark'): void {
     if (!this.map || !this.isMapLoaded()) return;
     for (const id of ['base-water', 'base-waterway', 'base-border', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
     this.setHillshadeVisible(this.forecastState.relief() && !this.satelliteOn());
-  }
-
-  private syncZoomVisuals(): void {
-    if (!this.map) return;
-    const z = this.map.getZoom();
-
-    const showRingLabels = z >= 7.5 && this.isRadarActive && this.radarService.showRangeRings();
-    this.ringLabelMarkers.forEach(m => {
-      m.getElement().style.display = showRingLabels ? 'block' : 'none';
-    });
   }
 
   public flyToMosaicCenter(): void {
@@ -1227,16 +849,6 @@ export class MapComponent implements OnInit, OnDestroy {
     // Show or hide the radar mosaic (its opacity is owned by radarOpacityEffect)
     untracked(() => this.updateRadarMosaicOverlay(this.radarService.displayed()));
 
-    // Toggle Concentric Range Rings
-    if (this.map.getLayer('radar-rings-lines')) {
-      const showRings = this.radarService.showRangeRings();
-      this.map.setLayoutProperty(
-        'radar-rings-lines',
-        'visibility',
-        (this.isRadarActive && showRings) ? 'visible' : 'none'
-      );
-    }
-
     // Refresh live sweeps only when radar is switched back on. The service already
     // auto-refreshes every minute, so re-fetching on every layer/opacity change
     // would re-download and re-decode every station GIF on each slider tick.
@@ -1244,6 +856,5 @@ export class MapComponent implements OnInit, OnDestroy {
       untracked(() => this.radarService.fetchAllRadarSweeps());
     }
 
-    this.syncZoomVisuals();
   }
 }

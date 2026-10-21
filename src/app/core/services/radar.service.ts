@@ -6,15 +6,13 @@ import {
   RadarObservationTiming,
   RadarHoverInfo,
   RadarFieldData,
-  RadarPaletteEntry,
   ProcessedRadarResult
 } from '../domain/models/radar.model';
 
-import { quantizeRadarField } from './radar-field';
-import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels, removeRadialInterference } from './radar-process';
+import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels } from './radar-process';
 import { HistoryHandle, RadarProcessor, StillResult } from './radar-processor';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
-import { readStampTime, stampEpoch, type StampTime } from './radar-stamp';
+import { stampEpoch, type StampTime } from './radar-stamp';
 import { lowestBeamHeights, withAloftFade } from './radar-beam';
 import { decodeRadarGif } from './radar-gif-decode';
 import { inspectRadar } from './radar-inspector';
@@ -76,7 +74,6 @@ export class RadarService implements OnDestroy {
 
   readonly activeProduct = signal<RadarProductKey>('caz');
   readonly transparentMode = signal<boolean>(true);
-  readonly showRangeRings = signal<boolean>(false);
   readonly radarOpacity = signal<number>(1.0);
   /**
    * Leave out faint echoes where the beam passes high above the ground (far from a radar, behind mountains): there they are mostly cloud or rain
@@ -165,7 +162,6 @@ export class RadarService implements OnDestroy {
   });
   private historyToken = 0;
   private playTimer: ReturnType<typeof setInterval> | null = null;
-  readonly centerStationRequest = signal<number>(0);
 
   // Active Station Timing & Freshness (Independent per-station tracking)
   readonly activeStationTiming = computed<RadarObservationTiming | null>(() => {
@@ -367,21 +363,6 @@ export class RadarService implements OnDestroy {
     return Math.max(0, Math.floor((this.liveClock() - t.epochMs) / 60000));
   }
 
-  selectStation(stationId: string): void {
-    if (this.activeStationId() === stationId) return;
-    this.activeStationId.set(stationId);
-    this.requestCenterStation();
-
-    if (!this.allRadarResults().has(stationId)) {
-      this.processStationSweep(this.activeStation(), this.activeProduct(), this.transparentMode()).then(res => {
-        if (res) {
-          this.allRadarResults.update(m => new Map(m).set(stationId, res));
-          this.scheduleMosaic();
-        }
-      });
-    }
-  }
-
   isStationShown(stationId: string): boolean {
     return !this.hiddenStations().has(stationId);
   }
@@ -415,25 +396,8 @@ export class RadarService implements OnDestroy {
     this.fetchAllRadarSweeps();
   }
 
-  setTransparent(transparent: boolean): void {
-    this.transparentMode.set(transparent);
-    this.allRadarResults.set(new Map());
-    this.forgetPictureTimes();
-    this.compositeMosaic.set(null);
-    this.clearHistory();
-    this.fetchAllRadarSweeps();
-  }
-
-  setRangeRings(show: boolean): void {
-    this.showRangeRings.set(show);
-  }
-
   setOpacity(opacity: number): void {
     this.radarOpacity.set(Math.max(0.1, Math.min(1.0, opacity)));
-  }
-
-  requestCenterStation(): void {
-    this.centerStationRequest.update(v => v + 1);
   }
 
   async fetchRadarSweep(): Promise<void> {
