@@ -1,18 +1,36 @@
 /**
- * Our own satellite pictures, made from Himawari-9's raw bands by the satellite workflow (pipeline/himawari_rgb.py, published by
- * gowthamgta/atmos-satellite with GitHub Pages): four pictures made in the pipeline, and three drawn in the browser from the frame's data
- * pack (brightness temperatures; see rendering/satellite-data.layer.ts). EUMETView's pictures (the agreed look) stay the default source.
+ * Our own satellite pictures, made from the raw data of two satellites by the satellite workflow (published by gowthamgta/atmos-satellite
+ * with GitHub Pages): Meteosat-9 (pipeline/meteosat_rgb.py: all of India, the HRV at 1.25 km) and Himawari-9 (pipeline/himawari_rgb.py: the
+ * east only, true colour at 1 km). Some pictures are made in the pipeline, three are drawn in the browser from the frame's data pack
+ * (brightness temperatures; see rendering/satellite-data.layer.ts). EUMETView's pictures (the agreed look) stay the default source.
  */
 import { mercatorUnitY } from '../forecast/forecast.model';
 import type { GeoBounds } from './satellite.config';
 
-export const OWN_BASE = 'https://gowthamgta.github.io/atmos-satellite/rgb-h9/';
+const SITE = 'https://gowthamgta.github.io/atmos-satellite/';
 
-export type OwnKind = 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'irenhanced' | 'wvdiff' | 'custom';
+export type OwnKind = 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'irenhanced' | 'wvdiff' | 'custom';
+export type OwnSatellite = 'msg' | 'h9';
+
+/** The two satellites' published folders and what each makes. */
+export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; kinds: readonly OwnKind[]; ir: string; note: string }> = {
+  msg: {
+    name: 'Meteosat-9', base: SITE + 'rgb-msg/', ir: '10.8',
+    kinds: ['hrv', 'natural', 'sandwich', 'convection', 'nightmicro', 'irenhanced', 'wvdiff', 'custom'],
+    note: 'From Meteosat-9\'s raw SEVIRI data (EUMETSAT Data Store), 1.25 km, parallax-corrected, all of India.',
+  },
+  h9: {
+    name: 'Himawari-9', base: SITE + 'rgb-h9/', ir: '10.4',
+    kinds: ['truecolor', 'sandwich', 'convection', 'nightmicro', 'irenhanced', 'wvdiff', 'custom'],
+    note: 'From Himawari-9\'s raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.',
+  },
+};
 /** Where the satellite panel's pictures come from: EUMETView (default) or one of ours. */
 export type SatelliteSource = 'eumetview' | OwnKind;
 
 export const OWN_KINDS: readonly { id: OwnKind; label: string; title: string; day?: boolean; shader?: boolean }[] = [
+  { id: 'hrv', label: 'HRV', day: true, title: 'The High Resolution Visible channel itself, uncompressed, about 1.2 km, by day' },
+  { id: 'natural', label: 'Natural colour', day: true, title: 'Natural colour (0.6, 0.8, 1.6 µm) sharpened with the HRV: ice cloud cyan, water cloud white, land green-brown, by day' },
   { id: 'truecolor', label: 'True colour', day: true, title: 'True colour from the visible bands (Rayleigh-corrected), by day' },
   { id: 'sandwich', label: 'Sandwich', day: true, title: 'The visible texture, coloured where the cloud top is colder than −38 °C: storms and their overshooting tops' },
   { id: 'convection', label: 'Convection', day: true, title: 'Severe convection RGB: strong updrafts with small ice at the top show yellow' },
@@ -27,11 +45,11 @@ export const isDayKind = (k: SatelliteSource): boolean => OWN_KINDS.some(o => o.
 
 /** The quantities a custom RGB channel can show (kelvin): the data pack's bands and two differences. */
 export const CUSTOM_SOURCES: readonly { id: number; label: string }[] = [
-  { id: 0, label: 'IR 10.4 µm' },
+  { id: 0, label: 'IR window' },
   { id: 1, label: 'WV 6.2 µm' },
   { id: 2, label: 'WV 7.3 µm' },
   { id: 3, label: 'WV 6.2 − 7.3' },
-  { id: 4, label: 'IR 10.4 − WV 7.3' },
+  { id: 4, label: 'IR − WV 7.3' },
 ];
 
 export interface CustomChannel {

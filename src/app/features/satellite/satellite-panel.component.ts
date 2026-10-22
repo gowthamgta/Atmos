@@ -5,7 +5,7 @@ import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
 import { cloudTopGradient } from '../../core/satellite/satellite-image';
-import { CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OwnKind } from '../../core/satellite/own-products';
+import { CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
 
@@ -30,7 +30,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
           <span class="live" [class.off]="failed()" aria-hidden="true"></span>
           <div class="heading">
             <div class="title-row">
-              <strong>{{ own() ? 'Himawari-9' : sourceLabel }}</strong>
+              <strong>{{ own() ? ownSat().name : sourceLabel }}</strong>
               @if (detailActive()) {
                 <span class="hd-badge" [class.loading]="detailLoading()" title="The part of the map in view is drawn from a closer picture of the HRV, at the satellite's own pixel (about 1.3 km)">
                   {{ detailLoading() ? 'HD loading…' : 'HD ' + detailKm() + ' km' }}
@@ -60,8 +60,13 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
             <button type="button" [class.on]="own()" [attr.aria-pressed]="own()" (click)="sat.setSource(lastOwn)" title="Our own pictures, made from Himawari-9's raw bands every 10 minutes">Our own</button>
           </div>
           @if (own()) {
+            <div class="channel view3d" role="group" aria-label="Satellite">
+              @for (s of ownSatellites; track s.id) {
+                <button type="button" [class.on]="sat.ownSatellite() === s.id" [attr.aria-pressed]="sat.ownSatellite() === s.id" (click)="sat.setOwnSatellite(s.id)">{{ s.name }}</button>
+              }
+            </div>
             <div class="kinds" role="group" aria-label="Product">
-              @for (k of ownKinds; track k.id) {
+              @for (k of ownKinds(); track k.id) {
                 <button type="button" class="kind" [class.on]="sat.source() === k.id" [attr.aria-pressed]="sat.source() === k.id" [title]="k.title" (click)="pick(k.id)">{{ k.label }}</button>
               }
             </div>
@@ -82,11 +87,11 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
               </div>
             }
             @if (sat.ownEmpty() === 'night') {
-              <p class="hint3d">True colour, sandwich and convection need daylight (Himawari's visible bands): at night try Night micro or the infrared kinds.</p>
+              <p class="hint3d">This picture needs daylight (the visible channels): at night try Night micro or the infrared kinds.</p>
             } @else if (sat.ownEmpty() === 'none') {
               <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow (every 10 minutes).</p>
             }
-            <p class="hint3d">From Himawari-9's raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.</p>
+            <p class="hint3d">{{ ownSat().note }}</p>
           } @else {
           <div class="channel" role="group" aria-label="Picture" [class.off]="night()">
             <button type="button" [class.on]="!sat.infraredOnly() && !night()" [attr.aria-pressed]="!sat.infraredOnly()" [disabled]="night()" (click)="sat.setInfrared(false)" [title]="night() ? nightHint : ''">Visible</button>
@@ -261,20 +266,22 @@ export class SatellitePanelComponent {
   protected readonly sourceLabel = SATELLITE_NAME;
   /** Our own pictures are shown instead of EUMETView's. */
   protected readonly own = computed(() => this.sat.source() !== 'eumetview');
-  protected readonly ownKinds = OWN_KINDS;
+  protected readonly ownSat = computed(() => OWN_SATELLITES[this.sat.ownSatellite()]);
+  protected readonly ownKinds = computed(() => OWN_KINDS.filter(k => this.ownSat().kinds.includes(k.id)));
+  protected readonly ownSatellites = (Object.keys(OWN_SATELLITES) as OwnSatellite[]).map(id => ({ id, name: OWN_SATELLITES[id].name }));
   protected readonly customSources = CUSTOM_SOURCES;
   /** The kind of our own last picked, for the source switch. */
-  protected lastOwn: OwnKind = 'truecolor';
+  protected lastOwn: OwnKind = 'natural';
   protected readonly readoutTitle = computed(() => {
     const m = this.sat.hoverReading()?.measured;
     if (m) {
       const c = (k: number) => (Number.isNaN(k) ? '–' : `${(k - 273.15).toFixed(1)} °C (${k.toFixed(1)} K)`);
-      return `Measured by Himawari-9: 10.4 µm ${c(m.ir)}, 6.2 µm ${c(m.wv62)}, 7.3 µm ${c(m.wv73)}`;
+      return `Measured by ${this.ownSat().name}: ${this.ownSat().ir} µm ${c(m.ir)}, 6.2 µm ${c(m.wv62)}, 7.3 µm ${c(m.wv73)}`;
     }
     return 'Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres';
   });
   protected readonly heightScales = [1, 3, 6] as const;
-  protected readonly ownNote = 'Last hour, every 10 minutes, made by our satellite workflow from Himawari-9\'s raw bands (JMA, via NOAA Open Data on AWS). The hover readout is measured.';
+  protected readonly ownNote = 'Last hour, made by our satellite workflow from raw satellite data: Meteosat-9 © EUMETSAT, Himawari-9 © JMA (via NOAA Open Data on AWS). The hover readout is measured.';
   protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. The Infrared switch shows the infrared by day too. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
@@ -310,6 +317,7 @@ export class SatellitePanelComponent {
   }
 
   protected pick(kind: OwnKind): void {
+    if (!this.ownSat().kinds.includes(kind)) return;
     this.lastOwn = kind;
     this.sat.setSource(kind);
   }

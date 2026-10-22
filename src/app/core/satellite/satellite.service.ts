@@ -1,6 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse, SatelliteFlowRequest, SatelliteDecodeRequest } from './satellite.worker';
-import { CustomChannel, DEFAULT_CUSTOM, DataPack, OWN_BASE, OwnIndex, OwnKind, OWN_KINDS, SatelliteSource, isDayKind, isShaderKind, readDataPack } from './own-products';
+import { CustomChannel, DEFAULT_CUSTOM, DataPack, OWN_KINDS, OWN_SATELLITES, OwnIndex, OwnKind, OwnSatellite, SatelliteSource, isDayKind, isShaderKind, readDataPack } from './own-products';
 import type { CloudField } from './cloud-field';
 import { isPhone } from '../ui/device-profile';
 import { readFlag, writeFlag } from '../ui/saved-flag';
@@ -38,7 +38,7 @@ export interface SatelliteFrame {
   /** How much cloud is where, for the loop's motion between pictures (satellite-flow.ts). */
   motion?: MotionGrid;
   /** One of our own pictures (own-products.ts): which, the ground it covers, and its data pack (brightness temperatures). */
-  own?: { kind: OwnKind; bounds: GeoBounds; dataUrl: string; minK: number; spanK: number };
+  own?: { kind: OwnKind; satellite: OwnSatellite; bounds: GeoBounds; dataUrl: string; minK: number; spanK: number };
   /** The clouds' cover, top and base heights and thickness on a coarse grid, for the 3D view (cloud-field.ts). */
   cloudField?: CloudField;
 }
@@ -97,6 +97,8 @@ export class SatelliteService {
   readonly source = signal<SatelliteSource>(readSource());
   /** The custom RGB's recipe (own-products.ts), remembered between visits. */
   readonly custom = signal<readonly CustomChannel[]>(readCustom());
+  /** Whose raw data our own pictures come from: Meteosat-9 (all of India) or Himawari-9 (the east). */
+  readonly ownSatellite = signal<OwnSatellite>(readOwnSatellite());
   /** Why our own source shows nothing: a daytime picture at night, or nothing published yet. */
   readonly ownEmpty = signal<'night' | 'none' | null>(null);
   /** The clouds drawn in 3D at their heights over a tilted map (rendering/cloud-volume.layer.ts) instead of the flat picture. */
@@ -155,6 +157,22 @@ export class SatelliteService {
     }
     this.ownEmpty.set(null);
     if (this.active()) void this.load();
+  }
+
+  /** Our own pictures from the other satellite; a kind it does not make becomes its first. */
+  setOwnSatellite(sat: OwnSatellite): void {
+    if (this.ownSatellite() === sat) return;
+    this.ownSatellite.set(sat);
+    try {
+      localStorage.setItem('atmosiq.satellite.ownSatellite', sat);
+    } catch {
+      // not remembered
+    }
+    this.pause();
+    this.frames.set([]);
+    const kind = this.source();
+    if (kind !== 'eumetview' && !OWN_SATELLITES[sat].kinds.includes(kind)) this.setSource(OWN_SATELLITES[sat].kinds[0]);
+    else if (this.active()) void this.load();
   }
 
   setCustom(custom: readonly CustomChannel[]): void {
@@ -274,15 +292,16 @@ export class SatelliteService {
   }
 
   /** Our own frames of a kind, from the published index (the whole hour at once: they are small, finished pictures). */
-  private async loadOwn(token: number, kind: OwnKind): Promise<void> {
+  private async loadOwn(token: number, kind: OwnKind, satellite: OwnSatellite): Promise<void> {
+    const base = OWN_SATELLITES[satellite].base;
     if (this.frames().length === 0) this.loading.set(true);
     this.failed.set(false);
     try {
-      const res = await fetch(OWN_BASE + 'index.json', { cache: 'no-cache' });
+      const res = await fetch(base + 'index.json', { cache: 'no-cache' });
       if (token !== this.loadToken) return;
       if (!res.ok) throw new Error(String(res.status));
       const index = (await res.json()) as OwnIndex;
-      if (token !== this.loadToken || this.source() !== kind) return;
+      if (token !== this.loadToken || this.source() !== kind || this.ownSatellite() !== satellite) return;
       const following = this.position() >= this.frames().length - 1;
       const picture = isShaderKind(kind) ? 'data' : kind;
       const list: SatelliteFrame[] = [];
@@ -294,8 +313,8 @@ export class SatelliteService {
         list.push({
           timeMs,
           product: isDayKind(kind) ? SATELLITE_HRV : SATELLITE_IR,
-          url: OWN_BASE + file,
-          own: { kind, bounds: index.bounds, dataUrl: OWN_BASE + data, minK: index.data.minK, spanK: index.data.spanK },
+          url: base + file,
+          own: { kind, satellite, bounds: index.bounds, dataUrl: base + data, minK: index.data.minK, spanK: index.data.spanK },
         });
       }
       this.frames.set(list);
@@ -349,7 +368,12 @@ export class SatelliteService {
 
   async load(): Promise<void> {
     const token = ++this.loadToken;
-    if (this.source() !== 'eumetview') return this.loadOwn(token, this.source() as OwnKind);
+    if (this.source() !== 'eumetview') {
+      // a kind the chosen satellite does not make (remembered from the other one) becomes its first
+      const kinds = OWN_SATELLITES[this.ownSatellite()].kinds;
+      if (!kinds.includes(this.source() as OwnKind)) this.source.set(kinds[0]);
+      return this.loadOwn(token, this.source() as OwnKind, this.ownSatellite());
+    }
     const nowMs = Date.now();
     this.now.set(nowMs);
     // Start at once from the newest time the service gave last time (or, before it has answered, the one the clock says is safe): asking
@@ -716,4 +740,12 @@ function readCustom(): readonly CustomChannel[] {
     // the default
   }
   return DEFAULT_CUSTOM;
+}
+
+function readOwnSatellite(): OwnSatellite {
+  try {
+    return localStorage.getItem('atmosiq.satellite.ownSatellite') === 'h9' ? 'h9' : 'msg';
+  } catch {
+    return 'msg';
+  }
 }
