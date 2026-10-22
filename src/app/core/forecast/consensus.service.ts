@@ -1,8 +1,9 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { VerificationService } from './verification.service';
 import { decodeFieldBitmap } from './field-decode';
 import { FORECAST_MODELS, PAGES } from './forecast-models';
 import { ForecastManifest } from './forecast.model';
-import { INDIA_GRID, extremeConsensus, resampleField } from './derived-fields';
+import { INDIA_GRID, blendRainProbability, extremeConsensus, resampleField } from './derived-fields';
 
 /** How far from a step a time may be for a model to count (the 6-hourly models are 3 h from their nearest step at worst). */
 const MAX_GAP_MS = 3.5 * 3_600_000;
@@ -37,8 +38,12 @@ interface Published {
  * ensemble covers the time (the first five days); beyond that, or if it is not published, it is the agreement of the models on the
  * next 24 h of rain (`rain24`), on the India grid.
  */
+/** Where the probability of rain comes from: the ECMWF ensemble (with the models' agreement after its five days), or the AtmosIQ Blend. */
+export type ProbabilitySource = 'ensemble' | 'blend';
+
 @Injectable({ providedIn: 'root' })
 export class ConsensusService {
+  private readonly verification = inject(VerificationService);
   /** The models that agreed in the last answer, for the legend. */
   readonly models = signal<string[]>([]);
   /** The last answer, for the click card. */
@@ -47,7 +52,8 @@ export class ConsensusService {
   private readonly published = new Map<string, Published>();
   private readonly fields = new Map<string, Float32Array>();
 
-  async compute(timeMs: number): Promise<Consensus | null> {
+  async compute(timeMs: number, source: ProbabilitySource = 'ensemble'): Promise<Consensus | null> {
+    if (source === 'blend') return this.blend(timeMs);
     const ensemble = await this.field(ENSEMBLE, 'pop24', timeMs).catch(() => null);
     if (ensemble) {
       this.models.set([ENSEMBLE.label]);
@@ -65,6 +71,37 @@ export class ConsensusService {
     this.models.set(result.models);
     this.last = result;
     return result;
+  }
+
+  /**
+   * The AtmosIQ Blend's chance of rain: the map's models' next-24-hour rain, weighted by the Blend's rain weights (learn_bias.py: each
+   * model's recent rain skill against the airports; its temperature weights when it has none for the map's models) and each counted from
+   * its own rain threshold (see blendRainProbability).
+   */
+  private async blend(timeMs: number): Promise<Consensus | null> {
+    const corr = await this.verification.loadCorrections();
+    const rainW = corr?.blend?.rain ?? {};
+    const tempW = corr?.blend?.temp ?? {};
+    const onMap = (w: Record<string, number>) => FORECAST_MODELS.filter(m => (w[m.id] ?? 0) > 0);
+    const weights = onMap(rainW).length ? rainW : tempW;
+    const models = onMap(weights);
+    if (!corr || models.length === 0) {
+      this.models.set([]);
+      this.last = null;
+      return null;
+    }
+    const parts = await Promise.all(models.map(m => this.field(m, 'rain24', timeMs).catch(() => null)));
+    const used = parts.flatMap((p, i) => (p ? [{ model: models[i], values: p }] : []));
+    if (used.length === 0) {
+      this.models.set([]);
+      this.last = null;
+      return null;
+    }
+    const values = blendRainProbability(used.map(u => ({ values: u.values, weight: weights[u.model.id], thresholdMm: corr.models[u.model.id]?.rain_threshold_mm ?? 1 })), INDIA_GRID);
+    const label = `AtmosIQ Blend (${used.map(u => u.model.short).join(', ')})`;
+    this.models.set([label]);
+    this.last = { values, models: [label] };
+    return this.last;
   }
 
   /** One published field (a model's 24 h rainfall in mm, or the ensemble's chance of rain in %) at a time on the India grid, or null when the run does not cover it. */

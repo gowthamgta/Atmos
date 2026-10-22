@@ -9,7 +9,7 @@ describe('90 m downscaling registry', () => {
     const modes = Object.fromEntries(FORECAST_LAYERS.map(l => [l.id, l.terrain]));
     expect(modes).toMatchObject({
       temp: 'temperature', tmin24: 'temperature', tmax24: 'temperature', feels: 'temperature', dew: 'dewpoint', humidity: 'humidity', wind: 'wind', gust: 'wind',
-      rain: 'rain', rain24: 'rain', raintot: 'rain', tcwv: 'column',
+      rain: 'rain', raintot: 'rain', tcwv: 'column',
     });
     for (const l of FORECAST_LAYERS) if (l.terrain) expect(TERRAIN_MODE_CODE[l.terrain]).toBeGreaterThan(0);
     expect(new Set(Object.values(TERRAIN_MODE_CODE)).size).toBe(Object.keys(TERRAIN_MODE_CODE).length);

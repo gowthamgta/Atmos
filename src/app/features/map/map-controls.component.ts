@@ -22,8 +22,14 @@ import { IconComponent } from '../../shared/icon.component';
         <button type="button" (click)="map.zoomOut()" aria-label="Zoom out" title="Zoom out"><app-icon name="minus" [size]="18" /></button>
       </div>
       @if (state.forecastActive()) {
+        @if (state.activeLayerId() === 'extreme') {
+          <div class="prob-source" role="group" aria-label="Probability of rain from">
+            <button type="button" [class.on]="state.probabilitySource() === 'ensemble'" [attr.aria-pressed]="state.probabilitySource() === 'ensemble'" (click)="state.setProbabilitySource('ensemble')" title="The share of the ECMWF ensemble's 51 members that bring rain (the models' agreement after its five days)">ECMWF ensemble</button>
+            <button type="button" [class.on]="state.probabilitySource() === 'blend'" [attr.aria-pressed]="state.probabilitySource() === 'blend'" (click)="state.setProbabilitySource('blend')" title="Our AtmosIQ Blend: the models weighted by their recent rain skill against the airports, each counted from its own rain threshold">Atmos Blend</button>
+          </div>
+        }
         @if (comparing().length) {
-          <div class="caption" title="The models whose run covers this time">Compared across {{ comparing().length }} models</div>
+          <div class="caption" [title]="comparing().join(', ')">{{ comparing().length === 1 ? comparing()[0] : 'Compared across ' + comparing().length + ' models' }}</div>
         }
         <app-model-pill />
       }
@@ -46,6 +52,9 @@ import { IconComponent } from '../../shared/icon.component';
     /* a phone with the meteogram open has no room above it for the model button: the readout names the model, and the menu lists them */
     @media (max-width: 760px) { :host-context(html[data-sheet='open']) .cluster { display: none; } }
 
+    .prob-source { display: flex; gap: 2px; padding: 2px; border-radius: 15px; background: var(--surface-1); box-shadow: var(--shadow-1); }
+    .prob-source button { padding: 4px 10px; border: 0; border-radius: 13px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-s); font-weight: var(--fw-medium); cursor: pointer; }
+    .prob-source button.on { background: var(--accent); color: var(--on-accent); }
     .caption { padding: 3px 12px; border-radius: 13px; background: var(--surface-1); color: var(--text-secondary); font-size: var(--fs-s); font-weight: var(--fw-medium); box-shadow: var(--shadow-1); }
   `]
 })

@@ -60,3 +60,18 @@ describe('derived fields', () => {
     expect(px[3]).toBe(255);                         // opaque, so the bytes survive unpremultiplied
   });
 });
+
+describe('the Blend chance of rain', () => {
+  it('is the weighted share of models with rain, each from its own threshold', async () => {
+    const { blendRainProbability } = await import('./derived-fields');
+    const grid = { nx: 3, ny: 3 } as unknown as Parameters<typeof blendRainProbability>[1];
+    const field = (v: number) => new Float32Array(9).fill(v);
+    // model A (weight 3) brings 5 mm, above its 1 mm threshold; model B (weight 1) brings 0.2 mm, under its 1.5 mm
+    const p = blendRainProbability([{ values: field(5), weight: 3, thresholdMm: 1 }, { values: field(0.2), weight: 1, thresholdMm: 1.5 }], grid);
+    expect(p[4]).toBeCloseTo(75, 5);
+    // a model with no value there does not count
+    const q = blendRainProbability([{ values: field(5), weight: 3, thresholdMm: 1 }, { values: field(NaN), weight: 1, thresholdMm: 1 }], grid);
+    expect(q[4]).toBeCloseTo(100, 5);
+    expect(Number.isNaN(blendRainProbability([], grid)[0])).toBe(true);
+  });
+});
