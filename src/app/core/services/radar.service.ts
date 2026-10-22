@@ -1056,7 +1056,8 @@ export class RadarService implements OnDestroy {
       allResults: this.allRadarResults(),
       stations: this.stations,
       hidden: this.hiddenStations(),
-      unavailable: this.unavailableStations(),
+      // a radar that is down or whose newest picture is over 3 hours old (not drawn on the map either) is left out of the beam list too
+      unavailable: new Set([...this.unavailableStations(), ...this.stations.filter(st => this.getStationFreshness(st.id) === 'offline').map(st => st.id)]),
       product: this.activeProduct(),
     };
     this.hoverInfo.set(inspectRadar(input, lat, lng, screenPoint));
