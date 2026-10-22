@@ -109,3 +109,33 @@ Models on other grids (such as ICON's native icosahedral grid) need their own `f
 as `fetch_ifs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`, `STEP_HOURS`, `PRECIP_NOTE`, `UNAVAILABLE_VARS`,
 `precip_window_hours(step)`, `latest_run()`, `read_step(run, h)`, and register it in `MODELS` in `run.py`.
 Check the rain window and the winds against Open-Meteo's API as was done for the models above.
+
+## Satellite temperatures (`satellite_bt.py`, `himawari_bt.py`) and starting them on time
+
+The `satellite` workflow publishes measured cloud-top temperatures for the app's 3D clouds to the `satellite-data` branch: Himawari-9
+(`bt-h9/`, no key) and Meteosat (`bt/`, needs the repository secrets `EUMETSAT_CONSUMER_KEY` and `EUMETSAT_CONSUMER_SECRET`). Each run keeps
+the last hour. GitHub's own schedule (`cron` in the workflow) starts runs late or skips them when GitHub is busy, so an outside scheduler
+starts it every 10 minutes instead (the GitHub schedule stays as a fallback; two runs at once just queue, see `concurrency`).
+
+**1. A token that can only start this repository's workflows** (GitHub → Settings → Developer settings → Personal access tokens →
+Fine-grained tokens → Generate new token):
+- Token name: `cron-job.org satellite`; Expiration: the longest offered (note the date: the runs stop when it expires)
+- Repository access: **Only select repositories** → `gowthamgta/Atmos`
+- Permissions → Repository permissions → **Actions: Read and write** (Metadata: Read-only is added by itself). Nothing else.
+- Copy the token once (it starts with `github_pat_`). Do not put it in the repository or a chat.
+
+**2. The job** (https://cron-job.org, free account → Cronjobs → Create cronjob):
+- Title: `Atmos satellite`
+- URL: `https://api.github.com/repos/gowthamgta/Atmos/actions/workflows/satellite.yml/dispatches`
+- Execution schedule: **Every 10 minutes** (Himawari scans every 10 minutes)
+- Advanced → Request method: **POST**
+- Advanced → Headers (add each):
+  - `Authorization` = `Bearer <the token>`
+  - `Accept` = `application/vnd.github+json`
+  - `X-GitHub-Api-Version` = `2022-11-28`
+  - `Content-Type` = `application/json`
+- Advanced → Request body: `{"ref":"main"}`
+- Notifications: on failure (optional: an e-mail if GitHub refuses, e.g. once the token has expired)
+- Save, then **Test run**: the answer must be **204 No Content**, and a run "Manually run by gowthamgta" appears under Actions → satellite
+  within a few seconds. 401 = the token is wrong or expired; 403 = it lacks Actions: Read and write; 404 = the URL or the repository
+  access is wrong; 422 = the body is not `{"ref":"main"}`.
