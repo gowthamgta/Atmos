@@ -70,17 +70,23 @@ def make_scan(path: str, t, folder: str) -> dict:
     day = float((sza < 88).mean()) > 0.02
     composites = ["night_microphysics_tropical"] + (["natural_color", "convection"] if day else [])
     scn = Scene(reader="seviri_l1b_native", filenames=[path])
-    scn.load(composites + ["HRV", "VIS006", "IR_108", "WV_062", "WV_073"], generate=False)
+    scn.load(composites + ["VIS006", "IR_108", "WV_062", "WV_073"], generate=False)
     local = scn.resample(G.area_def(g, "msg"), resampler="gradient_search")
     local.load(composites)
     local_data = scn.resample(G.area_def(gd, "msg_data"), resampler="gradient_search")
+    # the HRV is stored as two stacked windows, which the gradient search cannot take: it is resampled on its own, nearest pixel
+    hrv_raw = None
+    if day:
+        scn_hrv = Scene(reader="seviri_l1b_native", filenames=[path])
+        scn_hrv.load(["HRV"])
+        hrv_raw = np.asarray(scn_hrv.resample(G.area_def(g, "msg_hrv"), resampler="nearest", radius_of_influence=2500)["HRV"].values, float)
     bt = np.asarray(local["IR_108"].values, float)
     stamp = t.strftime("%Y%m%dT%H%MZ")
     pictures = {"nightmicro": G.enhanced(local, "night_microphysics_tropical")}
     if day:
         # the visible brightness, sun-normalised (a low sun no longer darkens it), HRV where it has data, 0.6 um elsewhere
         cos_z = np.cos(np.radians(np.minimum(sza, 85)))
-        hrv = np.asarray(local["HRV"].values, float) / 100 / cos_z
+        hrv = hrv_raw / 100 / cos_z
         vis = np.asarray(local["VIS006"].values, float) / 100 / cos_z
         vis_hr = np.where(np.isfinite(hrv), hrv, vis)
         grey = np.clip(np.nan_to_num(vis_hr), 0, 1.2) / 1.2
