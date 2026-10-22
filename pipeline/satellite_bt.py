@@ -121,8 +121,21 @@ def fetch_new(folder: str, max_new: int, now: datetime) -> list[tuple[datetime, 
     import eumdac
     key, secret = os.environ.get("EUMETSAT_CONSUMER_KEY"), os.environ.get("EUMETSAT_CONSUMER_SECRET")
     token = eumdac.AccessToken((key, secret))
-    collection = eumdac.DataStore(token).get_collection(COLLECTION)
-    products = list(collection.search(dtstart=now - timedelta(minutes=KEEP_MINUTES), dtend=now))
+    try:
+        print(f"token valid until {token.expiration}")   # asks for the token: a wrong key or secret fails here
+    except Exception as e:
+        raise SystemExit(f"::error::EUMETSAT refused the key and secret ({type(e).__name__}: {e})")
+    store = eumdac.DataStore(token)
+    # the client's examples search with plain UTC times
+    start = (now - timedelta(minutes=KEEP_MINUTES)).replace(tzinfo=None)
+    end = now.replace(tzinfo=None)
+    try:
+        collection = store.get_collection(COLLECTION)
+        products = list(collection.search(dtstart=start, dtend=end))
+    except Exception as e:
+        names = [f"{c} ({c.title})" for c in store.collections if any(w in str(c.title).upper() for w in ("SEVIRI", "IODC", "INDIAN"))]
+        raise SystemExit(f"::error::searching {COLLECTION} failed ({type(e).__name__}: {e}); collections that look right: {names}")
+    print(f"{len(products)} products of {COLLECTION} in the last {KEEP_MINUTES} min")
     products.sort(key=lambda p: p.sensing_end, reverse=True)
     done = set(os.listdir(folder))
     new = []
@@ -159,7 +172,16 @@ def main() -> int:
     folder = os.path.join(args.out, FOLDER)
     os.makedirs(folder, exist_ok=True)
     now = datetime.now(timezone.utc)
-    new = fetch_new(folder, args.max_new, now)
+    try:
+        new = fetch_new(folder, args.max_new, now)
+    except SystemExit:
+        raise
+    except Exception as e:
+        # as an annotation, which the run's public summary page shows (the step's log needs a signed-in viewer)
+        import traceback
+        where = traceback.extract_tb(e.__traceback__)[-1]
+        print(f"::error::{type(e).__name__}: {e} (at {os.path.basename(where.filename)}:{where.lineno} {where.name})")
+        raise
     index = update_index(folder, new, now)
     print(f"{len(new)} new, {len(index['frames'])} kept")
     return 0
