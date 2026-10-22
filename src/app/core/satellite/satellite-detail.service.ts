@@ -108,7 +108,8 @@ export class SatelliteDetailService {
     const token = ++this.token;
     const main = this.sat.frames();
     const view = this.view;
-    if (!this.sat.active() || !view || main.length === 0) {
+    // a closer window is of EUMETView's HRV: none for our own pictures
+    if (!this.sat.active() || !view || main.length === 0 || main[0].own) {
       this.clear();
       return;
     }

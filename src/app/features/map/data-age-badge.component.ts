@@ -30,13 +30,15 @@ export function dataAgeMessage(input: {
   satelliteOn: boolean;
   satelliteNewest: boolean;
   satelliteAgeMin: number | null;
+  /** The pictures are our own (the satellite workflow's), not EUMETView's. */
+  satelliteOwn?: boolean;
 }): string | null {
   if (input.radarOn && input.radarLive) {
     if (input.radarAgeMin !== null && input.radarAgeMin >= RADAR_OLD_MIN) return `Radar: the newest scan is ${formatAge(input.radarAgeMin)} old`;
     if (input.radarAgeMin === null && input.radarAnyShown && !input.radarSyncing) return 'Radar: no picture from IMD right now';
   }
   if (input.satelliteOn && input.satelliteNewest && input.satelliteAgeMin !== null && input.satelliteAgeMin >= SATELLITE_OLD_MIN) {
-    return `Satellite: the newest picture is ${formatAge(input.satelliteAgeMin)} old (EUMETSAT is running late)`;
+    return `Satellite: the newest picture is ${formatAge(input.satelliteAgeMin)} old (${input.satelliteOwn ? 'our satellite workflow is running late' : 'EUMETSAT is running late'})`;
   }
   return null;
 }
@@ -82,6 +84,7 @@ export class DataAgeBadgeComponent {
       satelliteOn: on('satellite'),
       satelliteNewest: frames.length > 0 && Math.round(this.satellite.position()) >= frames.length - 1,
       satelliteAgeMin: this.satellite.ageMinutes(),
+      satelliteOwn: this.satellite.source() !== 'eumetview',
     });
   });
 }

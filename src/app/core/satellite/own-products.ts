@@ -41,11 +41,11 @@ export interface CustomChannel {
   gamma: number;
 }
 
-/** The custom recipe's starting point: upper-air moisture against cloud-top temperature (WMO formula, ranges in kelvin). */
+/** The custom recipe's starting point: cloud tops in grey (10.4 um, colder brighter) tinted blue where the upper air is moist (6.2 um). */
 export const DEFAULT_CUSTOM: readonly CustomChannel[] = [
-  { source: 3, min: -35, max: 5, gamma: 1 },     // red: little 6.2/7.3 difference = moist upper air or deep cloud
-  { source: 2, min: 213, max: 253, gamma: 1 },   // green: the mid-level water vapour's temperature
-  { source: 0, min: 293, max: 203, gamma: 1 },   // blue: colder tops bluer
+  { source: 0, min: 303, max: 203, gamma: 1 },   // red: 10.4 um, warm ground dark, cold tops bright
+  { source: 0, min: 303, max: 203, gamma: 1 },   // green: the same, so cloud is grey to white
+  { source: 1, min: 263, max: 213, gamma: 1 },   // blue: 6.2 um, moist upper air (cold at 6.2 um) adds blue
 ];
 
 /** The WMO RGB formula for one channel: ((v - min) / (max - min)) ^ (1 / gamma), 0..1. */

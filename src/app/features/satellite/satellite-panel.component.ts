@@ -147,7 +147,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="sat.opacity()" (input)="onOpacity($event)" aria-label="Satellite opacity" />
         </label>
-        <p class="note">{{ note }}</p>
+        <p class="note">{{ own() ? ownNote : note }}</p>
       </section>
     }
   `,
@@ -232,7 +232,7 @@ export class SatellitePanelComponent {
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly count = computed(() => this.sat.frames().length);
   protected readonly failed = this.sat.failed;
-  protected readonly detailActive = computed(() => this.detail.shown() !== null);
+  protected readonly detailActive = computed(() => this.detail.shown() !== null && this.sat.source() === 'eumetview');
   protected readonly detailLoading = this.detail.loading;
   /** The pixel of the closer picture on the map, to a tenth of a kilometre. */
   protected readonly detailKm = computed(() => (this.detail.shown()?.window.kmPerPx ?? 0).toFixed(1));
@@ -250,11 +250,11 @@ export class SatellitePanelComponent {
   });
   protected readonly nightHint = 'At night the visible picture is the infrared as well';
   protected readonly noLoop = computed(() => this.count() < 2 && this.sat.historyRequested());
-  protected readonly historyHint = computed(() => this.count() === 1 && !this.sat.historyRequested());
+  protected readonly historyHint = computed(() => this.count() === 1 && !this.sat.historyRequested() && !this.own());
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
     if (!f) return 'loading';
-    if (f.own) return OWN_KINDS.find(k => k.id === f.own!.kind)?.label.toLowerCase() ?? '';
+    if (f.own) return OWN_KINDS.find(k => k.id === f.own!.kind)?.label ?? '';
     if (f.product.id === 'ir') return this.sat.infraredOnly() ? 'infrared, cloud tops' : 'night infrared, cloud tops';
     return isTwilightTime(f.timeMs) ? 'twilight HRV + infrared' : 'daylight, HRV';
   });
@@ -274,6 +274,7 @@ export class SatellitePanelComponent {
     return 'Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres';
   });
   protected readonly heightScales = [1, 3, 6] as const;
+  protected readonly ownNote = 'Last hour, every 10 minutes, made by our satellite workflow from Himawari-9\'s raw bands (JMA, via NOAA Open Data on AWS). The hover readout is measured.';
   protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. The Infrared switch shows the infrared by day too. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
