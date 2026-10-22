@@ -56,8 +56,25 @@ fingerprint only together with this file, on the owner's request.
 - **A service worker (production only) keeps the app, forecast data (network first), basemap tiles and point forecast** for use offline;
   the app is installable. A new release is put in place the next time the page is out of sight.
 
+## Radar rain and alerts
+
+- **The rain rate in the radar readout uses each radar's Z-R relation fitted to the Tamil Nadu gauges** (verify_radar.py, daily, kept
+  only when it beats Marshall-Palmer on held-back days; until then Z = 200 R^1.6). With the loop in, it also gives the last hour's radar rain.
+- **The radar nowcast is scored daily** against the pictures that followed, beside a picture that does not move (radar panel).
+- **The owner's own rain alerts** go to their Telegram chat only (ALERT_PLACES, TELEGRAM_ALERT_CHAT_ID), at most once a place in 3 h.
+- **On phones the radar animations are not downloaded in the background** (about 8 MB): storm motion from the wind until live pictures
+  or Play give the radar's own (measured with e2e/perf.mjs).
+- **The satellite loop moves the clouds between pictures** (motion from block matching) instead of cross-fading; the pictures' own
+  colours are unchanged.
+
 ## Pipeline
 
+- **The map's ECMWF IFS rain factor is learned daily from the Tamil Nadu gauges** (learn_bias.py; 0.57 on 22 Oct, replacing the fixed
+  0.785), applied only when it lowers the error on held-back days.
+- Actions run on Node 24 actions, pinned to ubuntu-24.04.
+- **The map's ECMWF IFS rain factor is learned daily from the Tamil Nadu gauges** (learn_bias.py; 0.57 on 22 Oct, replacing the fixed
+  0.785), applied only when it lowers the error on held-back days.
+- Actions run on Node 24 actions, pinned to ubuntu-24.04.
 - **The nwp workflow runs at 05:00, 10:00, 13:30, 17:30, 21:00 and 00:00 IST** (403de3a). Each run builds the newest cycle surely
   published by then.
 - **Forecast accuracy is scored daily** (verify workflow, 07:00 IST): ten models and the Blend at 13 South Indian airports, 1 to 3 days
