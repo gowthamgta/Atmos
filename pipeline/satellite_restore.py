@@ -11,7 +11,7 @@ import argparse, json, os, sys
 
 import requests
 
-FOLDERS = ("bt", "bt-h9")
+FOLDERS = ("bt", "bt-h9", "rgb-h9")
 
 
 def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:
@@ -28,17 +28,24 @@ def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:
         os.makedirs(os.path.join(out, folder), exist_ok=True)
         kept = []
         for frame in index.get("frames", []):
-            name = os.path.basename(frame.get("file", ""))
-            if not name.endswith(".png"):
+            # a frame is one file ("file") or several ("files": {product: file}); it is kept only when all of them come back
+            names = [os.path.basename(n) for n in ([frame["file"]] if "file" in frame else list(frame.get("files", {}).values()))]
+            if not names or not all(n.endswith((".png", ".webp")) for n in names):
                 continue
-            try:
-                r = get(f"{base.rstrip('/')}/{folder}/{name}", timeout=60)
-            except requests.RequestException:
+            got = {}
+            for name in names:
+                try:
+                    r = get(f"{base.rstrip('/')}/{folder}/{name}", timeout=60)
+                except requests.RequestException:
+                    break
+                if r.status_code != 200:
+                    break
+                got[name] = r.content
+            if len(got) != len(names):
                 continue
-            if r.status_code != 200:
-                continue
-            with open(os.path.join(out, folder, name), "wb") as f:
-                f.write(r.content)
+            for name, body in got.items():
+                with open(os.path.join(out, folder, name), "wb") as f:
+                    f.write(body)
             kept.append(frame)
             count += 1
         index["frames"] = kept

@@ -55,18 +55,24 @@ def cloud_height_km(kelvin: np.ndarray) -> np.ndarray:
     return np.where(np.isfinite(t) & (t < 24), np.clip((28 - t) / 6.2, 0, 17.5), 0.0)
 
 
-def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, list[np.ndarray]]:
+def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarray, lon: np.ndarray, to_rc=None) -> tuple[np.ndarray, list[np.ndarray]]:
     """Each cloudy pixel moved toward the satellite by its height x tan(view angle); the coldest wins where several land; the holes left
-    behind filled from the warmest neighbours. Cells seen beyond MAX_VIEW_DEG are emptied (NaN)."""
+    behind filled from the warmest neighbours. Cells seen beyond MAX_VIEW_DEG are emptied (NaN). `lat`/`lon` are the cells' centres;
+    `to_rc(lat, lon)` gives the (fractional) row and column of a place, for a grid whose rows are not evenly spaced in latitude (Mercator);
+    by default the rows and columns are taken as even steps."""
     rows, cols = ir108.shape
     zenith, bearing = view_geometry(lat, lon)
     shift = cloud_height_km(ir108) * np.tan(np.radians(np.minimum(zenith, 85)))
     true_lat = lat + shift * np.cos(bearing) / KM_PER_DEG
     true_lon = lon + shift * np.sin(bearing) / (KM_PER_DEG * np.cos(np.radians(lat)))
-    step_lat = lat[0, 0] - lat[1, 0]
-    step_lon = lon[0, 1] - lon[0, 0]
-    r = np.rint((lat[0, 0] - true_lat) / step_lat).astype(int)
-    c = np.rint((true_lon - lon[0, 0]) / step_lon).astype(int)
+    if to_rc is None:
+        step_lat = lat[0, 0] - lat[1, 0]
+        step_lon = lon[0, 1] - lon[0, 0]
+        rf, cf = (lat[0, 0] - true_lat) / step_lat, (true_lon - lon[0, 0]) / step_lon
+    else:
+        rf, cf = to_rc(true_lat, true_lon)
+    r = np.rint(rf).astype(int)
+    c = np.rint(cf).astype(int)
     ok = np.isfinite(ir108) & (r >= 0) & (r < rows) & (c >= 0) & (c < cols)
     # the coldest first, so a storm's top is not covered by the ground it is moved over
     order = np.argsort(np.where(ok, ir108, np.inf), axis=None)[::-1]

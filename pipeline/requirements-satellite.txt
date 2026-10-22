@@ -1,4 +1,4 @@
-# satellite_bt.py (the satellite workflow) only: the EUMETSAT Data Store client and Satpy to read SEVIRI native files
+# the satellite workflow (gowthamgta/atmos-satellite) only: the EUMETSAT Data Store client, Satpy to read SEVIRI and AHI files, pyspectral for the Rayleigh correction of true colour
 numpy>=2.0
 Pillow>=11
 pytest>=8
@@ -6,3 +6,4 @@ eumdac>=3.0
 satpy>=0.56
 pyresample>=1.30
 requests>=2.32
+pyspectral>=0.13
