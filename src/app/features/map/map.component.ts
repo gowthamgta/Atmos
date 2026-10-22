@@ -572,6 +572,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteKeys = keys;
       this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url })));
     }
+    this.satelliteLayer.setFlows(this.satellite.flows());
     this.satelliteLayer.setPosition(position, opacity);
   }
 
@@ -610,6 +611,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteDetailKeys = keys;
       this.satelliteDetailLayer.setFrames(detailFrames);
     }
+    this.satelliteDetailLayer.setFlows(this.satellite.flows()); // the main loop's motion, read by map position
     this.satelliteDetailLayer.setPosition(position, opacity);
   }
 

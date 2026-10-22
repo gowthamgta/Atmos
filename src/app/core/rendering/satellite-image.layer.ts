@@ -1,6 +1,7 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import { GeoBounds, SATELLITE_BOUNDS } from '../satellite/satellite.config';
+import type { FlowField } from '../satellite/satellite-flow';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -24,6 +25,10 @@ void main() {
  * A closer window of the same picture can sit over the whole-India one (see satellite-window.ts): the window fades out over a
  * feather at its edge (`u_feather`, in map units) and the whole-India layer, told where the window is, fades out inside it by the
  * same amount (`u_hole`), so the two always add up to one picture and the window shows no frame.
+ *
+ * Between two pictures of the loop the clouds move rather than fade (satellite-flow.ts): with the motion from A to B (`u_flow`, worked out
+ * on the whole-India picture, so both layers read it by map position), the in-between time t takes A from t of the way back along the
+ * motion and B from the rest of the way forward. At t = 0 and 1 each picture is drawn exactly as it is.
  */
 const FRAGMENT = `#version 300 es
 precision highp float;
@@ -38,6 +43,11 @@ uniform int u_hasB;
 uniform float u_feather;   // > 0: fade the picture out over this much (map units) inside its own edge (a window over the main picture)
 uniform vec4 u_hole;       // mercator box of a window drawn over this picture, which this picture fades out inside
 uniform float u_holeFeather; // > 0 when there is a window to make room for
+uniform sampler2D u_flow;   // RG: the cloud motion from A to B, as fractions of the whole-India picture (u_flowBox)
+uniform int u_hasFlow;
+uniform vec4 u_flowBox;     // mercator x0, y0, x1, y1 of the whole-India picture the motion was worked out on
+uniform vec4 u_flowNodes;   // the first node and the node spacing, as fractions of that picture
+uniform vec2 u_flowCount;   // nodes across and down
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -105,9 +115,21 @@ void main() {
   vec2 gy = dFdy(uv);
   bool magnifying = max(length(gx * vec2(u_size)), length(gy * vec2(u_size))) < 1.0;
 
-  vec4 c = sampleFrame(u_a, uv, px, gx, gy, magnifying);
+  vec2 uvA = uv;
+  vec2 uvB = uv;
+  if (u_hasB == 1 && u_hasFlow == 1) {
+    // the motion at this map position, in map units, then each picture taken from where its clouds are at this moment
+    vec2 span = u_flowBox.zw - u_flowBox.xy;
+    vec2 f = (v_merc - u_flowBox.xy) / span;
+    vec2 node = (f - u_flowNodes.xy) / u_flowNodes.zw;
+    vec2 motion = texture(u_flow, (node + 0.5) / u_flowCount).rg * span;
+    vec2 own = u_box.zw - u_box.xy;
+    uvA = uv - u_mixB * motion / own;
+    uvB = uv + (1.0 - u_mixB) * motion / own;
+  }
+  vec4 c = sampleFrame(u_a, uvA, uvA * vec2(u_size), gx, gy, magnifying);
   if (u_hasB == 1) {
-    vec4 b = sampleFrame(u_b, uv, px, gx, gy, magnifying);
+    vec4 b = sampleFrame(u_b, uvB, uvB * vec2(u_size), gx, gy, magnifying);
     c = mix(c, b, u_mixB); // premultiplied: a plain mix cross-fades colour and cloud cover together
   }
   // fade the picture's own border so it does not end in a hard line
@@ -192,6 +214,38 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
+  /**
+   * The cloud motion from each frame to the next (null: none known, plain cross-fade), worked out on the whole-India picture over
+   * `over` (its bounds), so a closer window reads the same motion by map position.
+   */
+  setFlows(flows: readonly (FlowField | null)[], over: GeoBounds = SATELLITE_BOUNDS): void {
+    if (flows === this.flows && over === this.flowBounds) return;
+    this.flows = flows;
+    this.flowBounds = over;
+    this.map?.triggerRepaint();
+  }
+
+  private flows: readonly (FlowField | null)[] = [];
+  private flowBounds: GeoBounds = SATELLITE_BOUNDS;
+  private readonly flowTextures = new WeakMap<FlowField, WebGLTexture>();
+
+  /** The motion's texture, uploaded on first use (two 16-bit floats a node, filtered linearly). */
+  private flowTexture(gl: WebGL2RenderingContext, field: FlowField): WebGLTexture {
+    let tex = this.flowTextures.get(field);
+    if (!tex) {
+      tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, field.cols, field.rows, 0, gl.RG, gl.FLOAT, field.data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.flowTextures.set(field, tex);
+    }
+    return tex;
+  }
+
   /** Where the loop is (a frame number with a fraction while playing) and the overall opacity. */
   setPosition(position: number, opacity: number): void {
     this.position = position;
@@ -242,7 +296,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.linkProgram(program);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
     this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather']) {
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather',
+      'u_flow', 'u_hasFlow', 'u_flowBox', 'u_flowNodes', 'u_flowCount']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     this.vao = gl.createVertexArray();
@@ -356,6 +411,19 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     const hole = this.window?.windowBox() ?? null;
     if (hole) gl.uniform4f(u['u_hole'], hole.box[0], hole.box[1], hole.box[2], hole.box[3]);
     gl.uniform1f(u['u_holeFeather'], hole ? hole.feather : 0);
+    const field = b ? this.flows[base] ?? null : null;
+    gl.uniform1i(u['u_hasFlow'], field ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE2);
+    if (field) {
+      gl.bindTexture(gl.TEXTURE_2D, this.flowTexture(gl, field));
+      const fb = this.flowBounds;
+      gl.uniform4f(u['u_flowBox'], mercatorUnitX(fb.west), mercatorUnitY(fb.north), mercatorUnitX(fb.east), mercatorUnitY(fb.south));
+      gl.uniform4f(u['u_flowNodes'], field.x0, field.y0, field.stepX, field.stepY);
+      gl.uniform2f(u['u_flowCount'], field.cols, field.rows);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, a.texture); // a sampler must always have a texture bound
+    }
+    gl.uniform1i(u['u_flow'], 2);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);

@@ -4,6 +4,7 @@ import { enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
 import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel } from './satellite.config';
+import { FlowField, MotionGrid, cloudFlow, motionGrid } from './satellite-flow';
 
 export interface SatelliteWorkerRequest {
   id: number;
@@ -19,12 +20,29 @@ export interface SatelliteWorkerRequest {
   lossless?: boolean;
 }
 
+/** The cloud motion between two pictures' motion grids (see satellite-flow.ts). */
+export interface SatelliteFlowRequest {
+  id: number;
+  flow: { a: MotionGrid; b: MotionGrid };
+}
+
 export type SatelliteWorkerResponse =
-  | { id: number; png: Blob; lumaGrid?: Uint8Array }
+  | { id: number; png: Blob; lumaGrid?: Uint8Array; motion?: MotionGrid }
+  | { id: number; field: FlowField | null }
   | { id: number; error: string };
 
 /** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
-addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) => {
+addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | SatelliteFlowRequest>) => {
+  if ('flow' in event.data) {
+    const { id, flow } = event.data;
+    try {
+      const field = cloudFlow(flow.a, flow.b);
+      postMessage({ id, field } satisfies SatelliteWorkerResponse, field ? [field.data.buffer] : []);
+    } catch (e) {
+      postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
+    }
+    return;
+  }
   const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless } = event.data;
   const box = bounds ?? SATELLITE_BOUNDS;
   try {
@@ -53,7 +71,12 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest>) 
     const outHeight = mercatorHeight(width, box);
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
     const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
-    postMessage({ id, png, lumaGrid } satisfies SatelliteWorkerResponse, lumaGrid ? [lumaGrid.buffer] : []);
+    // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)
+    const motion = bounds ? undefined : motionGrid(pixels, width, outHeight);
+    const transfer: Transferable[] = [];
+    if (lumaGrid) transfer.push(lumaGrid.buffer);
+    if (motion) transfer.push(motion.data.buffer);
+    postMessage({ id, png, lumaGrid, motion } satisfies SatelliteWorkerResponse, transfer);
   } catch (e) {
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
   }

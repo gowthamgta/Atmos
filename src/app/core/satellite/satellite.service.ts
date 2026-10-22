@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import type { SatelliteWorkerRequest, SatelliteWorkerResponse } from './satellite.worker';
+import type { SatelliteWorkerRequest, SatelliteWorkerResponse, SatelliteFlowRequest } from './satellite.worker';
 import { isPhone } from '../ui/device-profile';
 import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
@@ -15,6 +15,7 @@ import {
   satelliteFrameUrl,
 } from './satellite.config';
 import { LUMA_GRID_SIZE, SatelliteHoverReading, sampleLumaGrid } from './satellite-image';
+import type { FlowField, MotionGrid } from './satellite-flow';
 
 /** One picture of the loop to fetch. */
 interface PlanItem {
@@ -31,6 +32,8 @@ export interface SatelliteFrame {
   url: string;
   /** Compact IR brightness grid for instant Cloud-Top Temperature & Height hover readout. */
   lumaGrid?: Uint8Array;
+  /** How much cloud is where, for the loop's motion between pictures (satellite-flow.ts). */
+  motion?: MotionGrid;
 }
 
 /** Time a picture is shown while playing, and the pause on the newest picture before the loop restarts. */
@@ -52,6 +55,12 @@ const CACHED_MAX_AGE_MS = 3 * 3_600_000;
 @Injectable({ providedIn: 'root' })
 export class SatelliteService {
   readonly frames = signal<SatelliteFrame[]>([]);
+  /**
+   * The cloud motion from each frame to the next (null where it is not worked out yet, or the two are of different channels), so the loop shows
+   * the clouds moving between pictures (see satellite-flow.ts). Worked out in the worker once per pair.
+   */
+  readonly flows = signal<(FlowField | null)[]>([]);
+  private readonly flowCache = new Map<string, Promise<FlowField | null>>();
   /**
    * Where the loop is, as a frame number with a fraction: 2.4 is 40% of the way from the third picture to the fourth.
    * It only has a fraction while playing; otherwise it sits on a whole number.
@@ -275,7 +284,7 @@ export class SatelliteService {
         URL.revokeObjectURL(res.url);
         return;
       }
-      this.preview = { timeMs, product, url: res.url, lumaGrid: res.lumaGrid };
+      this.preview = { timeMs, product, url: res.url, lumaGrid: res.lumaGrid, motion: res.motion };
       this.frames.set([this.preview]);
       this.position.set(0);
     } catch {
@@ -323,7 +332,7 @@ export class SatelliteService {
           return null;
         }
         if (res.lumaGrid) raw.lumaGrid = res.lumaGrid;
-        return { timeMs: raw.timeMs, product: raw.product, url: res.url, lumaGrid: raw.lumaGrid };
+        return { timeMs: raw.timeMs, product: raw.product, url: res.url, lumaGrid: raw.lumaGrid, motion: res.motion };
       });
       this.built.set(rawKey, pending);
     }
@@ -349,6 +358,7 @@ export class SatelliteService {
     const list = built.filter((f): f is SatelliteFrame => f !== null);
     if (list.length === 0 && this.preview) return; // keep the small first picture until a full one is built
     this.frames.set(list);
+    void this.updateFlows(list);
     if (this.preview) {
       const old = this.preview;
       this.preview = null;
@@ -369,14 +379,47 @@ export class SatelliteService {
     timeMs?: number,
     bounds?: GeoBounds,
     lossless = false,
-  ): Promise<{ url: string; lumaGrid?: Uint8Array } | null> {
+  ): Promise<{ url: string; lumaGrid?: Uint8Array; motion?: MotionGrid } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
     const worker = this.workers[this.turn++ % this.workers.length];
     const id = this.nextRequest++;
     return new Promise(resolve => {
-      this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid } : null));
+      this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid, motion: r.motion } : null));
       worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless } satisfies SatelliteWorkerRequest);
+    });
+  }
+
+  /** The motion between each frame and the next, worked out once per pair; the list is set again as each one arrives. */
+  private async updateFlows(list: readonly SatelliteFrame[]): Promise<void> {
+    const keyOf = (i: number) => `${list[i].url}|${list[i + 1].url}`;
+    const show = () => {
+      if (this.frames() !== list) return; // the loop changed meanwhile: its own update takes over
+      this.flows.set(list.map((_, i) => (i + 1 < list.length ? this.flowDone.get(keyOf(i)) ?? null : null)));
+    };
+    show();
+    for (const key of [...this.flowCache.keys()]) if (!list.some((_, i) => i + 1 < list.length && keyOf(i) === key)) { this.flowCache.delete(key); this.flowDone.delete(key); }
+    for (let i = 0; i + 1 < list.length; i++) {
+      const a = list[i];
+      const b = list[i + 1];
+      if (!a.motion || !b.motion || a.product.id !== b.product.id) continue;
+      const key = keyOf(i);
+      if (!this.flowCache.has(key)) this.flowCache.set(key, this.flowBetween(a.motion, b.motion));
+      const field = await this.flowCache.get(key)!;
+      if (field) this.flowDone.set(key, field);
+      show();
+    }
+  }
+  private readonly flowDone = new Map<string, FlowField>();
+
+  private flowBetween(a: MotionGrid, b: MotionGrid): Promise<FlowField | null> {
+    if (typeof Worker === 'undefined') return Promise.resolve(null);
+    if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
+    const worker = this.workers[this.turn++ % this.workers.length];
+    const id = this.nextRequest++;
+    return new Promise(resolve => {
+      this.pending.set(id, r => resolve('field' in r ? r.field : null));
+      worker.postMessage({ id, flow: { a, b } } satisfies SatelliteFlowRequest);
     });
   }
 
