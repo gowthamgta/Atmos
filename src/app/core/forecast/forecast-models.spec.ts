@@ -15,7 +15,7 @@ describe('forecast model registry', () => {
   it('lists the pipeline models by their folder id, with ECMWF IFS as the default', () => {
     expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('ecmwf_ifs');
     expect(forecastModelById('ukmo').label).toBe('UK Met Office');
-    expect(FORECAST_MODELS.map(m => m.id).sort()).toEqual(['aifs', 'aigfs', 'ecmwf_ifs', 'gfs', 'ukmo']);
+    expect(FORECAST_MODELS.map(m => m.id).sort()).toEqual(['aifs', 'aigfs', 'ecmwf_ifs', 'gfs', 'icon', 'ukmo']);
   });
 
   it('falls back to the default model for an unknown id', () => {

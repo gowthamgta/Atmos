@@ -20,7 +20,7 @@ export interface ForecastModelDef {
   groundKm: number;
   baseUrl: string;
   /** The centre that runs it: the model's colour follows this (blue ECMWF, violet NOAA, green Met Office). */
-  centre: 'ECMWF' | 'NOAA' | 'Met Office';
+  centre: 'ECMWF' | 'NOAA' | 'Met Office' | 'DWD';
   /** An AI model (learned from past weather) rather than a physics model: its colour is the lighter shade and its chart line is dashed. */
   ai: boolean;
   /**
@@ -57,6 +57,10 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
     id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, all India', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
     centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 360,
   },
+  {
+    id: 'icon', label: 'DWD ICON', short: 'ICON', resolution: '13 km, drawn at 25 km, all India', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/icon`,
+    centre: 'DWD', ai: false, datasets: ['dwd_icon'], apiId: 'icon_global', reachHours: 120,
+  },
 ];
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;
@@ -79,13 +83,8 @@ export interface PointModelDef {
  */
 export const BLEND_MODEL: PointModelDef = { id: 'blend', label: 'AtmosIQ Blend', short: 'Blend', ai: false };
 
-/**
- * Models compared in the meteogram that are not on the map, with Open-Meteo's names: DWD ICON scores among the best at the South Indian airports
- * (pipeline/verify.py) and is one of the Blend's models.
- */
-export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [
-  { id: 'icon', label: 'DWD ICON', short: 'ICON', ai: false, apiId: 'icon_global' },
-];
+/** Models compared in the meteogram that are not on the map, with Open-Meteo's names (none at the moment: DWD ICON is on the map now). */
+export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [];
 
 /** The models of the meteogram's comparison: the Blend first, then the map's models, then the others. */
 export const POINT_MODELS: readonly PointModelDef[] = [BLEND_MODEL, ...FORECAST_MODELS, ...POINT_ONLY_MODELS];

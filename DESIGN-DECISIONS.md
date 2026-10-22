@@ -66,5 +66,6 @@ fingerprint only together with this file, on the owner's request.
   it lowers the error on held-back days. They correct the meteogram and the comparison table for every model, and the ECMWF IFS map
   near the airports (the other map models are not corrected).
 - **The AtmosIQ Blend**: the corrected models weighted by recent error (rain by the square of the threat score), only in the meteogram's
-  comparison, not a map layer. **DWD ICON** is compared there too (it scores well) but is not built for the map.
+  comparison and the place card (its next days while its backtest beats every model), not a map layer.
+- **DWD ICON is a map model again** (22 Oct): 00Z and 12Z to +120 h on the 0.25 degree grid (the site must stay under Pages' 1 GB).
 - Commits go straight to `main`; if a push is rejected, `git pull --rebase origin main` first (the Actions bot commits data to `main`).

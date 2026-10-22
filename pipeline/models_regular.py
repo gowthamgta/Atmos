@@ -98,4 +98,15 @@ AIFS = RegularModel(
 )
 
 
-ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIGFS, AIFS)
+# DWD ICON global (13 km): among the best at the South Indian airports and the Tamil Nadu gauges (verify.py, verify_gauges.py). Each output
+# hour is a 171 MB file of the whole globe, so only the 00Z and 12Z runs, every 3 hours to +120 h (about 7 GB read a run), drawn on the
+# 0.25 degree grid (about 80 MB published: the site stays under GitHub Pages' 1 GB). It has no vertical velocity, CIN, lifted index,
+# visibility or sunshine: those layers are greyed out for it.
+ICON_STEPS = list(range(0, 121, 3))
+ICON = RegularModel(
+    model_id="icon", label="DWD ICON", run_hours=(0, 12), step_hours=ICON_STEPS, grid=COARSE_GRID,
+    sources=[Source("dwd_icon", _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CLOUD_LAYERS + LEVEL_SCALARS + level_uv()))],
+)
+
+
+ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIGFS, AIFS, ICON)

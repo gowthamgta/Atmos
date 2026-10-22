@@ -57,9 +57,9 @@ MAP_MODELS: dict[str, str] = {
     "gfs": "gfs_global",
     "aigfs": "ncep_aigfs025",
     "aifs": "ecmwf_aifs025_single",
+    "icon": "icon_global",
 }
 EXTRA_MODELS: dict[str, str] = {
-    "icon": "icon_global",
     "gem": "gem_global",
     "arpege": "meteofrance_arpege_world",
     "jma": "jma_gsm",
