@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
 import { IconComponent } from '../../shared/icon.component';
+import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
@@ -35,7 +36,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
 @Component({
   selector: 'app-radar-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, LightningKeyComponent],
   template: `
     @if (active()) {
       <section class="panel glass-panel" [class.compact]="!expanded()" aria-label="Radar settings">
@@ -114,6 +115,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
           </div>
           <p class="aloft-note full-only">See-through faint echoes: the radars see them only from 2 km or more up, so that rain may not reach the ground.</p>
         </div>
+        <app-lightning-key class="full-only" />
       </section>
     }
   `,

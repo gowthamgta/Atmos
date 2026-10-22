@@ -1,5 +1,5 @@
 /**
- * Lightning strokes of the last five minutes, from the Indian Lightning Detection Network (ILDN), Centre for Lightning and Thunderstorm
+ * Lightning strokes of the last fifteen minutes, from the Indian Lightning Detection Network (ILDN), Centre for Lightning and Thunderstorm
  * Studies, Tripura University (ildn.in). Their terms: free for non-commercial use, with attribution, and the data is not to be modified.
  *
  * The page's own map reads a small binary file: 32 bytes a stroke (time as a 64-bit float, then latitude, longitude and age in seconds as
@@ -7,9 +7,20 @@
  * seconds through our own address (the function /.netlify/functions/ildn; in development proxy.conf.json), which keeps the answer for ten seconds, so ILDN is asked about every ten
  * seconds in all however many people look. Between polls the strokes are aged locally and a new one flashes.
  */
-export const LIGHTNING_URL = '/.netlify/functions/ildn?ut=latest&span=5';
+export const LIGHTNING_URL = '/.netlify/functions/ildn?ut=latest&span=15';
 /** Only strokes this recent are shown (seconds). */
-export const LIGHTNING_WINDOW_S = 300;
+export const LIGHTNING_WINDOW_S = 900;
+
+/**
+ * The colour of a stroke by its age, newest brightest (as lightning maps usually show it): white in its first 2 minutes, then yellow,
+ * orange and red to 15 minutes. [from seconds, colour, label]
+ */
+export const LIGHTNING_AGE_COLOURS: readonly (readonly [number, string, string])[] = [
+  [0, '#ffffff', '0–2'],
+  [120, '#ffe14d', '2–5'],
+  [300, '#ff9a2e', '5–10'],
+  [600, '#e8413a', '10–15'],
+];
 export const LIGHTNING_CREDIT = 'Lightning: ILDN, Tripura University (non-commercial use)';
 
 const RECORD_BYTES = 32;

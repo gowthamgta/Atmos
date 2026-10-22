@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIGHTNING_WINDOW_S, ageStrokes, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
+import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
 
 /** A response of the shape ILDN sends: [time f64, lat f32, lon f32, age f32, (4 bytes), id u64] per stroke. */
 function response(strokes: { lat: number; lon: number; age: number }[]): ArrayBuffer {
@@ -44,8 +44,16 @@ describe('lightning strokes', () => {
   });
 
   it('ages strokes between polls and drops those that pass the window', () => {
-    const aged = ageStrokes([{ lat: 10, lon: 78, ageS: 5 }, { lat: 11, lon: 79, ageS: 295 }, { lat: 12, lon: 80, ageS: 120 }], 8);
-    expect(aged.map(s => s.ageS)).toEqual([13, 128]);
+    const aged = ageStrokes([{ lat: 10, lon: 78, ageS: 5 }, { lat: 11, lon: 79, ageS: 895 }, { lat: 12, lon: 80, ageS: 600 }], 8);
+    expect(aged.map(s => s.ageS)).toEqual([13, 608]);
+    expect(LIGHTNING_WINDOW_S).toBe(900);   // the last 15 minutes
+  });
+
+  it('colours strokes by age, newest brightest, in steps that cover the window', () => {
+    expect(LIGHTNING_AGE_COLOURS[0]).toEqual([0, '#ffffff', '0–2']);
+    const starts = LIGHTNING_AGE_COLOURS.map(c => c[0]);
+    expect(starts).toEqual([...starts].sort((x, y) => x - y));
+    expect(starts[starts.length - 1]).toBeLessThan(LIGHTNING_WINDOW_S);
   });
 
   it('is shown with the radar and with the satellite, and not over a forecast layer', () => {

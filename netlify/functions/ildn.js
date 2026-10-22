@@ -8,7 +8,7 @@
 exports.handler = async function (event) {
   const params = new URLSearchParams(event.rawQuery || '');
   // only the one file the page's own map reads, and only a short window
-  const span = Math.min(Math.max(parseInt(params.get('span') || '5', 10) || 5, 1), 10);
+  const span = Math.min(Math.max(parseInt(params.get('span') || '15', 10) || 15, 1), 15);
   const target = `https://ildn.in/imap-data.php?ut=latest&span=${span}`;
 
   try {

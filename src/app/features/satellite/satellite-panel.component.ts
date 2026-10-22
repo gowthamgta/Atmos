@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, untracked } from '@angular/core';
 import { IconComponent } from '../../shared/icon.component';
+import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
@@ -24,7 +25,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
 @Component({
   selector: 'app-satellite-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IconComponent],
+  imports: [IconComponent, LightningKeyComponent],
   template: `
     @if (active()) {
       <section class="panel glass-panel" aria-label="Satellite settings">
@@ -145,6 +146,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="sat.opacity()" (input)="onOpacity($event)" aria-label="Satellite opacity" />
         </label>
+        <app-lightning-key />
         <p class="note">{{ own() ? ownNote : note }}</p>
       </section>
     }

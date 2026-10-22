@@ -8,7 +8,7 @@ import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
 import { CycloneData, cycloneGeoJson, loadCyclones } from './cyclone-tracks';
-import { ageStrokes, lightningGeoJson, lightningShown, loadLightning } from './lightning';
+import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, lightningGeoJson, lightningShown, loadLightning } from './lightning';
 import { MapLayerService } from '../services/map-layer.service';
 import type { Stroke } from './lightning';
 import { decodeFieldBitmap } from './field-decode';
@@ -419,7 +419,7 @@ export class ForecastMapController {
   }
 
   /** A pink bolt with a dark edge, drawn once for the symbol layer. */
-  private boltImage(): ImageData {
+  private boltImage(fill = '#ff7ad9'): ImageData {
     const size = 48;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = size;
@@ -436,15 +436,20 @@ export class ForecastMapController {
     ctx.lineWidth = 4;
     ctx.strokeStyle = 'rgba(40, 8, 40, 0.9)';
     ctx.stroke();
-    ctx.fillStyle = '#ff7ad9';
+    ctx.fillStyle = fill;
     ctx.fill();
     return ctx.getImageData(0, 0, size, size);
   }
 
-  /** Lightning strokes as bolts, fading with age over the five minutes they are shown. */
+  /** Lightning strokes as bolts coloured by age (white, yellow, orange, red: see LIGHTNING_AGE_COLOURS), fading a little over the 15 minutes they are shown. */
   private addLightningLayer(map: MapLibreMap): void {
     const source = ForecastMapController.LIGHTNING_SOURCE;
-    if (!map.hasImage(ForecastMapController.LIGHTNING_IMAGE)) map.addImage(ForecastMapController.LIGHTNING_IMAGE, this.boltImage());
+    LIGHTNING_AGE_COLOURS.forEach(([, colour], i) => {
+      const name = `${ForecastMapController.LIGHTNING_IMAGE}-${i}`;
+      if (!map.hasImage(name)) map.addImage(name, this.boltImage(colour));
+    });
+    const bolt: unknown[] = ['step', ['get', 'age'], `${ForecastMapController.LIGHTNING_IMAGE}-0`];
+    LIGHTNING_AGE_COLOURS.slice(1).forEach(([from], i) => bolt.push(from, `${ForecastMapController.LIGHTNING_IMAGE}-${i + 1}`));
     map.addSource(source, { type: 'geojson', data: lightningGeoJson([]) });
     // a new strike flashes: a ring that grows and fades over its first ten seconds
     map.addLayer({
@@ -459,10 +464,10 @@ export class ForecastMapController {
     map.addLayer({
       id: ForecastMapController.LIGHTNING_LAYER, type: 'symbol', source,
       layout: {
-        'icon-image': ForecastMapController.LIGHTNING_IMAGE, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-image': bolt as unknown as string, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
         'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 8, 0.5, 11, 0.75], 'symbol-sort-key': ['-', ['get', 'age']], visibility: 'none',
       },
-      paint: { 'icon-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 1, 300, 0.35] },
+      paint: { 'icon-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 1, LIGHTNING_WINDOW_S, 0.55] },
     });
   }
 
