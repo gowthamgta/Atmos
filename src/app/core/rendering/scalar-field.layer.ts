@@ -18,6 +18,7 @@ import {
 import type { TerrainData } from '../forecast/terrain.service';
 import { sameLattice } from '../forecast/terrain-ground';
 import { TERRAIN_TILE_GLSL, TerrainTileGpu } from './terrain-tile-gpu';
+import { PendingProgram } from './gl-program';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -271,6 +272,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private map: MapLibreMap | null = null;
   private gl: WebGL2RenderingContext | null = null;
   private program: WebGLProgram | null = null;
+  private pending: PendingProgram | null = null;
   private vao: WebGLVertexArrayObject | null = null;
   private vbo: WebGLBuffer | null = null;
   private lutTex: WebGLTexture | null = null;
@@ -355,10 +357,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
     this.gl = gl;
-    const program = this.link(gl, VERTEX, FRAGMENT);
-    this.program = program;
+    // compiled in the background (see gl-program.ts); drawing starts on the first frame it is ready
+    this.pending = new PendingProgram(gl, VERTEX, FRAGMENT, 'forecast');
+    this.program = null;
     this.uniforms = {};
-    for (const name of UNIFORMS) this.uniforms[name] = gl.getUniformLocation(program, name);
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
     this.lutTex = gl.createTexture();
@@ -377,13 +379,28 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.tiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
-    if (this.program) gl.deleteProgram(this.program);
+    const handle = this.program ?? this.pending?.handle;
+    if (handle) gl.deleteProgram(handle);
+    this.pending = null;
     this.lutTex = this.demModelTex = this.demSmoothTex = this.vbo = this.vao = this.program = null;
     this.map = null;
     this.gl = null;
   }
 
+  /** The program once the driver has it ready, with its uniforms looked up (false while it is still compiling: another frame is asked for). */
+  private takeProgram(gl: WebGL2RenderingContext): boolean {
+    const program = this.pending?.ready();
+    if (!program) {
+      if (this.pending) this.map?.triggerRepaint();
+      return false;
+    }
+    this.program = program;
+    for (const name of UNIFORMS) this.uniforms[name] = gl.getUniformLocation(program, name);
+    return true;
+  }
+
   render(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
+    if (!this.program && !this.takeProgram(gl)) return;
     const { grid, def, frameA, frameB, program } = this;
     if (!this.visible || !grid || !def || !frameA || !frameB || !program) return;
 
@@ -476,7 +493,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
 
   private uploadQuad(): void {
     const { gl, grid } = this;
-    if (!gl || !grid || !this.program || !this.vao || !this.vbo) return;
+    if (!gl || !grid || !this.vao || !this.vbo) return;
     const x0 = mercatorUnitX(grid.lonMin);
     const x1 = mercatorUnitX(grid.lonMax);
     const y0 = mercatorUnitY(grid.latMax);
@@ -484,7 +501,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(this.program!, 'a_pos');
+    const loc = 0; // a_pos, bound to 0 before the link (gl-program.ts)
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
@@ -532,25 +549,5 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       this.textures.delete(oldest);
     }
     return tex;
-  }
-
-  private link(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgram {
-    const compile = (type: number, src: string): WebGLShader => {
-      const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, src);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        throw new Error(`forecast shader: ${gl.getShaderInfoLog(shader)}`);
-      }
-      return shader;
-    };
-    const program = gl.createProgram()!;
-    gl.attachShader(program, compile(gl.VERTEX_SHADER, vs));
-    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fs));
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(`forecast program: ${gl.getProgramInfoLog(program)}`);
-    }
-    return program;
   }
 }

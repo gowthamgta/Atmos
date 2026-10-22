@@ -2,7 +2,7 @@ import { Injectable, computed, effect, inject, signal, untracked } from '@angula
 import { SteeringWindService } from '../forecast/steering-wind.service';
 import { MapLayerService } from './map-layer.service';
 import { MotionBox, MotionField, kmhToDegPerHour, uniformMotionField } from './radar-motion';
-import { FieldBox, NOWCAST_LEADS_MIN, NowcastSkill, TrackFrame, motionBetween, nowcastPicture, verifyNowcast } from './radar-nowcast';
+import { FieldBox, NOWCAST_LEADS_MIN, NowcastSkill, TrackFrame, motionBetween, verifyNowcast } from './radar-nowcast';
 import { NowcastFrame, RadarService } from './radar.service';
 import { windToMotion } from './storm-tracking';
 
@@ -121,13 +121,12 @@ export class RadarNowcastService {
       }
       const c = mosaic.coordinates;
       const fieldBox: FieldBox = { west: c[0][0], north: c[0][1], east: c[1][0], south: c[2][1], width: mosaic.fieldData.cropW, height: mosaic.fieldData.cropH };
-      const frames: NowcastFrame[] = [];
-      for (const lead of NOWCAST_LEADS_MIN) {
-        const pic = nowcastPicture(mosaic.displayField, fieldBox, found.field, lead, 2);
-        frames.push({ field: pic.field, width: pic.width, height: pic.height, coordinates: mosaic.coordinates, timeMs: live.timeMs + lead * MINUTE, leadMin: lead });
-        await yieldToBrowser();
-        if (my !== this.token) return;
-      }
+      // all the leads at once, off the main thread (radar-compute.ts)
+      const pictures = await this.radar.compute.nowcast({ field: mosaic.displayField, box: fieldBox, motion: found.field, leads: NOWCAST_LEADS_MIN, outScale: 2 });
+      if (my !== this.token) return;
+      const frames: NowcastFrame[] = pictures.map(pic => ({
+        field: pic.field, width: pic.width, height: pic.height, coordinates: mosaic.coordinates, timeMs: live.timeMs + pic.lead * MINUTE, leadMin: pic.lead,
+      }));
       this.radar.nowcast.set(frames);
       this.skill.set(others.length >= 3 ? verifyNowcast([...others, live], grid, box, 30) : null);
     } finally {

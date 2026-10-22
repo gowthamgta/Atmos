@@ -2,6 +2,7 @@ import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap 
 import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import { GeoBounds, SATELLITE_BOUNDS } from '../satellite/satellite.config';
 import type { FlowField } from '../satellite/satellite-flow';
+import { PendingProgram } from './gl-program';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -168,6 +169,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   private map: MapLibreMap | null = null;
   private gl: WebGL2RenderingContext | null = null;
   private program: WebGLProgram | null = null;
+  private pending: PendingProgram | null = null;
   private vao: WebGLVertexArrayObject | null = null;
   private vbo: WebGLBuffer | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -257,6 +259,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   canDraw(): boolean {
     const n = this.frames.length;
     if (n === 0 || this.opacity <= 0.001) return false;
+    if (!this.program && !this.pending?.ready()) return false; // its shader is still compiling: the picture under it must not make room yet
     const frame = this.frames[Math.min(Math.max(Math.floor(this.position), 0), n - 1)];
     const slot = frame ? this.slots.get(frame.key) : undefined;
     return !!slot && (slot.texture !== null || slot.bitmap !== null);
@@ -283,29 +286,15 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
     this.gl = gl;
-    const compile = (type: number, src: string): WebGLShader => {
-      const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, src);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`satellite shader: ${gl.getShaderInfoLog(shader)}`);
-      return shader;
-    };
-    const program = gl.createProgram()!;
-    gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX));
-    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAGMENT));
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`satellite program: ${gl.getProgramInfoLog(program)}`);
-    this.program = program;
-    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather',
-      'u_flow', 'u_hasFlow', 'u_flowBox', 'u_flowNodes', 'u_flowCount']) {
-      this.uniforms[name] = gl.getUniformLocation(program, name);
-    }
+    // compiled in the background (see gl-program.ts); drawing starts on the first frame it is ready
+    this.pending = new PendingProgram(gl, VERTEX, FRAGMENT, 'satellite');
+    this.program = null;
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     this.writeQuad();
-    const loc = gl.getAttribLocation(program, 'a_pos');
+    const loc = 0; // a_pos, bound to 0 before the link (gl-program.ts)
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
@@ -334,7 +323,9 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     this.slots.clear();
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
-    if (this.program) gl.deleteProgram(this.program);
+    const handle = this.program ?? this.pending?.handle;
+    if (handle) gl.deleteProgram(handle);
+    this.pending = null;
     this.vbo = this.vao = this.program = null;
     this.map = null;
     this.gl = null;
@@ -378,7 +369,23 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     return { box: [x0, y0, x1, y1], feather: this.featherFraction * Math.abs(x1 - x0) };
   }
 
+  /** The program once the driver has it ready, with its uniforms looked up (false while it is still compiling: another frame is asked for). */
+  private takeProgram(gl: WebGL2RenderingContext): boolean {
+    const program = this.pending?.ready();
+    if (!program) {
+      if (this.pending) this.map?.triggerRepaint();
+      return false;
+    }
+    this.program = program;
+    for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather',
+      'u_flow', 'u_hasFlow', 'u_flowBox', 'u_flowNodes', 'u_flowCount']) {
+      this.uniforms[name] = gl.getUniformLocation(program, name);
+    }
+    return true;
+  }
+
   render(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
+    if (!this.program && !this.takeProgram(gl)) return;
     const program = this.program;
     const n = this.frames.length;
     if (!program || n === 0 || this.opacity <= 0.001) return;

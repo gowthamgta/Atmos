@@ -13,7 +13,7 @@ import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels } from './radar-pro
 import { HistoryHandle, RadarProcessor, StillResult } from './radar-processor';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { stampEpoch, type StampTime } from './radar-stamp';
-import { lowestBeamHeights, withAloftFade } from './radar-beam';
+import { MosaicSource, RadarCompute } from './radar-compute';
 import { decodeRadarGif } from './radar-gif-decode';
 import { cachedRadarPicture, keepRadarPicture } from './radar-picture-cache';
 import { inspectRadar } from './radar-inspector';
@@ -21,7 +21,7 @@ import { readHiddenStations, writeHiddenStations } from './radar-station-prefs';
 import { IMD_WRITE_GAP_MS, LOOK_LEAD_MS, extractRadarIsoTimestamp, pictureNotDue, radarTimingFromDate, scanNotDue } from './radar-timing';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
-import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX } from './radar-mosaic';
 import { RadarCoverageService } from './radar-coverage.service';
 import { BOT_CAPTURE } from '../ui/bot-capture';
 import { MARSHALL_PALMER_A, RadarSamples, lastHourRain, sampleAll } from './radar-sample';
@@ -783,33 +783,26 @@ export class RadarService implements OnDestroy {
   /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
 
-  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number): ProcessedRadarResult | null {
+  /** The mosaic and the nowcast pictures are made in a worker (radar-compute.ts): they took up to a second of a phone's main thread. */
+  readonly compute = new RadarCompute();
+
+  /** The mosaic of the radars that are on (with rain aloft see-through), made off the main thread. */
+  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number): Promise<ProcessedRadarResult | null> {
     const hidden = this.hiddenStations();
-    const shown = [...sources].filter(([id]) => !hidden.has(id));
-    const product = this.activeProduct();
-    const res = composeRadarMosaic(this.stations, shown, MOSAIC_KM_PER_PX, RadarService.MOSAIC_MAX_PX, product, nowMs);
-    if (!res?.fieldData || !res.displayField) return res;
-    // faint echoes seen only from a beam high up: drawn see-through, never removed (rain that may not reach the ground)
-    const ids = shown.map(([id]) => id).sort();
-    const heights = this.beamHeightsFor(ids, product, res.coordinates, res.fieldData.cropW, res.fieldData.cropH);
-    const fade = withAloftFade(res.fieldData.field, heights, res.displayFade);
-    return fade === res.displayFade ? res : { ...res, displayFade: fade };
+    const shown: MosaicSource[] = [...sources]
+      .filter(([id]) => !hidden.has(id))
+      .map(([id, r]) => [id, { fieldData: r.fieldData, timing: r.timing, isDisplayed: r.isDisplayed }]);
+    return this.compute.compose({ sources: shown, kmPerPx: MOSAIC_KM_PER_PX, maxPx: RadarService.MOSAIC_MAX_PX, product: this.activeProduct(), nowMs });
   }
 
-  /** Lowest beam height over each pixel of the mosaic, kept while the radars, the product and the grid stay the same (see lowestBeamHeights). */
-  private beamHeightCache: { key: string; heights: Float32Array } | null = null;
-  private beamHeightsFor(ids: string[], product: RadarProductKey, coordinates: ProcessedRadarResult['coordinates'], w: number, h: number): Float32Array {
-    const key = [ids.join(','), product, w, h, ...coordinates.flat()].join('|');
-    if (this.beamHeightCache?.key !== key) {
-      const stations = this.stations.filter(s => ids.includes(s.id));
-      this.beamHeightCache = { key, heights: lowestBeamHeights(stations, product, coordinates, w, h) };
-    }
-    return this.beamHeightCache.heights;
-  }
+  private composeToken = 0;
 
-  /** Rebuilds the live composite from the latest still of every radar. */
-  private generateComposite(): void {
-    this.compositeMosaic.set(this.composeMosaic([...this.allRadarResults()], Date.now()));
+  /** Rebuilds the live composite from the latest still of every radar (a newer rebuild started meanwhile wins). */
+  private async generateComposite(): Promise<void> {
+    const my = ++this.composeToken;
+    const res = await this.composeMosaic([...this.allRadarResults()], Date.now());
+    if (my !== this.composeToken) return;
+    this.compositeMosaic.set(res);
   }
 
   /** The live composite on the storm-tracking grid. */
@@ -909,7 +902,7 @@ export class RadarService implements OnDestroy {
           const cur = src && scanForSlot(src.frames, slots[k]);
           if (cur && Number(t) < cur.timeMs) decoded.delete(key);
         }
-        const composed = entries.length > 0 ? this.composeMosaic(entries) : null;
+        const composed = entries.length > 0 ? await this.composeMosaic(entries) : null;
         if (composed?.displayField) {
           frames.push({
             field: composed.displayField,

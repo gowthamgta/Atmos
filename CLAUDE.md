@@ -7,5 +7,8 @@ changes: update its fingerprint only together with `DESIGN-DECISIONS.md`.
 
 - Angular 21 (signals) with MapLibre; tests: `npx ng test --watch=false` (speed budgets scale with how busy the machine is); build: `npx ng build`; end-to-end: `npx ng build && npx playwright test` (e2e/, saved radar pictures, desktop and phone).
   Pipeline tests: `python -m pytest -q pipeline/tests`. The test workflow runs all of it on every push to main.
+- Phone speed: `node scripts/preview.js` then `node e2e/perf.mjs` (Pixel 7 screen, CPU 4x slower, fast 4G, real GPU): keep the worst
+  main-thread task under about 300 ms. Heavy work goes to a worker (radar-compute, satellite, radar-process); shaders compile through
+  gl-program.ts (never check a compile right after starting it).
 - Commit to `main`; if a push is rejected, `git pull --rebase origin main` first (the Actions bot commits data there).
 - Other assistants also commit here: run `git log --oneline -10` before trusting what you remember of the code.

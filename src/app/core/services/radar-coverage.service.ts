@@ -28,6 +28,8 @@ export class RadarCoverageService {
   readonly visible = computed(() => this.enabled() && this.radarOn());
   /** The haze picture for the map (null until the grid has loaded). */
   readonly overlay = computed<CoverageOverlay | null>(() => {
+    // drawn only while it is shown: the picture took a third of a second on a phone (measured), for a haze that is switched off
+    if (!this.visible()) return null;
     const grid = this.grid();
     return grid ? drawHaze(grid) : null;
   });

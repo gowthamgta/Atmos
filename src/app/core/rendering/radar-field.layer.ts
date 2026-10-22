@@ -3,6 +3,7 @@ import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import type { TerrainData } from '../forecast/terrain.service';
 import { ECHO_FADE_FULL, ECHO_FADE_START, RADAR_BAND_COLOUR_DBZ, RADAR_BAND_EDGES_DBZ, RADAR_COLOR_STOPS, RADAR_FIELD_MAX } from '../services/radar-field';
 import { TERRAIN_TILE_GLSL, TERRAIN_TILE_UNIFORMS, TerrainTileGpu } from './terrain-tile-gpu';
+import { PendingProgram } from './gl-program';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -185,6 +186,7 @@ export class RadarFieldLayer implements CustomLayerInterface {
   private map: MapLibreMap | null = null;
   private gl: WebGL2RenderingContext | null = null;
   private program: WebGLProgram | null = null;
+  private pending: PendingProgram | null = null;
   private vao: WebGLVertexArrayObject | null = null;
   private vbo: WebGLBuffer | null = null;
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -242,22 +244,9 @@ export class RadarFieldLayer implements CustomLayerInterface {
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
     this.gl = gl;
-    const compile = (type: number, src: string): WebGLShader => {
-      const shader = gl.createShader(type)!;
-      gl.shaderSource(shader, src);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(`radar shader: ${gl.getShaderInfoLog(shader)}`);
-      return shader;
-    };
-    const program = gl.createProgram()!;
-    gl.attachShader(program, compile(gl.VERTEX_SHADER, VERTEX));
-    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAGMENT));
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`radar program: ${gl.getProgramInfoLog(program)}`);
-    this.program = program;
-    for (const name of ['u_matrix', 'u_field', 'u_fade', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen', 'u_relief', 'u_terrainOn', 'u_lite', 'u_terrainBox', ...TERRAIN_TILE_UNIFORMS]) {
-      this.uniforms[name] = gl.getUniformLocation(program, name);
-    }
+    // compiled in the background (see gl-program.ts); drawing starts on the first frame it is ready
+    this.pending = new PendingProgram(gl, VERTEX, FRAGMENT, 'radar');
+    this.program = null;
     this.tiles.attach(map, gl);
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
@@ -274,20 +263,22 @@ export class RadarFieldLayer implements CustomLayerInterface {
     this.tiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
-    if (this.program) gl.deleteProgram(this.program);
+    const handle = this.program ?? this.pending?.handle;
+    if (handle) gl.deleteProgram(handle);
+    this.pending = null;
     this.vbo = this.vao = this.program = null;
     this.map = null;
     this.gl = null;
   }
 
   private uploadQuad(): void {
-    const { gl, vao, vbo, program } = this;
-    if (!gl || !vao || !vbo || !program) return;
+    const { gl, vao, vbo } = this;
+    if (!gl || !vao || !vbo) return;
     const [x0, y0, x1, y1] = this.box;
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]), gl.STATIC_DRAW);
-    const loc = gl.getAttribLocation(program, 'a_pos');
+    const loc = 0; // a_pos, bound to 0 before the link (gl-program.ts)
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
@@ -334,7 +325,22 @@ export class RadarFieldLayer implements CustomLayerInterface {
     return this.noFade;
   }
 
+  /** The program once the driver has it ready, with its uniforms looked up (false while it is still compiling: another frame is asked for). */
+  private takeProgram(gl: WebGL2RenderingContext): boolean {
+    const program = this.pending?.ready();
+    if (!program) {
+      if (this.pending) this.map?.triggerRepaint();
+      return false;
+    }
+    this.program = program;
+    for (const name of ['u_matrix', 'u_field', 'u_fade', 'u_box', 'u_lat', 'u_size', 'u_opacity', 'u_sharpen', 'u_relief', 'u_terrainOn', 'u_lite', 'u_terrainBox', ...TERRAIN_TILE_UNIFORMS]) {
+      this.uniforms[name] = gl.getUniformLocation(program, name);
+    }
+    return true;
+  }
+
   render(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
+    if (!this.program && !this.takeProgram(gl)) return;
     const { program, frame } = this;
     if (!program || !frame || this.opacity <= 0.001) return;
     const tex = this.textureFor(gl, frame);
