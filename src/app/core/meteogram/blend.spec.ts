@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyCorrections, blendSeries, CorrectionsFile, extraBlendModels } from './blend';
+import { applyCorrections, blendSeries, blendTrusted, CorrectionsFile, extraBlendModels } from './blend';
 import { ModelSeries, PointSeries, SERIES_KEYS } from './point-series';
 import { withBlend } from './point-series.service';
 
@@ -72,5 +72,15 @@ describe('the blend', () => {
     expect(s.rainChance).toBeDefined();
     const plain = series({ a: model({ temp: [30, 30] }) });
     expect(withBlend(plain, null)).toBe(plain);
+  });
+});
+
+describe('when the blend stands in for a model', () => {
+  it('only when its backtest beats every single model, corrected or not', () => {
+    const bt = (temp_mae: Record<string, number>) => ({ ...corr, backtest: { test_days: ['a', 'b'] as [string, string], temp_mae, rain_threat: {} } });
+    expect(blendTrusted(bt({ a: 1.6, 'a+corrected': 1.2, b: 1.1, blend: 1.0 }))).toBe(true);
+    expect(blendTrusted(bt({ a: 1.6, 'a+corrected': 0.9, blend: 1.0 }))).toBe(false);
+    expect(blendTrusted(bt({ a: 1.6 }))).toBe(false);
+    expect(blendTrusted(null)).toBe(false);
   });
 });

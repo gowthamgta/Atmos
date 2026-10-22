@@ -16,6 +16,8 @@ import { PanelService } from '../../core/ui/panel.service';
 import { UnitsService } from '../../core/units/units.service';
 import { formatRain, formatTemp } from '../../core/units/units';
 import { IconComponent } from '../../shared/icon.component';
+import { PointSeriesService } from '../../core/meteogram/point-series.service';
+import { indexAt } from '../../core/meteogram/point-series';
 
 const IST = 'Asia/Kolkata';
 const SEARCH_DELAY_MS = 250;
@@ -90,6 +92,9 @@ export function firstNumber(text: string | undefined): number | null {
             @if (activeLayerReadout(); as lr) {
               <div class="layer-readout" [class.stale]="inspector.stale()"><span>{{ lr.label }}</span><strong [title]="inspector.stale() ? 'Working out the new value' : ''">{{ inspector.stale() ? '…' : lr.text }}</strong></div>
             }
+            @if (blendLine(); as bl) {
+              <div class="blend-line" [title]="bl.title"><span class="blend-dot" aria-hidden="true"></span>{{ bl.text }}</div>
+            }
             <div class="when">{{ timeLabel() }} · {{ sel.lat.toFixed(2) }}°N, {{ sel.lon.toFixed(2) }}°E@if (p.elevationM !== null) { · {{ p.elevationM.toFixed(0) }} m }</div>
 
             @if (outlook.days().length) {
@@ -104,6 +109,7 @@ export function firstNumber(text: string | undefined): number | null {
                   </li>
                 }
               </ul>
+              @if (outlook.source() === 'blend') { <div class="days-source">Next days: AtmosIQ Blend, the models corrected and weighted by how right each has been lately</div> }
             } @else if (outlook.busy()) {
               <div class="note">Loading the next days…</div>
             }
@@ -191,6 +197,9 @@ export function firstNumber(text: string | undefined): number | null {
     .layer-readout { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 4px 0 2px; padding: 4px 10px; border-radius: var(--radius-s); background: var(--accent-soft); font-size: var(--fs-s); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
     .layer-readout strong { color: var(--text-primary); font-weight: var(--fw-strong); }
     .when { margin: 2px 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); }
+    .blend-line { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-s); color: var(--text-secondary); }
+    .blend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--m-blend); flex: none; }
+    .days-source { margin-top: 2px; font-size: var(--fs-xs); color: var(--text-muted); }
 
     .days { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 6px 0 var(--sp-1); border-top: 1px solid var(--line); }
     .day { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0 2px; font-size: var(--fs-s); font-variant-numeric: tabular-nums; }
@@ -255,6 +264,7 @@ export class PlaceCardComponent {
   protected readonly meteogram = inject(MeteogramService);
   protected readonly panels = inject(PanelService);
   private readonly state = inject(ForecastStateService);
+  private readonly pointSeries = inject(PointSeriesService);
   private readonly runs = inject(ModelRunsService);
   private readonly search = inject(PlaceSearchService);
   private readonly mapHost = inject(MapHostService);
@@ -347,6 +357,27 @@ export class PlaceCardComponent {
   protected toggleValues(): void {
     this.inspector.detail.update(on => !on);
   }
+
+  /**
+   * The AtmosIQ Blend at the place and the time on the bar: its temperature and its chance of rain over the next three hours (the map's
+   * own value above stays the shown model's, so it matches the colours).
+   */
+  protected readonly blendLine = computed(() => {
+    const sel = this.inspector.selected();
+    const data = this.pointSeries.data();
+    const t = this.state.timeMs();
+    const blend = data?.models['blend'];
+    if (!sel || !data || !blend || t === null || data.lat.toFixed(2) !== sel.lat.toFixed(2) || data.lon.toFixed(2) !== sel.lon.toFixed(2)) return null;
+    const i = indexAt(data.times, t);
+    const temp = blend.temp[i];
+    if (temp === null || Math.abs(data.times[i] - t) > 90 * 60_000) return null;
+    const chances = (data.rainChance ?? []).slice(i, i + 3).filter((c): c is number => c !== null);
+    const chance = chances.length ? Math.round(Math.max(...chances) * 100) : null;
+    return {
+      text: `AtmosIQ Blend ${this.temp(temp)}${chance !== null ? ` · ${chance}% chance of rain in the next 3 h` : ''}`,
+      title: 'The models corrected for their usual error at the nearest airports and weighted by how right each has been lately (Menu, Models)',
+    };
+  });
 
   protected temp(c: number | null): string {
     return formatTemp(c, this.unitsService.units(), 0, false);

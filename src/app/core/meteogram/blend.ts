@@ -139,6 +139,17 @@ export function blendSeries(series: PointSeries, corr: CorrectionsFile): { blend
   return { blend, rainChance };
 }
 
+/**
+ * True when the Blend can stand in for a model where one forecast is shown (the place card's next days): in the latest backtest of
+ * learn_bias.py (days the learning never saw) its temperature error was no larger than the best single model's, corrected or not.
+ */
+export function blendTrusted(corr: CorrectionsFile | null): boolean {
+  const mae = corr?.backtest?.temp_mae;
+  if (!mae || mae['blend'] === undefined) return false;
+  const others = Object.entries(mae).filter(([k]) => k !== 'blend').map(([, v]) => v);
+  return others.length > 0 && mae['blend'] <= Math.min(...others);
+}
+
 /** The models the Blend needs that are not on the map (and so not in the point forecast's usual request), with Open-Meteo's names. */
 export function extraBlendModels(corr: CorrectionsFile | null, mapIds: readonly string[]): { id: string; apiId: string }[] {
   if (!corr?.blend) return [];

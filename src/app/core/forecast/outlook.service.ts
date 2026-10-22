@@ -1,5 +1,7 @@
 import { Injectable, effect, inject, signal, untracked } from '@angular/core';
 import { PointSeriesService } from '../meteogram/point-series.service';
+import { BLEND_ID, blendTrusted } from '../meteogram/blend';
+import { VerificationService } from './verification.service';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -32,8 +34,11 @@ export class OutlookService {
   private readonly loader = inject(FieldLoaderService);
   private readonly terrain = inject(TerrainService);
   private readonly series = inject(PointSeriesService);
+  private readonly verification = inject(VerificationService);
 
   readonly days = signal<DayOutlook[]>([]);
+  /** Whose days are shown: the AtmosIQ Blend when its backtest beats every single model (blend.ts), else the model on the map. */
+  readonly source = signal<'blend' | 'model'>('model');
   readonly busy = signal(false);
 
   private token = 0;
@@ -62,6 +67,7 @@ export class OutlookService {
       const status = this.series.status();
       const model = this.catalog.activeModelId();
       const manifest = this.catalog.manifest();
+      const trusted = blendTrusted(this.verification.corrections());
       if (!sel) return;
       const here = placeKey(sel.lat, sel.lon);
       const failed = this.series.failedFor() === here;
@@ -70,10 +76,13 @@ export class OutlookService {
         if (same && status === 'ready') {
           this.fallbackFor = '';
           this.daysFor = here;
-          this.days.set(outlookFromSeries(data, model, Date.now(), DAYS));
+          const useBlend = trusted && !!data.models[BLEND_ID];
+          this.source.set(useBlend ? 'blend' : 'model');
+          this.days.set(outlookFromSeries(data, useBlend ? BLEND_ID : model, Date.now(), DAYS));
           this.busy.set(false);
         } else if (failed && status === 'error' && manifest && this.fallbackFor !== `${here},${manifest.run},${manifest.build}`) {
           this.fallbackFor = `${here},${manifest.run},${manifest.build}`;
+          this.source.set('model');
           this.daysFor = here;
           void this.computeFromFields(sel.lat, sel.lon, manifest);
         }
