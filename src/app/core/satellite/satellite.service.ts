@@ -39,6 +39,11 @@ export interface SatelliteFrame {
   cloudField?: CloudField;
 }
 
+/** Measured brightness temperatures of the frames (pipeline/satellite_bt.py, published by the satellite workflow), for the 3D clouds. */
+const BT_BASE = 'https://raw.githubusercontent.com/gowthamgta/Atmos/satellite-data/bt/';
+/** A temperature frame counts for a picture within this much of its time. */
+const BT_MATCH_MS = 8 * 60_000;
+
 /** Time a picture is shown while playing, and the pause on the newest picture before the loop restarts. */
 const STEP_MS = 1100;
 const HOLD_MS = 1800;
@@ -405,10 +410,34 @@ export class SatelliteService {
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
     const worker = this.workers[this.turn++ % this.workers.length];
     const id = this.nextRequest++;
-    return new Promise(resolve => {
+    const btPending = bounds || timeMs === undefined ? Promise.resolve(undefined) : this.brightnessFor(timeMs);
+    return btPending.then(bt => new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid, motion: r.motion, cloudField: r.cloudField } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless } satisfies SatelliteWorkerRequest);
-    });
+      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless, bt } satisfies SatelliteWorkerRequest);
+    }));
+  }
+
+  private btIndex: { at: number; frames: { timeMs: number; url: string }[]; offsetK: number; stepK: number } | null = null;
+  private btLoading: Promise<void> | null = null;
+
+  /** The measured temperatures for a picture's time, if the satellite workflow has them (its index is looked at every few minutes). */
+  private async brightnessFor(timeMs: number): Promise<{ url: string; offsetK: number; stepK: number } | undefined> {
+    if (!this.btIndex || Date.now() - this.btIndex.at > 4 * 60_000) {
+      this.btLoading ??= fetch(BT_BASE + 'index.json', { cache: 'no-cache' })
+        .then(r => (r.ok ? r.json() : null))
+        .then((j: { frames?: { time: string; file: string }[]; offsetK?: number; stepK?: number } | null) => {
+          const frames = (j?.frames ?? []).map(f => ({ timeMs: Date.parse(f.time), url: BT_BASE + f.file })).filter(f => Number.isFinite(f.timeMs));
+          this.btIndex = { at: Date.now(), frames, offsetK: j?.offsetK ?? 180, stepK: j?.stepK ?? 0.5 };
+        })
+        .catch(() => {
+          this.btIndex = { at: Date.now(), frames: [], offsetK: 180, stepK: 0.5 };
+        })
+        .finally(() => (this.btLoading = null));
+      await this.btLoading;
+    }
+    const idx = this.btIndex;
+    const best = idx?.frames.reduce<{ timeMs: number; url: string } | null>((b, f) => (!b || Math.abs(f.timeMs - timeMs) < Math.abs(b.timeMs - timeMs) ? f : b), null);
+    return idx && best && Math.abs(best.timeMs - timeMs) <= BT_MATCH_MS ? { url: best.url, offsetK: idx.offsetK, stepK: idx.stepK } : undefined;
   }
 
   /** The motion between each frame and the next, worked out once per pair; the list is set again as each one arrives. */

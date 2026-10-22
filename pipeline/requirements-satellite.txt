@@ -1,0 +1,7 @@
+# satellite_bt.py (the satellite workflow) only: the EUMETSAT Data Store client and Satpy to read SEVIRI native files
+numpy>=2.0
+Pillow>=11
+pytest>=8
+eumdac>=3.0
+satpy>=0.56
+pyresample>=1.30

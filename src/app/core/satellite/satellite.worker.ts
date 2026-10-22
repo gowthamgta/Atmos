@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { buildLumaGrid, deblockJpeg, hrvBackground, mercatorHeight, toOverlayPixels } from './satellite-image';
-import { CloudField, buildCloudField } from './cloud-field';
+import { BrightnessGrid, CloudField, buildCloudField } from './cloud-field';
 import { enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
@@ -19,6 +19,8 @@ export interface SatelliteWorkerRequest {
   bounds?: GeoBounds;
   /** The picture is a PNG (no JPEG blocks to smooth). */
   lossless?: boolean;
+  /** The frame's measured brightness temperatures (pipeline/satellite_bt.py), for the 3D clouds' heights. */
+  bt?: { url: string; offsetK: number; stepK: number };
 }
 
 /** The cloud motion between two pictures' motion grids (see satellite-flow.ts). */
@@ -44,7 +46,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     }
     return;
   }
-  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless } = event.data;
+  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless, bt } = event.data;
   const box = bounds ?? SATELLITE_BOUNDS;
   try {
     const bitmap = await createImageBitmap(jpeg);
@@ -73,7 +75,8 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     // the whole-India picture also gives the clouds' heights and thickness for the 3D view (cloud-field.ts)
     const cover = !bounds && kind === 'hrv' ? new Uint8Array(width * outHeight) : undefined;
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover);
-    const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0);
+    const grid = !bounds && bt ? await brightnessGrid(bt) : null;
+    const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0, grid);
     const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)
     const motion = bounds ? undefined : motionGrid(pixels, width, outHeight);
@@ -86,3 +89,21 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
   }
 });
+
+/** The measured brightness temperatures of a frame, or null when they cannot be had (the picture's grey level is used instead). */
+async function brightnessGrid(bt: { url: string; offsetK: number; stepK: number }): Promise<BrightnessGrid | null> {
+  try {
+    const res = await fetch(bt.url);
+    if (!res.ok) return null;
+    const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    const grid = { w: bitmap.width, h: bitmap.height, data, offsetK: bt.offsetK, stepK: bt.stepK };
+    bitmap.close();
+    return grid;
+  } catch {
+    return null;
+  }
+}

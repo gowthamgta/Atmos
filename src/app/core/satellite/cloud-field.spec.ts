@@ -49,6 +49,23 @@ describe('cloud field', () => {
     expect(storm.baseKm).toBeLessThan(1.5); // thick: a storm standing on the condensation level
   });
 
+  it('takes the top from the measured brightness temperatures when they are there', () => {
+    const width = 64;
+    const height = 64;
+    const src = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < width * height; i++) src.set([150, 150, 150, 255], i * 4); // a mid grey everywhere: about -38 C by the assumed scale
+    const outHeight = mercatorHeight(width);
+    // measured: warm ground (295 K) on the left, a -70 C top (203 K) on the right
+    const bt = { w: 32, h: 32, data: new Uint8ClampedArray(32 * 32 * 4), offsetK: 180, stepK: 0.5 };
+    for (let i = 0; i < 32 * 32; i++) bt.data[i * 4] = i % 32 < 16 ? (295 - 180) / 0.5 : (203 - 180) / 0.5;
+    const field = buildCloudField(src, width, height, 'ir', outHeight, null, 0, bt);
+    const y = Math.floor(field.h / 2);
+    expect(readColumn(field, 5, y).cover).toBe(0); // as warm as the ground: clear, whatever the grey says
+    const storm = readColumn(field, field.w - 5, y);
+    expect(storm.cover).toBeGreaterThan(0.9);
+    expect(storm.topKm).toBeGreaterThan(15);
+  });
+
   it('by day takes the cover from the overlay and the thickness from the visible brightness', () => {
     const width = 64;
     const height = 64;

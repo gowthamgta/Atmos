@@ -12,6 +12,9 @@
  *   deep (cumulus congestus, nimbostratus, cumulonimbus) stand on the condensation level, about 1 km up over South India; a thin middle
  *   cloud (altocumulus, altostratus) is a layer about 1.2 km deep under its top; thin high cloud (cirrus) a layer about 1.8 km deep.
  *
+ * When the real brightness temperatures of the frame are known (pipeline/satellite_bt.py: Meteosat's calibrated 10.8 um channel on the
+ * same box), the top comes from them instead of the picture's grey level, whose scale is only assumed.
+ *
  * Packed as RGBA bytes: R cover (0..1), G top (km / 20), B base (km / 20), A sqrt(tau / 80).
  */
 import { irLumaToTempC, irTempToHeightKm, mercatorRowMap } from './satellite-image';
@@ -27,6 +30,15 @@ export interface CloudField {
   h: number;
   /** RGBA bytes, row 0 at the north edge, rows spaced in Mercator like the overlay picture. */
   data: Uint8Array<ArrayBuffer>;
+}
+
+/** Calibrated brightness temperatures over the picture's box (lat/lon rows like the picture): RGBA bytes, red = 10.8 um, 0 = none. */
+export interface BrightnessGrid {
+  w: number;
+  h: number;
+  data: Uint8ClampedArray;
+  offsetK: number;
+  stepK: number;
 }
 
 export interface CloudColumn {
@@ -77,6 +89,7 @@ export function buildCloudField(
   outHeight: number,
   cover: Uint8Array | null,
   background: number,
+  bt: BrightnessGrid | null = null,
 ): CloudField {
   const step = Math.max(1, Math.ceil(width / FIELD_MAX_WIDTH));
   const w = Math.ceil(width / step);
@@ -87,24 +100,28 @@ export function buildCloudField(
   const span = Math.max(1, 255 - floor);
   // the infrared's brightness of a pixel (0 warm .. 1 the coldest top)
   const lumaAt = (p: number) => (kind === 'hrv' ? Math.max(0, (src[p + 2] - floor) / span) : (src[p] + src[p + 1] + src[p + 2]) / (3 * 255));
-
-  // at night the clear ground is the warmest common brightness: the picture's median, cloud being much less than half of it
-  let groundLuma = 0;
-  if (kind !== 'hrv') {
-    const hist = new Uint32Array(256);
-    let n = 0;
-    for (let i = 0; i < src.length; i += 4 * 7) {
-      if (src[i] + src[i + 1] + src[i + 2] === 0) continue;
-      hist[Math.round((src[i] + src[i + 1] + src[i + 2]) / 3)]++;
-      n++;
+  // the cloud-top temperature of a pixel (C): measured when the brightness temperatures are there, else from the grey level
+  const tempAt = (p: number, x: number, sy: number) => {
+    if (bt) {
+      const bx = Math.min(bt.w - 1, Math.floor(((x + 0.5) / width) * bt.w));
+      const by = Math.min(bt.h - 1, Math.floor(((sy + 0.5) / srcHeight) * bt.h));
+      const v = bt.data[(by * bt.w + bx) * 4];
+      if (v > 0) return bt.offsetK + v * bt.stepK - 273.15;
     }
-    let acc = 0;
-    for (let v = 0; v < 256; v++) {
-      acc += hist[v];
-      if (acc >= n / 2) {
-        groundLuma = v / 255;
-        break;
-      }
+    return irLumaToTempC(lumaAt(p));
+  };
+
+  // at night the clear ground is the common temperature: the picture's median, cloud being much less than half of it
+  let groundTemp = 25;
+  if (kind !== 'hrv') {
+    const temps: number[] = [];
+    for (let i = 0, k = 0; i < src.length; i += 4 * 7, k += 7) {
+      if (src[i] + src[i + 1] + src[i + 2] === 0) continue;
+      temps.push(tempAt(i, k % width, Math.floor(k / width)));
+    }
+    if (temps.length) {
+      temps.sort((a, b) => a - b);
+      groundTemp = temps[Math.floor(temps.length / 2)];
     }
   }
 
@@ -112,8 +129,8 @@ export function buildCloudField(
     for (let cx = 0; cx < w; cx++) {
       let coverSum = 0;
       let count = 0;
-      let coldest = 0;
-      let lumaSum = 0;
+      let coldest = Infinity;
+      let tempSum = 0;
       let reflSum = 0;
       let cloudy = 0;
       for (let y = cy * step; y < Math.min(outHeight, (cy + 1) * step); y++) {
@@ -121,19 +138,19 @@ export function buildCloudField(
         for (let x = cx * step; x < Math.min(width, (cx + 1) * step); x++) {
           const p = (sy * width + x) * 4;
           if (src[p] + src[p + 1] + src[p + 2] === 0) continue; // no data
-          const luma = lumaAt(p);
-          // how much of the pixel is cloud: the overlay's own measure by day; by night how much colder it is than the clear ground
+          const temp = tempAt(p, x, sy);
+          // how much of the pixel is cloud: the overlay's own measure by day; by night how much colder than the clear ground
           const hasHrv = kind === 'hrv' && (src[p] + src[p + 1]) / 2 > 7;
           let c: number;
           if (cover && hasHrv) c = cover[y * width + x] / 255;
-          else if (kind === 'hrv') c = smoothstep(0.22, 0.6, luma); // no HRV here (the night side, or a gap): the infrared, as the overlay does
-          else c = smoothstep(0.05, 0.16, luma - groundLuma);
+          else if (kind === 'hrv') c = smoothstep(0.22, 0.6, lumaAt(p)); // no HRV here (the night side, or a gap): the infrared, as the overlay does
+          else c = smoothstep(6, 18, groundTemp - temp);
           coverSum += c;
           count++;
           if (c > 0.3) {
             cloudy++;
-            lumaSum += luma;
-            if (luma > coldest) coldest = luma;
+            tempSum += temp;
+            if (temp < coldest) coldest = temp;
             reflSum += hasHrv ? (src[p] + src[p + 1]) / (2 * 255) : -1;
           }
         }
@@ -142,8 +159,7 @@ export function buildCloudField(
       if (count === 0 || cloudy === 0) continue;
       const coverMean = coverSum / count;
       // the top from the coldest cloud in the cell, steadied by the mean of its cloud
-      const luma = 0.6 * coldest + 0.4 * (lumaSum / cloudy);
-      const tempC = irLumaToTempC(luma);
+      const tempC = 0.6 * coldest + 0.4 * (tempSum / cloudy);
       const refl = reflSum / cloudy;
       const topGuess = irTempToHeightKm(tempC);
       const tau = refl >= 0 ? tauFromReflectance(refl) : tauFromTop(topGuess, tempC);
