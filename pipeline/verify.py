@@ -86,10 +86,30 @@ def get_json(url: str, params: dict, tries: int = 3):
             return res.json() if res.content.strip() else []
         except (requests.RequestException, ValueError) as err:
             if attempt == tries:
-                raise
+                raise FetchError(describe(url, err)) from err
             # "too many requests": the free limit counts calls a minute, so wait the minute out
             busy = isinstance(err, requests.HTTPError) and err.response is not None and err.response.status_code == 429
             time.sleep(65 if busy else 10 * attempt)
+
+
+class FetchError(RuntimeError):
+    """A service could not be read after the retries; the message says which and what it answered."""
+
+
+def describe(url: str, err: Exception) -> str:
+    """Which service failed and how: the status and the start of what it answered (Open-Meteo says why it refuses), or the network error."""
+    host = url.split("/")[2]
+    res = getattr(err, "response", None)
+    if res is not None:
+        return f"{host} answered {res.status_code}: {res.text[:200].strip()}"
+    return f"{host}: {type(err).__name__}: {str(err)[:200]}"
+
+
+def report_failure(script: str, err: Exception) -> int:
+    """Prints the failure as a GitHub Actions error annotation (shown on the run's page and in the API, unlike the log) and returns 1."""
+    print(f"::error title={script}::{err}")
+    print(f"{script}: {err}", file=sys.stderr)
+    return 1
 
 
 def reports_rain(weather: str | None) -> bool:
@@ -368,4 +388,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except FetchError as err:
+        sys.exit(report_failure("verify", err))

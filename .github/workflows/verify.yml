@@ -6,9 +6,24 @@ name: verify
 #   3. learn_bias.py learns each model's usual error, rain thresholds and the Blend weights from the last four weeks, checked on held-back days.
 # Then it commits the scores and corrections the app reads (public/data/verification), the days learned from (pipeline/data/verification)
 # and the map's ECMWF IFS correction (pipeline/data/bias/table.json, used by the next nwp run). It can also be run by hand for a given day.
+#
+# The free services sometimes refuse a GitHub runner (Open-Meteo counts its free allowance per address, and runners share addresses), so
+# it is tried again at 11:00 and 16:00 IST; scoring a day again only replaces its scores. Each step goes on when one before it fails, and
+# the run is marked failed at the end with the reason as an annotation (shown on the run's page).
 on:
   schedule:
     - cron: "30 1 * * *"
+    - cron: "30 5 * * *"
+    - cron: "30 10 * * *"
+  # a change to the scoring runs it at once (the bot's own commits do not start workflows, so this does not loop)
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/verify.py"
+      - "pipeline/verify_gauges.py"
+      - "pipeline/learn_bias.py"
+      - "pipeline/blend.py"
+      - ".github/workflows/verify.yml"
   workflow_dispatch:
     inputs:
       day:
@@ -26,7 +41,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,8 +50,10 @@ jobs:
       - run: pip install requests pytest
       - run: python -m pytest -q tests/test_verify.py tests/test_verify_gauges.py tests/test_blend.py tests/test_learn_bias.py
         working-directory: pipeline
-      - name: Score
+      - name: Score at the airports
+        id: airports
         working-directory: pipeline
+        continue-on-error: true
         run: |
           if [ -n "${{ github.event.inputs.day }}" ]; then
             python verify.py --out ../public/data/verification/scores.json --day "${{ github.event.inputs.day }}"
@@ -44,12 +61,14 @@ jobs:
             python verify.py --out ../public/data/verification/scores.json
           fi
       - name: Score rain at the gauges
+        id: gauges
         working-directory: pipeline
-        # the gauge file can be late or the site down: the airport scores and the learning go on without it
         continue-on-error: true
         run: python verify_gauges.py --out ../public/data/verification/scores.json
       - name: Learn corrections and the Blend
+        id: learn
         working-directory: pipeline
+        continue-on-error: true
         run: python learn_bias.py
       - name: Commit
         run: |
@@ -59,3 +78,8 @@ jobs:
           if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
           git commit -m "Verification: forecast scores, corrections and Blend weights, $(date -u -d yesterday +%Y-%m-%d)"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 10; done
+      - name: Fail when a step failed
+        if: steps.airports.outcome == 'failure' || steps.gauges.outcome == 'failure' || steps.learn.outcome == 'failure'
+        run: |
+          echo "::error title=verify::airports ${{ steps.airports.outcome }}, gauges ${{ steps.gauges.outcome }}, learning ${{ steps.learn.outcome }} (the reasons are in the annotations above)"
+          exit 1

@@ -17,7 +17,9 @@ from datetime import date, datetime, timedelta, timezone
 
 import blend
 import obs_tnsmart
-from verify import BLEND, LEADS, MODELS, fetch_previous_runs, forecast_key, merge, read_json, write_json
+import requests
+
+from verify import BLEND, LEADS, MODELS, FetchError, describe, fetch_previous_runs, forecast_key, merge, read_json, report_failure, write_json
 
 CELL_DEG = 0.5         # about 55 cells over Tamil Nadu: each one is a call against the free API limit (10,000 a day)
 MIN_HOURS = 20          # a gauge with fewer hourly readings in the day is left out
@@ -104,7 +106,10 @@ def main() -> int:
     args = ap.parse_args()
     today_ist = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date()
     day = date.fromisoformat(args.day) if args.day else today_ist - timedelta(days=1)
-    stations = obs_tnsmart.fetch_day(day, district=None)
+    try:
+        stations = obs_tnsmart.fetch_day(day, district=None)
+    except (requests.RequestException, ValueError) as err:
+        raise FetchError(describe(obs_tnsmart.day_url(day), err)) from err
     observed = cells(stations)
     if not observed:
         print(f"no gauge readings for {day}: nothing scored", file=sys.stderr)
@@ -121,4 +126,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except FetchError as err:
+        sys.exit(report_failure("verify_gauges", err))
