@@ -12,7 +12,7 @@ Scores per model and lead: the 24 hour total (mean absolute error and bias, mm),
 false alarms), and 6-hour windows with WET_6H_MM or more. The Blend's amount is the rain-weighted mean of the models (blend.py).
 """
 from __future__ import annotations
-import argparse, os, sys
+import argparse, gzip, json, os, sys
 from datetime import date, datetime, timedelta, timezone
 
 import blend
@@ -97,12 +97,42 @@ def score(observed: dict[tuple[float, float], list[float | None]], forecast: dic
     return out
 
 
+def day_totals(observed: dict, forecast: dict, t0: int, lead: int = 1) -> dict:
+    """What learn_bias.py learns the rain factor from: each cell's observed 24 h total and every model's, a day ahead, where all hours are known."""
+    times = [t0 + 3600 * i for i in range(24)]
+    cells_out, obs_out, fc_out = [], [], {m: [] for m in MODELS}
+    for c, obs in observed.items():
+        if any(v is None for v in obs):
+            continue
+        fcs = {m: [forecast.get(c, {}).get(forecast_key("rain", lead, api), {}).get(t) for t in times] for m, api in MODELS.items()}
+        cells_out.append(list(c))
+        obs_out.append(round(sum(obs), 2))
+        for m, vals in fcs.items():
+            fc_out[m].append(round(sum(vals), 2) if all(v is not None for v in vals) else None)
+    return {"cells": cells_out, "obs": obs_out, "fc": fc_out}
+
+
+def save_gauge_day(days_dir: str, day: date, totals: dict, stations: list[dict], keep_days: int = 45) -> None:
+    """Keeps the day's totals (compressed) and the gauges' positions (the map's rain factor applies near them only)."""
+    os.makedirs(days_dir, exist_ok=True)
+    with gzip.open(os.path.join(days_dir, f"{day.isoformat()}.json.gz"), "wt", encoding="utf-8") as f:
+        json.dump({"date": day.isoformat(), **totals}, f, separators=(",", ":"))
+    positions = sorted({(round(float(s["lat"]), 3), round(float(s["lon"]), 3)) for s in stations if s.get("lat") is not None and s.get("lon") is not None})
+    with open(os.path.join(days_dir, "positions.json"), "w", encoding="utf-8") as f:
+        json.dump([list(p) for p in positions], f, separators=(",", ":"))
+    oldest = (day - timedelta(days=keep_days)).isoformat()
+    for name in os.listdir(days_dir):
+        if name.endswith(".json.gz") and name[:10] < oldest:
+            os.remove(os.path.join(days_dir, name))
+
+
 def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, help="the rolling scores file (read, then written)")
     ap.add_argument("--day", help="the date of the TN-SMART day file, YYYY-MM-DD (default: yesterday in India)")
     ap.add_argument("--corrections", default=os.path.join(here, "..", "public", "data", "verification", "corrections.json"))
+    ap.add_argument("--days-dir", default=os.path.join(here, "data", "verification", "gauges"), help="where each day's cell totals are kept for learning")
     args = ap.parse_args()
     today_ist = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).date()
     day = date.fromisoformat(args.day) if args.day else today_ist - timedelta(days=1)
@@ -118,6 +148,7 @@ def main() -> int:
     places = fetch_previous_runs(points, day - timedelta(days=1), day, ["rain"], MODELS)
     forecast = dict(zip(points, places))
     scores = score(observed, forecast, window_start_utc(day), blend.load(args.corrections))
+    save_gauge_day(args.days_dir, day, day_totals(observed, forecast, window_start_utc(day)), stations)
     write_json(args.out, merge(read_json(args.out), day, {}, datetime.now(timezone.utc).date(), gauges=scores))
     wet = sum(1 for o in observed.values() if sum(v or 0 for v in o) >= WET_DAY_MM)
     print(f"{day}: {len(stations)} gauges in {len(observed)} cells, {wet} wet; 24 h rain error a day ahead (mm): " + ", ".join(

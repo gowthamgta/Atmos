@@ -10,6 +10,9 @@ held back from the learning. Writes the corrections file the app and verify.py r
 2. Rain thresholds: for each model, the hourly amount at which it forecasts rain at the airports as often as they report it.
 3. Blend weights: each model by 1 / (its corrected temperature error)^2, and for rain by its threat score (hits / (hits + misses + false
    alarms)); models much worse than the best are left out (CUTOFF).
+5. The map's rain factor for ECMWF IFS (data/bias/rain.json, read by correction.apply_rain): the observed rain over the forecast rain,
+   summed over the Tamil Nadu gauge cells of the last weeks (verify_gauges.py), checked on held-back days like the corrections, kept between
+   0.5 and 1.5, and applied only when it lowered the error there.
 4. A backtest: the same steps learned without the last days (TEST_DAYS, or half while there are few), and the Blend and every model
    scored on them.
 """
@@ -233,13 +236,88 @@ def map_table(corr: dict, days: list[dict]) -> dict:
     return {"model": "ecmwf_ifs", "period_utc": [days[0]["date"], days[-1]["date"]], "source": "learn_bias.py (airport reports, a day ahead)", "airports": airports}
 
 
+RAIN_FACTOR_MODEL = "ecmwf_ifs"
+RAIN_FACTOR_RANGE = (0.5, 1.5)
+MIN_WET_CELLS = 30            # cell-days with rain in the held-back part, or the factor is not trusted
+
+
+def load_gauge_days(days_dir: str) -> list[dict]:
+    names = sorted(n for n in os.listdir(days_dir) if n.endswith(".json.gz")) if os.path.isdir(days_dir) else []
+    out = []
+    for n in names[-LEARN_DAYS:]:
+        with gzip.open(os.path.join(days_dir, n), "rt", encoding="utf-8") as f:
+            out.append(json.load(f))
+    return out
+
+
+def rain_pairs_gauges(days: list[dict], model: str) -> list[tuple[float, float]]:
+    """(forecast, observed) 24 h totals of every cell-day the model has."""
+    out = []
+    for d in days:
+        for f, o in zip(d["fc"].get(model) or [], d["obs"]):
+            if f is not None and o is not None:
+                out.append((f, o))
+    return out
+
+
+def rain_factor(pairs: list[tuple[float, float]]) -> float | None:
+    fc = sum(f for f, _ in pairs)
+    if fc <= 0:
+        return None
+    lo, hi = RAIN_FACTOR_RANGE
+    return min(hi, max(lo, sum(o for _, o in pairs) / fc))
+
+
+def learn_rain_factor(days: list[dict], model: str = RAIN_FACTOR_MODEL) -> dict:
+    """The model's rain factor from the gauges, checked on the last days held back (see the module notes)."""
+    out: dict = {"model": model, "days": len(days), "accepted": False}
+    if len(days) < MIN_DAYS:
+        out["reason"] = f"only {len(days)} gauge days (needs {MIN_DAYS})"
+        return out
+    k = test_split(len(days))
+    learn_part, test_part = rain_pairs_gauges(days[:-k], model), rain_pairs_gauges(days[-k:], model)
+    f = rain_factor(learn_part)
+    if f is None or not test_part:
+        out["reason"] = "no forecast rain to scale"
+        return out
+    wet = sum(o >= 2.5 for _, o in test_part)
+    before = sum(abs(fc - o) for fc, o in test_part) / len(test_part)
+    after = sum(abs(fc * f - o) for fc, o in test_part) / len(test_part)
+    final = rain_factor(rain_pairs_gauges(days, model))
+    out.update({"factor": round(final, 3) if final else None, "factor_learned_before_test": round(f, 3), "test_days": k, "n_test": len(test_part),
+                "wet_cells_test": wet, "mae_before": round(before, 3), "mae_after": round(after, 3)})
+    out["accepted"] = final is not None and wet >= MIN_WET_CELLS and after < before * (1 - MIN_GAIN)
+    if not out["accepted"]:
+        out["reason"] = "too few wet cells held back" if wet < MIN_WET_CELLS else "it did not lower the error on the held-back days"
+    return out
+
+
+def write_rain_table(path: str, result: dict, positions_path: str, days: list[dict]) -> None:
+    """data/bias/rain.json as correction.load_rain reads it (the factor applies only when accepted, and only near the gauges)."""
+    try:
+        with open(positions_path, encoding="utf-8") as f:
+            gauges = json.load(f)
+    except (OSError, ValueError):
+        gauges = []
+    doc = {"model": result["model"], "period": [days[0]["date"], days[-1]["date"]] if days else None,
+           "source": "learn_bias.py (Tamil Nadu gauges, TN-SMART, a day ahead)", "rain": result, "gauges": gauges}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(doc, f, separators=(",", ":"))
+
+
 def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--days-dir", default=os.path.join(here, "data", "verification", "days"))
     ap.add_argument("--out", default=os.path.join(here, "..", "public", "data", "verification", "corrections.json"))
     ap.add_argument("--map-table", default=os.path.join(here, "data", "bias", "table.json"))
+    ap.add_argument("--gauge-days-dir", default=os.path.join(here, "data", "verification", "gauges"))
+    ap.add_argument("--rain-table", default=os.path.join(here, "data", "bias", "rain.json"))
     args = ap.parse_args()
+    gauge_days = load_gauge_days(args.gauge_days_dir)
+    rain = learn_rain_factor(gauge_days)
+    write_rain_table(args.rain_table, rain, os.path.join(args.gauge_days_dir, "positions.json"), gauge_days)
+    print(f"rain factor ({rain['model']}): {json.dumps(rain)}")
     days = load_days(args.days_dir)
     if len(days) < MIN_DAYS:
         print(f"only {len(days)} days kept: nothing learned (needs {MIN_DAYS})", file=sys.stderr)

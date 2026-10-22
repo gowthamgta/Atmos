@@ -25,14 +25,14 @@ concurrency:
 
 jobs:
   nowcast:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 9
     defaults:
       run:
         working-directory: bot
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -42,7 +42,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - run: npm test
       # what the last post was (so a storm is not posted again every ten minutes): kept between runs in the cache, the newest entry
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v6
         with:
           path: bot/state
           key: nowcast-state-latest
@@ -63,12 +63,12 @@ jobs:
           INCLUDE_LINK: ${{ vars.NOWCAST_INCLUDE_LINK == 'true' && '1' || '0' }}
         run: node nowcast.mjs
       # saved only when it changed (after a post): the key is its content, so a quiet run saves nothing
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         if: always() && hashFiles('bot/state/state.json') != ''
         with:
           path: bot/state
           key: nowcast-state-${{ hashFiles('bot/state/state.json') }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: nowcast-${{ github.run_id }}

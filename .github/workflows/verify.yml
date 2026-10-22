@@ -40,15 +40,15 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install requests pytest
-      - run: python -m pytest -q tests/test_verify.py tests/test_verify_gauges.py tests/test_blend.py tests/test_learn_bias.py
+      - run: pip install requests pytest numpy
+      - run: python -m pytest -q tests/test_verify.py tests/test_verify_gauges.py tests/test_blend.py tests/test_learn_bias.py tests/test_rain_factor.py
         working-directory: pipeline
       - name: Score at the airports
         id: airports
@@ -74,7 +74,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/data/verification pipeline/data/verification pipeline/data/bias/table.json
+          git add public/data/verification pipeline/data/verification pipeline/data/bias/table.json pipeline/data/bias/rain.json
           if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
           git commit -m "Verification: forecast scores, corrections and Blend weights, $(date -u -d yesterday +%Y-%m-%d)"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 10; done
