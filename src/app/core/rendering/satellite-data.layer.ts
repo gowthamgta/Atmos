@@ -2,6 +2,7 @@ import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap 
 import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import type { GeoBounds } from '../satellite/satellite.config';
 import type { CustomChannel } from '../satellite/own-products';
+import { windyInfraredTable } from '../satellite/satellite-image';
 import { PendingProgram } from './gl-program';
 
 /**
@@ -9,8 +10,8 @@ import { PendingProgram } from './gl-program';
  * temperatures, red 10.4 um, green 6.2 um, blue 7.3 um, kelvin = minK + value / 255 x spanK (0 = no data), Mercator rows over its bounds.
  * The colours are worked out per pixel here, so switching between modes or changing the custom recipe needs nothing new from the network:
  *
- * 0  IR enhanced: the 10.4 um cloud-top temperature, grey for the warm ground and low cloud, then a storm colour table in sharp bands
- *    from -30 to -85 C (light blue, blue, green, yellow, orange, red, dark red, magenta, white)
+ * 0  Infrared: the cloud-top temperature in Windy's infrared colours (satellite-image.ts windyInfraredTable: the colours the agreed infrared
+ *    picture was matched to Windy with, for the measured temperature), read from a table texture
  * 1  WV difference: 6.2 minus 7.3 um. Large negative = a dry upper troposphere (brown, orange); near zero = moist upper air or thick cloud
  *    (white, blue); positive = moisture above the 7.3 um level, overshooting tops (violet)
  * 2  Custom RGB: each colour from a band or a difference, with the WMO formula ((v - min) / (max - min)) ^ (1 / gamma)
@@ -44,6 +45,7 @@ uniform vec2 u_rangeR;
 uniform vec2 u_rangeG;
 uniform vec2 u_rangeB;
 uniform vec3 u_gamma;
+uniform sampler2D u_lut;   // Windy's infrared colours over minK .. minK + spanK (RGBA, alpha included)
 in vec2 v_merc;
 out vec4 o;
 
@@ -67,21 +69,6 @@ vec4 sampleK(sampler2D t, vec2 px) {
 }
 
 vec3 lerp3(vec3 a, vec3 b, float t) { return mix(a, b, clamp(t, 0.0, 1.0)); }
-
-// the storm colour table: sharp bands every 5-10 degrees below -30 C
-vec3 irEnhanced(float k) {
-  float c = k - 273.15;
-  if (c > -30.0) return vec3(mix(0.08, 0.82, clamp((30.0 - c) / 60.0, 0.0, 1.0)));
-  if (c > -40.0) return vec3(0.42, 0.72, 1.0);
-  if (c > -50.0) return vec3(0.0, 0.36, 1.0);
-  if (c > -60.0) return vec3(0.0, 0.78, 0.0);
-  if (c > -65.0) return vec3(1.0, 1.0, 0.0);
-  if (c > -70.0) return vec3(1.0, 0.6, 0.0);
-  if (c > -75.0) return vec3(1.0, 0.0, 0.0);
-  if (c > -80.0) return vec3(0.55, 0.0, 0.0);
-  if (c > -85.0) return vec3(1.0, 0.0, 1.0);
-  return vec3(1.0);
-}
 
 vec3 wvDiff(float d) {
   if (d < -30.0) return vec3(0.42, 0.24, 0.10);
@@ -107,9 +94,12 @@ float wmo(float v, vec2 range, float gamma) {
 
 vec4 shade(vec4 s) {
   if (s.a <= 0.0) return vec4(0.0);
+  if (u_mode == 0) {
+    vec4 c = texture(u_lut, vec2(clamp((s.r - u_minK) / u_spanK, 0.0, 1.0), 0.5));
+    return vec4(c.rgb * c.a * s.a, c.a * s.a);
+  }
   vec3 rgb;
-  if (u_mode == 0) rgb = irEnhanced(s.r);
-  else if (u_mode == 1) rgb = wvDiff(s.g - s.b);
+  if (u_mode == 1) rgb = wvDiff(s.g - s.b);
   else rgb = vec3(wmo(quantity(u_src.x, s.rgb), u_rangeR, u_gamma.x), wmo(quantity(u_src.y, s.rgb), u_rangeG, u_gamma.y), wmo(quantity(u_src.z, s.rgb), u_rangeB, u_gamma.z));
   return vec4(rgb * s.a, s.a);
 }
@@ -158,6 +148,8 @@ export class SatelliteDataLayer implements CustomLayerInterface {
   private opacity = 1;
   private style: DataLayerStyle = { mode: 0, custom: [] };
   private size: [number, number] = [1, 1];
+  private lut: WebGLTexture | null = null;
+  private lutFor = '';
 
   setFrames(frames: readonly SatelliteDataFrame[], bounds: GeoBounds, minK: number, spanK: number): void {
     this.frames = frames;
@@ -241,6 +233,9 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     if (this.vao) gl.deleteVertexArray(this.vao);
     const handle = this.program ?? this.pending?.handle;
     if (handle) gl.deleteProgram(handle);
+    if (this.lut) gl.deleteTexture(this.lut);
+    this.lut = null;
+    this.lutFor = '';
     this.pending = null;
     this.program = this.vbo = this.vao = null;
     this.map = null;
@@ -269,6 +264,24 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     return slot.texture;
   }
 
+  /** Windy's infrared colours for this data's temperature scale, made once. */
+  private lutTexture(gl: WebGL2RenderingContext): WebGLTexture {
+    const key = `${this.scale.minK}|${this.scale.spanK}`;
+    if (!this.lut || this.lutFor !== key) {
+      if (this.lut) gl.deleteTexture(this.lut);
+      this.lut = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.lut);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, windyInfraredTable(this.scale.minK, this.scale.spanK, 256));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.lutFor = key;
+    }
+    return this.lut;
+  }
+
   render(gl: WebGL2RenderingContext, options: CustomRenderMethodInput): void {
     if (!this.program) {
       const p = this.pending?.ready();
@@ -278,7 +291,7 @@ export class SatelliteDataLayer implements CustomLayerInterface {
       }
       this.program = p;
       for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_hasB', 'u_opacity', 'u_mode', 'u_minK', 'u_spanK', 'u_src',
-        'u_rangeR', 'u_rangeG', 'u_rangeB', 'u_gamma']) {
+        'u_rangeR', 'u_rangeG', 'u_rangeB', 'u_gamma', 'u_lut']) {
         this.uniforms[name] = gl.getUniformLocation(p, name);
       }
     }
@@ -315,6 +328,9 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     gl.uniform2f(u['u_rangeG'], ch(1).min, ch(1).max);
     gl.uniform2f(u['u_rangeB'], ch(2).min, ch(2).max);
     gl.uniform3f(u['u_gamma'], ch(0).gamma, ch(1).gamma, ch(2).gamma);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture(gl));
+    gl.uniform1i(u['u_lut'], 2);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);

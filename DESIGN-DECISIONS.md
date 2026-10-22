@@ -13,11 +13,13 @@ fingerprint only together with this file, on the owner's request.
 - 🔒 **Visible by day: Meteosat HRV with the Windy exposure ramps** (agreed 17 Oct 2026, commit 5c8edf7). Each pixel is recoloured by
   brightness on a warm ramp (slate, sand, cream) and blended toward lavender-white by how cold its top is (`WARM_STOPS`, `COLD_STOPS`,
   `windyCloudColor` in `core/satellite/satellite-image.ts`), fitted to Windy's picture of the same frame.
-- **Our own pictures** (the panel's EUMETView / Our own switch, EUMETView the default, 22 Oct): the owner asked for our own RGBs from raw
-  data instead of EUMETView's. From Himawari-9 (pipeline/himawari_rgb.py, published by gowthamgta/atmos-satellite): true colour, sandwich,
-  convection, night microphysics as pictures; IR enhanced, WV difference and a custom WMO-formula RGB drawn in the browser from a data pack
-  (core/rendering/satellite-data.layer.ts), whose hover readout is measured, not estimated. Covers 75-97.5 E, 5-30 N only. EUMETView's
-  pictures and their agreed colours are unchanged. Meteosat's raw data follows when the EUMETSAT download (403) works.
+- **The satellite panel shows our own pictures** (owner, 22 Oct: "i dont want our own and eumetview, lets show meteosat 9 and himawari"):
+  a Meteosat-9 / Himawari-9 switch (Meteosat first: all of India), made by gowthamgta/atmos-satellite from raw data (pipeline/meteosat_rgb.py,
+  himawari_rgb.py). Unless the viewer picks a kind, **infrared at night, our natural colour (Meteosat) / true colour (Himawari) by day**.
+  **Infrared in Windy's colours** for both: CLOUD_TOP_STOPS applied to the measured temperature through greyScaleTempFromMeasured (the grey-
+  level scale read cold tops 10-20 C too cold; measured 22 Oct, r = 0.99). Also HRV, sandwich, convection, night micro, WV difference and a
+  custom WMO-formula RGB; the hover readout is measured. EUMETView's pictures are no longer offered as a choice: they remain only behind the
+  3D clouds. The agreed look below stays recorded (and fingerprinted) for that path.
 - **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.

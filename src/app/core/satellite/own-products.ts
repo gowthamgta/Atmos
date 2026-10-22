@@ -9,19 +9,19 @@ import type { GeoBounds } from './satellite.config';
 
 const SITE = 'https://gowthamgta.github.io/atmos-satellite/';
 
-export type OwnKind = 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'irenhanced' | 'wvdiff' | 'custom';
+export type OwnKind = 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'infrared' | 'wvdiff' | 'custom';
 export type OwnSatellite = 'msg' | 'h9';
 
 /** The two satellites' published folders and what each makes. */
 export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; kinds: readonly OwnKind[]; ir: string; note: string }> = {
   msg: {
     name: 'Meteosat-9', base: SITE + 'rgb-msg/', ir: '10.8',
-    kinds: ['hrv', 'natural', 'sandwich', 'convection', 'nightmicro', 'irenhanced', 'wvdiff', 'custom'],
+    kinds: ['natural', 'hrv', 'sandwich', 'convection', 'infrared', 'nightmicro', 'wvdiff', 'custom'],
     note: 'From Meteosat-9\'s raw SEVIRI data (EUMETSAT Data Store), 1.25 km, parallax-corrected, all of India.',
   },
   h9: {
     name: 'Himawari-9', base: SITE + 'rgb-h9/', ir: '10.4',
-    kinds: ['truecolor', 'sandwich', 'convection', 'nightmicro', 'irenhanced', 'wvdiff', 'custom'],
+    kinds: ['truecolor', 'sandwich', 'convection', 'infrared', 'nightmicro', 'wvdiff', 'custom'],
     note: 'From Himawari-9\'s raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.',
   },
 };
@@ -35,7 +35,7 @@ export const OWN_KINDS: readonly { id: OwnKind; label: string; title: string; da
   { id: 'sandwich', label: 'Sandwich', day: true, title: 'The visible texture, coloured where the cloud top is colder than −38 °C: storms and their overshooting tops' },
   { id: 'convection', label: 'Convection', day: true, title: 'Severe convection RGB: strong updrafts with small ice at the top show yellow' },
   { id: 'nightmicro', label: 'Night micro', title: 'Night microphysics (tropical): low cloud and fog against high cloud' },
-  { id: 'irenhanced', label: 'IR enhanced', shader: true, title: 'The 10.4 µm cloud-top temperature in a storm colour table (−30 to −85 °C)' },
+  { id: 'infrared', label: 'Infrared', shader: true, title: 'Cloud-top temperature in Windy\'s infrared colours, from the measured temperature' },
   { id: 'wvdiff', label: 'WV difference', shader: true, title: '6.2 minus 7.3 µm water vapour: dry air aloft brown, moist upper air blue' },
   { id: 'custom', label: 'Custom RGB', shader: true, title: 'Your own recipe: each colour from a band or a difference, with its range and gamma' },
 ];
@@ -100,4 +100,13 @@ export function readDataPack(p: DataPack, lat: number, lon: number): { ir: numbe
   const ir = k(p.rgb[o]);
   if (Number.isNaN(ir)) return null;
   return { ir, wv62: k(p.rgb[o + 1]), wv73: k(p.rgb[o + 2]) };
+}
+
+/**
+ * The picture's kind to show by default: infrared at night; by day our natural colour (Meteosat) or true colour (Himawari). The owner
+ * asked for this (22 Oct): infrared at night on both satellites, our own RGB by day.
+ */
+export function autoKind(satellite: OwnSatellite, day: boolean): OwnKind {
+  if (!day) return 'infrared';
+  return satellite === 'msg' ? 'natural' : 'truecolor';
 }

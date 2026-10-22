@@ -618,7 +618,7 @@ export class MapComponent implements OnInit, OnDestroy {
       map.addLayer(this.satelliteData, this.observationAnchorId());
     }
     this.satelliteData.setFrames(frames.map(f => ({ key: f.url, url: f.url })), own.bounds, own.minK, own.spanK);
-    this.satelliteData.setStyle({ mode: own.kind === 'irenhanced' ? 0 : own.kind === 'wvdiff' ? 1 : 2, custom });
+    this.satelliteData.setStyle({ mode: own.kind === 'infrared' ? 0 : own.kind === 'wvdiff' ? 1 : 2, custom });
     this.satelliteData.setPosition(position, opacity);
   }
 

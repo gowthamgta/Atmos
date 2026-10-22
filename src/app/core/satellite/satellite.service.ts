@@ -1,6 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse, SatelliteFlowRequest, SatelliteDecodeRequest } from './satellite.worker';
-import { CustomChannel, DEFAULT_CUSTOM, DataPack, OWN_KINDS, OWN_SATELLITES, OwnIndex, OwnKind, OwnSatellite, SatelliteSource, isDayKind, isShaderKind, readDataPack } from './own-products';
+import { CustomChannel, DEFAULT_CUSTOM, DataPack, OWN_SATELLITES, OwnIndex, OwnKind, OwnSatellite, SatelliteSource, autoKind, isDayKind, isShaderKind, readDataPack } from './own-products';
 import type { CloudField } from './cloud-field';
 import { isPhone } from '../ui/device-profile';
 import { readFlag, writeFlag } from '../ui/saved-flag';
@@ -93,8 +93,13 @@ export class SatelliteService {
   readonly active = signal(false);
   /** Show the infrared picture also by day (the switch in the panel); off: the visible HRV by day, infrared at night. */
   readonly infraredOnly = signal(readFlag('atmosiq.satellite.infrared', false));
-  /** Where the pictures come from: EUMETView's (the agreed look, the default) or one of our own from Himawari's raw bands. */
-  readonly source = signal<SatelliteSource>(readSource());
+  /**
+   * What is drawn: one of our own pictures (own-products.ts) from Meteosat-9 or Himawari-9, or, behind the 3D clouds only, EUMETView's
+   * pictures (the clouds' shapes are built from them). Unless the viewer picks one, it follows the day: infrared at night, our RGB by day.
+   */
+  readonly source = signal<SatelliteSource>(readFlag('atmosiq.satellite.3d', false) ? 'eumetview' : autoKind(readOwnSatellite(), isDayNow()));
+  /** The kind the viewer picked (until the page is loaded again); null: follow the day. */
+  private picked: OwnKind | null = null;
   /** The custom RGB's recipe (own-products.ts), remembered between visits. */
   readonly custom = signal<readonly CustomChannel[]>(readCustom());
   /** Whose raw data our own pictures come from: Meteosat-9 (all of India) or Himawari-9 (the east). */
@@ -139,16 +144,24 @@ export class SatelliteService {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private lastHoverCoords: { lat: number; lon: number } | null = null;
 
-  /** Show EUMETView's pictures or one of ours; the loop is rebuilt from the chosen source. */
+  /** The viewer picks a kind of picture: it stays until the page is loaded again (otherwise the kind follows the day). */
+  pickKind(kind: OwnKind): void {
+    this.picked = kind;
+    this.setSource(kind);
+  }
+
+  /** The kind that should be on now: the viewer's, or the day's. */
+  private wantedKind(): OwnKind {
+    const kinds = OWN_SATELLITES[this.ownSatellite()].kinds;
+    if (this.picked && kinds.includes(this.picked)) return this.picked;
+    return autoKind(this.ownSatellite(), isDayNow());
+  }
+
+  /** Show one of our pictures, or EUMETView's (the 3D clouds); the loop is rebuilt from the chosen source. */
   setSource(source: SatelliteSource): void {
     if (this.source() === source) return;
     const wasOwn = this.source() !== 'eumetview';
     this.source.set(source);
-    try {
-      localStorage.setItem('atmosiq.satellite.source', source);
-    } catch {
-      // not remembered
-    }
     // between our own kinds the frames' times stay: only the picture changes; to or from EUMETView the loop starts again
     if (!wasOwn || source === 'eumetview') {
       this.pause();
@@ -170,8 +183,9 @@ export class SatelliteService {
     }
     this.pause();
     this.frames.set([]);
-    const kind = this.source();
-    if (kind !== 'eumetview' && !OWN_SATELLITES[sat].kinds.includes(kind)) this.setSource(OWN_SATELLITES[sat].kinds[0]);
+    if (this.source() === 'eumetview') return;   // the 3D clouds keep EUMETView's pictures
+    const kind = this.wantedKind();
+    if (kind !== this.source()) this.setSource(kind);
     else if (this.active()) void this.load();
   }
 
@@ -195,6 +209,8 @@ export class SatelliteService {
   setThreeD(on: boolean): void {
     this.threeD.set(on);
     writeFlag('atmosiq.satellite.3d', on);
+    // the 3D clouds are built from EUMETView's pictures of Meteosat; the flat view shows ours
+    this.setSource(on ? 'eumetview' : this.wantedKind());
   }
 
   setHeightScale(scale: number): void {
@@ -369,10 +385,13 @@ export class SatelliteService {
   async load(): Promise<void> {
     const token = ++this.loadToken;
     if (this.source() !== 'eumetview') {
-      // a kind the chosen satellite does not make (remembered from the other one) becomes its first
-      const kinds = OWN_SATELLITES[this.ownSatellite()].kinds;
-      if (!kinds.includes(this.source() as OwnKind)) this.source.set(kinds[0]);
-      return this.loadOwn(token, this.source() as OwnKind, this.ownSatellite());
+      // the kind follows the day (infrared at night, our RGB by day) unless the viewer picked one
+      const kind = this.wantedKind();
+      if (kind !== this.source()) {
+        this.source.set(kind);
+        this.frames.set([]);
+      }
+      return this.loadOwn(token, kind, this.ownSatellite());
     }
     const nowMs = Date.now();
     this.now.set(nowMs);
@@ -723,13 +742,9 @@ function readHeightScale(): number {
   }
 }
 
-function readSource(): SatelliteSource {
-  try {
-    const v = localStorage.getItem('atmosiq.satellite.source');
-    return v && (v === 'eumetview' || OWN_KINDS.some(k => k.id === v)) ? (v as SatelliteSource) : 'eumetview';
-  } catch {
-    return 'eumetview';
-  }
+/** Day over India now (the visible channels are usable). */
+function isDayNow(): boolean {
+  return productForTime(Date.now()).id === 'hrv';
 }
 
 function readCustom(): readonly CustomChannel[] {

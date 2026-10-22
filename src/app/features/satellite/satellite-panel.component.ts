@@ -4,7 +4,7 @@ import { MapLayerService } from '../../core/services/map-layer.service';
 import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
-import { cloudTopGradient } from '../../core/satellite/satellite-image';
+import { cloudTopGradient, greyScaleTempFromMeasured } from '../../core/satellite/satellite-image';
 import { CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
@@ -17,6 +17,8 @@ function istClock(ms: number): string {
 
 /** Where the labels of the cloud-top colour bar sit along it: the bar runs from +20 °C on the left to -85 °C on the right. */
 const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((20 - t) / 105) * 100 }));
+/** The same bar for our infrared, labelled with measured temperatures (the colours sit where greyScaleTempFromMeasured puts them). */
+const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((20 - greyScaleTempFromMeasured(t)) / 105) * 100 }));
 
 /** Controls for the live satellite picture (Meteosat-9): the frame loop, the Cloud-Top hover readout, and opacity. */
 @Component({
@@ -55,17 +57,13 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
         } @else {
-          <div class="channel" role="group" aria-label="Source">
-            <button type="button" [class.on]="!own()" [attr.aria-pressed]="!own()" (click)="sat.setSource('eumetview')" title="EUMETView's pictures of Meteosat-9 (the usual look)">EUMETView</button>
-            <button type="button" [class.on]="own()" [attr.aria-pressed]="own()" (click)="sat.setSource(lastOwn)" title="Our own pictures, made from Himawari-9's raw bands every 10 minutes">Our own</button>
-          </div>
-          @if (own()) {
-            <div class="channel view3d" role="group" aria-label="Satellite">
+          @if (!sat.threeD()) {
+            <div class="channel" role="group" aria-label="Satellite">
               @for (s of ownSatellites; track s.id) {
                 <button type="button" [class.on]="sat.ownSatellite() === s.id" [attr.aria-pressed]="sat.ownSatellite() === s.id" (click)="sat.setOwnSatellite(s.id)">{{ s.name }}</button>
               }
             </div>
-            <div class="kinds" role="group" aria-label="Product">
+            <div class="kinds" role="group" aria-label="Picture">
               @for (k of ownKinds(); track k.id) {
                 <button type="button" class="kind" [class.on]="sat.source() === k.id" [attr.aria-pressed]="sat.source() === k.id" [title]="k.title" (click)="pick(k.id)">{{ k.label }}</button>
               }
@@ -87,16 +85,12 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
               </div>
             }
             @if (sat.ownEmpty() === 'night') {
-              <p class="hint3d">This picture needs daylight (the visible channels): at night try Night micro or the infrared kinds.</p>
+              <p class="hint3d">This picture needs daylight (the visible channels): at night try Infrared or Night micro.</p>
             } @else if (sat.ownEmpty() === 'none') {
-              <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow (every 10 minutes).</p>
+              <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow.</p>
             }
             <p class="hint3d">{{ ownSat().note }}</p>
-          } @else {
-          <div class="channel" role="group" aria-label="Picture" [class.off]="night()">
-            <button type="button" [class.on]="!sat.infraredOnly() && !night()" [attr.aria-pressed]="!sat.infraredOnly()" [disabled]="night()" (click)="sat.setInfrared(false)" [title]="night() ? nightHint : ''">Visible</button>
-            <button type="button" [class.on]="sat.infraredOnly() || night()" [attr.aria-pressed]="sat.infraredOnly() || night()" [disabled]="night()" (click)="sat.setInfrared(true)" [title]="night() ? nightHint : 'Infrared: cloud-top temperature, day and night'">Infrared</button>
-          </div>
+          }
           <div class="channel view3d" role="group" aria-label="View">
             <button type="button" [class.on]="!sat.threeD()" [attr.aria-pressed]="!sat.threeD()" (click)="sat.setThreeD(false)">Flat</button>
             <button type="button" [class.on]="sat.threeD()" [attr.aria-pressed]="sat.threeD()" (click)="sat.setThreeD(true)" title="The clouds of the live picture in 3D at their heights: tops from the infrared temperature, thickness from the visible brightness">3D clouds</button>
@@ -110,8 +104,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
                 }
               </div>
             </div>
-            <p class="hint3d">Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
-          }
+            <p class="hint3d">Built from Meteosat-9's live pictures (EUMETView). Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
           }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
@@ -128,7 +121,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
             <div class="label">Cloud-top temperature (°C)</div>
             <div class="cloud-bar" [style.background]="gradient"></div>
             <div class="cloud-scale">
-              @for (m of marks; track m.label) { <span [style.left.%]="m.left">{{ m.label }}</span> }
+              @for (m of legendMarks(); track m.label) { <span [style.left.%]="m.left">{{ m.label }}</span> }
             </div>
           </div>
         }
@@ -232,7 +225,7 @@ export class SatellitePanelComponent {
   private readonly layers = inject(MapLayerService);
   protected readonly Math = Math;
   protected readonly gradient = cloudTopGradient();
-  protected readonly marks = LEGEND_MARKS;
+  protected readonly legendMarks = computed(() => (this.sat.current()?.own ? MEASURED_MARKS : LEGEND_MARKS));
 
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly count = computed(() => this.sat.frames().length);
@@ -245,7 +238,8 @@ export class SatellitePanelComponent {
   /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */
   protected readonly nightLegend = computed(() => {
     const f = this.sat.current();
-    return !!f && !f.own && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
+    if (f?.own) return f.own.kind === 'infrared';
+    return !!f && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
   });
   /** Nothing to play or step through: the hour is loaded and has fewer than two pictures. (Until the loop is asked for, only the newest is loaded.) */
   /** Night over India: the visible picture is the infrared too, so there is nothing to choose between. */
@@ -270,8 +264,6 @@ export class SatellitePanelComponent {
   protected readonly ownKinds = computed(() => OWN_KINDS.filter(k => this.ownSat().kinds.includes(k.id)));
   protected readonly ownSatellites = (Object.keys(OWN_SATELLITES) as OwnSatellite[]).map(id => ({ id, name: OWN_SATELLITES[id].name }));
   protected readonly customSources = CUSTOM_SOURCES;
-  /** The kind of our own last picked, for the source switch. */
-  protected lastOwn: OwnKind = 'natural';
   protected readonly readoutTitle = computed(() => {
     const m = this.sat.hoverReading()?.measured;
     if (m) {
@@ -317,9 +309,7 @@ export class SatellitePanelComponent {
   }
 
   protected pick(kind: OwnKind): void {
-    if (!this.ownSat().kinds.includes(kind)) return;
-    this.lastOwn = kind;
-    this.sat.setSource(kind);
+    if (this.ownSat().kinds.includes(kind)) this.sat.pickKind(kind);
   }
 
   protected setCustom(i: number, key: keyof CustomChannel, event: Event): void {

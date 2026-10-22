@@ -742,3 +742,37 @@ export function satelliteCoordinates(b = SATELLITE_BOUNDS): [[number, number], [
     [b.west, b.south],
   ];
 }
+
+/**
+ * Measured cloud-top temperature (C) -> the temperature on the grey-level scale the infrared colours were matched to Windy on
+ * (irLumaToTempC). Measured on 22 Oct 2026 15:45 UTC over all of India (a million pixels, correlation 0.99): Meteosat's calibrated 10.8 um
+ * brightness temperature against EUMETView's ir108 grey read by irLumaToTempC, the median of the measured temperature at each grey-level
+ * temperature. The grey-level scale reads cold tops 10-20 degrees too cold, so the Windy bands sit at warmer real temperatures than their
+ * stops say.
+ */
+const MEASURED_TO_GREY_SCALE: readonly (readonly [number, number])[] = [
+  [-74.1, -84.5], [-64.1, -80], [-51.1, -70], [-40.6, -60], [-32.1, -50], [-27.6, -44], [-17.1, -30], [-1.1, -10], [5.9, 0], [12.4, 10], [19.9, 20],
+];
+
+export function greyScaleTempFromMeasured(tempC: number): number {
+  const t = MEASURED_TO_GREY_SCALE;
+  if (tempC <= t[0][0]) return t[0][1] + (tempC - t[0][0]) * ((t[1][1] - t[0][1]) / (t[1][0] - t[0][0]));
+  for (let i = 1; i < t.length; i++) {
+    if (tempC <= t[i][0]) {
+      const f = (tempC - t[i - 1][0]) / (t[i][0] - t[i - 1][0]);
+      return t[i - 1][1] + f * (t[i][1] - t[i - 1][1]);
+    }
+  }
+  const n = t.length - 1;
+  return t[n][1] + (tempC - t[n][0]);
+}
+
+/** Windy's infrared colours (cloudTopColor) for measured temperatures, as a table of RGBA bytes over minK .. minK + spanK in `steps`. */
+export function windyInfraredTable(minK: number, spanK: number, steps = 256): Uint8Array {
+  const out = new Uint8Array(steps * 4);
+  for (let i = 0; i < steps; i++) {
+    const tempC = minK + (i / (steps - 1)) * spanK - 273.15;
+    out.set(cloudTopColor(greyScaleTempFromMeasured(tempC)), i * 4);
+  }
+  return out;
+}
