@@ -55,57 +55,96 @@ def cloud_height_km(kelvin: np.ndarray) -> np.ndarray:
     return np.where(np.isfinite(t) & (t < 24), np.clip((28 - t) / 6.2, 0, 17.5), 0.0)
 
 
+def _shift(a: np.ndarray, d: int, axis: int, fill: float) -> np.ndarray:
+    """`a` moved by d cells along an axis, the cells it leaves filled with `fill`."""
+    out = np.full_like(a, fill)
+    n = a.shape[axis]
+    if abs(d) >= n:
+        return out
+    src = [slice(None)] * a.ndim
+    dst = [slice(None)] * a.ndim
+    src[axis] = slice(max(0, -d), n - max(0, d))
+    dst[axis] = slice(max(0, d), n - max(0, -d))
+    out[tuple(dst)] = a[tuple(src)]
+    return out
+
+
+def max_filter(a: np.ndarray, r: int) -> np.ndarray:
+    """The maximum over a (2r+1)^2 window (separable; at the edges, over the part of the window inside)."""
+    out = a
+    for axis in (0, 1):
+        m = out.copy()
+        for d in range(1, r + 1):
+            m = np.maximum(m, _shift(out, d, axis, -np.inf))
+            m = np.maximum(m, _shift(out, -d, axis, -np.inf))
+        out = m
+    return out
+
+
+def box_mean(a: np.ndarray, r: int) -> np.ndarray:
+    """The mean over a (2r+1)^2 window (separable cumulative sums; the edges average what is there)."""
+    out = a.astype(float)
+    for axis in (0, 1):
+        n = out.shape[axis]
+        c = np.cumsum(out, axis=axis)
+        c = np.concatenate([np.zeros_like(np.take(c, [0], axis=axis)), c], axis=axis)
+        idx = np.arange(n)
+        hi = np.minimum(idx + r + 1, n)
+        lo = np.maximum(idx - r, 0)
+        out = (np.take(c, hi, axis=axis) - np.take(c, lo, axis=axis)) / np.expand_dims(hi - lo, 1 - axis).astype(float)
+    return out
+
+
+def bilinear(a: np.ndarray, r: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """`a` read at fractional (row, col), NaN outside it."""
+    rows, cols = a.shape
+    r0 = np.floor(r).astype(int)
+    c0 = np.floor(c).astype(int)
+    fr, fc = r - r0, c - c0
+    inside = (r0 >= 0) & (r0 < rows - 1) & (c0 >= 0) & (c0 < cols - 1)
+    r0 = np.clip(r0, 0, rows - 2)
+    c0 = np.clip(c0, 0, cols - 2)
+    v = (a[r0, c0] * (1 - fr) * (1 - fc) + a[r0, c0 + 1] * (1 - fr) * fc + a[r0 + 1, c0] * fr * (1 - fc) + a[r0 + 1, c0 + 1] * fr * fc)
+    return np.where(inside, v, np.nan)
+
+
 def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarray, lon: np.ndarray, to_rc=None,
-                     sub_lon: float = SUB_LON, max_view: float = MAX_VIEW_DEG) -> tuple[np.ndarray, list[np.ndarray]]:
-    """Each cloudy pixel moved toward the satellite by its height x tan(view angle); the coldest wins where several land; the holes left
-    behind filled from the warmest neighbours. Cells seen beyond MAX_VIEW_DEG are emptied (NaN). `lat`/`lon` are the cells' centres;
-    `to_rc(lat, lon)` gives the (fractional) row and column of a place, for a grid whose rows are not evenly spaced in latitude (Mercator);
-    by default the rows and columns are taken as even steps. `sub_lon` is the satellite's longitude (Himawari by default)."""
+                     sub_lon: float = SUB_LON, max_view: float = MAX_VIEW_DEG, smooth_km: float = 12.0) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Clouds moved back to where they are: a satellite sees a cloud top displaced away from itself by the top's height x tan(view angle).
+
+    The picture is warped backwards: each cell of the result reads the picture where its cloud was seen. The displacement comes from a
+    height field first widened (a maximum over `smooth_km`, so a storm's core keeps its full height) and then smoothed over the same
+    distance, so a cloud and the ground right around it move together: nothing tears at a cloud's edge, and every cell gets a value (a
+    displacement worked out pixel by pixel left holes and rings of specks around storms). Cells seen beyond `max_view` are emptied (NaN).
+    `lat`/`lon` are the cells' centres; `to_rc(lat, lon)` gives the (fractional) row and column of a place (for a Mercator grid); by default
+    rows and columns are even steps. `sub_lon` is the satellite's longitude (Himawari by default)."""
     rows, cols = ir108.shape
     zenith, bearing = view_geometry(lat, lon, sub_lon)
-    shift = cloud_height_km(ir108) * np.tan(np.radians(np.minimum(zenith, 85)))
-    true_lat = lat + shift * np.cos(bearing) / KM_PER_DEG
-    true_lon = lon + shift * np.sin(bearing) / (KM_PER_DEG * np.cos(np.radians(lat)))
     if to_rc is None:
         step_lat = lat[0, 0] - lat[1, 0]
         step_lon = lon[0, 1] - lon[0, 0]
-        rf, cf = (lat[0, 0] - true_lat) / step_lat, (true_lon - lon[0, 0]) / step_lon
-    else:
-        rf, cf = to_rc(true_lat, true_lon)
-    r = np.rint(rf).astype(int)
-    c = np.rint(cf).astype(int)
-    ok = np.isfinite(ir108) & (r >= 0) & (r < rows) & (c >= 0) & (c < cols)
-    # the coldest first, so a storm's top is not covered by the ground it is moved over
-    order = np.argsort(np.where(ok, ir108, np.inf), axis=None)[::-1]
-    flat_ok = ok.ravel()[order]
-    order = order[flat_ok]
-    out = np.full_like(ir108, np.nan)
-    outs = [np.full_like(o, np.nan) for o in others]
-    target = r.ravel()[order] * cols + c.ravel()[order]
-    out.ravel()[target] = ir108.ravel()[order]          # later (colder) writes win
-    for o, src in zip(outs, others):
-        o.ravel()[target] = src.ravel()[order]
-    # holes: the warmest of the filled neighbours, a few rings out
-    for _ in range(8):
-        hole = ~np.isfinite(out)
-        if not hole.any():
-            break
-        best = np.full_like(out, -np.inf)
-        best_others = [np.full_like(o, np.nan) for o in outs]
-        for dr in (-1, 0, 1):
-            for dc in (-1, 0, 1):
-                if dr == 0 and dc == 0:
-                    continue
-                nb = np.roll(np.roll(out, dr, 0), dc, 1)
-                better = hole & np.isfinite(nb) & (nb > best)
-                best[better] = nb[better]
-                for bo, o in zip(best_others, outs):
-                    nbo = np.roll(np.roll(o, dr, 0), dc, 1)
-                    bo[better] = nbo[better]
-        fill = hole & np.isfinite(best)
-        out[fill] = best[fill]
-        for o, bo in zip(outs, best_others):
-            o[fill] = bo[fill]
+        to_rc = lambda la, lo: ((lat[0, 0] - la) / step_lat, (lo - lon[0, 0]) / step_lon)
+    # the grid's cell size (km), for the smoothing in cells
+    r_mid, c_mid = rows // 2, cols // 2
+    cell_km = max(1e-3, abs(lat[min(r_mid + 1, rows - 1), c_mid] - lat[r_mid, c_mid]) * KM_PER_DEG)
+    k = max(1, int(round(smooth_km / cell_km)))
+    h = cloud_height_km(ir108)
+    h = box_mean(max_filter(h, k), k)
+    shift = h * np.tan(np.radians(np.minimum(zenith, 85)))
+    # where each cell's cloud really is, as a displacement in cells (seen -> true)
+    true_r, true_c = to_rc(lat + shift * np.cos(bearing) / KM_PER_DEG, lon + shift * np.sin(bearing) / (KM_PER_DEG * np.cos(np.radians(lat))))
+    rr, cc = np.meshgrid(np.arange(rows, dtype=float), np.arange(cols, dtype=float), indexing="ij")
+    dr, dc = true_r - rr, true_c - cc
+    # backwards: the seen place a of a true place x solves a + d(a) = x (a few fixed-point steps; d is smooth)
+    ar, ac = rr - dr, cc - dc
+    for _ in range(4):
+        ar = rr - np.nan_to_num(bilinear(dr, ar, ac))
+        ac = cc - np.nan_to_num(bilinear(dc, ar, ac))
+    # a place whose cloud was seen just outside the grid reads the grid's edge
+    ar = np.clip(np.nan_to_num(ar, nan=0.0), 0, rows - 1.001)
+    ac = np.clip(np.nan_to_num(ac, nan=0.0), 0, cols - 1.001)
+    out = bilinear(ir108, ar, ac)
+    outs = [bilinear(o, ar, ac) for o in others]
     far = zenith > max_view
     out[far] = np.nan
     for o in outs:
