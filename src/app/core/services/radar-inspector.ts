@@ -1,6 +1,7 @@
 import type { ProcessedRadarResult, RadarHoverInfo, RadarProductKey, RadarStationConfig } from '../domain/models/radar.model';
 import { dequantizeRadar } from './radar-field';
 import { LOWEST_SWEEP_DEG, beamsOverPlace, isRainAloft } from './radar-beam';
+import { MARSHALL_PALMER_A, rainRate } from './radar-sample';
 import type { RadarDisplayFrame } from './radar.service';
 
 /** What the inspector reads: the picture on screen (or, before there is one, each radar's own), and which radars are on. */
@@ -11,6 +12,15 @@ export interface RadarInspectInput {
   hidden: ReadonlySet<string>;
   unavailable: ReadonlySet<string>;
   product: RadarProductKey;
+  /** Each radar's a of Z = a R^1.6, fitted to the gauges (radar.json); the nearest radar's is used, Marshall-Palmer's without one. */
+  zrA?: Readonly<Record<string, number>>;
+  /** The radar's rain at the point over the last hour (mm), when the loop is in. */
+  lastHourMm?: (stationId: string) => number | null;
+}
+
+/** "4.2 mm/h", "0.6 mm/h", "62 mm/h". */
+export function formatRate(mmPerHour: number): string {
+  return mmPerHour >= 10 ? `${Math.round(mmPerHour)} mm/h` : `${mmPerHour.toFixed(1)} mm/h`;
 }
 
 /**
@@ -144,6 +154,12 @@ export function inspectRadar(input: RadarInspectInput, lat: number, lng: number,
       rate = '< 1.0 mm/h';
     }
 
+    // the rate from the dBZ, with the nearest radar's own Z-R relation (fitted to the Tamil Nadu gauges) where it has one
+    const nearest = beams[0]?.stationId ?? bestStation.id;
+    const a = input.zrA?.[nearest] ?? MARSHALL_PALMER_A;
+    rate = `≈ ${formatRate(rainRate(dbz, a))}`;
+    const hourMm = input.lastHourMm?.(nearest) ?? null;
+    if (hourMm !== null && hourMm >= 0.1) rate += ` · last hour ≈ ${hourMm.toFixed(1)} mm`;
     const lowest = Math.min(...beams.map(b => b.centreKm));
     const aloft = beams.length > 0 && isRainAloft(dbz, lowest);
     return {

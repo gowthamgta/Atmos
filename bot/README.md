@@ -80,6 +80,25 @@ artifact (Actions → nowcast → a run → Artifacts), so you can see what it w
 Optional: the variable `NOWCAST_INCLUDE_LINK` = `true` adds `atmosradar.netlify.app` to each post (at X's price for posts
 with a link).
 
+## Your own rain alerts (Telegram, free)
+
+Besides the channel, the bot can tell you alone when rain is about to reach your places: dry there now, and the radar nowcast has rain
+there within 30 or 60 minutes (at most one message a place every three hours). It sends the radar picture with a line like
+"Rain likely at Kallakurichi within about 30 minutes (by 04:30 pm IST): heavy rain on the way".
+
+1. Open a chat with your bot in Telegram and send it any message (a bot cannot write to you first).
+2. Find your chat id: open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser and read `"chat":{"id": ...}`.
+3. In the repository: Settings, Secrets and variables, Actions: add the **secret** `TELEGRAM_ALERT_CHAT_ID` (that number), and the
+   **variable** `ALERT_PLACES`, for example `Kallakurichi:11.74,78.96;Chennai:13.08,80.27`.
+
+Nothing is sent until both are set (and, as for the channel, `NOWCAST_LIVE` is `true`).
+
+## Radar samples for the daily verification
+
+Each run also keeps the radar over the 0.5 degree cells of the Tamil Nadu rain gauges, and the nowcast 30 and 60 minutes ahead
+(bot/samples.mjs), in the Actions cache (saved once an hour, the last four days). The verify workflow reads them to fit each radar's
+rain rate to the gauges and to score the nowcast (pipeline/verify_radar.py).
+
 ## Running it yourself
 
 ```

@@ -47,8 +47,16 @@ jobs:
           path: bot/state
           key: nowcast-state-latest
           restore-keys: nowcast-state-
+      # the radar over the gauge cells, kept for the daily verification (verify workflow); the newest store, saved once an hour below
+      - uses: actions/cache/restore@v6
+        with:
+          path: bot/samples
+          key: radar-samples-latest
+          restore-keys: radar-samples-
       - name: Nowcast
         env:
+          ALERT_PLACES: ${{ vars.ALERT_PLACES }}
+          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID || '@tnweatheralerts' }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -68,6 +76,17 @@ jobs:
         with:
           path: bot/state
           key: nowcast-state-${{ hashFiles('bot/state/state.json') }}
+      - name: Hour of the samples
+        id: hour
+        if: always()
+        run: echo "key=radar-samples-$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
+      # once an hour: a key already taken this hour is refused, harmlessly (at most ten minutes of samples wait for the next hour)
+      - uses: actions/cache/save@v6
+        if: always() && hashFiles('bot/samples/radar-samples.json') != ''
+        continue-on-error: true
+        with:
+          path: bot/samples
+          key: ${{ steps.hour.outputs.key }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:

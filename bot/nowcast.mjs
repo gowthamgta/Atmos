@@ -11,6 +11,9 @@
 //   TELEGRAM_BOT_TOKEN  the Telegram bot's token (from @BotFather); TELEGRAM_CHAT_ID the channel (default @tnweatheralerts)
 //   DISCORD_WEBHOOK_URL a Discord channel's webhook (Server settings → Integrations → Webhooks)
 //   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET   the X app's keys and the account's access token (OAuth 1.0a)
+//   SAMPLES_FILE   where the radar over the gauge cells is kept for the daily verification (default bot/samples/radar-samples.json)
+//   ALERT_PLACES   the owner's places for their own rain alerts, "Kallakurichi:11.74,78.96;Chennai:13.08,80.27"
+//   TELEGRAM_ALERT_CHAT_ID  the owner's own Telegram chat for those alerts (nothing is sent without it)
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,11 +21,15 @@ import { chromium } from 'playwright';
 import {
   TELEGRAM_CHAT, alertCells, altText, composePost, composeTelegram, decide, discordPayload, regionDistricts, sendDiscord, sendTelegram, stateAfterPost,
 } from './lib.mjs';
+import { CELL_HALF_DEG, GAUGE_POINTS, PLACE_HALF_DEG, appendSamples, parsePlaces, placeAlert } from './samples.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SITE = (process.env.SITE_URL || 'https://atmosradar.netlify.app').replace(/\/$/, '');
 const STATE_FILE = process.env.STATE_FILE || join(HERE, 'state', 'state.json');
 const OUT = join(HERE, 'out');
+const SAMPLES_FILE = process.env.SAMPLES_FILE || join(HERE, 'samples', 'radar-samples.json');
+const PLACES = parsePlaces(process.env.ALERT_PLACES);
+const ALERT_CHAT = process.env.TELEGRAM_ALERT_CHAT_ID || '';
 const X_KEYS = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_SECRET'];
 const haveX = X_KEYS.every(k => process.env[k]);
 const haveTelegram = Boolean(process.env.TELEGRAM_BOT_TOKEN);
@@ -70,7 +77,11 @@ async function capture() {
     await page.waitForTimeout(4000); // the storm cones and the picture settle on the map
     const png = await page.screenshot({ type: 'png' });
     log(`radar ${new Date(snapshot.radarTimeMs).toISOString()}, ${snapshot.cells.length} cells, motion from ${snapshot.motionSource}, loop ${snapshot.loopLoaded}`);
-    return { snapshot, png };
+    // the radar over the gauge cells and the owner's places (an app without the sampler gives null: nothing is kept)
+    const sample = (points, half) => page.evaluate(([p, h]) => window.__atmosSample?.(p, h) ?? null, [points, half]);
+    const samples = await sample(GAUGE_POINTS, CELL_HALF_DEG);
+    const placeSamples = PLACES.length ? await sample(PLACES.map(p => [p.lat, p.lon]), PLACE_HALF_DEG) : null;
+    return { snapshot, png, samples, placeSamples };
   } finally {
     await browser.close();
   }
@@ -104,8 +115,17 @@ async function main() {
   const state = await readJson(STATE_FILE, {});
   const now = Date.now();
 
-  const { snapshot, png } = await capture();
+  const { snapshot, png, samples, placeSamples } = await capture();
   await writeFile(join(OUT, 'radar.png'), png);
+  if (samples) {
+    const store = appendSamples(await readJson(SAMPLES_FILE, null), samples, now);
+    await mkdir(dirname(SAMPLES_FILE), { recursive: true });
+    await writeFile(SAMPLES_FILE, JSON.stringify(store));
+    log(`radar over ${GAUGE_POINTS.length} gauge cells kept (${store.records.length} looks in the store)`);
+  } else {
+    log('the app gave no radar samples (an older version of it?): none kept');
+  }
+  await alertPlaces(placeSamples, snapshot, png, state, now);
   const cells = alertCells(snapshot, districts, land);
   let decision = decide(cells, snapshot, state, now);
   if (FORCE && !decision.post) decision = { post: true, reason: `forced (would not post: ${decision.reason})` };
@@ -160,7 +180,38 @@ async function main() {
   // remembered once anything went out, so the storm is not posted again ten minutes later
   if (posted && cells.length > 0) {
     await mkdir(dirname(STATE_FILE), { recursive: true });
-    await writeFile(STATE_FILE, JSON.stringify(stateAfterPost(cells, snapshot, now), null, 2));
+    const latest = await readJson(STATE_FILE, {});
+    await writeFile(STATE_FILE, JSON.stringify({ ...stateAfterPost(cells, snapshot, now), placeAlerts: latest.placeAlerts ?? state.placeAlerts }, null, 2));
+  }
+}
+
+/** The owner's own alerts: rain about to reach one of their places, to their Telegram chat (once in a while per place; see samples.mjs). */
+async function alertPlaces(placeSamples, snapshot, png, state, now) {
+  if (!placeSamples || PLACES.length === 0) return;
+  const sent = { ...(state.placeAlerts ?? {}) };
+  let changed = false;
+  for (const [i, place] of PLACES.entries()) {
+    const box = { live: placeSamples.live[i], n30: placeSamples.n30[i], n60: placeSamples.n60[i] };
+    const text = placeAlert(place, box, snapshot.radarTimeMs, now, sent[place.name]);
+    if (!text) continue;
+    if (DRY_RUN || !haveTelegram || !ALERT_CHAT) {
+      log(`place alert (not sent: ${DRY_RUN ? 'dry run' : 'no TELEGRAM_ALERT_CHAT_ID or bot token'}): ${text}`);
+      continue;
+    }
+    try {
+      await sendTelegram(process.env.TELEGRAM_BOT_TOKEN, ALERT_CHAT, png, text);
+      log(`place alert sent for ${place.name}`);
+      sent[place.name] = now;
+      changed = true;
+    } catch (e) {
+      log(`place alert for ${place.name} failed: ${e.message}`);
+      process.exitCode = 1;
+    }
+  }
+  if (changed) {
+    await mkdir(dirname(STATE_FILE), { recursive: true });
+    const latest = await readJson(STATE_FILE, {});
+    await writeFile(STATE_FILE, JSON.stringify({ ...latest, placeAlerts: sent }, null, 2));
   }
 }
 

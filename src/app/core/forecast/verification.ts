@@ -29,7 +29,18 @@ export interface VerificationFile {
   airports: string[];
   leads: number[];
   updated: string;
-  days: { date: string; models: Record<string, Record<string, LeadScores>> }[];
+  days: { date: string; models: Record<string, Record<string, LeadScores>>; nowcast?: Record<string, { nowcast: RainScore; still: RainScore }> }[];
+}
+
+/** The radar nowcast's threat score over the last days, and that of a picture that does not move (the baseline), `lead` minutes ahead. */
+export function nowcastSkill(file: VerificationFile, windowDays = 14, lead = 30): { days: number; nowcast: number; still: number } | null {
+  const days = file.days.slice(-windowDays).map(d => d.nowcast?.[String(lead)]).filter((x): x is { nowcast: RainScore; still: RainScore } => !!x);
+  const sum = (pick: (x: { nowcast: RainScore; still: RainScore }) => RainScore) =>
+    days.reduce((a, x) => ({ hits: a.hits + pick(x).hits, misses: a.misses + pick(x).misses, false: a.false + pick(x).false }), { hits: 0, misses: 0, false: 0 });
+  const threat = (r: RainScore) => (r.hits + r.misses + r.false > 0 ? r.hits / (r.hits + r.misses + r.false) : 0);
+  const n = sum(x => x.nowcast);
+  if (days.length === 0 || n.hits + n.misses < 20) return null;
+  return { days: days.length, nowcast: threat(n), still: threat(sum(x => x.still)) };
 }
 
 export interface ModelSkill {

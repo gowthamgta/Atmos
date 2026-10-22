@@ -1,5 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
-import { summarizeSkill, type ModelSkill, type VerificationFile } from './verification';
+import { nowcastSkill, summarizeSkill, type ModelSkill, type VerificationFile } from './verification';
 import type { CorrectionsFile } from '../meteogram/blend';
 import { FORECAST_MODELS } from './forecast-models';
 
@@ -21,6 +21,11 @@ export class VerificationService {
   readonly blendSkill = computed<ModelSkill | null>(() => {
     const f = this.file();
     return (f && summarizeSkill(f, SKILL_WINDOW_DAYS, 1, ['blend'])[0]) || null;
+  });
+  /** The radar nowcast 30 minutes ahead over the same days (null until there is enough). */
+  readonly nowcast30 = computed(() => {
+    const f = this.file();
+    return f ? nowcastSkill(f, SKILL_WINDOW_DAYS, 30) : null;
   });
   /** The airports the scores come from. */
   readonly airportCount = computed(() => this.file()?.airports.length ?? 0);

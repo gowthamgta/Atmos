@@ -5,6 +5,7 @@ import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
+import { VerificationService } from '../../core/forecast/verification.service';
 
 interface ProductOption {
   key: RadarProductKey;
@@ -208,6 +209,7 @@ export class RadarPanelComponent {
   protected readonly frames = this.radar.history;
   protected readonly playing = this.radar.playing;
   protected readonly nowcast = inject(RadarNowcastService);
+  private readonly verification = inject(VerificationService);
   /** While a picture of the nowcast is on the map, the panel says it is a guess (empty otherwise). */
   protected readonly guess = computed(() => {
     const i = this.radar.leadIndex();
@@ -221,7 +223,9 @@ export class RadarPanelComponent {
     const how = motion.source === 'radar' ? `rain followed over the last ${Math.round(motion.minutes ?? 30)} minutes` : 'no earlier picture yet: moved with the forecast wind';
     const skill = this.nowcast.skill();
     const check = skill ? ` On the last hour a ${skill.leadMin}-minute guess matched ${Math.round(skill.nowcast * 100)}% of the rain area (a picture that did not move: ${Math.round(skill.still * 100)}%).` : '';
-    return `Nowcast: ${how}.${check}`;
+    const daily = this.verification.nowcast30();
+    const scored = daily ? ` Scored daily over the last ${daily.days} days, 30 minutes ahead: ${Math.round(daily.nowcast * 100)}% (a picture that did not move: ${Math.round(daily.still * 100)}%).` : '';
+    return `Nowcast: ${how}.${check}${scored}`;
   });
   protected readonly stormSummary = computed(() => {
     const { count, source } = this.storms.summary();
@@ -264,6 +268,7 @@ export class RadarPanelComponent {
   protected readonly legendTicks = computed(() => ['17', '28', '39', '50', '60+']);
 
   constructor() {
+    this.verification.load(); // the nowcast's daily score (a small file)
     // On larger screens the last hour is built as soon as the radar is shown (phones wait for the play button, since
     // the animations are several megabytes), and rebuilt every hour while the radar stays on (each new live picture joins it in between).
     effect(() => {

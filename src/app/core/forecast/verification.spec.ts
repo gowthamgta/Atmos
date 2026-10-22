@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { skillLine, summarizeSkill, type VerificationFile } from './verification';
+import { nowcastSkill, skillLine, summarizeSkill, type VerificationFile } from './verification';
 
 const day = (date: string, models: VerificationFile['days'][number]['models']) => ({ date, models });
 
@@ -48,5 +48,20 @@ describe('model skill from the airport scores', () => {
     const [a, b] = summarizeSkill(file, 14, 1);
     expect(skillLine(a)).toBe('1.3 °C off on average (1.3 too cold) · rain caught 60%');
     expect(skillLine(b)).toBe('1.0 °C off on average (0.5 too warm)');
+  });
+});
+
+describe('nowcast skill from the daily scores', () => {
+  it('pools the days and gives the nowcast beside a still picture', () => {
+    const f: VerificationFile = { ...file, days: [
+      { date: '2026-10-19', models: {}, nowcast: { '30': { nowcast: { hits: 15, misses: 5, false: 5 }, still: { hits: 10, misses: 10, false: 10 } } } },
+      { date: '2026-10-20', models: {}, nowcast: { '30': { nowcast: { hits: 5, misses: 0, false: 5 }, still: { hits: 0, misses: 5, false: 0 } } } },
+    ] };
+    const s = nowcastSkill(f, 14, 30)!;
+    expect(s.days).toBe(2);
+    expect(s.nowcast).toBeCloseTo(20 / 35, 6);
+    expect(s.still).toBeCloseTo(10 / 35, 6);
+    expect(nowcastSkill(f, 14, 60)).toBeNull();
+    expect(nowcastSkill({ ...f, days: f.days.slice(1) }, 14, 30)).toBeNull(); // too few rainy cells to say
   });
 });

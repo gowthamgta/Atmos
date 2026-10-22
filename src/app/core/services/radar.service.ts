@@ -23,6 +23,8 @@ import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, composeRadarMosaic } from './radar-mosaic';
 import { RadarCoverageService } from './radar-coverage.service';
+import { BOT_CAPTURE } from '../ui/bot-capture';
+import { MARSHALL_PALMER_A, RadarSamples, lastHourRain, sampleAll } from './radar-sample';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
@@ -223,6 +225,11 @@ export class RadarService implements OnDestroy {
       this.compositeMosaic();
       untracked(() => this.rollHistory());
     });
+    // the nowcast bot reads the radar over the rain gauges' cells from here (see radar-sample.ts); nothing of it runs for a visitor
+    if (BOT_CAPTURE) {
+      (window as unknown as { __atmosSample?: (points: [number, number][], halfDeg: number) => RadarSamples }).__atmosSample = (points, halfDeg) =>
+        sampleAll(this.liveFrame(), this.nowcast(), points, halfDeg);
+    }
   }
 
   /** The live picture before the newest, kept so it can join the loop when the next one arrives. */
@@ -1028,8 +1035,30 @@ export class RadarService implements OnDestroy {
 
 
   // the readout under the pointer (see radar-inspector.ts)
+  /** Each radar's a of Z = a R^1.6 where the gauges have fitted one (public/data/verification/radar.json, verify_radar.py); empty until then. */
+  private readonly zrA = signal<Record<string, number>>({});
+  private zrAsked = false;
+
+  private loadRainRates(): void {
+    if (this.zrAsked) return;
+    this.zrAsked = true;
+    fetch('/data/verification/radar.json')
+      .then(r => (r.ok ? r.json() : null))
+      .then((doc: { zr?: Record<string, { a: number; accepted: boolean }> } | null) => {
+        const out: Record<string, number> = {};
+        for (const [id, z] of Object.entries(doc?.zr ?? {})) if (z.accepted && z.a > 0) out[id] = z.a;
+        this.zrA.set(out);
+      })
+      .catch(() => (this.zrAsked = false));
+  }
+
   inspectLocation(lat: number, lng: number, screenPoint: { x: number; y: number }): void {
+    this.loadRainRates();
+    const live = this.liveFrame();
+    const frames = live ? [...this.history(), live] : [];
     const input = {
+      zrA: this.zrA(),
+      lastHourMm: (stationId: string) => (this.playIndex() === null && this.leadIndex() === null ? lastHourRain(frames, lat, lng, this.zrA()[stationId] ?? MARSHALL_PALMER_A) : null),
       shown: this.displayed(),
       allResults: this.allRadarResults(),
       stations: this.stations,

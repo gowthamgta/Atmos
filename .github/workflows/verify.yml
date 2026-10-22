@@ -3,7 +3,8 @@ name: verify
 # Daily at 07:00 IST (01:30 UTC), when yesterday's last reports are in:
 #   1. verify.py scores yesterday's forecasts of ten models and the Blend against the South Indian airports' reports;
 #   2. verify_gauges.py scores their rain against the Tamil Nadu rain gauges (the rain day that ended at 08:30 IST yesterday);
-#   3. learn_bias.py learns each model's usual error, rain thresholds and the Blend weights from the last four weeks, checked on held-back days.
+#   3. verify_radar.py sets each radar's rain rate from the gauges and scores the radar nowcast (from the samples the nowcast bot keeps);
+#   4. learn_bias.py learns each model's usual error, rain thresholds and the Blend weights from the last four weeks, checked on held-back days.
 # Then it commits the scores and corrections the app reads (public/data/verification), the days learned from (pipeline/data/verification)
 # and the map's ECMWF IFS correction (pipeline/data/bias/table.json, used by the next nwp run). It can also be run by hand for a given day.
 #
@@ -23,6 +24,7 @@ on:
       - "pipeline/verify_gauges.py"
       - "pipeline/learn_bias.py"
       - "pipeline/blend.py"
+      - "pipeline/verify_radar.py"
       - ".github/workflows/verify.yml"
   workflow_dispatch:
     inputs:
@@ -48,7 +50,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests pytest numpy
-      - run: python -m pytest -q tests/test_verify.py tests/test_verify_gauges.py tests/test_blend.py tests/test_learn_bias.py tests/test_rain_factor.py
+      - run: python -m pytest -q tests/test_verify.py tests/test_verify_gauges.py tests/test_blend.py tests/test_learn_bias.py tests/test_rain_factor.py tests/test_verify_radar.py
         working-directory: pipeline
       - name: Score at the airports
         id: airports
@@ -65,6 +67,17 @@ jobs:
         working-directory: pipeline
         continue-on-error: true
         run: python verify_gauges.py --out ../public/data/verification/scores.json
+      # the radar over the gauge cells, kept by the nowcast bot every ten minutes (its newest store)
+      - uses: actions/cache/restore@v6
+        with:
+          path: bot/samples
+          key: radar-samples-latest
+          restore-keys: radar-samples-
+      - name: Radar against the gauges, and the nowcast
+        id: radar
+        working-directory: pipeline
+        continue-on-error: true
+        run: python verify_radar.py --samples ../bot/samples/radar-samples.json
       - name: Learn corrections and the Blend
         id: learn
         working-directory: pipeline
@@ -79,7 +92,7 @@ jobs:
           git commit -m "Verification: forecast scores, corrections and Blend weights, $(date -u -d yesterday +%Y-%m-%d)"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 10; done
       - name: Fail when a step failed
-        if: steps.airports.outcome == 'failure' || steps.gauges.outcome == 'failure' || steps.learn.outcome == 'failure'
+        if: steps.airports.outcome == 'failure' || steps.gauges.outcome == 'failure' || steps.radar.outcome == 'failure' || steps.learn.outcome == 'failure'
         run: |
-          echo "::error title=verify::airports ${{ steps.airports.outcome }}, gauges ${{ steps.gauges.outcome }}, learning ${{ steps.learn.outcome }} (the reasons are in the annotations above)"
+          echo "::error title=verify::airports ${{ steps.airports.outcome }}, gauges ${{ steps.gauges.outcome }}, radar ${{ steps.radar.outcome }}, learning ${{ steps.learn.outcome }} (the reasons are in the annotations above)"
           exit 1
