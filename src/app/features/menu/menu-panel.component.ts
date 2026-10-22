@@ -15,6 +15,7 @@ import { layerIcon } from '../../shared/icons';
 import { ThemeService } from '../../shared/theme.service';
 import { AltitudePickerComponent } from '../altitude/altitude-picker.component';
 import { ModelListComponent } from '../models/model-list.component';
+import { CYCLONE_CLASSES } from '../../core/forecast/cyclone-tracks';
 
 const TABS: readonly { id: MenuTab; label: string }[] = [
   { id: 'layers', label: 'Layers' },
@@ -118,6 +119,14 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                       <app-icon name="mountain" [size]="16" />Terrain relief
                     </button>
                   </div>
+                  @if (state.cyclones()) {
+                    <div class="cyc-key" aria-label="Cyclone classes (IMD)">
+                      @for (k of cycloneClasses; track k.short) {
+                        <span class="cyc-class" [title]="k.name"><span class="cyc-dot" [style.background]="k.color"></span>{{ k.short }}</span>
+                      }
+                      <p class="hint">IMD classes by wind, from a low (L) to a super cyclonic storm (SuCS). The dashed cone is the typical track error for 5 days: two in three storms stay inside it. The storm sits where it is at the time on the bar.</p>
+                    </div>
+                  }
                 </section>
               }
             }
@@ -195,6 +204,10 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
     }
   `,
   styles: [`
+    .cyc-key { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: var(--sp-2); }
+    .cyc-class { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-secondary); cursor: default; }
+    .cyc-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(8, 12, 22, 0.6); }
+    .cyc-key .hint { flex-basis: 100%; margin: 2px 0 0; }
     :host { display: contents; }
     .scrim { display: none; }
     .panel {
@@ -275,6 +288,8 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
   `]
 })
 export class MenuPanelComponent {
+  /** The cyclone classes for the key under the overlays (the colours of the tracks on the map). */
+  protected readonly cycloneClasses = CYCLONE_CLASSES;
   protected readonly state = inject(ForecastStateService);
   protected readonly catalog = inject(ForecastCatalogService);
   protected readonly panels = inject(PanelService);

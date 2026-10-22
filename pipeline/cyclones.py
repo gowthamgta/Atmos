@@ -132,13 +132,15 @@ def latest_run() -> datetime:
 
 
 def fetch(run: datetime) -> tuple[list[dict], list[dict]]:
+    """The high-resolution tracks, and no ensemble members for now: the ensemble file packs its 51 members into one compressed BUFR
+    message per storm, which read_bufr reads as if it were one track (positions of different members interleaved: a "track" jumping
+    across India, seen on 22 Oct 2026). Until the members are read one by one (eccodes extractSubset), the app draws a cone of the
+    typical track error instead (src/app/core/forecast/cyclone-tracks.ts)."""
     ec = client()
     with tempfile.TemporaryDirectory() as tmp:
-        paths = {}
-        for stream in ("oper", "enfo"):
-            paths[stream] = os.path.join(tmp, f"{stream}.bufr")
-            ec.retrieve(date=run.strftime("%Y%m%d"), time=run.hour, stream=stream, type="tf", step=360, target=paths[stream])
-        return read_bufr(paths["oper"], run), read_bufr(paths["enfo"], run)
+        path = os.path.join(tmp, "oper.bufr")
+        ec.retrieve(date=run.strftime("%Y%m%d"), time=run.hour, stream="oper", type="tf", step=360, target=path)
+        return read_bufr(path, run), []
 
 
 def live_file(url: str) -> dict | None:

@@ -7,7 +7,7 @@ import { maplibre } from '../map/maplibre-lazy';
 import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
-import { cycloneGeoJson, loadCyclones } from './cyclone-tracks';
+import { CycloneData, cycloneGeoJson, loadCyclones } from './cyclone-tracks';
 import { ageStrokes, lightningGeoJson, lightningShown, loadLightning } from './lightning';
 import { MapLayerService } from '../services/map-layer.service';
 import type { Stroke } from './lightning';
@@ -59,6 +59,9 @@ export class ForecastMapController {
 
   private cycloneLoadedAt = 0;
   private cycloneLoading = false;
+  /** The tracks last loaded, drawn again for each time on the bar (the cone starts and the storm marker sits at that time). */
+  private cycloneData: CycloneData | null = null;
+  private cycloneDrawnFor = '';
   private lightningTimer: ReturnType<typeof setInterval> | null = null;
   private lightningTick: ReturnType<typeof setInterval> | null = null;
   private lightningStrokes: Stroke[] = [];
@@ -66,7 +69,11 @@ export class ForecastMapController {
   private lightningLoading = false;
 
   private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
-  private static readonly CYCLONE_LAYERS = ['forecast-cyclone-labels', 'forecast-cyclone-points', 'forecast-cyclone-track', 'forecast-cyclone-members'];
+  private static readonly CYCLONE_LAYERS = [
+    'forecast-cyclone-now-label', 'forecast-cyclone-now-icon', 'forecast-cyclone-now', 'forecast-cyclone-labels', 'forecast-cyclone-points',
+    'forecast-cyclone-track', 'forecast-cyclone-casing', 'forecast-cyclone-cone-line', 'forecast-cyclone-cone',
+  ];
+  private static readonly CYCLONE_IMAGE = 'cyclone-symbol';
   private static readonly LIGHTNING_SOURCE = 'forecast-lightning';
   private static readonly LIGHTNING_LAYER = 'forecast-lightning-bolts';
   private static readonly LIGHTNING_IMAGE = 'lightning-bolt';
@@ -326,20 +333,89 @@ export class ForecastMapController {
     }, beforeId);
   }
 
-  /** Forecast tracks of tropical cyclones, drawn on top: the ensemble spread, the main track and a point per time. */
+  /**
+   * Forecast tracks of tropical cyclones, drawn on top: the cone of the typical track error from the time on the bar, the track coloured by the
+   * storm's IMD class on a dark casing, a point every 12 h with a label each day, and the storm where it is at the time on the bar.
+   */
   private addCycloneLayers(map: MapLibreMap): void {
     const source = ForecastMapController.CYCLONE_SOURCE;
+    if (!map.hasImage(ForecastMapController.CYCLONE_IMAGE)) map.addImage(ForecastMapController.CYCLONE_IMAGE, this.cycloneImage());
     map.addSource(source, { type: 'geojson', data: cycloneGeoJson(null) });
     const hidden = { visibility: 'none' as const };
-    map.addLayer({ id: 'forecast-cyclone-members', type: 'line', source, filter: ['==', ['get', 'kind'], 'member'],
-      layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden }, paint: { 'line-color': '#ffd1dc', 'line-width': 1, 'line-opacity': 0.28 } });
-    map.addLayer({ id: 'forecast-cyclone-track', type: 'line', source, filter: ['==', ['get', 'kind'], 'track'],
-      layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden }, paint: { 'line-color': '#ffffff', 'line-width': 2.4, 'line-opacity': 0.92 } });
-    map.addLayer({ id: 'forecast-cyclone-points', type: 'circle', source, filter: ['==', ['get', 'kind'], 'point'], layout: hidden,
-      paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['case', ['get', 'big'], 6.5, 3.8], 'circle-stroke-color': '#0b0f1a', 'circle-stroke-width': 1.4 } });
-    map.addLayer({ id: 'forecast-cyclone-labels', type: 'symbol', source, filter: ['all', ['==', ['get', 'kind'], 'point'], ['!=', ['get', 'label'], '']],
-      layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 12, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-allow-overlap': true, ...hidden },
-      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8, 12, 22, 0.9)', 'text-halo-width': 1.5 } });
+    const kind = (k: string) => ['==', ['get', 'kind'], k] as ['==', ['get', string], string];
+    map.addLayer({ id: 'forecast-cyclone-cone', type: 'fill', source, filter: kind('cone'), layout: hidden,
+      paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.1 } });
+    map.addLayer({ id: 'forecast-cyclone-cone-line', type: 'line', source, filter: kind('cone'), layout: { 'line-join': 'round', ...hidden },
+      paint: { 'line-color': '#ffffff', 'line-opacity': 0.6, 'line-width': 1.2, 'line-dasharray': [3, 2] } });
+    map.addLayer({ id: 'forecast-cyclone-casing', type: 'line', source, filter: kind('segment'), layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden },
+      paint: { 'line-color': 'rgba(8, 12, 22, 0.8)', 'line-width': 6.5 } });
+    map.addLayer({ id: 'forecast-cyclone-track', type: 'line', source, filter: kind('segment'), layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-opacity': ['case', ['get', 'past'], 0.4, 1] } });
+    map.addLayer({ id: 'forecast-cyclone-points', type: 'circle', source, filter: kind('point'), layout: hidden,
+      paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['case', ['get', 'day'], 5.5, 3.5], 'circle-stroke-color': 'rgba(8, 12, 22, 0.9)', 'circle-stroke-width': 1.5,
+        'circle-opacity': ['case', ['get', 'past'], 0.4, 1], 'circle-stroke-opacity': ['case', ['get', 'past'], 0.4, 1] } });
+    map.addLayer({ id: 'forecast-cyclone-labels', type: 'symbol', source, filter: ['all', kind('point'), ['!=', ['get', 'label'], '']],
+      layout: {
+        'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 11.5, 'text-line-height': 1.15,
+        // beside the point on whichever side is free, the strongest first where they crowd
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'], 'text-radial-offset': 0.9, 'text-justify': 'auto',
+        'symbol-sort-key': ['-', 10, ['get', 'rank']], ...hidden,
+      },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8, 12, 22, 0.92)', 'text-halo-width': 1.6 } });
+    map.addLayer({ id: 'forecast-cyclone-now', type: 'circle', source, filter: kind('now'), layout: hidden,
+      paint: { 'circle-color': ['get', 'color'], 'circle-radius': 13, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5, 'circle-opacity': 0.95 } });
+    map.addLayer({ id: 'forecast-cyclone-now-icon', type: 'symbol', source, filter: kind('now'),
+      layout: { 'icon-image': ForecastMapController.CYCLONE_IMAGE, 'icon-size': 0.5, 'icon-allow-overlap': true, 'icon-ignore-placement': true, ...hidden } });
+    map.addLayer({ id: 'forecast-cyclone-now-label', type: 'symbol', source, filter: kind('now'),
+      layout: {
+        'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 12.5,
+        'text-line-height': 1.2, 'text-max-width': 24, 'text-justify': 'auto', ...hidden,
+        // above or below the storm first (the track mostly runs sideways), on whichever side is free; placed before the daily labels, which move aside
+        'text-variable-anchor': ['bottom', 'top', 'left', 'right'], 'text-radial-offset': 1.7,
+      },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(8, 12, 22, 0.95)', 'text-halo-width': 1.8 } });
+  }
+
+  /** A cyclone's symbol (two curved arms around an eye, white with a dark edge), drawn once for the marker of the storm. */
+  private cycloneImage(): ImageData {
+    const size = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const c = size / 2;
+    ctx.translate(c, c);
+    const arm = () => {
+      ctx.beginPath();
+      ctx.moveTo(4, -6);
+      ctx.bezierCurveTo(10, -14, 4, -21, -6, -20);
+      ctx.bezierCurveTo(4, -17, 6, -11, 0, -7);
+      ctx.closePath();
+    };
+    for (const pass of [0, 1]) {
+      for (const turn of [0, Math.PI]) {
+        ctx.save();
+        ctx.rotate(turn);
+        arm();
+        if (pass === 0) {
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = 'rgba(8, 12, 22, 0.85)';
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(8, 12, 22, 0.85)';
+    ctx.stroke();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    return ctx.getImageData(0, 0, size, size);
   }
 
   /** A pink bolt with a dark edge, drawn once for the symbol layer. */
@@ -446,15 +522,28 @@ export class ForecastMapController {
     const map = this.map;
     if (!map) return;
     const on = this.state.cyclones();
+    const time = this.state.timeMs();
     for (const id of ForecastMapController.CYCLONE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
-    if (!on || this.cycloneLoading || Date.now() - this.cycloneLoadedAt < 30 * 60_000) return;
+    if (!on) return;
+    this.drawCyclones(time);
+    if (this.cycloneLoading || Date.now() - this.cycloneLoadedAt < 30 * 60_000) return;
     this.cycloneLoading = true;
     void loadCyclones().then(data => {
       // the 30 minutes count from a load that worked: a failed one is tried again the next time the overlay is looked at
       if (data) this.cycloneLoadedAt = Date.now();
-      if (!this.map || !data) return;
-      (this.map.getSource(ForecastMapController.CYCLONE_SOURCE) as { setData?: (d: unknown) => void } | undefined)?.setData?.(cycloneGeoJson(data));
+      if (!data) return;
+      this.cycloneData = data;
+      this.cycloneDrawnFor = '';
+      this.drawCyclones(this.state.timeMs());
     }).finally(() => (this.cycloneLoading = false));
+  }
+
+  /** The tracks for a time on the bar (each hour once: the cone and the storm's place are worked out for it). */
+  private drawCyclones(timeMs: number | null): void {
+    const key = `${this.cycloneData?.run ?? ''}|${timeMs === null ? '' : Math.round(timeMs / 3_600_000)}`;
+    if (!this.map || !this.cycloneData || key === this.cycloneDrawnFor) return;
+    this.cycloneDrawnFor = key;
+    (this.map.getSource(ForecastMapController.CYCLONE_SOURCE) as { setData?: (d: unknown) => void } | undefined)?.setData?.(cycloneGeoJson(this.cycloneData, timeMs));
   }
 
   private removeIsobarLayers(map: MapLibreMap): void {
