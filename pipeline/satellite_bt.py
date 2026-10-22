@@ -9,8 +9,8 @@ satellite pictures cover (68-97.5 E, 5-37.5 N, the same box, so the two line up 
   red   10.8 um brightness temperature, kelvin = OFFSET_K + value x STEP_K (0 = no data)
   green  3.9 um brightness temperature, the same scale
 
-with an index of the last hour's frames (`bt/index.json`). The workflow (.github/workflows/satellite.yml) publishes the folder to the
-`satellite-data` branch, which the app reads from raw.githubusercontent.com.
+with an index of the last hour's frames (`bt/index.json`). The satellite workflow publishes the folder to the
+GitHub Pages site of gowthamgta/atmos-satellite (its workflow runs this), which the app reads.
 
 The EUMETSAT Data Store needs a (free) consumer key and secret: they are read from the environment (EUMETSAT_CONSUMER_KEY,
 EUMETSAT_CONSUMER_SECRET, set as repository secrets) and never written anywhere. Without them the script says so and does nothing.
@@ -163,7 +163,7 @@ def fetch_new(folder: str, max_new: int, now: datetime) -> list[tuple[datetime, 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", required=True, help="the published folder (the satellite-data branch's working tree)")
+    ap.add_argument("--out", required=True, help="the published folder (the Pages site, restored by satellite_restore.py)")
     ap.add_argument("--max-new", type=int, default=2)
     args = ap.parse_args()
     if not (os.environ.get("EUMETSAT_CONSUMER_KEY") and os.environ.get("EUMETSAT_CONSUMER_SECRET")):

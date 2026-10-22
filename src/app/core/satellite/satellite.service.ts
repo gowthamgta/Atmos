@@ -43,12 +43,8 @@ export interface SatelliteFrame {
  * Measured brightness temperatures of the frames, for the 3D clouds, published by the satellite workflow of gowthamgta/atmos-satellite: Meteosat's (pipeline/satellite_bt.py)
  * first, then Himawari-9's (himawari_bt.py: seen slantwise, parallax-corrected, empty over the west of India).
  */
-const BT_SOURCES = [
-  // served by GitHub Pages from their own repository (gowthamgta/atmos-satellite), so nothing piles up in this one's history
-  ...['bt/', 'bt-h9/'].map(folder => 'https://gowthamgta.github.io/atmos-satellite/' + folder),
-  // the branch they were first published to, until the new home is running
-  ...['bt/', 'bt-h9/'].map(folder => 'https://raw.githubusercontent.com/gowthamgta/Atmos/satellite-data/' + folder),
-];
+// served by GitHub Pages from their own repository (gowthamgta/atmos-satellite), so nothing piles up in this one's history
+const BT_SOURCES = ['bt/', 'bt-h9/'].map(folder => 'https://gowthamgta.github.io/atmos-satellite/' + folder);
 /** A temperature frame counts for a picture within this much of its time. */
 const BT_MATCH_MS = 8 * 60_000;
 
