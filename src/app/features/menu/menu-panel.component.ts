@@ -172,6 +172,7 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                   }
                   <button type="button" (click)="share()"><app-icon name="share" [size]="16" />{{ copied() ? 'Link copied' : 'Share this view' }}</button>
                   <button type="button" (click)="about()"><app-icon name="help" [size]="16" />Help &amp; credits</button>
+                  <a href="clouds/index.html" title="The ten cloud types in 3D at their heights over South India, with today's temperatures"><app-icon name="cloud" [size]="16" />Clouds in 3D</a>
                 </div>
               </section>
 
@@ -266,8 +267,9 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
     .hint { font-size: var(--fs-xs); color: var(--text-muted); }
 
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); }
-    .actions button { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-primary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; text-align: left; }
-    .actions button:hover:not(:disabled):not([aria-pressed='true']) { background: var(--surface-4); }
+    .actions a { text-decoration: none; }
+    .actions button, .actions a { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--hit); padding: 0 var(--sp-3); border: 0; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-primary); font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer; text-align: left; }
+    .actions button:hover:not(:disabled):not([aria-pressed='true']), .actions a:hover { background: var(--surface-4); }
     .actions button[aria-pressed='true'], .actions button[aria-pressed='true']:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
     .actions button:disabled { opacity: 0.6; cursor: progress; }
     .report { margin-top: var(--sp-3); padding: var(--sp-3); border-radius: var(--radius-m); background: var(--surface-3); }

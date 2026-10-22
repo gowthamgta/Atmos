@@ -45,6 +45,9 @@ fingerprint only together with this file, on the owner's request.
   not used (its charts are not open data).
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.
 - The Clouds layer was left out on purpose (6cddf45).
+- **Clouds in 3D** (public/clouds/, linked from Settings > Map): the owner asked for a realistic 3D presentation of the cloud types. It is
+  a standalone WebGL 2 page outside the Angular bundle (the service worker leaves /clouds alone). Heights are the WMO Cloud Atlas tropical
+  levels; temperatures come from the day's GFS profile over Chennai (Open-Meteo); clouds are ray-marched volumes drawn to scale.
 - UI: modelled on Windy (dark) and meteoblue (light); colours only through the tokens in `src/styles.css`; no text under 11 px (a test
   enforces it).
 - Personal, non-commercial project; every data source must stay free with no billing account.

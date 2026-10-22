@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <title>Clouds in 3D · AtmosIQ</title>
+  <meta name="description" content="The ten cloud types in 3D at their real heights over South India, with today's temperatures over Chennai.">
+  <link rel="icon" href="../favicon.ico">
+  <style>
+    :root {
+      --bg: #0b1220;
+      --glass: rgba(14, 20, 34, 0.78);
+      --line: rgba(255, 255, 255, 0.12);
+      --text: #eef2f8;
+      --muted: #a9b4c6;
+      --accent: #60a5fa;
+      --warm: #fbbf24;
+      --cold: #93c5fd;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+    canvas:active { cursor: grabbing; }
+
+    .top { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 3; }
+    .top > * { pointer-events: auto; }
+    .back { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 18px; background: var(--glass); border: 1px solid var(--line);
+      color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600; backdrop-filter: blur(10px); }
+    .title { font-size: 15px; font-weight: 700; letter-spacing: 0.01em; text-shadow: 0 1px 4px rgba(0,0,0,0.6); }
+    .title small { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+
+    .panel { position: fixed; z-index: 3; left: 12px; bottom: 76px; width: min(380px, calc(100vw - 24px)); max-height: calc(100vh - 160px); overflow-y: auto;
+      padding: 14px 16px 12px; border-radius: 16px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px);
+      transition: opacity 0.35s ease, transform 0.35s ease; }
+    .panel.leaving { opacity: 0; transform: translateY(8px); }
+    .kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+    .panel h1 { margin: 2px 0 2px; font-size: 22px; line-height: 1.2; }
+    .latin { font-size: 12.5px; color: var(--muted); font-style: italic; }
+    .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0 8px; font-size: 13px; }
+    .facts dt { color: var(--muted); }
+    .facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .temp-warm { color: var(--warm); }
+    .temp-cold { color: var(--cold); }
+    .panel p { margin: 6px 0; font-size: 13.5px; line-height: 1.5; color: #dbe3ee; }
+    .panel .note { font-size: 12px; color: var(--muted); }
+    .src { font-size: 11px; color: var(--muted); margin-top: 8px; }
+    .src a { color: var(--muted); }
+
+    .nav { position: fixed; z-index: 3; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px;
+      padding: 6px; border-radius: 26px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px); max-width: calc(100vw - 24px); }
+    .nav button { min-width: 40px; height: 40px; border-radius: 20px; border: 0; background: rgba(255,255,255,0.08); color: var(--text); font: 600 13px var(--font); cursor: pointer; padding: 0 12px; }
+    .nav button:hover { background: rgba(255,255,255,0.16); }
+    .nav button[aria-pressed="true"] { background: var(--accent); color: #0b1220; }
+    .dots { display: flex; gap: 5px; padding: 0 6px; }
+    .dots button { width: 9px; min-width: 9px; height: 9px; padding: 0; border-radius: 50%; background: rgba(255,255,255,0.28); }
+    .dots button.on { background: var(--text); }
+
+    .ruler { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+    .tick { position: absolute; transform: translate(-100%, -50%); font-size: 11px; font-weight: 600; white-space: nowrap; padding-right: 8px;
+      color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.9); font-variant-numeric: tabular-nums; }
+    .tick::after { content: ''; position: absolute; right: 0; top: 50%; width: 6px; height: 1px; background: rgba(255,255,255,0.7); }
+    .tick.freeze { color: var(--cold); }
+    .tick.ice { color: #c4b5fd; }
+    .tick.trop { color: var(--warm); }
+    .tick .t { font-weight: 500; opacity: 0.8; margin-left: 4px; }
+    .tick.r { transform: translate(0, -50%); padding: 0 0 0 8px; }
+    .tick.r::after { left: 0; right: auto; }
+    .tag { position: absolute; transform: translate(-50%, -100%); font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 10px;
+      background: rgba(11, 18, 32, 0.72); border: 1px solid var(--line); white-space: nowrap; }
+
+    .loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 5; background: var(--bg); transition: opacity 0.6s; }
+    .loading.done { opacity: 0; pointer-events: none; }
+    .loading div { text-align: center; color: var(--muted); font-size: 13px; }
+    .loading strong { display: block; color: var(--text); font-size: 16px; margin-bottom: 6px; }
+    .fail { max-width: 420px; padding: 20px; }
+
+    @media (max-width: 700px) {
+      .panel { bottom: 70px; max-height: 42vh; padding: 12px 14px 10px; }
+      .panel h1 { font-size: 19px; }
+      .panel p { font-size: 13px; }
+      .nav .dots { display: none; }
+      .title small { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="sky" aria-label="Clouds in 3D: drag to look around, scroll or pinch to move closer"></canvas>
+  <div class="ruler" id="ruler" aria-hidden="true"></div>
+
+  <div class="top">
+    <a class="back" href="../">← Map</a>
+    <div class="title">Clouds in 3D<small id="sounding">Heights for South India · loading today's temperatures over Chennai…</small></div>
+  </div>
+
+  <section class="panel" id="panel" aria-live="polite"></section>
+
+  <nav class="nav" aria-label="Slides">
+    <button type="button" id="prev" aria-label="Previous cloud">‹</button>
+    <div class="dots" id="dots"></div>
+    <button type="button" id="next" aria-label="Next cloud">›</button>
+    <button type="button" id="play" aria-pressed="false" title="Tour the clouds by itself">Tour</button>
+  </nav>
+
+  <div class="loading" id="loading"><div><strong>Building the sky…</strong>Making the 3D noise the clouds are shaped from</div></div>
+
+  <script type="module" src="./clouds.js"></script>
+</body>
+</html>
