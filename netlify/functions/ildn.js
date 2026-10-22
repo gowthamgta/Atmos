@@ -3,7 +3,8 @@
 //
 // Their terms: free for non-commercial use, with attribution, and the data must not be modified. The bytes are passed through untouched.
 // A plain Netlify rewrite to ildn.in did not work (every path answered with the app's own page), so the server fetches it here. The answer
-// is kept at the edge for ten seconds, so ILDN is asked about every ten seconds in all, however many people look.
+// is kept at the edge for five seconds, so ILDN is asked at most every five seconds in all, however many people look (it publishes a new
+// batch of strokes about every 30-45 seconds).
 
 exports.handler = async function (event) {
   const params = new URLSearchParams(event.rawQuery || '');
@@ -28,8 +29,8 @@ exports.handler = async function (event) {
       headers: {
         'Content-Type': 'application/octet-stream',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=5',
-        'Netlify-CDN-Cache-Control': 'public, s-maxage=10, stale-while-revalidate=30'
+        'Cache-Control': 'public, max-age=2',
+        'Netlify-CDN-Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10'
       },
       body: bytes.toString('base64')
     };

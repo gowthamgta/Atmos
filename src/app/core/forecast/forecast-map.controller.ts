@@ -8,7 +8,7 @@ import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
 import { CycloneData, cycloneGeoJson, loadCyclones } from './cyclone-tracks';
-import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, lightningGeoJson, lightningShown, loadLightning } from './lightning';
+import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, lightningGeoJson, lightningShown, loadLightning, markArrivals } from './lightning';
 import { MapLayerService } from '../services/map-layer.service';
 import type { Stroke } from './lightning';
 import { decodeFieldBitmap } from './field-decode';
@@ -78,7 +78,7 @@ export class ForecastMapController {
   private static readonly LIGHTNING_LAYER = 'forecast-lightning-bolts';
   private static readonly LIGHTNING_IMAGE = 'lightning-bolt';
   private static readonly LIGHTNING_FLASH = 'forecast-lightning-flash';
-  private static readonly LIGHTNING_REFRESH_MS = 10_000;
+  private static readonly LIGHTNING_REFRESH_MS = 5_000;
   private static readonly LIGHTNING_TICK_MS = 1_000;
   private static readonly ISOBAR_SOURCE = 'forecast-isobars';
   private static readonly ISOBAR_MIN_INTERVAL_MS = 150;
@@ -451,14 +451,14 @@ export class ForecastMapController {
     const bolt: unknown[] = ['step', ['get', 'age'], `${ForecastMapController.LIGHTNING_IMAGE}-0`];
     LIGHTNING_AGE_COLOURS.slice(1).forEach(([from], i) => bolt.push(from, `${ForecastMapController.LIGHTNING_IMAGE}-${i + 1}`));
     map.addSource(source, { type: 'geojson', data: lightningGeoJson([]) });
-    // a new strike flashes: a ring that grows and fades over its first ten seconds
+    // a strike flashes when it first arrives (ILDN's strokes come 45 s old or more): a ring that grows and fades over ten seconds
     map.addLayer({
-      id: ForecastMapController.LIGHTNING_FLASH, type: 'circle', source, filter: ['<', ['get', 'age'], 10],
+      id: ForecastMapController.LIGHTNING_FLASH, type: 'circle', source, filter: ['<', ['get', 'arrived'], 10],
       layout: { visibility: 'none' },
       paint: {
         'circle-color': 'rgba(255, 255, 255, 0)', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2,
-        'circle-radius': ['interpolate', ['linear'], ['get', 'age'], 0, 6, 10, 28],
-        'circle-stroke-opacity': ['interpolate', ['linear'], ['get', 'age'], 0, 0.95, 10, 0],
+        'circle-radius': ['interpolate', ['linear'], ['get', 'arrived'], 0, 6, 10, 28],
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['get', 'arrived'], 0, 0.95, 10, 0],
       },
     });
     map.addLayer({
@@ -488,8 +488,10 @@ export class ForecastMapController {
     this.lightningLoading = true;
     void loadLightning().then(strokes => {
       if (!this.map || !strokes) return;
-      this.lightningStrokes = strokes;
-      this.lightningFetchedAt = Date.now();
+      const now = Date.now();
+      const known = ageStrokes(this.lightningStrokes, (now - this.lightningFetchedAt) / 1000);
+      this.lightningStrokes = markArrivals(strokes, known, 0, this.lightningFetchedAt === 0);
+      this.lightningFetchedAt = now;
       this.drawLightning();
     }).finally(() => (this.lightningLoading = false));
   }
@@ -498,9 +500,12 @@ export class ForecastMapController {
     if (this.lightningTimer) clearInterval(this.lightningTimer);
     if (this.lightningTick) clearInterval(this.lightningTick);
     this.lightningTimer = this.lightningTick = null;
+    // the next start is a first poll again: its strokes do not all flash
+    this.lightningStrokes = [];
+    this.lightningFetchedAt = 0;
   }
 
-  /** Shows the bolts while the radar or the satellite is on: fetched now and every ten seconds, redrawn every second (nothing runs while it is off). */
+  /** Shows the bolts while the radar or the satellite is on: fetched now and every five seconds, redrawn every second (nothing runs while it is off). */
   private updateLightning(): void {
     const map = this.map;
     if (!map) return;

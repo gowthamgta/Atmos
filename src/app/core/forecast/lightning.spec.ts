@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
+import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, markArrivals, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
 
 /** A response of the shape ILDN sends: [time f64, lat f32, lon f32, age f32, (4 bytes), id u64] per stroke. */
 function response(strokes: { lat: number; lon: number; age: number }[]): ArrayBuffer {
@@ -61,5 +61,16 @@ describe('lightning strokes', () => {
     expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: true }])).toBe(true);
     expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: false }, { id: 'gibs', active: true }])).toBe(false);
     expect(lightningShown([])).toBe(false);
+  });
+  it('flashes a stroke when it first arrives, not every bolt on the first poll', () => {
+    const a = { lat: 10, lon: 78, ageS: 60, t: 1000 };
+    const b = { lat: 11, lon: 79, ageS: 50, t: 1010 };
+    const first = markArrivals([a], [], 0, true);
+    expect(first[0].arrivedS).toBe(999);                               // opening the map: nothing flashes
+    const known = ageStrokes(first, 5);
+    const next = markArrivals([{ ...a, ageS: 65 }, b], known, 0, false);
+    expect(next.find(s => s.t === 1010)!.arrivedS).toBe(0);              // new: flashes now
+    expect(next.find(s => s.t === 1000)!.arrivedS).toBeGreaterThan(10);  // known: no flash again
+    expect(lightningGeoJson(next).features.map(f => f.properties.arrived)).toContain(0);
   });
 });
