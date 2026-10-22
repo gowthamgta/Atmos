@@ -48,10 +48,12 @@ def merc_y(lat: np.ndarray | float) -> np.ndarray | float:
     return R_EARTH_M * np.log(np.tan(np.pi / 4 + np.radians(lat) / 2))
 
 
-def grid(res_m: float) -> dict:
-    """The Mercator grid over the box: its size, extent (metres) and each cell's centre (lat, lon) and a place -> (row, col) function."""
-    x0, x1 = R_EARTH_M * math.radians(WEST), R_EARTH_M * math.radians(EAST)
-    y0, y1 = merc_y(SOUTH), merc_y(NORTH)
+def grid(res_m: float, box: tuple[float, float, float, float] = (WEST, EAST, SOUTH, NORTH)) -> dict:
+    """The Mercator grid over a box (west, east, south, north): its size, extent (metres), each cell's centre (lat, lon) and a place ->
+    (row, col) function."""
+    west, east, south, north = box
+    x0, x1 = R_EARTH_M * math.radians(west), R_EARTH_M * math.radians(east)
+    y0, y1 = merc_y(south), merc_y(north)
     cols, rows = round((x1 - x0) / res_m), round((y1 - y0) / res_m)
     dx, dy = (x1 - x0) / cols, (y1 - y0) / rows
     xs = x0 + (np.arange(cols) + 0.5) * dx
@@ -191,7 +193,10 @@ def make_scan(files: list[str], t: datetime, folder: str) -> dict:
     return out
 
 
-def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime) -> dict:
+def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime, box: tuple[float, float, float, float] = (WEST, EAST, SOUTH, NORTH),
+                 res: tuple[float, float] = (RES_M, DATA_RES_M),
+                 source: str = "JMA Himawari-9 AHI (NOAA open data on AWS); parallax-corrected; empty beyond 72 degrees view angle",
+                 channels: dict | None = None) -> dict:
     """The index with the new frames and without those older than the hour (their files deleted)."""
     path = os.path.join(folder, "index.json")
     frames: dict[str, dict] = {}
@@ -212,14 +217,14 @@ def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime) -
     for name in os.listdir(folder):
         if name != "index.json" and name not in used:
             os.remove(os.path.join(folder, name))
-    g, gd = grid(RES_M), grid(DATA_RES_M)
+    g, gd = grid(res[0], box), grid(res[1], box)
     index = {
         "version": 1,
-        "source": "JMA Himawari-9 AHI (NOAA open data on AWS); parallax-corrected; empty beyond 72 degrees view angle",
-        "bounds": {"west": WEST, "east": EAST, "south": SOUTH, "north": NORTH},
+        "source": source,
+        "bounds": {"west": box[0], "east": box[1], "south": box[2], "north": box[3]},
         "projection": "EPSG:3857",
         "size": {"pictures": [g["cols"], g["rows"]], "data": [gd["cols"], gd["rows"]]},
-        "data": {"minK": DATA_MIN_K, "spanK": DATA_SPAN_K, "channels": {"r": "B13 10.4 um", "g": "B08 6.2 um", "b": "B10 7.3 um"}},
+        "data": {"minK": DATA_MIN_K, "spanK": DATA_SPAN_K, "channels": channels or {"r": "B13 10.4 um", "g": "B08 6.2 um", "b": "B10 7.3 um"}},
         "frames": [{"time": t, "files": keep[t]} for t in sorted(keep)],
     }
     with open(path, "w") as f:

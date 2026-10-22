@@ -11,7 +11,7 @@ import argparse, json, os, sys
 
 import requests
 
-FOLDERS = ("bt", "bt-h9", "rgb-h9")
+FOLDERS = ("bt", "bt-h9", "rgb-h9", "rgb-msg")
 
 
 def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:

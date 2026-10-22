@@ -116,8 +116,9 @@ def read_native(path: str) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(local["IR_108"].values, float), np.asarray(local["IR_039"].values, float)
 
 
-def fetch_new(folder: str, max_new: int, now: datetime) -> list[tuple[datetime, str]]:
-    """Download and grid the newest products not yet in the folder (at most max_new)."""
+def fetch_new(folder: str, max_new: int, now: datetime, rgb_folder: str | None = None) -> tuple[list[tuple[datetime, str]], list[tuple[datetime, dict]]]:
+    """Download and grid the newest products not yet in the folder (at most max_new); with `rgb_folder`, the newest of them also makes our
+    own pictures (meteosat_rgb.py) from the same file. Returns the new temperature frames and the new picture frames."""
     import eumdac
     key, secret = os.environ.get("EUMETSAT_CONSUMER_KEY"), os.environ.get("EUMETSAT_CONSUMER_SECRET")
     token = eumdac.AccessToken((key, secret))
@@ -139,6 +140,7 @@ def fetch_new(folder: str, max_new: int, now: datetime) -> list[tuple[datetime, 
     products.sort(key=lambda p: p.sensing_end, reverse=True)
     done = set(os.listdir(folder))
     new = []
+    rgb_new: list[tuple[datetime, dict]] = []
     for product in products:
         if len(new) >= max_new:
             break
@@ -156,15 +158,25 @@ def fetch_new(folder: str, max_new: int, now: datetime) -> list[tuple[datetime, 
                 while chunk := src.read(1 << 20):
                     dst.write(chunk)
             ir108, ir039 = read_native(path)
+            if rgb_folder is not None and not rgb_new:
+                try:
+                    import meteosat_rgb
+                    rgb_new.append((t, meteosat_rgb.make_scan(path, t, rgb_folder)))
+                    print(f"{t:%Y-%m-%d %H:%M}Z: pictures {sorted(rgb_new[-1][1])}")
+                except Exception as e:      # the temperatures are still published
+                    import traceback
+                    where = traceback.extract_tb(e.__traceback__)[-1]
+                    print(f"::error::Meteosat pictures: {type(e).__name__}: {e} (at {os.path.basename(where.filename)}:{where.lineno} {where.name})")
         new.append((t, write_frame(folder, t, ir108, ir039)))
         print(f"{t:%Y-%m-%d %H:%M}Z: written ({np.nanmin(ir108):.0f}-{np.nanmax(ir108):.0f} K at 10.8 um)")
-    return new
+    return new, rgb_new
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="the published folder (the Pages site, restored by satellite_restore.py)")
     ap.add_argument("--max-new", type=int, default=2)
+    ap.add_argument("--pictures", action="store_true", help="also make our own pictures (meteosat_rgb.py) into rgb-msg/")
     args = ap.parse_args()
     if not (os.environ.get("EUMETSAT_CONSUMER_KEY") and os.environ.get("EUMETSAT_CONSUMER_SECRET")):
         print("::notice::EUMETSAT_CONSUMER_KEY / EUMETSAT_CONSUMER_SECRET are not set: nothing to do")
@@ -173,7 +185,8 @@ def main() -> int:
     os.makedirs(folder, exist_ok=True)
     now = datetime.now(timezone.utc)
     try:
-        new = fetch_new(folder, args.max_new, now)
+        rgb_folder = os.path.join(args.out, "rgb-msg") if args.pictures else None
+        new, rgb_new = fetch_new(folder, args.max_new, now, rgb_folder)
     except SystemExit:
         raise
     except Exception as e:
@@ -184,6 +197,11 @@ def main() -> int:
         raise
     index = update_index(folder, new, now)
     print(f"{len(new)} new, {len(index['frames'])} kept")
+    if rgb_folder is not None:
+        import meteosat_rgb
+        os.makedirs(rgb_folder, exist_ok=True)
+        rgb_index = meteosat_rgb.update_index(rgb_folder, rgb_new, now)
+        print(f"pictures: {len(rgb_new)} new, {len(rgb_index['frames'])} kept")
     return 0
 
 

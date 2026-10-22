@@ -37,15 +37,15 @@ GEO_R = 42164.0
 KM_PER_DEG = 111.32
 
 
-def view_geometry(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def view_geometry(lat: np.ndarray, lon: np.ndarray, sub_lon: float = SUB_LON) -> tuple[np.ndarray, np.ndarray]:
     """The satellite's zenith angle (degrees) and the bearing toward the sub-satellite point (radians from north) at each place."""
     phi = np.radians(lat)
-    dl = np.radians(SUB_LON - lon)
+    dl = np.radians(sub_lon - lon)
     cos_g = np.cos(phi) * np.cos(dl)
     g = np.arccos(np.clip(cos_g, -1, 1))
     d = np.sqrt(EARTH_R ** 2 + GEO_R ** 2 - 2 * EARTH_R * GEO_R * cos_g)
     zenith = np.degrees(np.arcsin(np.clip(GEO_R * np.sin(g) / d, -1, 1)))
-    bearing = np.arctan2(np.sin(dl), -np.sin(phi) * np.cos(dl))   # toward (0, SUB_LON)
+    bearing = np.arctan2(np.sin(dl), -np.sin(phi) * np.cos(dl))   # toward (0, sub_lon)
     return zenith, bearing
 
 
@@ -55,13 +55,14 @@ def cloud_height_km(kelvin: np.ndarray) -> np.ndarray:
     return np.where(np.isfinite(t) & (t < 24), np.clip((28 - t) / 6.2, 0, 17.5), 0.0)
 
 
-def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarray, lon: np.ndarray, to_rc=None) -> tuple[np.ndarray, list[np.ndarray]]:
+def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarray, lon: np.ndarray, to_rc=None,
+                     sub_lon: float = SUB_LON, max_view: float = MAX_VIEW_DEG) -> tuple[np.ndarray, list[np.ndarray]]:
     """Each cloudy pixel moved toward the satellite by its height x tan(view angle); the coldest wins where several land; the holes left
     behind filled from the warmest neighbours. Cells seen beyond MAX_VIEW_DEG are emptied (NaN). `lat`/`lon` are the cells' centres;
     `to_rc(lat, lon)` gives the (fractional) row and column of a place, for a grid whose rows are not evenly spaced in latitude (Mercator);
-    by default the rows and columns are taken as even steps."""
+    by default the rows and columns are taken as even steps. `sub_lon` is the satellite's longitude (Himawari by default)."""
     rows, cols = ir108.shape
-    zenith, bearing = view_geometry(lat, lon)
+    zenith, bearing = view_geometry(lat, lon, sub_lon)
     shift = cloud_height_km(ir108) * np.tan(np.radians(np.minimum(zenith, 85)))
     true_lat = lat + shift * np.cos(bearing) / KM_PER_DEG
     true_lon = lon + shift * np.sin(bearing) / (KM_PER_DEG * np.cos(np.radians(lat)))
@@ -105,7 +106,7 @@ def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarra
         out[fill] = best[fill]
         for o, bo in zip(outs, best_others):
             o[fill] = bo[fill]
-    far = zenith > MAX_VIEW_DEG
+    far = zenith > max_view
     out[far] = np.nan
     for o in outs:
         o[far] = np.nan

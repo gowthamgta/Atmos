@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+import himawari_bt as H
 import himawari_rgb as G
 
 
@@ -53,3 +54,28 @@ def test_index_keeps_whole_recent_frames(tmp_path):
     assert [f["time"] for f in index["frames"]] == ["2026-10-22T06:20:00Z"]
     assert sorted(os.listdir(folder)) == ["a.webp", "b.png", "index.json"]
     assert index["bounds"] == {"west": 75.0, "east": 97.5, "south": 5.0, "north": 30.0}
+
+
+def test_meteosat_pictures_helpers():
+    import meteosat_rgb as M
+    a = np.array([[1.0, 1.0, 1.0], [1.0, np.nan, 1.0], [1.0, 1.0, 4.0]])
+    b = M.box_blur(a, 1)
+    assert np.isfinite(b).all() and abs(b[1, 1] - 11 / 8) < 1e-9          # the NaN left out of the mean
+    rgb = np.full((3, 3, 3), 0.5)
+    hrv = np.array([[0.2, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, np.nan]])
+    s = M.sharpen(rgb, hrv, r=1)
+    assert s[1, 1, 0] > 0.5 and s[0, 0, 0] < 0.5                          # the HRV's detail comes through
+    assert np.allclose(s[2, 2], 0.5)                                       # no HRV: unchanged
+    g = G.grid(M.RES_M, M.BOX)
+    assert (g["cols"], g["rows"]) == (2627, 3161)
+    z, _ = H.view_geometry(np.array([13.0]), np.array([80.3]), M.SUB_LON)
+    assert 35 < z[0] < 45                                                  # Chennai, seen from 45.5 E
+
+
+def test_parallax_toward_meteosat_moves_tops_west():
+    lat = np.repeat((15.0 - np.arange(40) * 0.03)[:, None], 60, 1)
+    lon = np.repeat((80.0 + np.arange(60) * 0.03)[None, :], 40, 0)
+    t = np.full(lat.shape, 300.0)
+    t[18:22, 40:44] = 200.0
+    out, _ = H.parallax_correct(t, [], lat, lon, sub_lon=45.5, max_view=80)
+    assert np.argwhere(out < 250)[:, 1].max() < 40                          # moved west, toward the satellite
