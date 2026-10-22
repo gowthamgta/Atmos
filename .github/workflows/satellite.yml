@@ -5,6 +5,8 @@ name: satellite
 # the last hour kept. Published to the `satellite-data` branch as a single commit replaced each run (the repository does not grow);
 # the app reads it from raw.githubusercontent.com. Needs the repository secrets EUMETSAT_CONSUMER_KEY and EUMETSAT_CONSUMER_SECRET
 # (a free Data Store account); without them each run only says so.
+# Himawari-9 (pipeline/himawari_bt.py, NOAA's open copy on AWS, no key) is published beside it in bt-h9/: seen slantwise from 140.7 E,
+# parallax-corrected, empty over the west of India; the app uses it where Meteosat's is missing.
 on:
   schedule:
     - cron: "4,19,34,49 * * * *"     # a few minutes after each 15-minute scan is complete
@@ -20,7 +22,7 @@ permissions:
 jobs:
   satellite:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 14
     steps:
       - uses: actions/checkout@v7
       # the frames published so far (absent on the very first run)
@@ -36,24 +38,29 @@ jobs:
       - run: pip install -r pipeline/requirements-satellite.txt
       - name: Tests
         working-directory: pipeline
-        run: python -m pytest -q tests/test_satellite_bt.py
-      - name: Brightness temperatures
+        run: python -m pytest -q tests/test_satellite_bt.py tests/test_himawari_bt.py
+      - name: Brightness temperatures (Meteosat)
+        continue-on-error: true      # Himawari is still published when the Data Store refuses
         working-directory: pipeline
         env:
           EUMETSAT_CONSUMER_KEY: ${{ secrets.EUMETSAT_CONSUMER_KEY }}
           EUMETSAT_CONSUMER_SECRET: ${{ secrets.EUMETSAT_CONSUMER_SECRET }}
         run: python satellite_bt.py --out ../bt-site
+      - name: Brightness temperatures (Himawari-9)
+        continue-on-error: true
+        working-directory: pipeline
+        run: python himawari_bt.py --out ../bt-site
       - name: Publish
         working-directory: bt-site
         run: |
-          [ -f bt/index.json ] || { echo "nothing to publish"; exit 0; }
+          ls bt*/index.json >/dev/null 2>&1 || { echo "nothing to publish"; exit 0; }
           # a fresh one-commit history each time, so old frames do not pile up in the repository
           tmp=$(mktemp -d)
-          cp -r bt "$tmp/"
+          cp -r bt* "$tmp/"
           cd "$tmp"
           git init -q -b satellite-data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bt
+          git add .
           git commit -q -m "Brightness temperatures $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" satellite-data
