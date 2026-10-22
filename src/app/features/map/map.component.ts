@@ -19,6 +19,7 @@ import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite
 import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
+import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
 import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
@@ -138,8 +139,11 @@ export class MapComponent implements OnInit, OnDestroy {
     const position = this.satellite.position();
     const opacity = this.satellite.opacity();
     const kind = this.satellite.current()?.product.id;
+    const threeD = this.satellite.threeD();
+    const heightScale = this.satellite.heightScale();
     if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteOverlay(on, frames, position, opacity);
+    this.updateSatelliteOverlay(on, frames, position, threeD ? 0 : opacity);
+    this.updateCloudVolume(on && threeD, frames, position, opacity, heightScale);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
   });
 
@@ -149,8 +153,9 @@ export class MapComponent implements OnInit, OnDestroy {
     const position = this.satellite.position();
     const opacity = this.satellite.opacity();
     const kind = this.satellite.current()?.product.id;
+    const threeD = this.satellite.threeD();
     if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteDetailLayer(shown, position, opacity, kind);
+    this.updateSatelliteDetailLayer(threeD ? null : shown, position, opacity, kind);
   });
 
   // Reactive Effect: high-detail (250 m) true-colour satellite tiles from NASA GIBS
@@ -541,6 +546,8 @@ export class MapComponent implements OnInit, OnDestroy {
   }
 
   private removeSatelliteLayers(): void {
+    if (this.map && this.cloudVolume && this.map.getLayer(this.cloudVolume.id)) this.map.removeLayer(this.cloudVolume.id);
+    this.cloudVolume = null;
     if (this.map && this.satelliteDetailLayer && this.map.getLayer(this.satelliteDetailLayer.id)) this.map.removeLayer(this.satelliteDetailLayer.id);
     this.satelliteDetailLayer = null;
     this.satelliteDetailKeys = '';
@@ -574,6 +581,37 @@ export class MapComponent implements OnInit, OnDestroy {
     }
     this.satelliteLayer.setFlows(this.satellite.flows());
     this.satelliteLayer.setPosition(position, opacity);
+  }
+
+  // --- The live clouds in 3D (cloud-volume.layer.ts): the flat picture steps aside and the map tilts to show their heights ---
+
+  private cloudVolume: CloudVolumeLayer | null = null;
+  private tiltedFor3D = false;
+
+  private updateCloudVolume(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number, heightScale: number): void {
+    const map = this.map;
+    if (!map) return;
+    if (!on) {
+      if (this.cloudVolume && map.getLayer(this.cloudVolume.id)) map.removeLayer(this.cloudVolume.id);
+      this.cloudVolume = null;
+      if (this.tiltedFor3D) {
+        this.tiltedFor3D = false;
+        map.easeTo({ pitch: 0, duration: 900 });
+      }
+      return;
+    }
+    if (!this.cloudVolume) {
+      this.cloudVolume = new CloudVolumeLayer();
+      map.addLayer(this.cloudVolume, this.observationAnchorId());
+    }
+    if (!this.tiltedFor3D) {
+      this.tiltedFor3D = true;
+      if (map.getPitch() < 30) map.easeTo({ pitch: 55, duration: 1200 });
+    }
+    this.cloudVolume.setFrames(frames.map(f => ({ key: f.url, field: f.cloudField ?? null, timeMs: f.timeMs })));
+    this.cloudVolume.setFlows(this.satellite.flows());
+    this.cloudVolume.setHeightScale(heightScale);
+    this.cloudVolume.setPosition(position, opacity);
   }
 
   /**

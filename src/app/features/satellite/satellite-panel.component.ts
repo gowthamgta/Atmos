@@ -58,6 +58,21 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
             <button type="button" [class.on]="!sat.infraredOnly() && !night()" [attr.aria-pressed]="!sat.infraredOnly()" [disabled]="night()" (click)="sat.setInfrared(false)" [title]="night() ? nightHint : ''">Visible</button>
             <button type="button" [class.on]="sat.infraredOnly() || night()" [attr.aria-pressed]="sat.infraredOnly() || night()" [disabled]="night()" (click)="sat.setInfrared(true)" [title]="night() ? nightHint : 'Infrared: cloud-top temperature, day and night'">Infrared</button>
           </div>
+          <div class="channel view3d" role="group" aria-label="View">
+            <button type="button" [class.on]="!sat.threeD()" [attr.aria-pressed]="!sat.threeD()" (click)="sat.setThreeD(false)">Flat</button>
+            <button type="button" [class.on]="sat.threeD()" [attr.aria-pressed]="sat.threeD()" (click)="sat.setThreeD(true)" title="The clouds of the live picture in 3D at their heights: tops from the infrared temperature, thickness from the visible brightness">3D clouds</button>
+          </div>
+          @if (sat.threeD()) {
+            <div class="heights">
+              <span>Heights</span>
+              <div class="channel" role="group" aria-label="Height scale">
+                @for (k of heightScales; track k) {
+                  <button type="button" [class.on]="sat.heightScale() === k" [attr.aria-pressed]="sat.heightScale() === k" (click)="sat.setHeightScale(k)" [title]="k === 1 ? 'True scale' : 'Heights stretched ' + k + ' times'">{{ k === 1 ? 'True' : '×' + k }}</button>
+                }
+              </div>
+            </div>
+            <p class="hint3d">Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
+          }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
@@ -122,6 +137,10 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
     .channel button { flex: 1; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-weight: 600; cursor: pointer; }
     .channel.off button { opacity: 0.5; cursor: default; }
     .channel button.on { background: var(--accent); color: #fff; }
+    .view3d { margin-top: 6px; }
+    .heights { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+    .heights .channel { flex: 1; margin-top: 0; }
+    .hint3d { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
     .ends { display: flex; justify-content: space-between; font-size: var(--fs-xs); color: var(--text-muted); margin-top: 2px; }
@@ -189,6 +208,7 @@ export class SatellitePanelComponent {
     return isTwilightTime(f.timeMs) ? 'twilight HRV + infrared' : 'daylight, HRV';
   });
   protected readonly sourceLabel = SATELLITE_NAME;
+  protected readonly heightScales = [1, 3, 6] as const;
   protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. The Infrared switch shows the infrared by day too. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();

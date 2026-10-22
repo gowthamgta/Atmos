@@ -1,5 +1,6 @@
 import { Injectable, computed, signal } from '@angular/core';
 import type { SatelliteWorkerRequest, SatelliteWorkerResponse, SatelliteFlowRequest } from './satellite.worker';
+import type { CloudField } from './cloud-field';
 import { isPhone } from '../ui/device-profile';
 import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
@@ -34,6 +35,8 @@ export interface SatelliteFrame {
   lumaGrid?: Uint8Array;
   /** How much cloud is where, for the loop's motion between pictures (satellite-flow.ts). */
   motion?: MotionGrid;
+  /** The clouds' cover, top and base heights and thickness on a coarse grid, for the 3D view (cloud-field.ts). */
+  cloudField?: CloudField;
 }
 
 /** Time a picture is shown while playing, and the pause on the newest picture before the loop restarts. */
@@ -77,6 +80,10 @@ export class SatelliteService {
   readonly active = signal(false);
   /** Show the infrared picture also by day (the switch in the panel); off: the visible HRV by day, infrared at night. */
   readonly infraredOnly = signal(readFlag('atmosiq.satellite.infrared', false));
+  /** The clouds drawn in 3D at their heights over a tilted map (rendering/cloud-volume.layer.ts) instead of the flat picture. */
+  readonly threeD = signal(readFlag('atmosiq.satellite.3d', false));
+  /** How much the 3D view stretches heights: 1 is true scale (a 16 km storm is a sliver at country zoom), 3 or 6 make height readable. */
+  readonly heightScale = signal(readHeightScale());
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -117,6 +124,20 @@ export class SatelliteService {
     this.infraredOnly.set(on);
     writeFlag('atmosiq.satellite.infrared', on);
     if (this.active()) void this.load();
+  }
+
+  setThreeD(on: boolean): void {
+    this.threeD.set(on);
+    writeFlag('atmosiq.satellite.3d', on);
+  }
+
+  setHeightScale(scale: number): void {
+    this.heightScale.set(scale);
+    try {
+      localStorage.setItem('atmosiq.satellite.heightScale', String(scale));
+    } catch {
+      // not remembered
+    }
   }
 
   /** Start (or resume) fetching; looks for newer pictures every couple of minutes while on. */
@@ -284,7 +305,7 @@ export class SatelliteService {
         URL.revokeObjectURL(res.url);
         return;
       }
-      this.preview = { timeMs, product, url: res.url, lumaGrid: res.lumaGrid, motion: res.motion };
+      this.preview = { timeMs, product, url: res.url, lumaGrid: res.lumaGrid, motion: res.motion, cloudField: res.cloudField };
       this.frames.set([this.preview]);
       this.position.set(0);
     } catch {
@@ -332,7 +353,7 @@ export class SatelliteService {
           return null;
         }
         if (res.lumaGrid) raw.lumaGrid = res.lumaGrid;
-        return { timeMs: raw.timeMs, product: raw.product, url: res.url, lumaGrid: raw.lumaGrid, motion: res.motion };
+        return { timeMs: raw.timeMs, product: raw.product, url: res.url, lumaGrid: raw.lumaGrid, motion: res.motion, cloudField: res.cloudField };
       });
       this.built.set(rawKey, pending);
     }
@@ -379,13 +400,13 @@ export class SatelliteService {
     timeMs?: number,
     bounds?: GeoBounds,
     lossless = false,
-  ): Promise<{ url: string; lumaGrid?: Uint8Array; motion?: MotionGrid } | null> {
+  ): Promise<{ url: string; lumaGrid?: Uint8Array; motion?: MotionGrid; cloudField?: CloudField } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
     const worker = this.workers[this.turn++ % this.workers.length];
     const id = this.nextRequest++;
     return new Promise(resolve => {
-      this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid, motion: r.motion } : null));
+      this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid, motion: r.motion, cloudField: r.cloudField } : null));
       worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless } satisfies SatelliteWorkerRequest);
     });
   }
@@ -507,5 +528,15 @@ export class SatelliteService {
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.position.update(p => Math.round(p));
+  }
+}
+
+/** The 3D view's height scale as last chosen (3 unless 1 or 6 was picked). */
+function readHeightScale(): number {
+  try {
+    const v = Number(localStorage.getItem('atmosiq.satellite.heightScale'));
+    return v === 1 || v === 3 || v === 6 ? v : 3;
+  } catch {
+    return 3;
   }
 }

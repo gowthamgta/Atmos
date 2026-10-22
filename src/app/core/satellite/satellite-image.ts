@@ -602,7 +602,8 @@ export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: numb
  * Re-space the rows of an RGBA picture to Mercator (linear blend between the two nearest source rows) and set colour and
  * opacity (see shadePixel). `src` is `width` x `srcHeight`; the result is `width` x `outHeight`.
  * When `twilightIr` and `timeMs` are provided for an HRV frame near sunrise/sunset, pixels on the dark side of the solar
- * terminator smoothly transition to the infrared picture instead of going black.
+ * terminator smoothly transition to the infrared picture instead of going black. `coverOut` (`width` x `outHeight`), when given, receives each
+ * pixel's opacity before that blend: how much of it is cloud (for the 3D view's cloud field).
  */
 export function toOverlayPixels(
   src: Uint8ClampedArray,
@@ -613,6 +614,7 @@ export function toOverlayPixels(
   twilightIr?: Uint8ClampedArray,
   timeMs?: number,
   b = SATELLITE_BOUNDS,
+  coverOut?: Uint8Array,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
@@ -644,6 +646,7 @@ export function toOverlayPixels(
         background, out, o,
         cloud ? cloud[y0 * width + x] * (1 - w) + cloud[y1 * width + x] * w : 1,
       );
+      if (coverOut) coverOut[r * width + x] = out[o + 3]; // how much is cloud, before the night side's infrared is blended in
       if (irOverlay && timeMs !== undefined) {
         const lon = b.west + ((x + 0.5) / width) * (b.east - b.west);
         const dayW = smoothstep(TWILIGHT_BLEND_LO_DEG, TWILIGHT_BLEND_HI_DEG, sunElevationDeg(timeMs, lat, lon));

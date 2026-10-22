@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
-import { buildLumaGrid, deblockJpeg, mercatorHeight, toOverlayPixels } from './satellite-image';
+import { buildLumaGrid, deblockJpeg, hrvBackground, mercatorHeight, toOverlayPixels } from './satellite-image';
+import { CloudField, buildCloudField } from './cloud-field';
 import { enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
 import { pictureScale } from './satellite-window';
@@ -27,7 +28,7 @@ export interface SatelliteFlowRequest {
 }
 
 export type SatelliteWorkerResponse =
-  | { id: number; png: Blob; lumaGrid?: Uint8Array; motion?: MotionGrid }
+  | { id: number; png: Blob; lumaGrid?: Uint8Array; motion?: MotionGrid; cloudField?: CloudField }
   | { id: number; field: FlowField | null }
   | { id: number; error: string };
 
@@ -69,14 +70,18 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     enhancePicture(src, width, height, kind, scale);
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
-    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box);
+    // the whole-India picture also gives the clouds' heights and thickness for the 3D view (cloud-field.ts)
+    const cover = !bounds && kind === 'hrv' ? new Uint8Array(width * outHeight) : undefined;
+    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover);
+    const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0);
     const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)
     const motion = bounds ? undefined : motionGrid(pixels, width, outHeight);
     const transfer: Transferable[] = [];
     if (lumaGrid) transfer.push(lumaGrid.buffer);
     if (motion) transfer.push(motion.data.buffer);
-    postMessage({ id, png, lumaGrid, motion } satisfies SatelliteWorkerResponse, transfer);
+    if (field) transfer.push(field.data.buffer);
+    postMessage({ id, png, lumaGrid, motion, cloudField: field } satisfies SatelliteWorkerResponse, transfer);
   } catch (e) {
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
   }
