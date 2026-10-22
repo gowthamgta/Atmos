@@ -67,3 +67,4 @@ pipeline/data/rain_history/
 /test-results/
 /playwright-report/
 /blob-report/
+/e2e/perf-report.json

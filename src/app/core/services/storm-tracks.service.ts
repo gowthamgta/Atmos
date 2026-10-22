@@ -1,6 +1,7 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { SteeringWindService } from '../forecast/steering-wind.service';
-import { NowcastCell, publishNowcast } from '../ui/bot-capture';
+import { BOT_CAPTURE, NowcastCell, publishNowcast } from '../ui/bot-capture';
+import { isPhone } from '../ui/device-profile';
 import { MapLayerService } from './map-layer.service';
 import { RadarService } from './radar.service';
 import {
@@ -62,14 +63,18 @@ export class StormTracksService {
   private readonly cache = new Map<string, { geojson: StormFeatureCollection; summary: StormSummary; cells: NowcastCell[] }>();
   private token = 0;
 
-  /** The loop is loaded once, in the background, so the cells move the way the radar shows them and not with the forecast wind. */
+  /**
+   * The loop is loaded once, in the background, so the cells move the way the radar shows them and not with the forecast wind. Not on a phone:
+   * the two animations are about 8 MB of mobile data (measured, e2e/perf.mjs); there the cells move with the steering wind until the live pictures
+   * kept as they arrive (or Play) give the radar's own motion.
+   */
   private loopRequested = false;
 
   constructor() {
     effect(() => {
       const on = this.visible();
       const live = this.radar.compositeMosaic();
-      if (!on || !live || this.loopRequested) return;
+      if (!on || !live || this.loopRequested || (isPhone() && !BOT_CAPTURE)) return;
       untracked(() => {
         if (this.radar.history().length > 0 || this.radar.historyLoading()) return;
         this.loopRequested = true;
