@@ -5,6 +5,7 @@ import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
 import { cloudTopGradient } from '../../core/satellite/satellite-image';
+import { CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OwnKind } from '../../core/satellite/own-products';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
 
@@ -29,7 +30,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
           <span class="live" [class.off]="failed()" aria-hidden="true"></span>
           <div class="heading">
             <div class="title-row">
-              <strong>{{ sourceLabel }}</strong>
+              <strong>{{ own() ? 'Himawari-9' : sourceLabel }}</strong>
               @if (detailActive()) {
                 <span class="hd-badge" [class.loading]="detailLoading()" title="The part of the map in view is drawn from a closer picture of the HRV, at the satellite's own pixel (about 1.3 km)">
                   {{ detailLoading() ? 'HD loading…' : 'HD ' + detailKm() + ' km' }}
@@ -54,6 +55,39 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
         } @else {
+          <div class="channel" role="group" aria-label="Source">
+            <button type="button" [class.on]="!own()" [attr.aria-pressed]="!own()" (click)="sat.setSource('eumetview')" title="EUMETView's pictures of Meteosat-9 (the usual look)">EUMETView</button>
+            <button type="button" [class.on]="own()" [attr.aria-pressed]="own()" (click)="sat.setSource(lastOwn)" title="Our own pictures, made from Himawari-9's raw bands every 10 minutes">Our own</button>
+          </div>
+          @if (own()) {
+            <div class="kinds" role="group" aria-label="Product">
+              @for (k of ownKinds; track k.id) {
+                <button type="button" class="kind" [class.on]="sat.source() === k.id" [attr.aria-pressed]="sat.source() === k.id" [title]="k.title" (click)="pick(k.id)">{{ k.label }}</button>
+              }
+            </div>
+            @if (sat.source() === 'custom') {
+              <div class="custom" aria-label="Custom RGB recipe: value = ((v − min) / (max − min)) ^ (1 / gamma)">
+                @for (c of sat.custom(); track $index; let i = $index) {
+                  <div class="crow">
+                    <span class="cname" [class]="'cname c' + i">{{ 'RGB'[i] }}</span>
+                    <select [value]="c.source" (change)="setCustom(i, 'source', $event)" [attr.aria-label]="'RGB'[i] + ' from'">
+                      @for (o of customSources; track o.id) { <option [value]="o.id" [selected]="o.id === c.source">{{ o.label }}</option> }
+                    </select>
+                    <input type="number" step="1" [value]="c.min" (change)="setCustom(i, 'min', $event)" [attr.aria-label]="'RGB'[i] + ' min (K)'" title="min (K)" />
+                    <input type="number" step="1" [value]="c.max" (change)="setCustom(i, 'max', $event)" [attr.aria-label]="'RGB'[i] + ' max (K)'" title="max (K)" />
+                    <input type="number" step="0.1" min="0.1" [value]="c.gamma" (change)="setCustom(i, 'gamma', $event)" [attr.aria-label]="'RGB'[i] + ' gamma'" title="gamma" />
+                  </div>
+                }
+                <button type="button" class="reset" (click)="resetCustom()">Reset recipe</button>
+              </div>
+            }
+            @if (sat.ownEmpty() === 'night') {
+              <p class="hint3d">True colour, sandwich and convection need daylight (Himawari's visible bands): at night try Night micro or the infrared kinds.</p>
+            } @else if (sat.ownEmpty() === 'none') {
+              <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow (every 10 minutes).</p>
+            }
+            <p class="hint3d">From Himawari-9's raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.</p>
+          } @else {
           <div class="channel" role="group" aria-label="Picture" [class.off]="night()">
             <button type="button" [class.on]="!sat.infraredOnly() && !night()" [attr.aria-pressed]="!sat.infraredOnly()" [disabled]="night()" (click)="sat.setInfrared(false)" [title]="night() ? nightHint : ''">Visible</button>
             <button type="button" [class.on]="sat.infraredOnly() || night()" [attr.aria-pressed]="sat.infraredOnly() || night()" [disabled]="night()" (click)="sat.setInfrared(true)" [title]="night() ? nightHint : 'Infrared: cloud-top temperature, day and night'">Infrared</button>
@@ -72,6 +106,7 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
               </div>
             </div>
             <p class="hint3d">Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
+          }
           }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
@@ -94,11 +129,15 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
         }
 
         <!-- always there, at a fixed height, so the panel does not jump as the pointer moves on and off the cloud -->
-        <div class="hover-readout" aria-live="polite" title="Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres">
+        <div class="hover-readout" aria-live="polite" [title]="readoutTitle()">
           @if (sat.hoverReading(); as h) {
             <span class="hover-dot" [style.background]="h.color"></span>
             <span class="hover-type">{{ h.label }}</span>
-            <span class="hover-vals">≈ {{ h.tempC > 0 ? '+' : '' }}{{ h.tempC }}°C · {{ h.heightKm }} km</span>
+            @if (h.measured; as m) {
+              <span class="hover-vals">{{ h.tempC > 0 ? '+' : '' }}{{ h.tempC }}°C · {{ m.ir.toFixed(1) }} K</span>
+            } @else {
+              <span class="hover-vals">≈ {{ h.tempC > 0 ? '+' : '' }}{{ h.tempC }}°C · {{ h.heightKm }} km</span>
+            }
           } @else {
             <span class="hover-type idle">Hover the map to read cloud tops</span>
           }
@@ -138,6 +177,17 @@ const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((2
     .channel.off button { opacity: 0.5; cursor: default; }
     .channel button.on { background: var(--accent); color: #fff; }
     .view3d { margin-top: 6px; }
+    .kinds { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .kind { padding: 4px 8px; border: 0; border-radius: 12px; background: var(--surface-3); color: var(--text-secondary); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .kind.on { background: var(--accent); color: #fff; }
+    .custom { display: grid; gap: 4px; margin-top: 6px; font-size: 12px; }
+    .crow { display: grid; grid-template-columns: 16px 1fr 52px 52px 44px; gap: 4px; align-items: center; }
+    .crow select, .crow input { min-width: 0; padding: 3px 4px; border: 1px solid var(--surface-4); border-radius: 6px; background: var(--surface-2); color: var(--text-primary); font: inherit; font-size: 12px; }
+    .cname { font-weight: 700; text-align: center; }
+    .cname.c0 { color: #ef4444; }
+    .cname.c1 { color: #22c55e; }
+    .cname.c2 { color: #3b82f6; }
+    .reset { justify-self: end; padding: 3px 8px; border: 0; border-radius: 6px; background: var(--surface-3); color: var(--text-secondary); font: inherit; font-size: 11px; cursor: pointer; }
     .heights { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
     .heights .channel { flex: 1; margin-top: 0; }
     .hint3d { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
@@ -190,7 +240,7 @@ export class SatellitePanelComponent {
   /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */
   protected readonly nightLegend = computed(() => {
     const f = this.sat.current();
-    return !!f && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
+    return !!f && !f.own && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
   });
   /** Nothing to play or step through: the hour is loaded and has fewer than two pictures. (Until the loop is asked for, only the newest is loaded.) */
   /** Night over India: the visible picture is the infrared too, so there is nothing to choose between. */
@@ -204,10 +254,25 @@ export class SatellitePanelComponent {
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
     if (!f) return 'loading';
+    if (f.own) return OWN_KINDS.find(k => k.id === f.own!.kind)?.label.toLowerCase() ?? '';
     if (f.product.id === 'ir') return this.sat.infraredOnly() ? 'infrared, cloud tops' : 'night infrared, cloud tops';
     return isTwilightTime(f.timeMs) ? 'twilight HRV + infrared' : 'daylight, HRV';
   });
   protected readonly sourceLabel = SATELLITE_NAME;
+  /** Our own pictures are shown instead of EUMETView's. */
+  protected readonly own = computed(() => this.sat.source() !== 'eumetview');
+  protected readonly ownKinds = OWN_KINDS;
+  protected readonly customSources = CUSTOM_SOURCES;
+  /** The kind of our own last picked, for the source switch. */
+  protected lastOwn: OwnKind = 'truecolor';
+  protected readonly readoutTitle = computed(() => {
+    const m = this.sat.hoverReading()?.measured;
+    if (m) {
+      const c = (k: number) => (Number.isNaN(k) ? '–' : `${(k - 273.15).toFixed(1)} °C (${k.toFixed(1)} K)`);
+      return `Measured by Himawari-9: 10.4 µm ${c(m.ir)}, 6.2 µm ${c(m.wv62)}, 7.3 µm ${c(m.wv73)}`;
+    }
+    return 'Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres';
+  });
   protected readonly heightScales = [1, 3, 6] as const;
   protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. The Infrared switch shows the infrared by day too. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
@@ -241,6 +306,21 @@ export class SatellitePanelComponent {
       const on = this.active();
       untracked(() => (on ? this.sat.activate() : this.sat.deactivate()));
     });
+  }
+
+  protected pick(kind: OwnKind): void {
+    this.lastOwn = kind;
+    this.sat.setSource(kind);
+  }
+
+  protected setCustom(i: number, key: keyof CustomChannel, event: Event): void {
+    const v = parseFloat((event.target as HTMLInputElement | HTMLSelectElement).value);
+    if (!Number.isFinite(v)) return;
+    this.sat.setCustom(this.sat.custom().map((c, j) => (j === i ? { ...c, [key]: key === 'gamma' ? Math.max(0.1, v) : v } : c)));
+  }
+
+  protected resetCustom(): void {
+    this.sat.setCustom(DEFAULT_RECIPE);
   }
 
   protected onFrame(event: Event): void {

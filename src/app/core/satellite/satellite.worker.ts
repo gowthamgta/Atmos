@@ -23,6 +23,12 @@ export interface SatelliteWorkerRequest {
   bt?: { url: string; offsetK: number; stepK: number };
 }
 
+/** One of our own data packs (own-products.ts) to decode for the hover readout: its RGB bytes. */
+export interface SatelliteDecodeRequest {
+  id: number;
+  decode: string;
+}
+
 /** The cloud motion between two pictures' motion grids (see satellite-flow.ts). */
 export interface SatelliteFlowRequest {
   id: number;
@@ -32,10 +38,17 @@ export interface SatelliteFlowRequest {
 export type SatelliteWorkerResponse =
   | { id: number; png: Blob; lumaGrid?: Uint8Array; motion?: MotionGrid; cloudField?: CloudField }
   | { id: number; field: FlowField | null }
+  | { id: number; pack: { w: number; h: number; rgb: Uint8Array } | null }
   | { id: number; error: string };
 
 /** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
-addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | SatelliteFlowRequest>) => {
+addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | SatelliteFlowRequest | SatelliteDecodeRequest>) => {
+  if ('decode' in event.data) {
+    const { id, decode } = event.data;
+    const pack = await decodePack(decode);
+    postMessage({ id, pack } satisfies SatelliteWorkerResponse, pack ? [pack.rgb.buffer] : []);
+    return;
+  }
   if ('flow' in event.data) {
     const { id, flow } = event.data;
     try {
@@ -103,6 +116,30 @@ async function brightnessGrid(bt: { url: string; offsetK: number; stepK: number 
     const grid = { w: bitmap.width, h: bitmap.height, data, offsetK: bt.offsetK, stepK: bt.stepK };
     bitmap.close();
     return grid;
+  } catch {
+    return null;
+  }
+}
+
+/** A data pack's bytes (red, green, blue per pixel), or null when it cannot be had. */
+async function decodePack(url: string): Promise<{ w: number; h: number; rgb: Uint8Array } | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const rgba = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    const rgb = new Uint8Array(bitmap.width * bitmap.height * 3);
+    for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+      rgb[j] = rgba[i];
+      rgb[j + 1] = rgba[i + 1];
+      rgb[j + 2] = rgba[i + 2];
+    }
+    const pack = { w: bitmap.width, h: bitmap.height, rgb };
+    bitmap.close();
+    return pack;
   } catch {
     return null;
   }

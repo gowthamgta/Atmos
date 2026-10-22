@@ -20,6 +20,8 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
+import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
+import { isShaderKind } from '../../core/satellite/own-products';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
 import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
@@ -141,9 +143,15 @@ export class MapComponent implements OnInit, OnDestroy {
     const kind = this.satellite.current()?.product.id;
     const threeD = this.satellite.threeD();
     const heightScale = this.satellite.heightScale();
+    const custom = this.satellite.custom();
     if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteOverlay(on, frames, position, threeD ? 0 : opacity);
-    this.updateCloudVolume(on && threeD, frames, position, opacity, heightScale);
+    // our own pictures (own-products.ts): the 3D clouds are built from EUMETView's frames only
+    const own = frames[0]?.own;
+    const shader = !!own && isShaderKind(own.kind);
+    const show3D = threeD && !own;
+    this.updateSatelliteOverlay(on && !shader, frames, position, show3D ? 0 : opacity);
+    this.updateSatelliteData(on && shader, frames, position, opacity, custom);
+    this.updateCloudVolume(on && show3D, frames, position, opacity, heightScale);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
   });
 
@@ -154,8 +162,9 @@ export class MapComponent implements OnInit, OnDestroy {
     const opacity = this.satellite.opacity();
     const kind = this.satellite.current()?.product.id;
     const threeD = this.satellite.threeD();
+    const own = this.satellite.source() !== 'eumetview';
     if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteDetailLayer(threeD ? null : shown, position, opacity, kind);
+    this.updateSatelliteDetailLayer(threeD || own ? null : shown, position, opacity, kind);
   });
 
   // Reactive Effect: high-detail (250 m) true-colour satellite tiles from NASA GIBS
@@ -546,8 +555,15 @@ export class MapComponent implements OnInit, OnDestroy {
   }
 
   private removeSatelliteLayers(): void {
+    if (this.map && this.satelliteData && this.map.getLayer(this.satelliteData.id)) this.map.removeLayer(this.satelliteData.id);
+    this.satelliteData = null;
     if (this.map && this.cloudVolume && this.map.getLayer(this.cloudVolume.id)) this.map.removeLayer(this.cloudVolume.id);
     this.cloudVolume = null;
+    this.removeFlatLayers();
+  }
+
+  /** The flat picture and its closer window (the 3D clouds and the browser-drawn products have their own layers). */
+  private removeFlatLayers(): void {
     if (this.map && this.satelliteDetailLayer && this.map.getLayer(this.satelliteDetailLayer.id)) this.map.removeLayer(this.satelliteDetailLayer.id);
     this.satelliteDetailLayer = null;
     this.satelliteDetailKeys = '';
@@ -566,7 +582,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private updateSatelliteOverlay(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number): void {
     if (!this.map) return;
     if (!on || frames.length === 0) {
-      this.removeSatelliteLayers();
+      this.removeFlatLayers();
       return;
     }
     if (!this.satelliteLayer) {
@@ -574,6 +590,7 @@ export class MapComponent implements OnInit, OnDestroy {
       // above the boundary lines, under the place names
       this.map.addLayer(this.satelliteLayer, this.observationAnchorId());
     }
+    this.satelliteLayer.setBounds(frames[0]?.own?.bounds ?? SATELLITE_BOUNDS); // ours cover their own box
     const keys = frames.map(f => f.url).join('|');
     if (keys !== this.satelliteKeys) {
       this.satelliteKeys = keys;
@@ -581,6 +598,28 @@ export class MapComponent implements OnInit, OnDestroy {
     }
     this.satelliteLayer.setFlows(this.satellite.flows());
     this.satelliteLayer.setPosition(position, opacity);
+  }
+
+  // --- Our own products drawn in the browser from the data pack (satellite-data.layer.ts): IR enhanced, WV difference, custom RGB ---
+
+  private satelliteData: SatelliteDataLayer | null = null;
+
+  private updateSatelliteData(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number, custom: SatelliteService['custom'] extends () => infer C ? C : never): void {
+    const map = this.map;
+    if (!map) return;
+    const own = frames[0]?.own;
+    if (!on || !own) {
+      if (this.satelliteData && map.getLayer(this.satelliteData.id)) map.removeLayer(this.satelliteData.id);
+      this.satelliteData = null;
+      return;
+    }
+    if (!this.satelliteData) {
+      this.satelliteData = new SatelliteDataLayer();
+      map.addLayer(this.satelliteData, this.observationAnchorId());
+    }
+    this.satelliteData.setFrames(frames.map(f => ({ key: f.url, url: f.url })), own.bounds, own.minK, own.spanK);
+    this.satelliteData.setStyle({ mode: own.kind === 'irenhanced' ? 0 : own.kind === 'wvdiff' ? 1 : 2, custom });
+    this.satelliteData.setPosition(position, opacity);
   }
 
   // --- The live clouds in 3D (cloud-volume.layer.ts): the flat picture steps aside and the map tilts to show their heights ---

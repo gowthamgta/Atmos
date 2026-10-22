@@ -13,6 +13,11 @@ fingerprint only together with this file, on the owner's request.
 - 🔒 **Visible by day: Meteosat HRV with the Windy exposure ramps** (agreed 17 Oct 2026, commit 5c8edf7). Each pixel is recoloured by
   brightness on a warm ramp (slate, sand, cream) and blended toward lavender-white by how cold its top is (`WARM_STOPS`, `COLD_STOPS`,
   `windyCloudColor` in `core/satellite/satellite-image.ts`), fitted to Windy's picture of the same frame.
+- **Our own pictures** (the panel's EUMETView / Our own switch, EUMETView the default, 22 Oct): the owner asked for our own RGBs from raw
+  data instead of EUMETView's. From Himawari-9 (pipeline/himawari_rgb.py, published by gowthamgta/atmos-satellite): true colour, sandwich,
+  convection, night microphysics as pictures; IR enhanced, WV difference and a custom WMO-formula RGB drawn in the browser from a data pack
+  (core/rendering/satellite-data.layer.ts), whose hover readout is measured, not estimated. Covers 75-97.5 E, 5-30 N only. EUMETView's
+  pictures and their agreed colours are unchanged. Meteosat's raw data follows when the EUMETSAT download (403) works.
 - **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.

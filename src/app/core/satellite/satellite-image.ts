@@ -678,6 +678,8 @@ export interface SatelliteHoverReading {
   heightKm: number;
   label: string;
   color: string;
+  /** Measured brightness temperatures (kelvin) from our own data pack, when the reading is not an estimate from a picture's grey. */
+  measured?: { ir: number; wv62: number; wv73: number };
 }
 
 /**
