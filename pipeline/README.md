@@ -139,3 +139,6 @@ Fine-grained tokens → Generate new token):
 - Save, then **Test run**: the answer must be **204 No Content**, and a run "Manually run by gowthamgta" appears under Actions → satellite
   within a few seconds. 401 = the token is wrong or expired; 403 = it lacks Actions: Read and write; 404 = the URL or the repository
   access is wrong; 422 = the body is not `{"ref":"main"}`.
+- Set up 22 Oct 2026 (every 10 minutes, Asia/Kolkata). GitHub marks API version 2022-11-28 as deprecated: it stops working on
+  **10 March 2028**, so change the `X-GitHub-Api-Version` header to the newer version before then. The token also expires on the date
+  chosen when it was made: make a new one and paste it into the job before that.
