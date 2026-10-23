@@ -1,0 +1,51 @@
+name: radar-pictures
+
+# By hand only: a copy of every IMD radar's current pictures (all products), and IMD's radar pages, committed to the imd-radar-samples branch.
+# Used to measure a new station's layout (crop, range, colour legend, where the scan time is printed) before it goes into radar.model.ts.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pictures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fetch
+        run: |
+          mkdir -p out/pages out/gif
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+          get() { # url file: IMD directly, else through the app's proxy
+            curl -sSL -m 60 -A "$UA" -e https://mausam.imd.gov.in/ -o "$2" "$1" && [ -s "$2" ] && ! grep -qi "<html" "$2" 2>/dev/null && return 0
+            f=$(basename "$1")
+            curl -sSL -m 60 -o "$2.b64" "https://atmosradar.netlify.app/.netlify/functions/radar?file=$f" && base64 -d "$2.b64" > "$2" 2>/dev/null; rm -f "$2.b64"
+            [ -s "$2" ]
+          }
+          for p in responsive/radar.php imd_latest/contents/index_radar.php responsive/radar_new.php Radar/; do
+            curl -sSL -m 60 -A "$UA" "https://mausam.imd.gov.in/$p" -o "out/pages/$(echo $p | tr '/' '_').html" || true
+          done
+          # every radar picture the pages name, and the known IMD codes besides
+          codes=$(cat out/pages/*.html 2>/dev/null | grep -oiE '(caz|ppi|ppz|sri|pac|maxz)_[a-z]{3,4}\.gif' | sed -E 's/^[a-z]+_//I; s/\.gif$//I' | tr 'A-Z' 'a-z' | sort -u)
+          known="agt bhj bhp cni dlh goa hyd jpr kkl koc kol lck mpt mum ngp ptl ptn pdp shr vsk tvm mlr plk srn jmu cpj mks kuf mur lns bnh vrv gop mbr sur jot ptm"
+          codes=$(printf "%s\n" $codes $known | sort -u)
+          echo "$codes" > out/codes.txt
+          for c in $codes; do
+            for k in caz ppi ppz sri pac; do
+              get "https://mausam.imd.gov.in/Radar/${k}_${c}.gif" "out/gif/${k}_${c}.gif" || rm -f "out/gif/${k}_${c}.gif"
+            done
+          done
+          ls -la out/gif | head -200
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan imd-radar-samples
+          git rm -rfq .
+          mv out/* .
+          rm -rf out
+          git add -A
+          git commit -qm "IMD radar pictures, $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f origin imd-radar-samples
