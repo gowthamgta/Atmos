@@ -76,7 +76,9 @@ describe('synthetic radar: the grid', () => {
     expect(maxIn(out, 18, 53, 22, 57)).toBeGreaterThanOrEqual(30);
     expect(maxIn(out, 12, 47, 14, 49)).toBe(0); // the popup's cloud away from the core
     expect(maxIn(out, 70, 15, 98, 95)).toBe(0);
-    expect(rainArea(out)).toBeLessThan(12); // about one 5 km core
+    expect(rainArea(out)).toBeLessThan(70); // one 5 km core and its light rim on the ground (a few km), not the cloud's 200
+    expect(maxIn(out, 22, 55, 22, 55)).toBeGreaterThan(0); // the rim, 5 km from the core...
+    expect(maxIn(out, 22, 55, 22, 55)).toBeLessThanOrEqual(26); // ...is light
   });
 
   it('marks where a top bloomed and carries it with the 850 hPa wind, while the anvil spreading out is none', () => {

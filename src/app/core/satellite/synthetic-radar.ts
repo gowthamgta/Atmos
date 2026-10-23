@@ -16,6 +16,7 @@
  *    24 to 42 dBZ by how strongly it bloomed, a little more in very cold tops. A band is a row of such cores, never a filled cloud.
  * 3. Lightning (last 15 minutes, newer weighed more) adds rain only where strokes come two or more within about 2 km (25 to 38 dBZ), and a
  *    heavy core (47 to 58 dBZ, 5 km wide) where they crowd most, one within every 10 km; on cloud only.
+ *    Rain reaching the ground spreads a little: a light rim (about 15 to 25 dBZ, 7 km at most) around it, under cloud only.
  * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer fades the estimate out over the last 20 km of their range), and
  *    where both see rain the estimate is shifted by the median difference (a few dB at most) so it joins the radar without a step.
  *
@@ -105,6 +106,13 @@ export interface SyntheticRadarConfig {
     rain: [number, number];
     core: [number, number];
   };
+  spread: {
+    /** Rain reaching the ground spreads a little beyond its cores: a rim at most maxDbz (and no more than the rain it comes from), losing
+     * dbzPerKm a kilometre, under cloud colder than cloudMaxK only. */
+    maxDbz: number;
+    dbzPerKm: number;
+    cloudMaxK: number;
+  };
   output: {
     minDbz: number;
     maxDbz: number;
@@ -167,6 +175,7 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     rain: [25, 38],
     core: [47, 58],
   },
+  spread: { maxDbz: 26, dbzPerKm: 1.5, cloudMaxK: 265 },
   output: { minDbz: 15, maxDbz: 60, scale: 2 },
   blend: { featherKm: 20, calibrationMaxDb: 8, calibrationMinPairs: 150 },
 };
@@ -802,6 +811,49 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
         rain.lightning = lden[i];
         const v = classifyPixel(rain, cfg);
         if (v > dbz[i]) dbz[i] = v;
+      }
+    }
+  }
+
+  // the spread on the ground: a light rim around the rain, fading outward (two chamfer passes carry the strongest rim value)
+  {
+    const rim = new Float32Array(n2).fill(-Infinity);
+    for (let i = 0; i < n2; i++) if (dbz[i] > 0) rim[i] = Math.min(cfg.spread.maxDbz, dbz[i]);
+    const step = (y: number): number => (cfg.spread.dbzPerKm * rowKm[Math.min(h - 1, Math.floor(y / S))]) / S;
+    for (let y = 0; y < H2; y++) {
+      const a = step(y), d = a * Math.SQRT2;
+      for (let x = 0; x < W2; x++) {
+        const i = y * W2 + x;
+        let v = rim[i];
+        if (x > 0) v = Math.max(v, rim[i - 1] - a);
+        if (y > 0) {
+          v = Math.max(v, rim[i - W2] - a);
+          if (x > 0) v = Math.max(v, rim[i - W2 - 1] - d);
+          if (x < W2 - 1) v = Math.max(v, rim[i - W2 + 1] - d);
+        }
+        rim[i] = v;
+      }
+    }
+    for (let y = H2 - 1; y >= 0; y--) {
+      const a = step(y), d = a * Math.SQRT2;
+      for (let x = W2 - 1; x >= 0; x--) {
+        const i = y * W2 + x;
+        let v = rim[i];
+        if (x < W2 - 1) v = Math.max(v, rim[i + 1] - a);
+        if (y < H2 - 1) {
+          v = Math.max(v, rim[i + W2] - a);
+          if (x < W2 - 1) v = Math.max(v, rim[i + W2 + 1] - d);
+          if (x > 0) v = Math.max(v, rim[i + W2 - 1] - d);
+        }
+        rim[i] = v;
+      }
+    }
+    for (let y = 0; y < H2; y++) {
+      for (let x = 0; x < W2; x++) {
+        const i = y * W2 + x;
+        if (dbz[i] > 0 || rim[i] < cfg.output.minDbz) continue;
+        const t = ir[Math.min(h - 1, Math.floor(y / S)) * w + Math.min(w - 1, Math.floor(x / S))];
+        if (valid(t) && t < cfg.spread.cloudMaxK) dbz[i] = rim[i];
       }
     }
   }
