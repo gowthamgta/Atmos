@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IMD_RADAR_STATIONS, RadarProductKey } from '../domain/models/radar.model';
-import { RADAR_FIELD_SIZE, decodeLastGifFrame, layoutMatches, looksLikeRadar, processRadarPixels } from './radar-process';
+import { RADAR_FIELD_SIZE, decodeLastGifFrame, fillOverlayGaps, layoutMatches, looksLikeRadar, processRadarPixels } from './radar-process';
 import { RadarProcessor } from './radar-processor';
 import { RadarService } from './radar.service';
 import { decodeRadarGif } from './radar-gif-decode';
@@ -18,7 +18,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['karaikal', 'caz', 'karaikal-caz.gif', '343eecfd'],
+  ['karaikal', 'caz', 'karaikal-caz.gif', '5fc8d15b'], // 23 Oct 2026: the map's lines and names over the rain filled in (fillOverlayGaps)
 ];
 
 function load(file: string): ArrayBuffer {
@@ -188,5 +188,25 @@ describe('IMD maintenance photo', () => {
     }
     const c = pic('chennai-caz-stamp.gif');
     expect(looksLikeRadar(c.rgba, c.w, c.h, chennai.products.caz!.palette)).toBe(true);
+  });
+});
+
+describe('the map drawn over the echoes', () => {
+  const W = 40, H = 40;
+  const grid = (f: (x: number, y: number) => number) => Float32Array.from({ length: W * H }, (_, i) => f(i % W, Math.floor(i / W)));
+
+  it('fills a boundary line and a letter drawn across the rain, from the rain around them', () => {
+    // rain at 3.0 over x < 30, a 2-pixel boundary line down x = 15, a 3 x 3 letter at (8, 8)
+    const c = grid((x, y) => (x >= 30 || (x === 15 || x === 16) || (x >= 8 && x <= 10 && y >= 8 && y <= 10) ? 0 : 3));
+    fillOverlayGaps(c, W, H, 4);
+    expect(c[20 * W + 15]).toBeCloseTo(3, 5);
+    expect(c[9 * W + 9]).toBeCloseTo(3, 5);
+    expect(c[20 * W + 31]).toBe(0); // the rain's edge does not grow
+  });
+
+  it('does not bridge scattered specks of clutter', () => {
+    const c = grid((x, y) => ((x % 4 === 0 && y % 5 === 0) ? 2 : 0));
+    fillOverlayGaps(c, W, H, 4);
+    expect(c[0 * W + 2]).toBe(0);
   });
 });

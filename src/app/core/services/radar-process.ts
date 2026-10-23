@@ -363,6 +363,46 @@ function keepCoresInRain(classes: Float32Array, w: number, h: number, all: reado
  * The picture's own intensity, one class per pixel of its map panel (0 where there is no echo): the legend's colours read as intensity.
  * `classes` is `crop.w` x `crop.h`, row 0 at the north edge.
  */
+/**
+ * The map the radar is drawn on prints district boundaries, names, range rings and grid lines over the echoes (the owner saw Chennai's
+ * district lines and "CDL" in the rain, 23 Oct 2026). A pixel with no echo inside rain is such a line or letter: echo covers at least
+ * MIN_COVER of the window around it (maxGap each way), and lies on both sides of it along its row or its column. It takes the mean of
+ * the echo in the window. A rain edge has echo on one side only, and scattered clutter does not cover the window: both stay as they are.
+ */
+export function fillOverlayGaps(classes: Float32Array, w: number, h: number, maxGap: number): void {
+  const MIN_COVER = 0.45;
+  const W1 = w + 1;
+  const count = new Float64Array(W1 * (h + 1)), total = new Float64Array(W1 * (h + 1));
+  for (let y = 0; y < h; y++) {
+    let c = 0, t = 0;
+    for (let x = 0; x < w; x++) {
+      const v = classes[y * w + x];
+      if (v > 0) { c++; t += v; }
+      count[(y + 1) * W1 + x + 1] = count[y * W1 + x + 1] + c;
+      total[(y + 1) * W1 + x + 1] = total[y * W1 + x + 1] + t;
+    }
+  }
+  const sum = (tab: Float64Array, x0: number, y0: number, x1: number, y1: number) =>
+    tab[(y1 + 1) * W1 + x1 + 1] - tab[y0 * W1 + x1 + 1] - tab[(y1 + 1) * W1 + x0] + tab[y0 * W1 + x0];
+  const echo = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && classes[y * w + x] > 0;
+  const side = (x: number, y: number, dx: number, dy: number) => {
+    for (let k = 1; k <= maxGap; k++) if (echo(x + k * dx, y + k * dy)) return true;
+    return false;
+  };
+  const filled: [number, number][] = [];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (classes[y * w + x] > 0) continue;
+      const x0 = Math.max(0, x - maxGap), x1 = Math.min(w - 1, x + maxGap), y0 = Math.max(0, y - maxGap), y1 = Math.min(h - 1, y + maxGap);
+      const n = sum(count, x0, y0, x1, y1);
+      if (n < MIN_COVER * (x1 - x0 + 1) * (y1 - y0 + 1)) continue;
+      if (!((side(x, y, -1, 0) && side(x, y, 1, 0)) || (side(x, y, 0, -1) && side(x, y, 0, 1)))) continue;
+      filled.push([y * w + x, sum(total, x0, y0, x1, y1) / n]);
+    }
+  }
+  for (const [i, v] of filled) classes[i] = v;
+}
+
 export function classifyRadarPicture(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number, opts: RadarPixelOptions): { classes: Float32Array; crop: { x: number; y: number; w: number; h: number } } {
   const { crop, palette } = opts;
   // Full Square Extent Crop Detection (Preserves all corner storm echoes)
@@ -420,6 +460,7 @@ export function classifyRadarPicture(rgba: Uint8ClampedArray | Uint8Array, w: nu
     }
   }
   if (needNeighbours.length > 0) keepCoresInRain(classes, cropW, cropH, needNeighbours);
+  fillOverlayGaps(classes, cropW, cropH, Math.max(4, Math.round(cropW / 120)));
   return { classes, crop: { x: cropX, y: cropY, w: cropW, h: cropH } };
 }
 

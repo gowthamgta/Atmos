@@ -121,7 +121,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
   `,
   styles: [`
     :host { display: contents; }
-    .panel { position: fixed; left: 12px; bottom: calc(var(--bars-h) + 12px); z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; max-height: calc(100vh - 100px); overflow-y: auto; }
+    .panel { position: fixed; left: 12px; bottom: calc(var(--bars-h) + 12px); z-index: 900; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; color: var(--text-primary); font-family: var(--font-body); font-size: 12px; max-height: calc(100dvh - var(--bars-h) - 12px - var(--gutter) - 46px - 12px); overflow-y: auto; } /* its top stays 12px under the search bar (46px high, var(--gutter) from the top), so its own buttons can be reached */
     header { display: flex; align-items: center; gap: 10px; }
     .live { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: none; flex: none; }
     .heading { flex: 1; min-width: 0; }
