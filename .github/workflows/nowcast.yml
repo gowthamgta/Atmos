@@ -17,6 +17,10 @@ on:
         description: "Post (or dry-run) even with no storm, or a recent post: to try the whole chain"
         type: boolean
         default: false
+      as_schedule:
+        description: "Run as the schedule does (posts when NOWCAST_LIVE is true): for an outside scheduler such as cron-job.org"
+        type: boolean
+        default: false
 
 # one run at a time, and a run that starts while another is still going waits rather than both posting
 concurrency:
@@ -64,9 +68,9 @@ jobs:
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          # a scheduled run posts once the keys are set (and NOWCAST_LIVE is "true", a switch to stop it without removing them);
-          # a run started by hand posts only when asked
-          DRY_RUN: ${{ ((github.event_name == 'schedule' && vars.NOWCAST_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) && '0' || '1' }}
+          # a scheduled run (or one started by an outside scheduler with as_schedule) posts once the keys are set and NOWCAST_LIVE is
+          # "true", a switch to stop it without removing them; a run started by hand posts only when asked
+          DRY_RUN: ${{ (((github.event_name == 'schedule' || inputs.as_schedule) && vars.NOWCAST_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && !inputs.as_schedule && inputs.dry_run == false)) && '0' || '1' }}
           FORCE: ${{ inputs.force && '1' || '0' }}
           INCLUDE_LINK: ${{ vars.NOWCAST_INCLUDE_LINK == 'true' && '1' || '0' }}
         run: node nowcast.mjs

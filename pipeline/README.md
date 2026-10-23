@@ -54,6 +54,23 @@ rain window covers the gap (exact), otherwise it is estimated from the mean of t
 sampled, e.g. one hour in three). No data where the run ends before 24 h more. Checked on a real GFS run against Open-Meteo's
 hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can differ by tens of mm).
 
+## Starting this repository's workflows from cron-job.org
+
+GitHub's own schedule starts runs late or skips them when GitHub is busy. Any workflow here can be started on time from cron-job.org the
+same way as the satellite workflow (above): a fine-grained token with **Repository access: gowthamgta/Atmos** and **Actions: Read and
+write** only, and one cron job per workflow, each a **POST** with the same four headers. Keep the GitHub schedule in the workflow as a
+fallback: two runs at once wait for each other (`concurrency`).
+
+| Workflow | URL (`https://api.github.com/repos/gowthamgta/Atmos/actions/workflows/…/dispatches`) | Request body | Schedule (Asia/Kolkata) |
+|---|---|---|---|
+| nowcast bot | `nowcast.yml` | `{"ref":"main","inputs":{"as_schedule":"true"}}` | every 10 minutes |
+| forecast | `nwp.yml` | `{"ref":"main"}` | 05:00, 10:00, 13:30, 17:30, 21:00, 00:00 |
+| verification | `verify.yml` | `{"ref":"main"}` | 07:00 (again 11:00 and 16:00 if you like) |
+
+The nowcast needs `as_schedule`: without it a run started from outside is a dry run, as a run started by hand is, and never posts. With
+it, it posts exactly as a scheduled run does (once the keys are set and `NOWCAST_LIVE` is `true`). Test each job once: **204 No Content**,
+and a run "Manually run by …" under Actions.
+
 ## Models published
 Two models: ECMWF IFS (all of India, 9 km) and the UK Met Office (all of India, 10 km). The workflow order is: the models,
 `cyclones.py`, `mirror.py` (copies a model that was not rebuilt from the live site). The all-model blend and the FY-4B
