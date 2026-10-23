@@ -58,8 +58,8 @@ hourly totals at 20 places: r = 0.96, totals within 6% (single hot spots can dif
 
 GitHub's own schedule starts runs late or skips them when GitHub is busy. Any workflow here can be started on time from cron-job.org the
 same way as the satellite workflow (above): a fine-grained token with **Repository access: gowthamgta/Atmos** and **Actions: Read and
-write** only, and one cron job per workflow, each a **POST** with the same four headers. Keep the GitHub schedule in the workflow as a
-fallback: two runs at once wait for each other (`concurrency`).
+write** only, and one cron job per workflow, each a **POST** with the same four headers. These cron jobs are the only scheduler: the workflows have no GitHub
+`schedule` any more (a push or a start by hand still runs them). Two runs at once wait for each other (`concurrency`).
 
 | Workflow | URL (`https://api.github.com/repos/gowthamgta/Atmos/actions/workflows/…/dispatches`) | Request body | Schedule (Asia/Kolkata) |
 |---|---|---|---|
@@ -132,7 +132,7 @@ Check the rain window and the winds against Open-Meteo's API as was done for the
 The workflow of the repository [gowthamgta/atmos-satellite](https://github.com/gowthamgta/atmos-satellite) runs these scripts (checked out from here) and publishes measured cloud-top temperatures for the app's 3D clouds with GitHub Pages at https://gowthamgta.github.io/atmos-satellite/ (a deployment keeps nothing in git, so no repository grows): Himawari-9
 (`bt-h9/`, no key) and Meteosat (`bt/`, needs the secrets, set in atmos-satellite, `EUMETSAT_CONSUMER_KEY` and `EUMETSAT_CONSUMER_SECRET`). Each run keeps
 the last hour. GitHub's own schedule (`cron` in the workflow) starts runs late or skips them when GitHub is busy, so an outside scheduler
-starts it every 10 minutes instead (the GitHub schedule stays as a fallback; two runs at once just queue, see `concurrency`).
+starts it every 10 minutes instead (the workflow has no GitHub schedule; two runs at once just queue, see `concurrency`).
 
 **1. A token that can only start this repository's workflows** (GitHub → Settings → Developer settings → Personal access tokens →
 Fine-grained tokens → Generate new token):

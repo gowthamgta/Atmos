@@ -2,18 +2,15 @@ name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
 # India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
-# Six times a day, at 05:00, 10:00, 13:30, 17:30, 21:00 and 00:00 IST. Each model is built on the four cycles (00Z, 06Z, 12Z, 18Z), which
+# Six times a day, at 05:00, 10:00, 13:30, 17:30, 21:00 and 00:00 IST (started by cron-job.org). Each model is built on the four cycles (00Z, 06Z, 12Z, 18Z), which
 # Open-Meteo publishes 6 to 7.5 hours after they start, so a scheduled run builds the newest cycle that is surely out by now (one that
-# began at least 7 hours ago); a run that finds that cycle already live exits at once. GitHub often starts scheduled jobs an hour or
-# more late. A cycle that is late is tried again after 20 minutes, twice at most; any other failure is not retried. A change to the
+# began at least 7 hours ago); a run that finds that cycle already live exits at once. A cycle that is late is tried again after 20 minutes, twice at most; any other failure is not retried. A change to the
 # pipeline also rebuilds at once.
 # A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
+# Started by cron-job.org at those times (pipeline/README.md); GitHub's own schedule is not used (it started runs late or not at all).
+# IST is UTC + 5:30. 05:00 IST (23:30 UTC, the 12Z cycle), 10:00 (04:30, 18Z), 13:30 (08:00, 00Z), 17:30 (12:00, 00Z again unless
+# 06Z is early), 21:00 (15:30, 06Z), 00:00 (18:30, 06Z again unless 12Z is early)
 on:
-  schedule:
-    # IST is UTC + 5:30. 05:00 IST (23:30 UTC, the 12Z cycle), 10:00 (04:30, 18Z), 13:30 (08:00, 00Z), 17:30 (12:00, 00Z again unless
-    # 06Z is early), 21:00 (15:30, 06Z), 00:00 (18:30, 06Z again unless 12Z is early)
-    - cron: "30 23,4,15,18 * * *"
-    - cron: "0 8,12 * * *"
   # a change to how the models are built rebuilds and deploys at once (on main only: the site is the live one, and GitHub Pages
   # takes deploys from the main branch alone, so a push to another branch would build for nothing and fail to deploy)
   push:
@@ -68,12 +65,11 @@ jobs:
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
-          # a scheduled run builds the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 7 hours ago, so it is published by
-          # now (4 hours made nearly every run wait, up to 2.5 hours). It is worked out from the clock, not from which cron fired:
-          # GitHub often starts a scheduled job an hour or more late, possibly after midnight UTC, and a late start then still
-          # asks for a cycle that is out.
+          # a run started on time (by cron-job.org, or by hand) builds the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 7
+          # hours ago, so it is published by now (4 hours made nearly every run wait, up to 2.5 hours). It is worked out from the
+          # clock, so a late start still asks for a cycle that is out. A forced run, or one started by a push, takes whatever is newest.
           expect=""
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -z "$force" ]; then
             ref=$(date -u -d '-7 hours' +%Y%m%dT%H)
             h=$(( 10#${ref#*T} ))
             expect="--expect-run ${ref%T*}T$(printf %02d $(( h - h % 6 )))Z"

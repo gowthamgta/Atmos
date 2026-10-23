@@ -4,9 +4,8 @@ name: nowcast
 # over Tamil Nadu or Puducherry posts the radar picture with a short alert to the Telegram channel, the Discord server and X (each once its keys are set
 # as repository secrets). Until then, and until the variable NOWCAST_LIVE is "true", it only dry-runs: each run's picture and the post it
 # would make are kept as the run's artifact, to look at first.
+# Started every 10 minutes by cron-job.org (pipeline/README.md), with as_schedule; GitHub's own schedule is not used (it ran late or not at all).
 on:
-  schedule:
-    - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
       dry_run:
