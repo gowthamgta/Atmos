@@ -2,6 +2,8 @@
   command = "npm run build"
   publish = "dist/weather-platform/browser"
   functions = "netlify/functions"
+  # the Node release line for the build and the functions (Netlify takes its newest patch, with the security fixes of 20 Oct 2026)
+  environment = { NODE_VERSION = "22" }
 
 # Netlify edge reverse proxy for IMD Doppler Radar (eliminates CORS & serves directly from same origin)
 [[redirects]]
