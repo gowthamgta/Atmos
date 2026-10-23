@@ -9,7 +9,7 @@ import {
   ProcessedRadarResult
 } from '../domain/models/radar.model';
 
-import { RADAR_FIELD_SIZE, layoutMatches, processRadarPixels } from './radar-process';
+import { RADAR_FIELD_SIZE, layoutMatches, looksLikeRadar, processRadarPixels } from './radar-process';
 import { HistoryHandle, RadarProcessor, StillResult } from './radar-processor';
 import { animationFile, gifFrameTimestamps, historySlots, recentFrames, scanForSlot } from './radar-history';
 import { stampEpoch, type StampTime } from './radar-stamp';
@@ -721,7 +721,7 @@ export class RadarService implements OnDestroy {
     isDisplayed: boolean,
     live: boolean
   ): ProcessedRadarResult | null {
-    const layoutOk = layoutMatches(productConfig.crop, w, h);
+    const layoutOk = layoutMatches(productConfig.crop, w, h) && looksLikeRadar(rgba, w, h, productConfig.palette);
     const field = layoutOk
       ? processRadarPixels(rgba, w, h, { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi' })
       : null;
@@ -751,7 +751,7 @@ export class RadarService implements OnDestroy {
       if (live) {
         console.warn(
           `[RadarService] Station "${station.name}" ${productKey.toUpperCase()} image is ${w}x${h}, ` +
-          `which does not match its configured layout. Treating station as offline.`
+          `which is not a radar sweep (wrong layout, or no legend colours: IMD's "under maintenance" photo). Treating station as offline.`
         );
       }
       return null;

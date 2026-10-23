@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { GifReader } from 'omggif';
-import { RadarPixelOptions, layoutMatches, processRadarPixels } from './radar-process';
+import { RadarPixelOptions, layoutMatches, looksLikeRadar, processRadarPixels } from './radar-process';
 import { StampBox, StampTime, readStampTime } from './radar-stamp';
 
 /**
@@ -40,7 +40,7 @@ function reply(result: RadarWorkerResult): void {
 const empty = (id: number): RadarWorkerResult => ({ id, decoded: false, w: 0, h: 0, layoutOk: false, field: null, stamp: null, frames: 0 });
 
 function fieldOf(rgba: Uint8Array, w: number, h: number, options: RadarPixelOptions): { layoutOk: boolean; field: Float32Array | null } {
-  const layoutOk = layoutMatches(options.crop, w, h);
+  const layoutOk = layoutMatches(options.crop, w, h) && looksLikeRadar(rgba, w, h, options.palette);
   return { layoutOk, field: layoutOk ? processRadarPixels(rgba, w, h, options) : null };
 }
 

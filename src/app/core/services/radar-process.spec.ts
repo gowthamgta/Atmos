@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IMD_RADAR_STATIONS, RadarProductKey } from '../domain/models/radar.model';
-import { RADAR_FIELD_SIZE, decodeLastGifFrame, layoutMatches, processRadarPixels } from './radar-process';
+import { RADAR_FIELD_SIZE, decodeLastGifFrame, layoutMatches, looksLikeRadar, processRadarPixels } from './radar-process';
 import { RadarProcessor } from './radar-processor';
 import { RadarService } from './radar.service';
 import { decodeRadarGif } from './radar-gif-decode';
@@ -174,3 +174,19 @@ describe('radar intensity is kept as the picture gives it', () => {
   });
 });
 
+describe('IMD maintenance photo', () => {
+  it('is told apart from a real sweep by the legend colours, though it is the size of a sweep', () => {
+    const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
+    const chennai = IMD_RADAR_STATIONS.find(s => s.id === 'chennai')!;
+    const pic = (file: string) => decodeLastGifFrame(new Uint8Array(load(file)))!;
+    const photo = pic('karaikal-maintenance.gif');
+    expect(layoutMatches(karaikal.products.caz!.crop, photo.w, photo.h)).toBe(true);        // the size alone let it through
+    expect(looksLikeRadar(photo.rgba, photo.w, photo.h, karaikal.products.caz!.palette)).toBe(false);
+    for (const file of ['karaikal-caz.gif', 'karaikal-caz-stamp.gif']) {
+      const p = pic(file);
+      expect(looksLikeRadar(p.rgba, p.w, p.h, karaikal.products.caz!.palette)).toBe(true);
+    }
+    const c = pic('chennai-caz-stamp.gif');
+    expect(looksLikeRadar(c.rgba, c.w, c.h, chennai.products.caz!.palette)).toBe(true);
+  });
+});

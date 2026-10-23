@@ -26,6 +26,32 @@ export function layoutMatches(crop: RadarCropConfig | undefined, w: number, h: n
 }
 
 /**
+ * Whether the picture is a radar sweep at all: a real one always carries its colour legend, so most of the station's palette colours are in
+ * it; IMD's "RADAR UNDER MAINTENANCE" photo of Karaikal (same 880 x 720 size as a sweep, its file's time refreshed like a live one) has 1 of
+ * the 19 legend steps, real sweeps 15 to 19 of theirs (measured 23 Oct). Read on every third pixel of every third row.
+ */
+export function looksLikeRadar(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number, palette: readonly RadarPaletteEntry[] | undefined): boolean {
+  if (!palette || palette.length === 0) return true;
+  const seen = new Uint16Array(palette.length);
+  for (let y = 0; y < h; y += 3) {
+    for (let x = 0; x < w; x += 3) {
+      const o = (y * w + x) * 4;
+      const r = rgba[o], g = rgba[o + 1], b = rgba[o + 2];
+      for (let i = 0; i < palette.length; i++) {
+        const c = palette[i].rgb;
+        if (Math.abs(r - c[0]) + Math.abs(g - c[1]) + Math.abs(b - c[2]) <= 9) {
+          seen[i]++;
+          break;
+        }
+      }
+    }
+  }
+  let present = 0;
+  for (const n of seen) if (n >= 2) present++;
+  return present >= palette.length * 0.4;
+}
+
+/**
  * Blur applied to the reconstructed intensity, in pixels of the 1024 grid (about 0.5 km each). Light: the GPU layer
  * smooths the intensity itself when it draws, so contours stay crisp at any zoom.
  */
