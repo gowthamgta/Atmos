@@ -164,7 +164,7 @@ def test_the_three_hand_written_models_provide_all_levels():
 
 
 def test_regular_models_publish_what_their_datasets_have():
-    by_id = {m.MODEL_ID: m for m in models_regular.ALL}
+    by_id = {m.MODEL_ID: m for m in (*models_regular.ALL, models_regular.UKMO)}   # UKMO kept defined, though not built
     assert by_id["ukmo"].UNAVAILABLE_VARS == {"solar", "tcwv", "li"}                            # UKMO: everything else, winds via speed + direction
     for m in models_regular.ALL:
         if m.GRID.domain != C.DOMAIN:
@@ -186,7 +186,7 @@ def test_reduced_precision_encoding_stays_within_its_error_bound_and_compresses_
 
 
 def test_stability_variables_come_from_the_models_that_have_them():
-    by_id = {m.MODEL_ID: m for m in models_regular.ALL}
+    by_id = {m.MODEL_ID: m for m in (*models_regular.ALL, models_regular.UKMO)}   # UKMO kept defined, though not built
     assert "cin" not in by_id["ukmo"].UNAVAILABLE_VARS and "li" in by_id["ukmo"].UNAVAILABLE_VARS      # UKMO: CIN only
     assert "cin" not in fetch_ifs.UNAVAILABLE_VARS and "li" in fetch_ifs.UNAVAILABLE_VARS                # IFS: CIN only
 

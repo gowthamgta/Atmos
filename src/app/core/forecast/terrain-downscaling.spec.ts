@@ -34,7 +34,7 @@ describe('90 m downscaling registry', () => {
     // pipeline/build_terrain.py writes these (MODEL_KMS); the published terrain/index.json lists the same four
     const published = [9, 10, 13, 28];
     const ground = Object.fromEntries(FORECAST_MODELS.map(m => [m.id, nearestModelKm(published, m.groundKm)]));
-    expect(ground).toEqual({ ecmwf_ifs: 9, ukmo: 10, gfs: 28, aigfs: 28, aifs: 28, icon: 28 });   // GFS, AIGFS, AIFS and ICON are published on 0.25 degrees: 28 km of ground
+    expect(ground).toEqual({ ecmwf_ifs: 9, gfs: 28, aigfs: 28, aifs: 28, icon: 28 });   // GFS, AIGFS, AIFS and ICON are published on 0.25 degrees: 28 km of ground
     for (const m of FORECAST_MODELS) expect(m.groundKm).toBeGreaterThanOrEqual(m.gridKm);  // a picture is never finer than its model
   });
 });

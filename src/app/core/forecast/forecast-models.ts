@@ -41,10 +41,7 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
     id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, all India', gridKm: 9, groundKm: 9, baseUrl: `${PAGES}/ecmwf_ifs`,
     centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 144,
   },
-  {
-    id: 'ukmo', label: 'UK Met Office', short: 'UKMO', resolution: '10 km, all India', gridKm: 10, groundKm: 10, baseUrl: `${PAGES}/ukmo`,
-    centre: 'Met Office', ai: false, datasets: ['ukmo_global_deterministic_10km'], apiId: 'ukmo_global_deterministic_10km', reachHours: 60,
-  },
+  // UK Met Office is no longer drawn on the map (the site had to stay under GitHub Pages' 1 GB); the place forecast and the Blend still use it
   {
     id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, all India', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/gfs`,
     centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 384,

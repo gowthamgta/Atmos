@@ -57,6 +57,8 @@ fingerprint only together with this file, on the owner's request.
 - **Rain probability: the ECMWF ensemble** (share of members with rain), models' agreement only as the fallback (5b7da55). Meteologix was
   not used (its charts are not open data).
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.
+- **UK Met Office is not drawn on the map** (owner, 23 Oct: "lets compramise UK MET"): the published site was 1.077 GB, over GitHub Pages' 1 GB, and UKMO's
+  folder was about 205 MB; without it the site is about 0.87 GB. The place forecast and the AtmosIQ Blend still read UKMO from Open-Meteo.
 - The Clouds layer was left out on purpose (6cddf45).
 - **Clouds in 3D** (public/clouds/, linked from Settings > Map): the owner asked for a realistic 3D presentation of the cloud types. It is
   a standalone WebGL 2 page outside the Angular bundle (the service worker leaves /clouds alone). Heights are the WMO Cloud Atlas tropical

@@ -109,4 +109,6 @@ ICON = RegularModel(
 )
 
 
-ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIGFS, AIFS, ICON)
+# UKMO is not built for the map any more (22-23 Oct: the site was over GitHub Pages' 1 GB, the owner chose to give it up); the point
+# forecast and the Blend still read it from Open-Meteo directly
+ALL: tuple[RegularModel, ...] = (GFS, AIGFS, AIFS, ICON)
