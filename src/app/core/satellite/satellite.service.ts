@@ -320,11 +320,17 @@ export class SatelliteService {
       const index = (await res.json()) as OwnIndex;
       if (token !== this.loadToken || this.source() !== kind || this.ownSatellite() !== satellite) return;
       const following = this.position() >= this.frames().length - 1;
+      // the RGB until its first frames are made: the colour picture the satellite has (natural or true colour), else the infrared
+      let shown: OwnKind = kind;
       if (kind === 'rgb') {
-        await this.loadOwnRgb(token, index, satellite, base, following);
-        return;
+        if (index.frames.some(f => f.files.rgb)) {
+          await this.loadOwnRgb(token, index, satellite, base, following);
+          return;
+        }
+        const colour: OwnKind = satellite === 'msg' ? 'natural' : 'truecolor';
+        shown = index.frames.some(f => f.files[colour]) ? colour : 'infrared';
       }
-      const picture = isShaderKind(kind) ? 'data' : kind;
+      const picture = isShaderKind(shown) ? 'data' : shown;
       const list: SatelliteFrame[] = [];
       for (const f of index.frames) {
         const file = f.files[picture];
@@ -333,9 +339,9 @@ export class SatelliteService {
         if (!file || !data || !Number.isFinite(timeMs)) continue;
         list.push({
           timeMs,
-          product: isDayKind(kind) ? SATELLITE_HRV : SATELLITE_IR,
+          product: isDayKind(shown) ? SATELLITE_HRV : SATELLITE_IR,
           url: base + file,
-          own: { kind, satellite, bounds: index.bounds, dataUrl: base + data, minK: index.data.minK, spanK: index.data.spanK },
+          own: { kind: shown, satellite, bounds: index.bounds, dataUrl: base + data, minK: index.data.minK, spanK: index.data.spanK },
         });
       }
       this.frames.set(list);
