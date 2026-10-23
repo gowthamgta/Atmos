@@ -40,6 +40,7 @@ uniform vec4 u_box;       // mercator x0, y0 (top), x1, y1 (bottom) of the pictu
 uniform ivec2 u_size;
 uniform float u_mixB;     // 0..1: how much of picture B is faded in over A
 uniform float u_opacity;
+uniform float u_soften;   // 1: soften the picture's pixels (EUMETView's JPEGs); 0: our lossless frames, kept sharp
 uniform int u_hasB;
 uniform float u_feather;   // > 0: fade the picture out over this much (map units) inside its own edge (a window over the main picture)
 uniform vec4 u_hole;       // mercator box of a window drawn over this picture, which this picture fades out inside
@@ -94,8 +95,8 @@ vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnify
   if (!magnifying) return premultiplied(textureGrad(tex, uv, gx, gy)); // explicit gradients: safe inside a per-pixel branch
   vec4 c = bicubic(tex, px);
   if (c.a <= 0.001 && around(tex, px, 1.0).a <= 0.001) return c; // clear ground, well away from any cloud
-  c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5);
-  c.a = clamp(mix(c.a, around(tex, px, 0.5).a, 0.6), 0.0, 1.0);
+  c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5 * u_soften);
+  c.a = clamp(mix(c.a, around(tex, px, 0.5).a, 0.6 * u_soften), 0.0, 1.0);
   c.rgb = min(c.rgb, vec3(c.a));
   return c;
 }
@@ -249,6 +250,15 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   }
 
   /** Where the loop is (a frame number with a fraction while playing) and the overall opacity. */
+  /** Soften the picture's pixels as it is enlarged (true for EUMETView's compressed pictures; our lossless frames are kept sharp). */
+  setSoften(on: boolean): void {
+    if (this.soften === on) return;
+    this.soften = on;
+    this.map?.triggerRepaint();
+  }
+
+  private soften = true;
+
   setPosition(position: number, opacity: number): void {
     this.position = position;
     this.opacity = opacity;
@@ -378,7 +388,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     }
     this.program = program;
     for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_opacity', 'u_hasB', 'u_feather', 'u_hole', 'u_holeFeather',
-      'u_flow', 'u_hasFlow', 'u_flowBox', 'u_flowNodes', 'u_flowCount']) {
+      'u_flow', 'u_hasFlow', 'u_flowBox', 'u_flowNodes', 'u_flowCount', 'u_soften']) {
       this.uniforms[name] = gl.getUniformLocation(program, name);
     }
     return true;
@@ -413,6 +423,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     gl.uniform2i(u['u_size'], a.w, a.h);
     gl.uniform1f(u['u_mixB'], b ? frac : 0);
     gl.uniform1f(u['u_opacity'], this.opacity);
+    gl.uniform1f(u['u_soften'], this.soften ? 1 : 0);
     gl.uniform1i(u['u_hasB'], b ? 1 : 0);
     gl.uniform1f(u['u_feather'], this.featherFraction > 0 ? this.featherFraction * Math.abs(mercatorUnitX(bounds.east) - mercatorUnitX(bounds.west)) : 0);
     const hole = this.window?.windowBox() ?? null;

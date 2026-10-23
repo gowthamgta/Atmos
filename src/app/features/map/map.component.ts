@@ -598,6 +598,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url })));
     }
     this.satelliteLayer.setFlows(this.satellite.flows());
+    this.satelliteLayer.setSoften(!frames[0]?.own);   // our own frames are lossless: no softening
     this.satelliteLayer.setPosition(position, opacity);
   }
 
