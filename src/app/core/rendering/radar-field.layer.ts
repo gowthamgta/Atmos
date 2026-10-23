@@ -17,7 +17,7 @@ void main() {
 const f = (n: number) => n.toFixed(6);
 
 /** The radar colour scale as GLSL: smooth steps between the stops, the same as sampleRadarColorRamp on the CPU. */
-function rampGlsl(): string {
+export function rampGlsl(): string {
   const stops = RADAR_COLOR_STOPS;
   const col = (s: (typeof stops)[number]) => `vec4(${f(s.r / 255)}, ${f(s.g / 255)}, ${f(s.b / 255)}, ${f(s.a)})`;
   const branches = stops
@@ -38,7 +38,7 @@ ${branches}
 }
 
 /** The flat bands as GLSL: the colour of ramp() at each band's own dBZ, switching at the edges over about a pixel (anti-aliased contours). */
-function bandGlsl(): string {
+export function bandGlsl(): string {
   const v = (dbz: number) => f((dbz - 12) / 9.6);
   const colours = RADAR_BAND_COLOUR_DBZ.map(d => `ramp(${v(d)})`);
   const steps = RADAR_BAND_EDGES_DBZ.map((e, i) => `  c = mix(c, ${colours[i + 1]}, smoothstep(${v(e)} - w, ${v(e)} + w, v));`).join('\n');

@@ -20,6 +20,8 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
+import { SatelliteRainLayer } from '../../core/rendering/satellite-rain.layer';
+import { SatelliteRainService } from '../../core/satellite/satellite-rain.service';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
@@ -106,6 +108,35 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!this.map || !this.isMapLoaded()) return;
     this.syncOverlays(layers);
   });
+
+  // Reactive Effect: rain estimated from the satellite where no working radar sees (satellite-rain.layer.ts), under the radar echoes
+  private satelliteRainEffect = effect(() => {
+    const on = this.layerService.layers().some(l => l.id === 'radar' && l.active);
+    const data = this.satelliteRain.latest();
+    const unavailable = this.radarService.unavailableStations();
+    const hidden = this.radarService.hiddenStations();
+    this.radarService.stationTimings();
+    const opacity = this.radarService.radarOpacity();
+    untracked(() => (on ? this.satelliteRain.activate() : this.satelliteRain.deactivate()));
+    if (!this.map || !this.isMapLoaded()) return;
+    if (!on || !data) {
+      if (this.satelliteRainLayer && this.map.getLayer(this.satelliteRainLayer.id)) this.map.removeLayer(this.satelliteRainLayer.id);
+      this.satelliteRainLayer = null;
+      return;
+    }
+    if (!this.satelliteRainLayer) {
+      this.satelliteRainLayer = new SatelliteRainLayer();
+      this.map.addLayer(this.satelliteRainLayer, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
+    }
+    void this.satelliteRainLayer.setData(data.url, data.bounds, data.minK, data.spanK);
+    // the radars that show something: not down, not turned off, a picture under 3 hours old
+    const working = this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline');
+    this.satelliteRainLayer.setRadars(working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.operationalRangeKm })));
+    this.satelliteRainLayer.setOpacity(opacity);
+  });
+
+  private satelliteRainLayer: SatelliteRainLayer | null = null;
+  private readonly satelliteRain = inject(SatelliteRainService);
 
   // Reactive Effect: Unified Merged Radar Mosaic across all active stations
   private radarMosaicEffect = effect(() => {
