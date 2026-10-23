@@ -67,34 +67,8 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 <button type="button" [class.on]="sat.ownSatellite() === s.id" [attr.aria-pressed]="sat.ownSatellite() === s.id" (click)="sat.setOwnSatellite(s.id)">{{ s.name }}</button>
               }
             </div>
-            <div class="kinds" role="group" aria-label="Picture">
-              @for (k of ownKinds(); track k.id) {
-                <button type="button" class="kind" [class.on]="sat.source() === k.id" [attr.aria-pressed]="sat.source() === k.id" [title]="k.title" (click)="pick(k.id)">{{ k.label }}</button>
-              }
-            </div>
-            @if (sat.source() === 'custom') {
-              <div class="presets full-only" role="group" aria-label="Recipes">
-                @for (p of presets; track p.id) {
-                  <button type="button" class="kind" [class.on]="isPreset(p.recipe)" [title]="p.title" (click)="sat.setCustom(p.recipe)">{{ p.label }}</button>
-                }
-              </div>
-              <div class="custom full-only" aria-label="Custom RGB recipe: value = ((v − min) / (max − min)) ^ (1 / gamma)">
-                @for (c of sat.custom(); track $index; let i = $index) {
-                  <div class="crow">
-                    <span class="cname" [class]="'cname c' + i">{{ 'RGB'[i] }}</span>
-                    <select [value]="c.source" (change)="setCustom(i, 'source', $event)" [attr.aria-label]="'RGB'[i] + ' from'">
-                      @for (o of customSources; track o.id) { <option [value]="o.id" [selected]="o.id === c.source">{{ o.label }}</option> }
-                    </select>
-                    <input type="number" step="1" [value]="c.min" (change)="setCustom(i, 'min', $event)" [attr.aria-label]="'RGB'[i] + ' min (K)'" title="min (K)" />
-                    <input type="number" step="1" [value]="c.max" (change)="setCustom(i, 'max', $event)" [attr.aria-label]="'RGB'[i] + ' max (K)'" title="max (K)" />
-                    <input type="number" step="0.1" min="0.1" [value]="c.gamma" (change)="setCustom(i, 'gamma', $event)" [attr.aria-label]="'RGB'[i] + ' gamma'" title="gamma" />
-                  </div>
-                }
-                <button type="button" class="reset" (click)="resetCustom()">Reset recipe</button>
-              </div>
-            }
             @if (sat.ownEmpty() === 'night') {
-              <p class="hint3d">This picture needs daylight (the visible channels): at night try Infrared or Night micro.</p>
+              <p class="hint3d">The RGB needs daylight: the infrared takes over at night.</p>
             } @else if (sat.ownEmpty() === 'none') {
               <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow.</p>
             }

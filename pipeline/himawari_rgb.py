@@ -181,6 +181,18 @@ def make_scan(files: list[str], t: datetime, folder: str) -> dict:
         out[n] = f"{n}-{stamp}.webp"
         save_webp(os.path.join(folder, out[n]), rgb, alpha)
 
+    if day:
+        # the HRV Cloud picture (the app colours it in Windy's way): the 0.5 km visible band in place of Meteosat's HRV
+        def make(gl):
+            area = latlon_area(gl, f"h9_ll_{gl['step']}")
+            ll = scn.resample(area, resampler="gradient_search", datasets=["B03", "B13"])
+            cos_z = np.cos(np.radians(np.minimum(sun_zenith(t, gl["lat"], gl["lon"]), 85)))
+            vis = np.asarray(ll["B03"].values, float) / 100 / cos_z
+            b13 = np.asarray(ll["B13"].values, float)
+            b13c, (visc,) = H.parallax_correct(b13, [vis], gl["lat"], gl["lon"])
+            return visc, b13c
+        out.update(save_hrv_clouds(folder, stamp, make))
+
     # the data pack, on its own coarser grid
     from PIL import Image
     d13 = np.asarray(local_data["B13"].values, float)
@@ -190,6 +202,57 @@ def make_scan(files: list[str], t: datetime, folder: str) -> dict:
     px = np.stack([encode_data(d13), encode_data(d08), encode_data(d10)], -1)
     out["data"] = f"data-{stamp}.png"
     Image.fromarray(px, "RGB").save(os.path.join(folder, out["data"]), optimize=True)
+    return out
+
+
+# ── the HRV Cloud picture: what EUMETView serves as its HRV RGB (rgb_eview), which the app colours in Windy's way ──
+# EUMETSAT's HRV Cloud RGB (Satpy's hrv_clouds): red and green the high-resolution visible reflectance (sun-normalised, 0-100 %), blue the
+# 10.8 um brightness temperature from 323 K (0) to 203 K (255). Checked on 23 Oct 01:30 UTC against EUMETView's rgb_eview over India: its blue
+# matches this to a pixel value or two at every temperature (correlation 0.98), so the app's agreed Windy colouring (satellite-image.ts), tuned
+# on EUMETView's picture, takes this picture as it is, but uncompressed and at the satellite's own resolution. Made on the app's satellite box
+# (68-97.5 E, 5-37.5 N, latitude rows as EUMETView's) at two sizes: full (about 1.25 km) and a lighter one for phones (about 2.5 km).
+APP_BOX = (68.0, 97.5, 5.0, 37.5)
+HRV_STEP_DEG = {"rgb": 0.0125, "rgb_lo": 0.025}
+
+
+def latlon_grid(step: float, box: tuple[float, float, float, float] = APP_BOX) -> dict:
+    """A regular latitude/longitude grid over a box (rows north to south), as EUMETView's pictures are."""
+    west, east, south, north = box
+    cols, rows = round((east - west) / step), round((north - south) / step)
+    lat = north - (np.arange(rows) + 0.5) * step
+    lon = west + (np.arange(cols) + 0.5) * step
+    LAT, LON = np.meshgrid(lat, lon, indexing="ij")
+    return {"rows": rows, "cols": cols, "lat": LAT, "lon": LON, "box": box, "step": step}
+
+
+def latlon_area(g: dict, name: str):
+    from pyresample import create_area_def
+    west, east, south, north = g["box"]
+    return create_area_def(name, "EPSG:4326", area_extent=[west, south, east, north], shape=(g["rows"], g["cols"]), units="degrees")
+
+
+def hrv_clouds_rgb(vis: np.ndarray, bt: np.ndarray) -> np.ndarray:
+    """EUMETSAT's HRV Cloud RGB as bytes: red = green = the visible reflectance (0..1, sun-normalised), blue = (323 K - BT) / 120 K. Where the
+    visible has no value (outside its scan) red and green are 0 and the blue stays (the app then shows the infrared there, as with EUMETView);
+    where neither has one, all 0 (nothing drawn)."""
+    v = np.clip(np.nan_to_num(vis, nan=0.0), 0, 1)
+    b = np.clip((323.0 - bt) / 120.0, 0, 1)
+    out = np.zeros(vis.shape + (3,), np.uint8)
+    out[..., 0] = out[..., 1] = np.round(v * 255).astype(np.uint8)
+    out[..., 2] = np.where(np.isfinite(bt), np.round(np.nan_to_num(b) * 255), 0).astype(np.uint8)
+    return out
+
+
+def save_hrv_clouds(folder: str, stamp: str, make) -> dict:
+    """The HRV Cloud picture at both sizes as high-quality WebP; `make(grid)` returns its (visible, BT) on a grid. Returns {kind: file}."""
+    from PIL import Image
+    out = {}
+    for kind, step in HRV_STEP_DEG.items():
+        gl = latlon_grid(step)
+        vis, bt = make(gl)
+        name = f"{kind}-{stamp}.webp"
+        Image.fromarray(hrv_clouds_rgb(vis, bt), "RGB").save(os.path.join(folder, name), "WEBP", quality=92, method=4)
+        out[kind] = name
     return out
 
 

@@ -105,6 +105,18 @@ def make_scan(path: str, t, folder: str) -> dict:
         rgb = np.stack(channels[3 * i:3 * i + 3], -1)
         out[n] = f"{n}-{stamp}.webp"
         G.save_webp(os.path.join(folder, out[n]), rgb, view * (daylight if n in DAY_PRODUCTS else 1))
+    if day:
+        # the HRV Cloud picture (the app colours it in Windy's way): the HRV itself, the 0.6 um channel where the HRV's scan does not reach
+        def make(gl):
+            area = G.latlon_area(gl, f"msg_ll_{gl['step']}")
+            ll = scn.resample(area, resampler="gradient_search", datasets=["VIS006", "IR_108"])
+            hrv_ll = np.asarray(scn_hrv.resample(area, resampler="nearest", radius_of_influence=2500)["HRV"].values, float)
+            cos_z = np.cos(np.radians(np.minimum(G.sun_zenith(t, gl["lat"], gl["lon"]), 85)))
+            vis = np.where(np.isfinite(hrv_ll), hrv_ll, np.asarray(ll["VIS006"].values, float)) / 100 / cos_z
+            b108 = np.asarray(ll["IR_108"].values, float)
+            b108c, (visc,) = H.parallax_correct(b108, [vis], gl["lat"], gl["lon"], sub_lon=SUB_LON, max_view=MAX_VIEW_DEG)
+            return visc, b108c
+        out.update(G.save_hrv_clouds(folder, stamp, make))
     d108 = np.asarray(local_data["IR_108"].values, float)
     d062 = np.asarray(local_data["WV_062"].values, float)
     d073 = np.asarray(local_data["WV_073"].values, float)

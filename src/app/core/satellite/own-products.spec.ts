@@ -3,11 +3,11 @@ import { autoKind, OWN_SATELLITES } from './own-products';
 import { cloudTopColor, greyScaleTempFromMeasured, windyInfraredTable } from './satellite-image';
 
 describe('our own satellite pictures', () => {
-  it('shows infrared at night and our own RGB by day, on both satellites', () => {
+  it('shows infrared at night and the RGB by day, on both satellites', () => {
     expect(autoKind('msg', false)).toBe('infrared');
     expect(autoKind('h9', false)).toBe('infrared');
-    expect(autoKind('msg', true)).toBe('natural');
-    expect(autoKind('h9', true)).toBe('truecolor');
+    expect(autoKind('msg', true)).toBe('rgb');
+    expect(autoKind('h9', true)).toBe('rgb');
     for (const sat of ['msg', 'h9'] as const) {
       expect(OWN_SATELLITES[sat].kinds).toContain(autoKind(sat, true));
       expect(OWN_SATELLITES[sat].kinds).toContain('infrared');

@@ -6,6 +6,7 @@ import { isPhone } from '../ui/device-profile';
 import { readFlag, writeFlag } from '../ui/saved-flag';
 import {
   GeoBounds,
+  SATELLITE_BOUNDS,
   SATELLITE_HRV,
   SATELLITE_IR,
   SatelliteProduct,
@@ -38,7 +39,7 @@ export interface SatelliteFrame {
   /** How much cloud is where, for the loop's motion between pictures (satellite-flow.ts). */
   motion?: MotionGrid;
   /** One of our own pictures (own-products.ts): which, the ground it covers, and its data pack (brightness temperatures). */
-  own?: { kind: OwnKind; satellite: OwnSatellite; bounds: GeoBounds; dataUrl: string; minK: number; spanK: number };
+  own?: { kind: OwnKind; satellite: OwnSatellite; bounds: GeoBounds; dataUrl: string; dataBounds?: GeoBounds; minK: number; spanK: number };
   /** The clouds' cover, top and base heights and thickness on a coarse grid, for the 3D view (cloud-field.ts). */
   cloudField?: CloudField;
 }
@@ -277,7 +278,7 @@ export class SatelliteService {
         void this.decodePack(own.dataUrl).then(p => {
           if (this.packLoading !== own.dataUrl) return;
           this.packLoading = null;
-          if (p) this.pack = { url: own.dataUrl, pack: { ...p, bounds: own.bounds, minK: own.minK, spanK: own.spanK } };
+          if (p) this.pack = { url: own.dataUrl, pack: { ...p, bounds: own.dataBounds ?? own.bounds, minK: own.minK, spanK: own.spanK } };
           if (p && this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
         });
       }
@@ -319,6 +320,10 @@ export class SatelliteService {
       const index = (await res.json()) as OwnIndex;
       if (token !== this.loadToken || this.source() !== kind || this.ownSatellite() !== satellite) return;
       const following = this.position() >= this.frames().length - 1;
+      if (kind === 'rgb') {
+        await this.loadOwnRgb(token, index, satellite, base, following);
+        return;
+      }
       const picture = isShaderKind(kind) ? 'data' : kind;
       const list: SatelliteFrame[] = [];
       for (const f of index.frames) {
@@ -341,6 +346,67 @@ export class SatelliteService {
       if (token === this.loadToken) this.failed.set(this.frames().length === 0);
     } finally {
       if (token === this.loadToken) this.loading.set(false);
+    }
+  }
+
+  /** The RGB frames as built so far (by the picture's address), so a refresh only builds the new ones. */
+  private readonly ownRgb = new Map<string, Promise<SatelliteFrame | null>>();
+
+  /**
+   * The RGB: each frame's HRV Cloud picture (pipeline: EUMETSAT's recipe from the raw data, uncompressed and at the satellite's own
+   * resolution; the lighter one on a phone) is built in the worker exactly as EUMETView's HRV picture is, so it takes the agreed Windy
+   * colours and ground removal, and carries the loop's cloud motion and the 3D clouds' field. The newest first, then the rest of the hour.
+   */
+  private async loadOwnRgb(token: number, index: OwnIndex, satellite: OwnSatellite, base: string, following: boolean): Promise<void> {
+    const items = index.frames
+      .map(f => ({ timeMs: Date.parse(f.time), file: (isPhone() ? f.files.rgb_lo : undefined) ?? f.files.rgb, data: f.files.data }))
+      .filter((f): f is { timeMs: number; file: string; data: string } => Number.isFinite(f.timeMs) && !!f.file && !!f.data);
+    if (items.length === 0) {
+      this.frames.set([]);
+      this.ownEmpty.set(index.frames.length > 0 ? 'night' : 'none');
+      return;
+    }
+    this.ownEmpty.set(null);
+    const build = (it: (typeof items)[number]): Promise<SatelliteFrame | null> => {
+      const url = base + it.file;
+      let p = this.ownRgb.get(url);
+      if (!p) {
+        p = fetch(url)
+          .then(r => (r.ok ? r.blob() : null))
+          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true) : null))
+          .then(res => res && {
+            timeMs: it.timeMs,
+            product: SATELLITE_HRV,
+            url: res.url,
+            lumaGrid: res.lumaGrid,
+            motion: res.motion,
+            cloudField: res.cloudField,
+            own: { kind: 'rgb', satellite, bounds: SATELLITE_BOUNDS, dataBounds: index.bounds, dataUrl: base + it.data, minK: index.data.minK, spanK: index.data.spanK },
+          } satisfies SatelliteFrame)
+          .catch(() => null);
+        p.then(f => { if (!f) this.ownRgb.delete(url); });   // tried again on the next refresh
+        this.ownRgb.set(url, p);
+      }
+      return p;
+    };
+    const publish = async (): Promise<void> => {
+      const built = (await Promise.all(items.map(it => (this.ownRgb.has(base + it.file) ? build(it) : Promise.resolve(null))))).filter((f): f is SatelliteFrame => !!f);
+      if (token !== this.loadToken || this.source() !== 'rgb' || this.ownSatellite() !== satellite) return;
+      this.frames.set(built);
+      if (following || this.position() > built.length - 1) this.position.set(Math.max(0, built.length - 1));
+      void this.updateFlows(built);
+    };
+    // the newest at once, then the hour
+    await build(items[items.length - 1]);
+    await publish();
+    await Promise.all(items.map(build));
+    await publish();
+    // pictures that have left the hour are released
+    const keep = new Set(items.map(it => base + it.file));
+    for (const [url, p] of this.ownRgb) {
+      if (keep.has(url) || !url.startsWith(base)) continue;
+      this.ownRgb.delete(url);
+      void p.then(f => f && URL.revokeObjectURL(f.url));
     }
   }
 

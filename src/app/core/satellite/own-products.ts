@@ -9,19 +9,19 @@ import type { GeoBounds } from './satellite.config';
 
 const SITE = 'https://gowthamgta.github.io/atmos-satellite/';
 
-export type OwnKind = 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'infrared' | 'wvdiff' | 'custom';
+export type OwnKind = 'rgb' | 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'infrared' | 'wvdiff' | 'custom';
 export type OwnSatellite = 'msg' | 'h9';
 
 /** The two satellites' published folders and what each makes. */
 export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; kinds: readonly OwnKind[]; ir: string; note: string }> = {
   msg: {
     name: 'Meteosat-9', base: SITE + 'rgb-msg/', ir: '10.8',
-    kinds: ['natural', 'hrv', 'sandwich', 'convection', 'infrared', 'nightmicro', 'wvdiff', 'custom'],
+    kinds: ['rgb', 'infrared', 'natural', 'hrv', 'sandwich', 'convection', 'nightmicro', 'wvdiff', 'custom'],
     note: 'From Meteosat-9\'s raw SEVIRI data (EUMETSAT Data Store), 1.25 km, parallax-corrected, all of India.',
   },
   h9: {
     name: 'Himawari-9', base: SITE + 'rgb-h9/', ir: '10.4',
-    kinds: ['truecolor', 'sandwich', 'convection', 'infrared', 'nightmicro', 'wvdiff', 'custom'],
+    kinds: ['rgb', 'infrared', 'truecolor', 'sandwich', 'convection', 'nightmicro', 'wvdiff', 'custom'],
     note: 'From Himawari-9\'s raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.',
   },
 };
@@ -29,6 +29,7 @@ export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; 
 export type SatelliteSource = 'eumetview' | OwnKind;
 
 export const OWN_KINDS: readonly { id: OwnKind; label: string; title: string; day?: boolean; shader?: boolean }[] = [
+  { id: 'rgb', label: 'RGB', day: true, title: 'The visible picture in Windy\'s colours: EUMETSAT\'s HRV Cloud RGB from the raw data, coloured and cleared of the ground as agreed' },
   { id: 'hrv', label: 'HRV', day: true, title: 'The High Resolution Visible channel itself, uncompressed, about 1.2 km, by day' },
   { id: 'natural', label: 'Natural colour', day: true, title: 'Natural colour (0.6, 0.8, 1.6 µm) sharpened with the HRV: ice cloud cyan, water cloud white, land green-brown, by day' },
   { id: 'truecolor', label: 'True colour', day: true, title: 'True colour from the visible bands (Rayleigh-corrected), by day' },
@@ -73,9 +74,10 @@ export function wmoChannel(v: number, c: CustomChannel): number {
 }
 
 export interface OwnIndex {
+  /** The box of the pictures and of the data pack (the RGB is on the app's satellite box, SATELLITE_BOUNDS). */
   bounds: GeoBounds;
   data: { minK: number; spanK: number };
-  frames: { time: string; files: Partial<Record<OwnKind | 'data', string>> }[];
+  frames: { time: string; files: Partial<Record<OwnKind | 'data' | 'rgb_lo', string>> }[];
 }
 
 /** A decoded data pack: RGB bytes (10.4, 6.2, 7.3 um), Mercator rows over `bounds`. */
@@ -103,12 +105,11 @@ export function readDataPack(p: DataPack, lat: number, lon: number): { ir: numbe
 }
 
 /**
- * The picture's kind to show by default: infrared at night; by day our natural colour (Meteosat) or true colour (Himawari). The owner
- * asked for this (22 Oct): infrared at night on both satellites, our own RGB by day.
+ * The picture's kind: infrared at night, the RGB by day, on both satellites. The owner asked for this (22-23 Oct: "display only rgb at
+ * morning and infrared at night", the RGB "just like windy but with high quality"); the other kinds are not offered in the panel.
  */
-export function autoKind(satellite: OwnSatellite, day: boolean): OwnKind {
-  if (!day) return 'infrared';
-  return satellite === 'msg' ? 'natural' : 'truecolor';
+export function autoKind(_satellite: OwnSatellite, day: boolean): OwnKind {
+  return day ? 'rgb' : 'infrared';
 }
 
 /**
