@@ -269,6 +269,9 @@ def save_hrv_clouds(folder: str, stamp: str, make) -> dict:
     return out
 
 
+OLD_KINDS = ("rgb", "rgb_lo", "data")
+
+
 def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime, box: tuple[float, float, float, float] = (WEST, EAST, SOUTH, NORTH),
                  res: tuple[float, float] = (RES_M, DATA_RES_M),
                  source: str = "JMA Himawari-9 AHI (NOAA open data on AWS); parallax-corrected; empty beyond 72 degrees view angle",
@@ -287,7 +290,10 @@ def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime, b
     keep = {}
     for time, files in frames.items():
         when = datetime.strptime(time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-        if now - when <= timedelta(minutes=S.KEEP_MINUTES) and all(os.path.exists(os.path.join(folder, f)) for f in files.values()):
+        if now - when > timedelta(minutes=S.FULL_MINUTES):
+            # past the newest hour only what the app's loop shows: the RGB (both sizes) and the data pack (infrared, hover, 3D)
+            files = {k: v for k, v in files.items() if k in OLD_KINDS}
+        if now - when <= timedelta(minutes=S.KEEP_MINUTES) and files and all(os.path.exists(os.path.join(folder, f)) for f in files.values()):
             keep[time] = files
     used = {f for files in keep.values() for f in files.values()}
     for name in os.listdir(folder):

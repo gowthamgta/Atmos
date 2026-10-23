@@ -30,7 +30,9 @@ WEST, EAST, SOUTH, NORTH = 68.0, 97.5, 5.0, 37.5
 STEP_DEG = 0.03                 # about 3 km: the infrared channels' own pixel over India
 OFFSET_K = 180.0
 STEP_K = 0.5                    # 180 K .. 307.5 K in 255 steps
-KEEP_MINUTES = 75               # the app's loop is the last hour, every 15 minutes
+KEEP_MINUTES = 250              # the app's loop is the last 4 hours (a little more, so a late scan still makes the first frame)
+# frames older than this keep only what the app shows for them (himawari_rgb.update_index): the full set is for the newest hour
+FULL_MINUTES = 75
 FOLDER = "bt"
 
 

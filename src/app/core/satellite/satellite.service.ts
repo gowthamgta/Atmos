@@ -340,7 +340,7 @@ export class SatelliteService {
       }
       const picture = isShaderKind(shown) ? 'data' : shown;
       const list: SatelliteFrame[] = [];
-      for (const f of index.frames) {
+      for (const f of loopFrames(index.frames, this.historyRequested())) {
         const file = f.files[picture];
         const data = f.files.data;
         const timeMs = Date.parse(f.time);
@@ -372,8 +372,15 @@ export class SatelliteService {
    * colours and ground removal, and carries the loop's cloud motion and the 3D clouds' field. The newest first, then the rest of the hour.
    */
   private async loadOwnRgb(token: number, index: OwnIndex, satellite: OwnSatellite, base: string, following: boolean): Promise<void> {
-    const items = index.frames
-      .map(f => ({ timeMs: Date.parse(f.time), file: (isPhone() ? f.files.rgb_lo : undefined) ?? f.files.rgb, data: f.files.data }))
+    const newest = Date.parse(index.frames[index.frames.length - 1]?.time ?? '');
+    const items = loopFrames(index.frames, this.historyRequested())
+      .map(f => {
+        const timeMs = Date.parse(f.time);
+        // full detail for the newest hour on a larger screen; the lighter picture for older frames and on phones (GPU memory: 4 hours of
+        // full frames would be over half a gigabyte)
+        const full = !isPhone() && newest - timeMs <= FULL_DETAIL_MS;
+        return { timeMs, file: (full ? f.files.rgb : f.files.rgb_lo) ?? f.files.rgb ?? f.files.rgb_lo, data: f.files.data };
+      })
       .filter((f): f is { timeMs: number; file: string; data: string } => Number.isFinite(f.timeMs) && !!f.file && !!f.data);
     if (items.length === 0) {
       this.frames.set([]);
@@ -410,10 +417,13 @@ export class SatelliteService {
       if (following || this.position() > built.length - 1) this.position.set(Math.max(0, built.length - 1));
       void this.updateFlows(built);
     };
-    // the newest at once, then the hour
+    // the newest at once, then (once the loop is wanted) the rest of the 4 hours, newest first
     await build(items[items.length - 1]);
     await publish();
-    await Promise.all(items.map(build));
+    for (let i = items.length - 2; i >= 0; i -= 3) {
+      await Promise.all(items.slice(Math.max(0, i - 2), i + 1).map(build));
+      if (token !== this.loadToken) return;
+    }
     await publish();
     // pictures that have left the hour are released
     const keep = new Set(items.map(it => base + it.file));
@@ -844,4 +854,29 @@ function readOwnSatellite(): OwnSatellite {
   } catch {
     return 'msg';
   }
+}
+
+/** Our own frames newer than this before the newest are drawn in full detail (larger screens); older ones in the lighter picture. */
+const FULL_DETAIL_MS = 60 * 60_000;
+/** How far back the loop of our own frames goes (the workflow keeps a little more). */
+const LOOP_MS = 4 * 3_600_000;
+
+/**
+ * The frames of our own loop: the newest only until the loop is wanted (play, step, the slider), then the last 4 hours. On a phone, past the
+ * newest hour, one frame every 30 minutes (each frame is a picture in the phone's memory).
+ */
+function loopFrames<T extends { time: string }>(frames: readonly T[], history: boolean): T[] {
+  if (frames.length === 0) return [];
+  if (!history) return [frames[frames.length - 1]];
+  const newest = Date.parse(frames[frames.length - 1].time);
+  let lastKept = Infinity;
+  const out: T[] = [];
+  for (let i = frames.length - 1; i >= 0; i--) {
+    const t = Date.parse(frames[i].time);
+    if (newest - t > LOOP_MS) break;
+    if (isPhone() && newest - t > FULL_DETAIL_MS && lastKept - t < 29 * 60_000) continue;
+    out.unshift(frames[i]);
+    lastKept = t;
+  }
+  return out;
 }

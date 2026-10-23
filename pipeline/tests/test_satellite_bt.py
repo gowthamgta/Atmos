@@ -28,10 +28,10 @@ def test_frames_written_and_old_ones_dropped(tmp_path):
     folder = str(tmp_path)
     now = datetime(2026, 10, 22, 12, 0, tzinfo=timezone.utc)
     rows, cols = 4, 5
-    old_t = now - timedelta(minutes=120)
+    old_t = now - timedelta(minutes=300)   # past the 4-hour window
     new_t = now - timedelta(minutes=15)
     S.write_frame(folder, old_t, np.full((rows, cols), 220.0), np.full((rows, cols), 240.0))
-    S.update_index(folder, [(old_t, S.frame_name(old_t))], now - timedelta(minutes=110))   # an earlier run
+    S.update_index(folder, [(old_t, S.frame_name(old_t))], now - timedelta(minutes=290))   # an earlier run
     S.write_frame(folder, new_t, np.full((rows, cols), 220.0), np.full((rows, cols), 240.0))
     index = S.update_index(folder, [(new_t, S.frame_name(new_t))], now)
     assert [f["time"] for f in index["frames"]] == ["2026-10-22T11:45:00Z"]

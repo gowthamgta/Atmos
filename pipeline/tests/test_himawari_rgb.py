@@ -88,3 +88,21 @@ def test_hrv_clouds_takes_eumetviews_brightness_curve():
     assert px[0, 0, 0] == 40 and px[0, 1, 0] == 135 and px[0, 2, 0] == 226   # EUMETView's curve, highlights rolled off
     assert px[0, 3, 0] == 0 and px[0, 3, 2] > 0                              # no visible: red and green 0, the infrared stays
     assert px[0, 2, 2] == 255                                                 # 203 K: blue full
+
+
+def test_index_keeps_four_hours_and_thins_old_frames(tmp_path):
+    folder = str(tmp_path)
+    now = datetime(2026, 10, 23, 8, 0, tzinfo=timezone.utc)
+    names = ["rgb-a.webp", "rgb_lo-a.webp", "data-a.png", "natural-a.webp", "rgb-b.webp", "data-b.png", "natural-b.webp", "rgb-c.webp"]
+    for n in names:
+        open(os.path.join(folder, n), "wb").write(b"x")
+    index = G.update_index(folder, [
+        (datetime(2026, 10, 23, 5, 0, tzinfo=timezone.utc), {"rgb": "rgb-a.webp", "rgb_lo": "rgb_lo-a.webp", "data": "data-a.png", "natural": "natural-a.webp"}),
+        (datetime(2026, 10, 23, 7, 45, tzinfo=timezone.utc), {"rgb": "rgb-b.webp", "data": "data-b.png", "natural": "natural-b.webp"}),
+        (datetime(2026, 10, 23, 3, 30, tzinfo=timezone.utc), {"rgb": "rgb-c.webp"}),
+    ], now)
+    times = [f["time"] for f in index["frames"]]
+    assert times == ["2026-10-23T05:00:00Z", "2026-10-23T07:45:00Z"]          # 3 h old kept, 4.5 h old gone
+    assert set(index["frames"][0]["files"]) == {"rgb", "rgb_lo", "data"}         # old: only what the loop shows
+    assert "natural" in index["frames"][1]["files"]                               # newest hour: everything
+    assert not os.path.exists(os.path.join(folder, "natural-a.webp")) and not os.path.exists(os.path.join(folder, "rgb-c.webp"))

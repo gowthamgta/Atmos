@@ -43,13 +43,13 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             <span class="sub">Observed, {{ productLabel() }}</span>
           </div>
           <div class="playback" role="group" aria-label="Playback controls">
-            <button type="button" class="btn-step" (click)="sat.step(-1)" [disabled]="noLoop()" aria-label="Previous frame" title="Previous frame (15 min)">
+            <button type="button" class="btn-step" (click)="sat.step(-1)" [disabled]="noLoop()" aria-label="Previous frame" title="Previous frame">
               <app-icon name="prev" [size]="11" />
             </button>
             <button type="button" class="play" (click)="sat.togglePlay()" [disabled]="noLoop()" [attr.aria-label]="sat.playing() ? 'Pause loop' : 'Play loop'" [title]="sat.playing() ? 'Pause loop' : 'Play loop'">
               <app-icon [name]="sat.playing() ? 'pause' : 'play'" [size]="13" />
             </button>
-            <button type="button" class="btn-step" (click)="sat.step(1)" [disabled]="noLoop()" aria-label="Next frame" title="Next frame (15 min)">
+            <button type="button" class="btn-step" (click)="sat.step(1)" [disabled]="noLoop()" aria-label="Next frame" title="Next frame">
               <app-icon name="next" [size]="11" />
             </button>
             <button type="button" class="btn-step more" (click)="expanded.set(!expanded())" [attr.aria-expanded]="expanded()" [attr.aria-label]="expanded() ? 'Show less' : 'Show more'" [title]="expanded() ? 'Show less' : 'Show more'">
@@ -100,7 +100,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           <input type="range" class="frames" min="0" [max]="Math.max(count() - 1, 0)" step="0.01" [value]="sat.position()" [disabled]="noLoop()" (input)="onFrame($event)" aria-label="Satellite time" />
           <div class="ends full-only"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
           @if (sat.loading()) { <div class="loading">Loading pictures…</div> }
-          @else if (historyHint()) { <div class="loading">Press play to load the last hour.</div> }
+          @else if (historyHint()) { <div class="loading">Press play to load {{ own() ? 'the last 4 hours' : 'the last hour' }}.</div> }
         }
 
         @if (nightLegend()) {
@@ -253,7 +253,7 @@ export class SatellitePanelComponent {
   });
   protected readonly nightHint = 'At night the visible picture is the infrared as well';
   protected readonly noLoop = computed(() => this.count() < 2 && this.sat.historyRequested());
-  protected readonly historyHint = computed(() => this.count() === 1 && !this.sat.historyRequested() && !this.own());
+  protected readonly historyHint = computed(() => this.count() === 1 && !this.sat.historyRequested());
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
     if (!f) return 'loading';
@@ -277,7 +277,7 @@ export class SatellitePanelComponent {
     return 'Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres';
   });
   protected readonly heightScales = [1, 3, 6] as const;
-  protected readonly ownNote = 'Last hour, made by our satellite workflow from raw satellite data: Meteosat-9 © EUMETSAT, Himawari-9 © JMA (via NOAA Open Data on AWS). The hover readout is measured.';
+  protected readonly ownNote = 'Last 4 hours, made by our satellite workflow from raw satellite data: Meteosat-9 © EUMETSAT, Himawari-9 © JMA (via NOAA Open Data on AWS). The hover readout is measured.';
   protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. The Infrared switch shows the infrared by day too. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
