@@ -178,7 +178,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .stations { margin-top: 10px; }
     .label { color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
-    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; max-height: 136px; overflow-y: auto; overscroll-behavior: contain; } /* 45 radars: a few rows, the rest scroll */
     .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; min-height: 28px; border-radius: 14px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font-size: 11px; cursor: pointer; }
     .chip:hover { background: var(--surface-4); }
     .chip.active { border-color: var(--accent-line); color: var(--text-primary); }

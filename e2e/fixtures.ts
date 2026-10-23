@@ -29,7 +29,17 @@ async function routeData(page: Page): Promise<void> {
   await page.route(/view\.eumetsat\.int|ildn|\.netlify\/functions\/lightning/, route => route.abort());
 }
 
-export const test = base.extend<{ errors: string[] }>({
+export const test = base.extend<{ errors: string[]; savedData: void }>({
+  // every test sees the saved radar pictures at the time they were copied (before, only the tests that asked for `errors` did, and the
+  // others read IMD's live radar: whatever it showed decided whether they passed)
+  savedData: [
+    async ({ page }, use) => {
+      await page.clock.install({ time: TEST_NOW });
+      await routeData(page);
+      await use();
+    },
+    { auto: true },
+  ],
   // every page error and console error of a test, checked by the tests that want none
   errors: async ({ page }, use) => {
     const errors: string[] = [];
@@ -37,8 +47,6 @@ export const test = base.extend<{ errors: string[] }>({
     page.on('console', m => {
       if (m.type() === 'error' && !/Failed to load resource|net::ERR_/.test(m.text())) errors.push(m.text());
     });
-    await page.clock.install({ time: TEST_NOW });
-    await routeData(page);
     await use(errors);
   },
 });

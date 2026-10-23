@@ -26,14 +26,19 @@ test.describe('radar', () => {
   test('turns both radars off, and remembers it after a reload', async ({ page }) => {
     await openRadar(page);
     const panel = page.locator('app-radar-panel');
-    await panel.getByRole('button', { name: /Karaikal/ }).click();
-    await panel.getByRole('button', { name: /Chennai/ }).click();
-    await expect(panel.getByText('All radars are off: tap one below to turn it on')).toBeVisible();
+    const karaikal = panel.getByRole('button', { name: /Karaikal/ });
+    const chennai = panel.getByRole('button', { name: /Chennai/ });
+    await karaikal.click();
+    await chennai.click();
+    // the two radars the saved pictures are of are off (every other radar is answered 404)
+    await expect(karaikal).toHaveAttribute('aria-pressed', 'false');
+    await expect(chennai).toHaveAttribute('aria-pressed', 'false');
     await page.reload();
     await expect(panel.locator('section')).toBeVisible(); // the panel loads when the browser is idle
     const more = panel.getByRole('button', { name: 'Show more' });
     if (await more.isVisible()) await more.click();
-    await expect(panel.getByText('All radars are off: tap one below to turn it on')).toBeVisible({ timeout: 30_000 });
+    await expect(karaikal).toHaveAttribute('aria-pressed', 'false', { timeout: 30_000 });
+    await expect(chennai).toHaveAttribute('aria-pressed', 'false');
     // turn them back on so the saved choice does not leak into a later visit
     await panel.getByRole('button', { name: /Karaikal/ }).click();
     await panel.getByRole('button', { name: /Chennai/ }).click();
