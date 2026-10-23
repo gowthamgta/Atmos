@@ -113,6 +113,8 @@ def make_scan(path: str, t, folder: str) -> dict:
             hrv_ll = np.asarray(scn_hrv.resample(area, resampler="nearest", radius_of_influence=2500)["HRV"].values, float)
             cos_z = np.cos(np.radians(np.minimum(G.sun_zenith(t, gl["lat"], gl["lon"]), G.SUN_CAP_ZENITH)))
             vis = np.where(np.isfinite(hrv_ll), hrv_ll, np.asarray(ll["VIS006"].values, float)) / 100 / cos_z
+            print(f"::notice::Meteosat HRV on the {gl['step']} degree grid: {np.isfinite(hrv_ll).mean():.1%} of the box has HRV values "
+                  f"(the rest takes the 3 km 0.6 um channel); HRV source shape {scn_hrv['HRV'].shape}", flush=True)
             b108 = np.asarray(ll["IR_108"].values, float)
             b108c, (visc,) = H.parallax_correct(b108, [vis], gl["lat"], gl["lon"], sub_lon=SUB_LON, max_view=MAX_VIEW_DEG)
             return visc, b108c
