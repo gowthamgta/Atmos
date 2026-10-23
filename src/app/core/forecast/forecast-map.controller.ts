@@ -451,16 +451,7 @@ export class ForecastMapController {
     const bolt: unknown[] = ['step', ['get', 'age'], `${ForecastMapController.LIGHTNING_IMAGE}-0`];
     LIGHTNING_AGE_COLOURS.slice(1).forEach(([from], i) => bolt.push(from, `${ForecastMapController.LIGHTNING_IMAGE}-${i + 1}`));
     map.addSource(source, { type: 'geojson', data: lightningGeoJson([]) });
-    // a strike flashes when it first arrives (ILDN's strokes come 45 s old or more): a ring that grows and fades over ten seconds
-    map.addLayer({
-      id: ForecastMapController.LIGHTNING_FLASH, type: 'circle', source, filter: ['<', ['get', 'arrived'], 10],
-      layout: { visibility: 'none' },
-      paint: {
-        'circle-color': 'rgba(255, 255, 255, 0)', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2,
-        'circle-radius': ['interpolate', ['linear'], ['get', 'arrived'], 0, 6, 10, 28],
-        'circle-stroke-opacity': ['interpolate', ['linear'], ['get', 'arrived'], 0, 0.95, 10, 0],
-      },
-    });
+    // no ring around a new strike (the owner asked for none, 23 Oct): the bolt's white colour (its first 2 minutes) marks it as new
     map.addLayer({
       id: ForecastMapController.LIGHTNING_LAYER, type: 'symbol', source,
       layout: {
