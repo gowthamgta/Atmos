@@ -96,6 +96,17 @@ describe('synthetic radar: the grid', () => {
     expect(maxIn(out, 22, 61, 26, 63)).toBe(0); // the rest of the anvil
   });
 
+  it('rains over the shape that bloomed: a long cell stays long, lighter at its edge than at its core', () => {
+    // a strip 6 km wide and 24 km long cooled from 250 K to 205 K in the last frame
+    const strip = (x: number, y: number) => Math.abs(x - 40) <= 1 && Math.abs(y - 55) <= 4;
+    const before = grid((x, y) => (strip(x, y) ? 250 : 275));
+    const now = grid((x, y) => (strip(x, y) ? (Math.abs(y - 55) <= 1 ? 205 : 212) : 275));
+    const out = synthesizeRadar({ w: W, h: H, box, ir: now, history: [{ ir: before, minutesAgo: 15 }] });
+    expect(maxIn(out, 39, 58, 41, 59)).toBeGreaterThan(20); // the strip's ends rain too...
+    expect(maxIn(out, 39, 58, 41, 59)).toBeLessThan(maxIn(out, 39, 54, 41, 56)); // ...less than its core
+    expect(maxIn(out, 34, 50, 35, 60)).toBe(0); // and not beside it
+  });
+
   it('puts heavy cores where the lightning crowds, a little rain around the rest, none on clear sky', () => {
     const ir = grid(x => (x < 55 ? 205 : 300));
     const strikes = [

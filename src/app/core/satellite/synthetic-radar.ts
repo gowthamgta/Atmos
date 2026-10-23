@@ -10,9 +10,10 @@
  *    two, and bubbly). Flat high cloud (an anvil, cirrus, its rim) is none however cold, and an anvil tail warming downwind along the 250 hPa
  *    shear from a colder core is worn away. Only the strongest point within about 8 km is a core.
  * 2. The rain stays where the core bloomed and goes with the 850 hPa wind, while the anvil above spreads away: blooms of the last hour of
- *    frames are carried to now with that wind and fade after 20 minutes (gone after an hour). Each core is drawn as rain about 5 km wide,
- *    stretched toward where it goes (its next 15 minutes, 10 km at most): 24 to 42 dBZ by how strongly it bloomed, a little more in very
- *    cold tops. A band is a row of such cores, never a filled cloud.
+ *    frames are carried to now with that wind and fade after 20 minutes (gone after an hour). A bloom rains over the patch that bloomed
+ *    with it (the shape it bloomed in: a cell 10 km wide and 30 km long stays so), lighter at its edge and as heavy as the core where it
+ *    cooled as much; each core is drawn as rain about 5 km wide, stretched toward where it goes (its next 15 minutes, 10 km at most):
+ *    24 to 42 dBZ by how strongly it bloomed, a little more in very cold tops. A band is a row of such cores, never a filled cloud.
  * 3. Lightning (last 15 minutes, newer weighed more) adds rain only where strokes come two or more within about 2 km (25 to 38 dBZ), and a
  *    heavy core (47 to 58 dBZ, 5 km wide) where they crowd most, one within every 10 km; on cloud only.
  * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer fades the estimate out over the last 20 km of their range), and
@@ -85,6 +86,11 @@ export interface SyntheticRadarConfig {
     holdMinutes: number;
     fadeDbzPerMin: number;
     lifeMinutes: number;
+    /** A bloom rains over the patch that bloomed with it: around it, cooled by at least patchShare of the core's cooling, no farther than
+     * patchMaxKm; patchEdgeDbz at the patch's edge, the core's reflectivity where it cooled as much as the core. */
+    patchShare: number;
+    patchMaxKm: number;
+    patchEdgeDbz: number;
   };
   lightning: {
     /** Weight of a stroke: exp(-age / tauMin), none after maxAgeMin. */
@@ -147,6 +153,9 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     holdMinutes: 20,
     fadeDbzPerMin: 0.4,
     lifeMinutes: 60,
+    patchShare: 0.6,
+    patchMaxKm: 12,
+    patchEdgeDbz: 22,
   },
   lightning: {
     tauMin: 8,
@@ -211,6 +220,13 @@ export function coreStrength(f: CoreFeatures, cfg: SyntheticRadarConfig = SYNTHE
 export function coreDbz(strength: number, tK: number, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
   const c = cfg.core;
   return lerp(c.dbz, (strength - c.minStrength) / (1 - c.minStrength)) + c.coldBonusDbz * smooth(cfg.cloud.coreMaxK - 10, c.coldK, tK);
+}
+
+/** The reflectivity over a bloom's patch, where it cooled share (patchShare to 1) of what its core did. */
+export function patchDbz(coreDbzValue: number, share: number, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
+  const c = cfg.core;
+  const t = Math.min(1, Math.max(0, (share - c.patchShare) / (1 - c.patchShare)));
+  return lerp([Math.min(c.patchEdgeDbz, coreDbzValue), coreDbzValue], t * t); // heavy only near the core's own cooling
 }
 
 /** The reflectivity of a lightning core of density l (at least coreThreshold). */
@@ -488,8 +504,9 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     return out;
   };
 
-  // a tower: a patch cooling (per 15 minutes) more than the cloud isolationKm around it in every direction (0 to 1)
-  const isolated = (newer: Float32Array, older: Float32Array, minutes: number): Float32Array => {
+  // how much each top cooled since a frame before (per 15 minutes, against the place the 850 hPa wind brought it from or the same place,
+  // whichever was colder; NaN: no data)
+  const coolingField = (newer: Float32Array, older: Float32Array, minutes: number): Float32Array => {
     const cool = new Float32Array(n).fill(NaN);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
@@ -505,6 +522,10 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
         if (valid(before)) cool[i] = ((Math.min(t, topK) - Math.min(before, topK)) * 15) / Math.max(5, minutes);
       }
     }
+    return cool;
+  };
+  // a tower: a patch cooling more than the cloud isolationKm around it in every direction (0 to 1)
+  const isolated = (cool: Float32Array, newer: Float32Array): Float32Array => {
     const out = new Float32Array(n);
     for (let y = 0; y < h; y++) {
       const r = cfg.popup.isolationKm / rowKm[y];
@@ -527,12 +548,39 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
 
   const history = (input.history ?? []).filter(fr => fr.ir.length === n && fr.minutesAgo > 0).sort((a, b) => a.minutesAgo - b.minutesAgo);
   const cores: { x: number; y: number; dbz: number; kind: Core['kind']; ageMin: number }[] = [];
+  // a bloom's patch: the pixels around its core that cooled at least patchShare as much, within patchMaxKm, each with its share
+  const patches: { at: number[]; share: number[]; dbz: number; dx: number; dy: number }[] = [];
+  const grown = new Int32Array(n).fill(-1);
+  const addPatch = (i0: number, cool: Float32Array, frame: Float32Array, dbz: number, dx: number, dy: number): void => {
+    const c0 = cool[i0];
+    if (!(c0 < 0)) return;
+    const limit = -Math.max(cfg.popup.coolingK[0], cfg.core.patchShare * -c0);
+    const x0 = i0 % w, y0 = Math.floor(i0 / w);
+    const maxPx = cfg.core.patchMaxKm / rowKm[y0];
+    const id = patches.length;
+    const at: number[] = [i0], share: number[] = [1];
+    grown[i0] = id;
+    for (let q = 0; q < at.length; q++) {
+      const i = at[q], x = i % w, y = Math.floor(i / w);
+      for (let yy = Math.max(0, y - 1); yy <= Math.min(h - 1, y + 1); yy++) {
+        for (let xx = Math.max(0, x - 1); xx <= Math.min(w - 1, x + 1); xx++) {
+          const j = yy * w + xx;
+          if (grown[j] === id || !(cool[j] <= limit) || frame[j] > cfg.popup.bloomMaxK || Math.hypot(xx - x0, yy - y0) > maxPx) continue;
+          grown[j] = id;
+          at.push(j);
+          share.push(Math.min(1, cool[j] / c0));
+        }
+      }
+    }
+    patches.push({ at, share, dbz, dx, dy });
+  };
 
   // rule 1, now: domes, and blooms since the newest frame before
   const strength = new Float32Array(n);
   const coldestPrev = history.length ? coldestAround(history[0].ir) : null;
   const side = new Float64Array(8);
-  const towerNow = history.length ? isolated(ir, history[0].ir, history[0].minutesAgo) : null;
+  const coolNow = history.length ? coolingField(ir, history[0].ir, history[0].minutesAgo) : null;
+  const towerNow = coolNow ? isolated(coolNow, ir) : null;
   const f: CoreFeatures = { tK: 0, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0 };
   const bloomedNow = new Uint8Array(n);
   for (let y = 0; y < h; y++) {
@@ -601,7 +649,9 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     }
   }
   for (const i of pick(strength, ir)) {
-    cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: coreDbz(strength[i], ir[i], cfg), kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
+    const d = coreDbz(strength[i], ir[i], cfg);
+    cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: d, kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
+    if (bloomedNow[i] && coolNow) addPatch(i, coolNow, ir, d, 0, 0);
   }
 
   // rule 2: the blooms of the older frames, carried to now with the 850 hPa wind
@@ -610,7 +660,8 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     if (newer.minutesAgo > cfg.core.lifeMinutes) break;
     const coldest = coldestAround(older.ir);
     const gap = older.minutesAgo - newer.minutesAgo;
-    const s = isolated(newer.ir, older.ir, gap);
+    const cool = coolingField(newer.ir, older.ir, gap);
+    const s = isolated(cool, newer.ir);
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
@@ -627,7 +678,9 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
       const [u8, v8] = windAt(x, y);
       const d = coreDbz(s[i], newer.ir[i], cfg) - fade;
       if (d < cfg.output.minDbz + 3) continue;
-      cores.push({ x: x + 0.5 + (u8 * age * 60) / 1000 / rowKm[y], y: y + 0.5 - (v8 * age * 60) / 1000 / rowKm[y], dbz: d, kind: 'bloom', ageMin: age });
+      const dx = (u8 * age * 60) / 1000 / rowKm[y], dy = -(v8 * age * 60) / 1000 / rowKm[y];
+      cores.push({ x: x + 0.5 + dx, y: y + 0.5 + dy, dbz: d, kind: 'bloom', ageMin: age });
+      addPatch(i, cool, newer.ir, d, dx, dy);
     }
   }
 
@@ -711,6 +764,31 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
         const i = y * W2 + x;
         if (v > dbz[i]) dbz[i] = v;
       }
+    }
+  }
+  // the blooms' patches, carried with the wind: each of the data's pixels spread as a soft tent 1.2 pixels wide and averaged, so the
+  // patch has a smooth outline (where the tents cover it at least a third) and not the data's squares
+  if (patches.length) {
+    const num = new Float32Array(n2), den = new Float32Array(n2);
+    const R = 1.2 * S;
+    for (const p of patches) {
+      for (let k = 0; k < p.at.length; k++) {
+        const v = patchDbz(p.dbz, p.share[k], cfg);
+        const cx = ((p.at[k] % w) + 0.5 + p.dx) * S, cy = (Math.floor(p.at[k] / w) + 0.5 + p.dy) * S;
+        for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(H2 - 1, Math.ceil(cy + R)); y++) {
+          for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W2 - 1, Math.ceil(cx + R)); x++) {
+            const t = 1 - Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / R;
+            if (t <= 0) continue;
+            num[y * W2 + x] += v * t;
+            den[y * W2 + x] += t;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < n2; i++) {
+      if (den[i] < 0.35) continue;
+      const v = num[i] / den[i];
+      if (v >= cfg.output.minDbz && v > dbz[i]) dbz[i] = v;
     }
   }
   // the rain right around the strokes
