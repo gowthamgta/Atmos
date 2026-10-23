@@ -67,7 +67,23 @@ const server = http.createServer((req, res) => {
     return proxyReq.end();
   }
 
-  // 2. Static File Serving
+  // 2. Our Netlify functions (lightning: ILDN, IMD), run here as Netlify runs them
+  const fn = /^\/\.netlify\/functions\/([a-z-]+)$/.exec(pathname);
+  if (fn && ['ildn', 'imd-lightning'].includes(fn[1])) {
+    const { handler } = require(path.resolve(__dirname, '../netlify/functions', fn[1] + '.js'));
+    Promise.resolve(handler({ rawQuery: parsedUrl.search.slice(1), queryStringParameters: Object.fromEntries(parsedUrl.searchParams) }))
+      .then(r => {
+        res.writeHead(r.statusCode, r.headers || {});
+        res.end(r.isBase64Encoded ? Buffer.from(r.body, 'base64') : r.body);
+      })
+      .catch(err => {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err) }));
+      });
+    return;
+  }
+
+  // 3. Static File Serving
   let decodedPath;
   try {
     decodedPath = decodeURIComponent(pathname);

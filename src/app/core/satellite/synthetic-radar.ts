@@ -20,7 +20,7 @@
  *    24 to 42 dBZ by how strongly it bloomed, a little more in very cold tops. A band is a row of such cores, never a filled cloud.
  * 3. Lightning (last 15 minutes, newer weighed more) adds rain only where strokes come two or more within about 2 km (25 to 38 dBZ), and a
  *    heavy core (47 to 58 dBZ, 5 km wide) where they crowd most, one within every 10 km; on cloud only.
- *    Rain reaching the ground spreads a little: a light rim (about 15 to 25 dBZ, 7 km at most) around it, under cloud only.
+ *    Rain reaching the ground spreads a little: a light rim (15 to 22 dBZ, 2 to 3 km) around it, under cloud only.
  * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer fades the estimate out over the last 20 km of their range), and
  *    where both see rain the estimate is shifted by the median difference (a few dB at most) so it joins the radar without a step.
  *
@@ -76,9 +76,14 @@ export interface SyntheticRadarConfig {
     coreK: number;
     minKm2: number;
     bloomPass: number;
-    /** Each core's rain covers its cold patch: connected tops at areaMaxK or colder within radiusKm (the marks: about 500 km2 each), lighter
-     * toward the patch's warmer edge (edgeDbz). */
+    /** Each core's rain covers its cold patch: connected tops at areaMaxK or colder, and no more than spanK warmer than the core (so the
+     * patch takes the shape of the cloud's coldest part, not a circle), within radiusKm (the marks: about 500 km2 each), lighter toward the
+     * patch's warmer edge (edgeDbz). */
     areaMaxK: number;
+    spanK: number;
+    /** A dome's patch reaches tops that are warmer than its core by up to this share of how much the core stands out of the cloud around it
+     * (the ring), so it follows the dome's own shape; a dome in a flat cold mass gets a small one. */
+    shapeShare: number;
     radiusKm: number;
     edgeDbz: number;
     /** Thick cloud only: a core's 10.8 um top no more than deepK warmer than its 6.2 um (a storm top reaches the water-vapour level; thin
@@ -86,6 +91,8 @@ export interface SyntheticRadarConfig {
      * patch no more than deepK + patchSlackK. */
     deepK: number;
     patchSlackK: number;
+    /** A dome's core is at least this cold (the marked cores were near 211 K, the unmarked specks near 243 K); a bloom may be warmer. */
+    domeMaxK: number;
     /** By day (the sun over sunDeg) also bright in the visible: our RGB's red (the HRV) at visMin or more at the core (the marks: about 220,
      * the cirrus about 175), visMin - patchVisSlack over the patch. */
     visMin: number;
@@ -174,7 +181,7 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     leadBoost: 0.2,
   },
   popup: { coolingK: [8, 18], searchKm: 12, bloomMaxK: 252, isolationKm: 12, isolationK: [8, 18] },
-  cell: { blobK: 250, coreK: 225, minKm2: 300, bloomPass: 0.8, areaMaxK: 245, radiusKm: 13, edgeDbz: 22, deepK: 3, patchSlackK: 4, visMin: 200, patchVisSlack: 25, sunDeg: 20 },
+  cell: { blobK: 250, coreK: 225, minKm2: 300, bloomPass: 0.8, areaMaxK: 245, spanK: 20, shapeShare: 0.6, radiusKm: 16, edgeDbz: 22, domeMaxK: 235, deepK: 3, patchSlackK: 4, visMin: 200, patchVisSlack: 25, sunDeg: 20 },
   core: {
     minStrength: 0.5,
     spacingKm: 8,
@@ -205,7 +212,7 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     rain: [25, 38],
     core: [47, 58],
   },
-  spread: { maxDbz: 26, dbzPerKm: 1.5, cloudMaxK: 265 },
+  spread: { maxDbz: 22, dbzPerKm: 3, cloudMaxK: 265 },
   output: { minDbz: 15, maxDbz: 60, scale: 2 },
   blend: { featherKm: 20, calibrationMaxDb: 8, calibrationMinPairs: 150 },
 };
@@ -619,8 +626,8 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     patches.push({ at, value: share.map(v => patchDbz(dbz, v, cfg)), dx, dy });
   };
   // a core's cold patch: the connected tops at areaMaxK or colder within radiusKm, heaviest where coldest
-  const addColdPatch = (i0: number, frame: Float32Array, dbz: number, dx: number, dy: number, wv?: Float32Array | null, vis?: Uint8Array | null): void => {
-    const t0 = frame[i0], top = cfg.cell.areaMaxK;
+  const addColdPatch = (i0: number, frame: Float32Array, dbz: number, dx: number, dy: number, wv?: Float32Array | null, vis?: Uint8Array | null, spanK = cfg.cell.spanK): void => {
+    const t0 = frame[i0], top = Math.min(cfg.cell.areaMaxK, frame[i0] + spanK);
     if (!(t0 < top)) return;
     const x0 = i0 % w, y0 = Math.floor(i0 / w);
     const maxPx = cfg.cell.radiusKm / rowKm[y0];
@@ -704,7 +711,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     const { label, rains } = clouds;
     for (let i = 0; i < n; i++) {
       if (!(strength[i] > 0)) continue;
-      if (!thick(i, frame, wv, vis, 0, 0)) {
+      if (!thick(i, frame, wv, vis, 0, 0) || (frame[i] > cfg.cell.domeMaxK && bloomStrength(i) < cfg.core.minStrength)) {
         strength[i] = 0;
         continue;
       }
@@ -723,6 +730,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
   const towerNow = coolNow ? isolated(coolNow, ir) : null;
   const f: CoreFeatures = { tK: 0, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0 };
   const bloomedNow = new Uint8Array(n);
+  const ringNow = new Float32Array(n);
   for (let y = 0; y < h; y++) {
     const km = rowKm[y];
     const rIn = cfg.anvil.ringInnerKm / km;
@@ -750,6 +758,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
         side[k] = Number.isNaN(m) ? 0 : m - t;
       }
       f.ringDiffK = thirdLeast(side);
+      ringNow[i] = f.ringDiffK;
       const c = boxSum(sumC, w, h, x - 2, y - 2, x + 2, y + 2);
       const m1 = boxSum(sumTc, w, h, x - 2, y - 2, x + 2, y + 2) / c;
       const m2 = boxSum(sumT2c, w, h, x - 2, y - 2, x + 2, y + 2) / c;
@@ -794,7 +803,10 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
   for (const i of pick(strength, ir)) {
     const d = coreDbz(strength[i], ir[i], cfg);
     cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: d, kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
-    addColdPatch(i, ir, d, 0, 0, input.wv, input.vis);
+    // a dome's patch: as far as its tops stay colder than the core by less than shapeShare of how much it stands out (its own shape); a
+    // bloom's as far as spanK
+    const span = bloomedNow[i] ? cfg.cell.spanK : Math.min(cfg.cell.spanK, Math.max(3, cfg.cell.shapeShare * ringNow[i]));
+    addColdPatch(i, ir, d, 0, 0, input.wv, input.vis, span);
     if (bloomedNow[i] && coolNow) addPatch(i, coolNow, ir, d, 0, 0);
   }
 
@@ -826,7 +838,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
       if (d < cfg.output.minDbz + 3) continue;
       const dx = (u8 * age * 60) / 1000 / rowKm[y], dy = -(v8 * age * 60) / 1000 / rowKm[y];
       cores.push({ x: x + 0.5 + dx, y: y + 0.5 + dy, dbz: d, kind: 'bloom', ageMin: age });
-      addColdPatch(i, newer.ir, d, dx, dy, newer.wv);
+      addColdPatch(i, newer.ir, d, dx, dy, newer.wv, null, cfg.cell.spanK / 2);
       addPatch(i, cool, newer.ir, d, dx, dy);
     }
   }

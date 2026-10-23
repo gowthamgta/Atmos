@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, markArrivals, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
+import { imdStrokes, LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, markArrivals, decodeStrokes, lightningGeoJson, lightningShown } from './lightning';
 
 /** A response of the shape ILDN sends: [time f64, lat f32, lon f32, age f32, (4 bytes), id u64] per stroke. */
 function response(strokes: { lat: number; lon: number; age: number }[]): ArrayBuffer {
@@ -72,5 +72,24 @@ describe('lightning strokes', () => {
     expect(next.find(s => s.t === 1010)!.arrivedS).toBe(0);              // new: flashes now
     expect(next.find(s => s.t === 1000)!.arrivedS).toBeGreaterThan(10);  // known: no flash again
     expect(lightningGeoJson(next).features.map(f => f.properties.arrived)).toContain(0);
+  });
+});
+
+describe("IMD's lightning (past strokes where ILDN has none)", () => {
+  const imd = { timeMs: Date.UTC(2026, 9, 23, 13, 30), windowMin: 10, points: [[11.0, 78.0], [15.0, 74.0]] as [number, number][] };
+  const now = Date.UTC(2026, 9, 23, 13, 45);
+
+  it('keeps them where IMD put them, aged from the middle of its window, and leaves out those near an ILDN stroke', () => {
+    const out = imdStrokes(imd, [{ lat: 11.05, lon: 78.05, ageS: 60 }], now);
+    expect(out.length).toBe(1);
+    expect(out[0].lat).toBe(15);
+    expect(out[0].lon).toBe(74);
+    expect(out[0].ageS).toBe(20 * 60);
+    expect(out[0].imd).toBe(true);
+  });
+
+  it('drops them once older than half an hour, and gives none without a map', () => {
+    expect(imdStrokes(imd, [], now + 30 * 60_000)).toEqual([]);
+    expect(imdStrokes(null, [], now)).toEqual([]);
   });
 });

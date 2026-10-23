@@ -77,8 +77,11 @@ describe('synthetic radar: the grid', () => {
     expect(maxIn(out, 12, 47, 14, 49)).toBe(0); // the popup's cloud away from the core
     expect(maxIn(out, 70, 15, 98, 95)).toBe(0);
     expect(rainArea(out)).toBeLessThan(70); // one 5 km core and its light rim on the ground (a few km), not the cloud's 200
-    expect(maxIn(out, 23, 55, 23, 55)).toBeGreaterThan(0); // the rim, a few km out from the core...
-    expect(maxIn(out, 23, 55, 23, 55)).toBeLessThanOrEqual(26); // ...is light
+    // a light rim (2 to 3 km) around the core on the ground
+    const sub = out.w / W;
+    let light = 0;
+    for (let y = 48 * sub; y < 62 * sub; y++) for (let x = 13 * sub; x < 28 * sub; x++) { const v = out.dbz4[y * out.w + x] / 4; if (v > 0 && v <= 22) light++; }
+    expect(light).toBeGreaterThan(0);
   });
 
   it('marks where a top bloomed and carries it with the 850 hPa wind, while the anvil spreading out is none', () => {
@@ -128,7 +131,7 @@ describe('synthetic radar: the grid', () => {
   it('is shifted to match the real radar where both see rain', () => {
     const ir = grid((x, y) => { const d = Math.hypot((x % 16) - 8, (y % 16) - 8); return d < 1.5 ? 212 : d < 4.5 ? 235 : 285; }); // many cells near a radar
     const plain = synthesizeRadar({ w: W, h: H, box, ir });
-    const field = new Uint8Array(200 * 200).fill(Math.round(((45 - 12) / 9.6 / 6) * 255)); // the radar sees 45 dBZ everywhere
+    const field = new Uint8Array(200 * 200).fill(Math.round(((55 - 12) / 9.6 / 6) * 255)); // the radar sees 55 dBZ everywhere
     const radar = { field, width: 200, height: 200, box, maxIntensity: 6, discs: [{ lat: latOf(55), lng: lonOf(55), rangeKm: 250 }] };
     const matched = synthesizeRadar({ w: W, h: H, box, ir, radar });
     expect(matched.stats.pairs).toBeGreaterThan(150);

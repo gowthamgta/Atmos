@@ -8,7 +8,7 @@ import { ScalarFieldLayer } from '../rendering/scalar-field.layer';
 import { WindParticlesLayer } from '../rendering/wind-particles.layer';
 import { isobarGeoJson } from './contours';
 import { CycloneData, cycloneGeoJson, loadCyclones } from './cyclone-tracks';
-import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ageStrokes, lightningGeoJson, lightningShown, loadLightning, markArrivals } from './lightning';
+import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ImdLightning, ageStrokes, imdStrokes, lightningGeoJson, lightningShown, loadImdLightning, loadLightning, markArrivals } from './lightning';
 import { MapLayerService } from '../services/map-layer.service';
 import type { Stroke } from './lightning';
 import { decodeFieldBitmap } from './field-decode';
@@ -67,6 +67,8 @@ export class ForecastMapController {
   private lightningStrokes: Stroke[] = [];
   private lightningFetchedAt = 0;
   private lightningLoading = false;
+  private imdLightning: ImdLightning | null = null;
+  private imdTimer: ReturnType<typeof setInterval> | null = null;
 
   private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
   private static readonly CYCLONE_LAYERS = [
@@ -80,6 +82,8 @@ export class ForecastMapController {
   private static readonly LIGHTNING_FLASH = 'forecast-lightning-flash';
   private static readonly LIGHTNING_REFRESH_MS = 5_000;
   private static readonly LIGHTNING_TICK_MS = 1_000;
+  /** IMD's map changes every 15 to 30 minutes: looked for every three. */
+  private static readonly IMD_LIGHTNING_MS = 180_000;
   private static readonly ISOBAR_SOURCE = 'forecast-isobars';
   private static readonly ISOBAR_MIN_INTERVAL_MS = 150;
 
@@ -471,7 +475,23 @@ export class ForecastMapController {
   private drawLightning(): void {
     const source = this.map?.getSource(ForecastMapController.LIGHTNING_SOURCE) as { setData?: (d: unknown) => void } | undefined;
     if (!source?.setData) return;
-    source.setData(lightningGeoJson(ageStrokes(this.lightningStrokes, (Date.now() - this.lightningFetchedAt) / 1000)));
+    source.setData(lightningGeoJson(this.strokesNow(true)));
+  }
+
+  /** ILDN's strokes aged to now, and IMD's where ILDN has none (for the map no younger than ILDN's oldest class: they are past ones). */
+  private strokesNow(forMap: boolean): Stroke[] {
+    const now = Date.now();
+    const ildn = this.lightningFetchedAt ? ageStrokes(this.lightningStrokes, (now - this.lightningFetchedAt) / 1000) : [];
+    const imd = imdStrokes(this.imdLightning, ildn, now);
+    return ildn.concat(forMap ? imd.map(s => ({ ...s, ageS: Math.min(s.ageS, LIGHTNING_WINDOW_S - 1) })) : imd);
+  }
+
+  private pullImdLightning(): void {
+    void loadImdLightning().then(data => {
+      if (!data || !this.map) return;
+      this.imdLightning = data;
+      this.drawLightning();
+    });
   }
 
   private pullLightning(): void {
@@ -490,15 +510,17 @@ export class ForecastMapController {
   private stopLightning(): void {
     if (this.lightningTimer) clearInterval(this.lightningTimer);
     if (this.lightningTick) clearInterval(this.lightningTick);
-    this.lightningTimer = this.lightningTick = null;
+    if (this.imdTimer) clearInterval(this.imdTimer);
+    this.lightningTimer = this.lightningTick = this.imdTimer = null;
+    this.imdLightning = null;
     // the next start is a first poll again: its strokes do not all flash
     this.lightningStrokes = [];
     this.lightningFetchedAt = 0;
   }
 
-  /** The strokes of the last 15 minutes, aged to now (for the synthetic radar's heavy cores). */
+  /** The strokes of the last 15 minutes aged to now, and IMD's past ones where ILDN has none (for the synthetic radar's heavy cores). */
   lightningNow(): Stroke[] {
-    return this.lightningFetchedAt ? ageStrokes(this.lightningStrokes, (Date.now() - this.lightningFetchedAt) / 1000) : [];
+    return this.strokesNow(false);
   }
 
   /** Shows the bolts while the radar or the satellite is on: fetched now and every five seconds, redrawn every second (nothing runs while it is off). */
@@ -513,6 +535,8 @@ export class ForecastMapController {
       this.pullLightning();
       this.lightningTimer = setInterval(() => this.pullLightning(), ForecastMapController.LIGHTNING_REFRESH_MS);
       this.lightningTick = setInterval(() => this.drawLightning(), ForecastMapController.LIGHTNING_TICK_MS);
+      this.pullImdLightning();
+      this.imdTimer = setInterval(() => this.pullImdLightning(), ForecastMapController.IMD_LIGHTNING_MS);
     } else if (!on && this.lightningTimer) {
       this.stopLightning();
     }

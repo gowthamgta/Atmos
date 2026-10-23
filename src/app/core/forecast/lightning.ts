@@ -23,7 +23,7 @@ export const LIGHTNING_AGE_COLOURS: readonly (readonly [number, string, string])
   [300, '#ff9a2e', '5–10'],
   [600, '#e8413a', '10–15'],
 ];
-export const LIGHTNING_CREDIT = 'Lightning: ILDN, Tripura University (non-commercial use)';
+export const LIGHTNING_CREDIT = 'Lightning: ILDN, Tripura University (non-commercial use); older strokes where ILDN has none: IMD';
 
 const RECORD_BYTES = 32;
 
@@ -36,6 +36,8 @@ export interface Stroke {
   t?: number;
   /** Seconds since it first arrived here (its flash runs then). */
   arrivedS?: number;
+  /** From IMD's map (late, about 8 km), not ILDN. */
+  imd?: boolean;
 }
 
 /** The key that knows a stroke again from one poll to the next. */
@@ -112,4 +114,46 @@ export function markArrivals(fresh: readonly Stroke[], known: readonly Stroke[],
     const arrivedS = firstPoll ? 999 : was === undefined ? 0 : (was ?? 999) + sinceLastS;
     return { ...s, arrivedS };
   });
+}
+
+/** IMD's lightning (netlify/functions/imd-lightning.js: the stars of its "last 10 min" map, about 8 km apart at best). */
+export const IMD_LIGHTNING_URL = '/.netlify/functions/imd-lightning';
+/** IMD's map comes 10 to 20 minutes after its strokes: they are kept this long, as past strokes. */
+export const IMD_WINDOW_S = 1800;
+/** An IMD stroke this close to one of ILDN's is the same storm, already shown by ILDN: not drawn again. */
+export const IMD_SAME_KM = 25;
+
+export interface ImdLightning {
+  /** The newest of the map's strokes, and how many minutes before it the map reaches. */
+  timeMs: number;
+  windowMin: number;
+  points: [number, number][];
+}
+
+export async function loadImdLightning(url: string = IMD_LIGHTNING_URL): Promise<ImdLightning | null> {
+  try {
+    const res = await fetch(url, { cache: 'no-cache' });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { time?: string; windowMin?: number; points?: unknown };
+    const timeMs = Date.parse(j.time ?? '');
+    if (!Number.isFinite(timeMs) || !Array.isArray(j.points)) return null;
+    const points = j.points.filter((p): p is [number, number] => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    return { timeMs, windowMin: j.windowMin ?? 10, points };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * IMD's strokes where ILDN has none (ILDN's are live and exact; IMD's come late and only to about 8 km): each kept where IMD put it, as a
+ * past stroke aged from the middle of IMD's window, and gone after IMD_WINDOW_S. They are drawn no younger than ILDN's oldest class, so
+ * they read as past lightning.
+ */
+export function imdStrokes(imd: ImdLightning | null, ildn: readonly Stroke[], nowMs: number): Stroke[] {
+  if (!imd) return [];
+  const ageS = (nowMs - (imd.timeMs - (imd.windowMin * 60_000) / 2)) / 1000;
+  if (ageS < 0 || ageS > IMD_WINDOW_S) return [];
+  const far = (lat: number, lon: number) =>
+    ildn.every(s => Math.hypot((s.lat - lat) * 111.2, (s.lon - lon) * 111.2 * Math.cos((lat * Math.PI) / 180)) > IMD_SAME_KM);
+  return imd.points.filter(([lat, lon]) => far(lat, lon)).map(([lat, lon]) => ({ lat, lon, ageS, arrivedS: 999, imd: true }));
 }
