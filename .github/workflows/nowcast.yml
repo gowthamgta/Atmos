@@ -4,6 +4,9 @@ name: nowcast
 # over Tamil Nadu or Puducherry posts the radar picture with a short alert to the Telegram channel, the Discord server and X (each once its keys are set
 # as repository secrets). Until then, and until the variable NOWCAST_LIVE is "true", it only dry-runs: each run's picture and the post it
 # would make are kept as the run's artifact, to look at first.
+#
+# Each look also keeps the newest satellite frame against the radar at its time (bot/pairs.mjs), for learning the synthetic radar
+# (pipeline/learn_rain.py, run by the verify workflow): one small gzipped file a frame, committed to the rain-pairs branch, never to main.
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -23,10 +26,13 @@ concurrency:
   group: nowcast
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 jobs:
   nowcast:
     runs-on: ubuntu-24.04
-    timeout-minutes: 9
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: bot
@@ -41,6 +47,15 @@ jobs:
       - name: Browser
         run: npx playwright install --with-deps chromium
       - run: npm test
+      # the pairs kept so far: the rain-pairs branch as a worktree (made empty the first time)
+      - name: Pairs branch
+        working-directory: .
+        run: |
+          if git fetch --depth=1 origin rain-pairs; then
+            git worktree add -B rain-pairs rain-pairs-data FETCH_HEAD
+          else
+            git worktree add --orphan -b rain-pairs rain-pairs-data
+          fi
       # what the last post was (so a storm is not posted again every ten minutes): kept between runs in the cache, the newest entry
       - uses: actions/cache/restore@v6
         with:
@@ -69,7 +84,19 @@ jobs:
           DRY_RUN: ${{ ((github.event_name == 'schedule' && vars.NOWCAST_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)) && '0' || '1' }}
           FORCE: ${{ inputs.force && '1' || '0' }}
           INCLUDE_LINK: ${{ vars.NOWCAST_INCLUDE_LINK == 'true' && '1' || '0' }}
+          PAIRS_DIR: ${{ github.workspace }}/rain-pairs-data
         run: node nowcast.mjs
+      # committed in the worktree, pushed from the main checkout (its credentials)
+      - name: Keep the pairs
+        if: always()
+        working-directory: .
+        run: |
+          [ -d rain-pairs-data ] || exit 0
+          git -C rain-pairs-data add -A
+          if git -C rain-pairs-data diff --cached --quiet; then echo "no new pairs"; exit 0; fi
+          git -C rain-pairs-data -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Satellite against radar pairs, $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do git push origin rain-pairs && break; sleep 5; done
       # saved only when it changed (after a post): the key is its content, so a quiet run saves nothing
       - uses: actions/cache/save@v6
         if: always() && hashFiles('bot/state/state.json') != ''

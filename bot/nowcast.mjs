@@ -14,6 +14,8 @@
 //   SAMPLES_FILE   where the radar over the gauge cells is kept for the daily verification (default bot/samples/radar-samples.json)
 //   ALERT_PLACES   the owner's places for their own rain alerts, "Kallakurichi:11.74,78.96;Chennai:13.08,80.27"
 //   TELEGRAM_ALERT_CHAT_ID  the owner's own Telegram chat for those alerts (nothing is sent without it)
+//   PAIRS_DIR      where the satellite-against-radar pairs are kept for learning the synthetic radar (default bot/pairs-out; the workflow
+//                  points it at its checkout of the rain-pairs branch)
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,12 +24,16 @@ import {
   TELEGRAM_CHAT, alertCells, altText, composePost, composeTelegram, decide, discordPayload, regionDistricts, sendDiscord, sendTelegram, stateAfterPost,
 } from './lib.mjs';
 import { CELL_HALF_DEG, GAUGE_POINTS, PLACE_HALF_DEG, appendSamples, parsePlaces, placeAlert } from './samples.mjs';
+import { savePairs } from './pairs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SITE = (process.env.SITE_URL || 'https://atmosradar.netlify.app').replace(/\/$/, '');
 const STATE_FILE = process.env.STATE_FILE || join(HERE, 'state', 'state.json');
 const OUT = join(HERE, 'out');
 const SAMPLES_FILE = process.env.SAMPLES_FILE || join(HERE, 'samples', 'radar-samples.json');
+const PAIRS_DIR = process.env.PAIRS_DIR || join(HERE, 'pairs-out');
+/** How long the app may take to pair the satellite with the radar (a worker builds them) before the look goes on without them. */
+const PAIRS_WAIT_MS = 120_000;
 const PLACES = parsePlaces(process.env.ALERT_PLACES);
 const ALERT_CHAT = process.env.TELEGRAM_ALERT_CHAT_ID || '';
 const X_KEYS = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_SECRET'];
@@ -81,7 +87,14 @@ async function capture() {
     const sample = (points, half) => page.evaluate(([p, h]) => window.__atmosSample?.(p, h) ?? null, [points, half]);
     const samples = await sample(GAUGE_POINTS, CELL_HALF_DEG);
     const placeSamples = PLACES.length ? await sample(PLACES.map(p => [p.lat, p.lon]), PLACE_HALF_DEG) : null;
-    return { snapshot, png, samples, placeSamples };
+    // the newest satellite frame against the radar at its time (an app without them, or one that takes too long, gives null)
+    const pairs = await page
+      .evaluate(ms => Promise.race([Promise.resolve(window.__atmosRainPairs?.() ?? null), new Promise(r => setTimeout(() => r(null), ms))]), PAIRS_WAIT_MS)
+      .catch(e => {
+        log('no pairs:', e.message);
+        return null;
+      });
+    return { snapshot, png, samples, placeSamples, pairs };
   } finally {
     await browser.close();
   }
@@ -115,8 +128,15 @@ async function main() {
   const state = await readJson(STATE_FILE, {});
   const now = Date.now();
 
-  const { snapshot, png, samples, placeSamples } = await capture();
+  const { snapshot, png, samples, placeSamples, pairs } = await capture();
   await writeFile(join(OUT, 'radar.png'), png);
+  try {
+    const file = await savePairs(PAIRS_DIR, pairs);
+    if (pairs) log(`satellite frame ${new Date(pairs.satTimeMs).toISOString()} against radar ${new Date(pairs.radarTimeMs).toISOString()}: ${pairs.rows} pairs (${pairs.counts?.rainy ?? 0} rainy pixels seen), ${file ? 'kept' : 'not kept (kept already, or too far apart in time)'}`);
+    else log('no satellite-against-radar pairs this look');
+  } catch (e) {
+    log('pairs not kept:', e.message);
+  }
   if (samples) {
     const store = appendSamples(await readJson(SAMPLES_FILE, null), samples, now);
     await mkdir(dirname(SAMPLES_FILE), { recursive: true });

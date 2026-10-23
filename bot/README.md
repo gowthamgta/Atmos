@@ -99,6 +99,15 @@ Each run also keeps the radar over the 0.5 degree cells of the Tamil Nadu rain g
 (bot/samples.mjs), in the Actions cache (saved once an hour, the last four days). The verify workflow reads them to fit each radar's
 rain rate to the gauges and to score the nowcast (pipeline/verify_radar.py).
 
+## Satellite against radar, for learning the synthetic radar
+
+Each run also asks the app for the newest Meteosat frame's inputs at every 3 km pixel Chennai or Karaikal see well (20 to 250 km out),
+beside what the radar saw there in the picture nearest the frame's time (the live one or a step of the last hour's loop, at most 6 minutes
+apart) and what the hand-set rules drew (`src/app/core/satellite/rain-features.ts`, bot/pairs.mjs). Every rainy pixel is kept (up to
+2000 a look) and 800 dry ones, each weighed for the pixels it stands for: about 20 to 80 kB gzipped a frame, one file a frame at
+`YYYY/MM/DD/HHMM.json.gz` in the **rain-pairs** branch (the workflow commits it there, never to main). The verify workflow learns the
+synthetic radar from them (pipeline/learn_rain.py).
+
 ## Running it yourself
 
 ```

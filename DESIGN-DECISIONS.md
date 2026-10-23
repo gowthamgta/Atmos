@@ -61,6 +61,15 @@ fingerprint only together with this file, on the owner's request.
   up to 10 dB) makes it patchy with frayed edges, never round blobs. Tuned on the owner's 92 marks (rain-marks page). It fades into the real
   radar: it is left out of a working radar's whole range (as far as the product on the map reaches) and fades in over the first 20 km past it, never overlapping it, and is shifted to match it where both see rain. Thresholds in
   `SYNTHETIC_RADAR_CONFIG`, tunable live with `atmosSyntheticRadar.set({...})` in the browser console.
+- **The synthetic radar learns from Chennai and Karaikal** (the owner, 23 Oct: "do everything": the GREMLIN and IMSRA idea at our scale).
+  Every look, the nowcast bot keeps the satellite's inputs at each 3 km pixel against what the radars saw at the same time
+  (`core/satellite/rain-features.ts`, bot/pairs.mjs; the rain-pairs branch, never main). The verify workflow fits gradient-boosted trees from
+  them (pipeline/learn_rain.py): whether it rains and how much, from the cloud top and water-vapour channels, the dome and texture, the
+  cloud patch's size and coldest top at 250 and 273 K (a rain curve per kind of patch, PERSIANN-CCS, and the warm-topped monsoon showers,
+  IMSRA), 15 and 30 minute cooling and the water-vapour trend (Mecikalski), the shear tail, lightning and the winds. **It replaces the
+  hand-set rules only once it beats them on held-back days** (threat score at 15 dBZ, no worse at 35, frequency bias 0.6 to 1.6, with 14
+  days and 8 rain days at least); until then the rules above draw it. The rim, the texture and the fit to the real radar stay either way.
+  `atmosSyntheticRadar.set({ learned: { use: false } })` goes back to the rules; data/rain/learn.json (pipeline) shows how far it has come.
 
 ## Forecast and the rest of the map
 

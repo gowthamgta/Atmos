@@ -23,6 +23,7 @@ import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
 import { SatelliteRainLayer } from '../../core/rendering/satellite-rain.layer';
 import { SatelliteRainService } from '../../core/satellite/satellite-rain.service';
 import type { RealRadarInput } from '../../core/satellite/synthetic-radar';
+import type { PairRadar } from '../../core/satellite/rain-features';
 import { RADAR_FIELD_MAX } from '../../core/services/radar-field';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
 import { isShaderKind } from '../../core/satellite/own-products';
@@ -39,6 +40,8 @@ import { syncCoverageLayer } from './radar-coverage-overlay';
 /** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
 const KALLAKURICHI = { lng: 78.96, lat: 11.74 } as const;
 const HOME_ZOOM = 6.2;
+/** The bot pairs a satellite frame with a radar picture at most this far from its time (the loop's steps are 10 minutes apart). */
+const PAIR_MAX_GAP_MIN = 6;
 /** How far the map can be panned and zoomed out: wide enough to roam freely beyond the forecast area. */
 
 // State and district outlines for South India and Sri Lanka (built by scripts/build-boundaries.py).
@@ -123,7 +126,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const radarDrawn = this.radarService.displayed() !== null;
     const opacity = this.radarService.radarOpacity();
     untracked(() => {
-      this.satelliteRain.setInputs({ strikes: () => this.forecastMap.lightningNow(), radar: () => this.realRadarForEstimate() });
+      this.satelliteRain.setInputs({ strikes: () => this.forecastMap.lightningNow(), radar: () => this.realRadarForEstimate(), radarAt: t => this.radarNear(t) });
       if (on) this.satelliteRain.activate();
       else this.satelliteRain.deactivate();
     });
@@ -154,14 +157,26 @@ export class MapComponent implements OnInit, OnDestroy {
   /** The live radar picture and the discs of the radars that work, for matching the estimate to the radar. */
   private realRadarForEstimate(): RealRadarInput | null {
     const live = this.radarService.liveFrame();
-    if (!live) return null;
+    return live ? this.radarInput(live) : null;
+  }
+
+  private radarInput(frame: RadarDisplayFrame): RealRadarInput {
     const unavailable = this.radarService.unavailableStations();
     const hidden = this.radarService.hiddenStations();
     const discs = this.radarService.stations
       .filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline')
       .map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[this.radarService.activeProduct()]?.rangeKm ?? st.operationalRangeKm }));
-    const c = live.coordinates;
-    return { field: live.field, width: live.width, height: live.height, box: { west: c[0][0], north: c[0][1], east: c[1][0], south: c[2][1] }, maxIntensity: RADAR_FIELD_MAX, discs };
+    const c = frame.coordinates;
+    return { field: frame.field, width: frame.width, height: frame.height, box: { west: c[0][0], north: c[0][1], east: c[1][0], south: c[2][1] }, maxIntensity: RADAR_FIELD_MAX, discs };
+  }
+
+  /** The radar picture nearest a time (the live one or a step of the last hour's loop), within PAIR_MAX_GAP_MIN, for the bot's pairs. */
+  private radarNear(timeMs: number): PairRadar | null {
+    const frames: RadarDisplayFrame[] = [...this.radarService.history(), ...(this.radarService.liveFrame() ? [this.radarService.liveFrame()!] : [])];
+    let best: RadarDisplayFrame | null = null;
+    for (const f of frames) if (f.timeMs !== null && (!best || Math.abs(f.timeMs - timeMs) < Math.abs(best.timeMs! - timeMs))) best = f;
+    if (!best || Math.abs(best.timeMs! - timeMs) > PAIR_MAX_GAP_MIN * 60_000) return null;
+    return { ...this.radarInput(best), timeMs: best.timeMs! };
   }
 
   private satelliteRainLayer: SatelliteRainLayer | null = null;

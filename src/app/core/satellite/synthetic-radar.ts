@@ -26,9 +26,17 @@
  *    the map reaches, and fades it in over the first 20 km past it), and
  *    where both see rain the estimate is shifted by the median difference (a few dB at most) so it joins the radar without a step.
  *
+ * 5. Learned from our own radars (rain-features.ts): every look, the nowcast bot keeps the satellite's inputs against what Chennai and
+ *    Karaikal saw at the same time, and pipeline/learn_rain.py fits a model from them. Once the model beats rules 1 to 3 on days it was not
+ *    fitted on, it is approved and draws the rain in their place (cfg.learned.use: false keeps the rules); the rim, the texture and rule 4
+ *    stay.
+ *
  * The rain is drawn on a grid twice as fine as the data (about 1.5 km) so a 5 km core keeps its shape. Everything that can be tuned is in
  * SYNTHETIC_RADAR_CONFIG (live, from the browser console: atmosSyntheticRadar.set({...})).
  */
+
+import { EARTH_KM, boxSum, latOfMercY, mercY, smooth, summed, thirdLeast } from './satellite-grid';
+import { type RainModel, learnedRain } from './rain-features';
 
 /** All thresholds. Temperatures in kelvin, distances in km, reflectivity in dBZ. */
 export interface SyntheticRadarConfig {
@@ -173,6 +181,10 @@ export interface SyntheticRadarConfig {
     /** The rain grid is this many times finer than the data. */
     scale: number;
   };
+  learned: {
+    /** Draw the learned model's rain (public/data/rain-model.json) once it is approved; false: always the hand-set rules. */
+    use: boolean;
+  };
   blend: {
     /** The estimate fades out over this last stretch of a working radar's range. */
     featherKm: number;
@@ -234,6 +246,7 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
   spread: { maxDbz: 26, dbzPerKm: 2, cloudMaxK: 265 },
   texture: { amplitudeDbz: 10, scalesKm: [25, 9, 3.5], weights: [0.5, 0.3, 0.2] },
   output: { minDbz: 15, maxDbz: 60, scale: 2 },
+  learned: { use: true },
   blend: { featherKm: 20, calibrationMaxDb: 8, calibrationMinPairs: 150 },
 };
 
@@ -265,10 +278,6 @@ export interface CoreFeatures {
   leadK: number;
 }
 
-const smooth = (a: number, b: number, x: number): number => {
-  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
-};
 const lerp = ([a, b]: readonly [number, number], t: number): number => a + (b - a) * Math.min(1, Math.max(0, t));
 
 /** How strongly a core blooms at a pixel (0: no core), from rule 1. */
@@ -377,11 +386,15 @@ export interface SyntheticRadarInput {
   wv?: Float32Array | null;
   vis?: Uint8Array | null;
   timeMs?: number;
+  /** The 7.3 um temperatures (K, 0 = no data), an input of the learned model. */
+  wv73?: Float32Array | null;
   /** ...and the frames of the last hour before it (each with how many minutes older it is), for the blooms. */
   history?: { ir: Float32Array; wv?: Float32Array | null; minutesAgo: number }[];
   wind?: WindGrids | null;
   strikes?: readonly StrikeInput[];
   radar?: RealRadarInput | null;
+  /** The learned model (rain-features.ts), drawn instead of the rules when approved and cfg.learned.use. */
+  model?: RainModel | null;
 }
 
 /** A core drawn (for the stats and the tests): where it is now, how strong, what made it and how many minutes ago. */
@@ -404,6 +417,8 @@ export interface SyntheticRadarStats {
   offsetDb: number;
   pairs: number;
   usedPrevious: boolean;
+  /** Drawn by the learned model instead of the hand-set rules. */
+  learned: boolean;
   ms: number;
 }
 
@@ -414,48 +429,6 @@ export interface SyntheticRadarOutput {
   h: number;
   cores: Core[];
   stats: SyntheticRadarStats;
-}
-
-const EARTH_KM = 40_075.017;
-const mercY = (lat: number): number => {
-  const s = Math.sin((lat * Math.PI) / 180);
-  return 0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI);
-};
-const latOfMercY = (y: number): number => (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
-
-/** Summed-area table (one row and column of zeros in front). */
-function summed(values: Float32Array, w: number, h: number, map: (v: number) => number): Float64Array {
-  const t = new Float64Array((w + 1) * (h + 1));
-  for (let y = 0; y < h; y++) {
-    let row = 0;
-    for (let x = 0; x < w; x++) {
-      row += map(values[y * w + x]);
-      t[(y + 1) * (w + 1) + x + 1] = t[y * (w + 1) + x + 1] + row;
-    }
-  }
-  return t;
-}
-
-function boxSum(t: Float64Array, w: number, h: number, x0: number, y0: number, x1: number, y1: number): number {
-  x0 = Math.max(0, x0);
-  y0 = Math.max(0, y0);
-  x1 = Math.min(w - 1, x1);
-  y1 = Math.min(h - 1, y1);
-  if (x1 < x0 || y1 < y0) return 0;
-  const W = w + 1;
-  return t[(y1 + 1) * W + x1 + 1] - t[y0 * W + x1 + 1] - t[(y1 + 1) * W + x0] + t[y0 * W + x0];
-}
-
-/** The third least of eight values. */
-function thirdLeast(v: Float64Array): number {
-  let a = Infinity, b = Infinity, c = Infinity;
-  for (let k = 0; k < 8; k++) {
-    const x = v[k];
-    if (x < a) [a, b, c] = [x, a, b];
-    else if (x < b) [b, c] = [x, b];
-    else if (x < c) c = x;
-  }
-  return c;
 }
 
 /** The synthetic radar over the data pack's box (rules 1 to 4). */
@@ -742,299 +715,319 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     }
   };
 
-  // rule 1, now: domes, and blooms since the newest frame before
-  const strength = new Float32Array(n);
-  const coldestPrev = history.length ? coldestAround(history[0].ir) : null;
-  const side = new Float64Array(8);
-  const coolNow = history.length ? coolingField(ir, history[0].ir, history[0].minutesAgo) : null;
-  const towerNow = coolNow ? isolated(coolNow, ir) : null;
-  const f: CoreFeatures = { tK: 0, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0 };
-  const bloomedNow = new Uint8Array(n);
-  const ringNow = new Float32Array(n);
-  for (let y = 0; y < h; y++) {
-    const km = rowKm[y];
-    const rIn = cfg.anvil.ringInnerKm / km;
-    const rOut = cfg.anvil.ringOuterKm / km;
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      const t = ir[i];
-      if (!valid(t) || t > Math.max(cfg.cloud.coreMaxK, cfg.popup.bloomMaxK)) continue;
-      f.tK = t;
-      f.coolingK = coldestPrev && t <= cfg.popup.bloomMaxK ? cooling(t, x, y, coldestPrev, history[0].minutesAgo) : NaN;
-      if (t > cfg.cloud.coreMaxK) {
-        // warmer than a dome can be: only a bloom
-        const b = Math.max(Number.isFinite(f.coolingK) ? smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -f.coolingK) : 0, towerNow?.[i] ?? 0);
-        strength[i] = b;
-        if (b > 0) bloomedNow[i] = 1;
-        continue;
-      }
-      // a dome: colder than the ring in all directions but two (a band is cold along its own line; the rim of a cold mass has three or
-      // more cold directions, toward its middle)
-      for (let k = 0; k < 8; k++) {
-        const [dx, dy] = dirs[k];
-        const a = blurAt(x + dx * rIn, y + dy * rIn);
-        const b = blurAt(x + dx * rOut, y + dy * rOut);
-        const m = Number.isNaN(a) ? b : Number.isNaN(b) ? a : (a + b) / 2;
-        side[k] = Number.isNaN(m) ? 0 : m - t;
-      }
-      f.ringDiffK = thirdLeast(side);
-      ringNow[i] = f.ringDiffK;
-      const c = boxSum(sumC, w, h, x - 2, y - 2, x + 2, y + 2);
-      const m1 = boxSum(sumTc, w, h, x - 2, y - 2, x + 2, y + 2) / c;
-      const m2 = boxSum(sumT2c, w, h, x - 2, y - 2, x + 2, y + 2) / c;
-      f.sigmaK = c >= 15 ? Math.sqrt(Math.max(0, m2 - m1 * m1)) : cfg.anvil.textureFullK; // a small cloud (part of the 5 x 5) is a tower
-      const [u8, v8, u2, v2] = windAt(x, y);
-      // an anvil tail: warmer than the cloud upwind along the shear (250 minus 850 hPa; y runs south)
-      const su = u2 - u8, sv = -(v2 - v8);
-      const ss = Math.hypot(su, sv);
-      f.tailK = 0;
-      if (ss > 3) {
-        const up = cfg.anvil.upshearKm / km;
-        const behind = boxMean(x - (su / ss) * up, y - (sv / ss) * up, 1);
-        if (!Number.isNaN(behind)) f.tailK = t - behind;
-      }
-      // the leading edge: warmer ahead along the 850 hPa wind
-      const ls = Math.hypot(u8, v8);
-      f.leadK = 0;
-      if (ls > 1) {
-        const ahead = cfg.anvil.leadKm / km;
-        const a = boxMean(x + (u8 / ls) * ahead, y - (v8 / ls) * ahead, 1);
-        if (!Number.isNaN(a)) f.leadK = a - t;
-      }
-      strength[i] = Math.max(coreStrength(f, cfg), towerNow?.[i] ?? 0);
-      if (f.coolingK <= -cfg.popup.coolingK[0] || (towerNow?.[i] ?? 0) > 0) bloomedNow[i] = 1;
-    }
-  }
-  // a dome's core stands out of its own cloud (the rest of a popup's cloud stands out of the ground too, but does not rain), unless the
-  // whole cold cloud is small (a tower on its own)
-  const cloudsNow = cloudsOf(ir);
-  for (let y = 0; y < h; y++) {
-    const r = Math.round(cfg.core.domeKm / rowKm[y]);
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (!(strength[i] > 0) || bloomedNow[i]) continue;
-      const l = cloudsNow.label[i];
-      if (l >= 0 && cloudsNow.areaKm2[l] <= cfg.core.smallCloudKm2) continue;
-      const c = boxSum(sumC, w, h, x - r, y - r, x + r, y + r);
-      if (boxSum(sumTc, w, h, x - r, y - r, x + r, y + r) / c - ir[i] < cfg.core.standOutK) strength[i] = 0;
-    }
-  }
-  gate(strength, ir, i => (bloomedNow[i] ? strength[i] : 0), input.wv, input.vis, cloudsNow);
-  for (const i of pick(strength, ir)) {
-    const d = coreDbz(strength[i], ir[i], cfg);
-    cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: d, kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
-    // a dome's patch: as far as its tops stay colder than the core by less than shapeShare of how much it stands out (its own shape); a
-    // bloom's as far as spanK
-    const span = bloomedNow[i] ? cfg.cell.spanK : Math.min(cfg.cell.spanK, Math.max(3, cfg.cell.shapeShare * ringNow[i]));
-    addColdPatch(i, ir, d, 0, 0, input.wv, input.vis, span);
-    if (bloomedNow[i] && coolNow) addPatch(i, coolNow, ir, d, 0, 0);
-  }
-
-  // rule 2: the blooms of the older frames, carried to now with the 850 hPa wind
-  for (let k = 0; k + 1 < history.length; k++) {
-    const newer = history[k], older = history[k + 1];
-    if (newer.minutesAgo > cfg.core.lifeMinutes) break;
-    const coldest = coldestAround(older.ir);
-    const gap = older.minutesAgo - newer.minutesAgo;
-    const cool = coolingField(newer.ir, older.ir, gap);
-    const s = isolated(cool, newer.ir);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
-        const t = newer.ir[i];
-        if (!valid(t) || t > cfg.popup.bloomMaxK) continue;
-        const c = cooling(t, x, y, coldest, gap);
-        if (Number.isFinite(c)) s[i] = Math.max(s[i], smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -c));
-      }
-    }
-    const age = newer.minutesAgo;
-    const fade = cfg.core.fadeDbzPerMin * Math.max(0, age - cfg.core.holdMinutes);
-    const bloomOf = Float32Array.from(s);
-    gate(s, newer.ir, i => bloomOf[i], newer.wv);
-    for (const i of pick(s, newer.ir)) {
-      const x = i % w, y = Math.floor(i / w);
-      const [u8, v8] = windAt(x, y);
-      const d = coreDbz(s[i], newer.ir[i], cfg) - fade;
-      if (d < cfg.output.minDbz + 3) continue;
-      const dx = (u8 * age * 60) / 1000 / rowKm[y], dy = -(v8 * age * 60) / 1000 / rowKm[y];
-      cores.push({ x: x + 0.5 + dx, y: y + 0.5 + dy, dbz: d, kind: 'bloom', ageMin: age });
-      addColdPatch(i, newer.ir, d, dx, dy, newer.wv, null, cfg.cell.spanK / 2);
-      addPatch(i, cool, newer.ir, d, dx, dy);
-    }
-  }
-
-  // rule 3: lightning density on the rain grid (scale times finer than the data)
+  // the rain grid (scale times finer than the data)
   const S = Math.max(1, Math.round(cfg.output.scale));
   const W2 = w * S, H2 = h * S, n2 = W2 * H2;
-  const cloudyAt = (x2: number, y2: number): boolean => {
-    const t = ir[Math.min(h - 1, Math.floor(y2 / S)) * w + Math.min(w - 1, Math.floor(x2 / S))];
-    return valid(t) && t < topK;
-  };
-  const lden = new Float32Array(n2);
-  let strikes = 0;
-  for (const st of input.strikes ?? []) {
-    const age = st.ageS / 60;
-    if (age < 0 || age > cfg.lightning.maxAgeMin) continue;
-    const sx = (((st.lon + 180) / 360 - x0m) / pxMerc) * S;
-    const sy = ((mercY(st.lat) - y0m) / pxMerc) * S;
-    if (sx < 0 || sy < 0 || sx >= W2 || sy >= H2) continue;
-    strikes++;
-    const km = rowKm[Math.min(h - 1, Math.floor(sy / S))] / S;
-    const sg = cfg.lightning.radiusKm / km;
-    const wt = Math.exp(-age / cfg.lightning.tauMin);
-    const r = Math.ceil(sg * 3);
-    for (let y = Math.max(0, Math.floor(sy - r)); y <= Math.min(H2 - 1, Math.ceil(sy + r)); y++) {
-      for (let x = Math.max(0, Math.floor(sx - r)); x <= Math.min(W2 - 1, Math.ceil(sx + r)); x++) {
-        const d2 = (x + 0.5 - sx) ** 2 + (y + 0.5 - sy) ** 2;
-        lden[y * W2 + x] += wt * Math.exp(-d2 / (2 * sg * sg));
-      }
-    }
-  }
-  // its heavy cores: the densest within spacingKm
-  if (strikes > 0) {
-    for (let y = 0; y < H2; y++) {
-      const r = Math.max(1, Math.round(cfg.lightning.spacingKm / (rowKm[Math.floor(y / S)] / S)));
-      for (let x = 0; x < W2; x++) {
-        const i = y * W2 + x;
-        const l = lden[i];
-        if (l < cfg.lightning.coreThreshold || !cloudyAt(x, y)) continue;
-        let best = true;
-        for (let yy = Math.max(0, y - r); yy <= Math.min(H2 - 1, y + r) && best; yy++) {
-          for (let xx = Math.max(0, x - r); xx <= Math.min(W2 - 1, x + r); xx++) {
-            const j = yy * W2 + xx;
-            if (lden[j] > l || (lden[j] === l && j < i)) {
-              best = false;
-              break;
-            }
-          }
-        }
-        if (best) cores.push({ x: (x + 0.5) / S, y: (y + 0.5) / S, dbz: lightningCoreDbz(l, cfg), kind: 'lightning', ageMin: 0 });
-      }
-    }
-  }
-
-  // the cores on the rain grid: 5 km wide, stretched toward where the 850 hPa wind takes them
   const dbz = new Float32Array(n2);
-  const rain: RainPixel = { cloudy: true, coreDbz: 0, acrossKm: 0, along: 0, lightning: 0 };
-  for (const c of cores) {
-    const yRow = Math.min(h - 1, Math.max(0, Math.floor(c.y)));
-    const [u8, v8] = windAt(Math.min(w - 1, Math.max(0, Math.floor(c.x))), yRow);
-    let tx = (u8 * cfg.core.trailMinutes * 60) / 1000;
-    let ty = -(v8 * cfg.core.trailMinutes * 60) / 1000;
-    const len = Math.hypot(tx, ty);
-    if (len > cfg.core.maxTrailKm) {
-      tx *= cfg.core.maxTrailKm / len;
-      ty *= cfg.core.maxTrailKm / len;
-    }
-    const km = rowKm[yRow] / S;
-    const ax = c.x * S, ay = c.y * S, bx = ax + tx / km, by = ay + ty / km;
-    const half = cfg.core.widthKm / 2 / km;
-    const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - half)), x1 = Math.min(W2 - 1, Math.ceil(Math.max(ax, bx) + half));
-    const y0 = Math.max(0, Math.floor(Math.min(ay, by) - half)), y1 = Math.min(H2 - 1, Math.ceil(Math.max(ay, by) + half));
-    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        const qx = x + 0.5 - ax, qy = y + 0.5 - ay;
-        const t = l2 > 0 ? Math.min(1, Math.max(0, (qx * dx + qy * dy) / l2)) : 0;
-        rain.coreDbz = c.dbz;
-        rain.acrossKm = Math.hypot(qx - t * dx, qy - t * dy) * km;
-        rain.along = t;
-        const v = classifyPixel(rain, cfg);
-        const i = y * W2 + x;
-        if (v > dbz[i]) dbz[i] = v;
+  let strikes = 0;
+  // the learned model (rain-features.ts), once it beats these rules on held-back days (pipeline/learn_rain.py), draws the rain in their place
+  const learned = cfg.learned.use && input.model?.approved ? learnedRain(input, input.model) : null;
+  if (learned) {
+    strikes = (input.strikes ?? []).filter(st => st.ageS >= 0 && st.ageS / 60 <= cfg.lightning.maxAgeMin).length;
+    // onto the rain grid smoothly (bilinear between the data's pixels, so their squares do not show)
+    for (let y = 0; y < H2; y++) {
+      const gy = (y + 0.5) / S - 0.5, y0 = Math.max(0, Math.floor(gy)), y1 = Math.min(h - 1, y0 + 1), fy = Math.min(1, Math.max(0, gy - y0));
+      for (let x = 0; x < W2; x++) {
+        const gx = (x + 0.5) / S - 0.5, x0 = Math.max(0, Math.floor(gx)), x1 = Math.min(w - 1, x0 + 1), fx = Math.min(1, Math.max(0, gx - x0));
+        const a = learned[y0 * w + x0], b = learned[y0 * w + x1], c = learned[y1 * w + x0], d = learned[y1 * w + x1];
+        if (!(a || b || c || d)) continue;
+        const v = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+        if (v >= cfg.output.minDbz) dbz[y * W2 + x] = v;
       }
     }
-  }
-  // the blooms' patches, carried with the wind: each of the data's pixels spread as a soft tent 1.2 pixels wide and averaged, so the
-  // patch has a smooth outline (where the tents cover it at least a third) and not the data's squares
-  if (patches.length) {
-    const num = new Float32Array(n2), den = new Float32Array(n2);
-    const R = 1.2 * S;
-    for (const p of patches) {
-      for (let k = 0; k < p.at.length; k++) {
-        const v = p.value[k];
-        const cx = ((p.at[k] % w) + 0.5 + p.dx) * S, cy = (Math.floor(p.at[k] / w) + 0.5 + p.dy) * S;
-        for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(H2 - 1, Math.ceil(cy + R)); y++) {
-          for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W2 - 1, Math.ceil(cx + R)); x++) {
-            const t = 1 - Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / R;
-            if (t <= 0) continue;
-            num[y * W2 + x] += v * t;
-            den[y * W2 + x] += t;
-          }
-        }
-      }
-    }
-    for (let i = 0; i < n2; i++) {
-      if (den[i] < 0.35) continue;
-      const v = num[i] / den[i];
-      if (v >= cfg.output.minDbz && v > dbz[i]) dbz[i] = v;
-    }
-  }
-  // light rain under the thick anvil near the cores (data grid: distance from the nearest core or lightning core, chamfer)
-  {
-    const near = new Float32Array(n).fill(Infinity);
-    const seeds: number[] = [];
-    for (const c of cores) {
-      const x = Math.floor(c.x), y = Math.floor(c.y);
-      if (x < 0 || y < 0 || x >= w || y >= h) continue;
-      near[y * w + x] = 0;
-      seeds.push(y * w + x);
-    }
-    if (seeds.length) {
-      for (let pass = 0; pass < 2; pass++) {
-        const ys = pass === 0 ? [0, h, 1] : [h - 1, -1, -1];
-        for (let y = ys[0]; y !== ys[1]; y += ys[2]) {
-          const km = rowKm[y], dk = km * Math.SQRT2;
-          const xs = pass === 0 ? [0, w, 1] : [w - 1, -1, -1];
-          for (let x = xs[0]; x !== xs[1]; x += xs[2]) {
-            const i = y * w + x, sx = xs[2], sy = ys[2];
-            let v = near[i];
-            if (x - sx >= 0 && x - sx < w) v = Math.min(v, near[i - sx] + km);
-            if (y - sy >= 0 && y - sy < h) {
-              v = Math.min(v, near[i - sy * w] + km);
-              if (x - sx >= 0 && x - sx < w) v = Math.min(v, near[i - sy * w - sx] + dk);
-              if (x + sx >= 0 && x + sx < w) v = Math.min(v, near[i - sy * w + sx] + dk);
-            }
-            near[i] = v;
-          }
-        }
-      }
-      const st = cfg.stratiform;
-      const strat = new Float32Array(n);
-      for (let i = 0; i < n; i++) {
+  } else {
+    // rule 1, now: domes, and blooms since the newest frame before
+    const strength = new Float32Array(n);
+    const coldestPrev = history.length ? coldestAround(history[0].ir) : null;
+    const side = new Float64Array(8);
+    const coolNow = history.length ? coolingField(ir, history[0].ir, history[0].minutesAgo) : null;
+    const towerNow = coolNow ? isolated(coolNow, ir) : null;
+    const f: CoreFeatures = { tK: 0, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0 };
+    const bloomedNow = new Uint8Array(n);
+    const ringNow = new Float32Array(n);
+    for (let y = 0; y < h; y++) {
+      const km = rowKm[y];
+      const rIn = cfg.anvil.ringInnerKm / km;
+      const rOut = cfg.anvil.ringOuterKm / km;
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
         const t = ir[i];
-        if (!valid(t) || t > st.maxK || near[i] > st.reachKm) continue;
-        const l = cloudsNow.label[i];
-        if (l < 0 || !cloudsNow.rains[l] || !thick(i, ir, input.wv, input.vis, cfg.cell.patchSlackK, cfg.cell.patchVisSlack)) continue;
-        strat[i] = lerp(st.dbz, ((st.maxK - t) / (st.maxK - st.coldK)) * (1 - 0.5 * (near[i] / st.reachKm)));
+        if (!valid(t) || t > Math.max(cfg.cloud.coreMaxK, cfg.popup.bloomMaxK)) continue;
+        f.tK = t;
+        f.coolingK = coldestPrev && t <= cfg.popup.bloomMaxK ? cooling(t, x, y, coldestPrev, history[0].minutesAgo) : NaN;
+        if (t > cfg.cloud.coreMaxK) {
+          // warmer than a dome can be: only a bloom
+          const b = Math.max(Number.isFinite(f.coolingK) ? smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -f.coolingK) : 0, towerNow?.[i] ?? 0);
+          strength[i] = b;
+          if (b > 0) bloomedNow[i] = 1;
+          continue;
+        }
+        // a dome: colder than the ring in all directions but two (a band is cold along its own line; the rim of a cold mass has three or
+        // more cold directions, toward its middle)
+        for (let k = 0; k < 8; k++) {
+          const [dx, dy] = dirs[k];
+          const a = blurAt(x + dx * rIn, y + dy * rIn);
+          const b = blurAt(x + dx * rOut, y + dy * rOut);
+          const m = Number.isNaN(a) ? b : Number.isNaN(b) ? a : (a + b) / 2;
+          side[k] = Number.isNaN(m) ? 0 : m - t;
+        }
+        f.ringDiffK = thirdLeast(side);
+        ringNow[i] = f.ringDiffK;
+        const c = boxSum(sumC, w, h, x - 2, y - 2, x + 2, y + 2);
+        const m1 = boxSum(sumTc, w, h, x - 2, y - 2, x + 2, y + 2) / c;
+        const m2 = boxSum(sumT2c, w, h, x - 2, y - 2, x + 2, y + 2) / c;
+        f.sigmaK = c >= 15 ? Math.sqrt(Math.max(0, m2 - m1 * m1)) : cfg.anvil.textureFullK; // a small cloud (part of the 5 x 5) is a tower
+        const [u8, v8, u2, v2] = windAt(x, y);
+        // an anvil tail: warmer than the cloud upwind along the shear (250 minus 850 hPa; y runs south)
+        const su = u2 - u8, sv = -(v2 - v8);
+        const ss = Math.hypot(su, sv);
+        f.tailK = 0;
+        if (ss > 3) {
+          const up = cfg.anvil.upshearKm / km;
+          const behind = boxMean(x - (su / ss) * up, y - (sv / ss) * up, 1);
+          if (!Number.isNaN(behind)) f.tailK = t - behind;
+        }
+        // the leading edge: warmer ahead along the 850 hPa wind
+        const ls = Math.hypot(u8, v8);
+        f.leadK = 0;
+        if (ls > 1) {
+          const ahead = cfg.anvil.leadKm / km;
+          const a = boxMean(x + (u8 / ls) * ahead, y - (v8 / ls) * ahead, 1);
+          if (!Number.isNaN(a)) f.leadK = a - t;
+        }
+        strength[i] = Math.max(coreStrength(f, cfg), towerNow?.[i] ?? 0);
+        if (f.coolingK <= -cfg.popup.coolingK[0] || (towerNow?.[i] ?? 0) > 0) bloomedNow[i] = 1;
       }
-      // onto the rain grid smoothly (bilinear between the data's pixels, so their squares do not show)
+    }
+    // a dome's core stands out of its own cloud (the rest of a popup's cloud stands out of the ground too, but does not rain), unless the
+    // whole cold cloud is small (a tower on its own)
+    const cloudsNow = cloudsOf(ir);
+    for (let y = 0; y < h; y++) {
+      const r = Math.round(cfg.core.domeKm / rowKm[y]);
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (!(strength[i] > 0) || bloomedNow[i]) continue;
+        const l = cloudsNow.label[i];
+        if (l >= 0 && cloudsNow.areaKm2[l] <= cfg.core.smallCloudKm2) continue;
+        const c = boxSum(sumC, w, h, x - r, y - r, x + r, y + r);
+        if (boxSum(sumTc, w, h, x - r, y - r, x + r, y + r) / c - ir[i] < cfg.core.standOutK) strength[i] = 0;
+      }
+    }
+    gate(strength, ir, i => (bloomedNow[i] ? strength[i] : 0), input.wv, input.vis, cloudsNow);
+    for (const i of pick(strength, ir)) {
+      const d = coreDbz(strength[i], ir[i], cfg);
+      cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: d, kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
+      // a dome's patch: as far as its tops stay colder than the core by less than shapeShare of how much it stands out (its own shape); a
+      // bloom's as far as spanK
+      const span = bloomedNow[i] ? cfg.cell.spanK : Math.min(cfg.cell.spanK, Math.max(3, cfg.cell.shapeShare * ringNow[i]));
+      addColdPatch(i, ir, d, 0, 0, input.wv, input.vis, span);
+      if (bloomedNow[i] && coolNow) addPatch(i, coolNow, ir, d, 0, 0);
+    }
+
+    // rule 2: the blooms of the older frames, carried to now with the 850 hPa wind
+    for (let k = 0; k + 1 < history.length; k++) {
+      const newer = history[k], older = history[k + 1];
+      if (newer.minutesAgo > cfg.core.lifeMinutes) break;
+      const coldest = coldestAround(older.ir);
+      const gap = older.minutesAgo - newer.minutesAgo;
+      const cool = coolingField(newer.ir, older.ir, gap);
+      const s = isolated(cool, newer.ir);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = y * w + x;
+          const t = newer.ir[i];
+          if (!valid(t) || t > cfg.popup.bloomMaxK) continue;
+          const c = cooling(t, x, y, coldest, gap);
+          if (Number.isFinite(c)) s[i] = Math.max(s[i], smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -c));
+        }
+      }
+      const age = newer.minutesAgo;
+      const fade = cfg.core.fadeDbzPerMin * Math.max(0, age - cfg.core.holdMinutes);
+      const bloomOf = Float32Array.from(s);
+      gate(s, newer.ir, i => bloomOf[i], newer.wv);
+      for (const i of pick(s, newer.ir)) {
+        const x = i % w, y = Math.floor(i / w);
+        const [u8, v8] = windAt(x, y);
+        const d = coreDbz(s[i], newer.ir[i], cfg) - fade;
+        if (d < cfg.output.minDbz + 3) continue;
+        const dx = (u8 * age * 60) / 1000 / rowKm[y], dy = -(v8 * age * 60) / 1000 / rowKm[y];
+        cores.push({ x: x + 0.5 + dx, y: y + 0.5 + dy, dbz: d, kind: 'bloom', ageMin: age });
+        addColdPatch(i, newer.ir, d, dx, dy, newer.wv, null, cfg.cell.spanK / 2);
+        addPatch(i, cool, newer.ir, d, dx, dy);
+      }
+    }
+
+    // rule 3: lightning density on the rain grid (scale times finer than the data)
+    const cloudyAt = (x2: number, y2: number): boolean => {
+      const t = ir[Math.min(h - 1, Math.floor(y2 / S)) * w + Math.min(w - 1, Math.floor(x2 / S))];
+      return valid(t) && t < topK;
+    };
+    const lden = new Float32Array(n2);
+    strikes = 0;
+    for (const st of input.strikes ?? []) {
+      const age = st.ageS / 60;
+      if (age < 0 || age > cfg.lightning.maxAgeMin) continue;
+      const sx = (((st.lon + 180) / 360 - x0m) / pxMerc) * S;
+      const sy = ((mercY(st.lat) - y0m) / pxMerc) * S;
+      if (sx < 0 || sy < 0 || sx >= W2 || sy >= H2) continue;
+      strikes++;
+      const km = rowKm[Math.min(h - 1, Math.floor(sy / S))] / S;
+      const sg = cfg.lightning.radiusKm / km;
+      const wt = Math.exp(-age / cfg.lightning.tauMin);
+      const r = Math.ceil(sg * 3);
+      for (let y = Math.max(0, Math.floor(sy - r)); y <= Math.min(H2 - 1, Math.ceil(sy + r)); y++) {
+        for (let x = Math.max(0, Math.floor(sx - r)); x <= Math.min(W2 - 1, Math.ceil(sx + r)); x++) {
+          const d2 = (x + 0.5 - sx) ** 2 + (y + 0.5 - sy) ** 2;
+          lden[y * W2 + x] += wt * Math.exp(-d2 / (2 * sg * sg));
+        }
+      }
+    }
+    // its heavy cores: the densest within spacingKm
+    if (strikes > 0) {
       for (let y = 0; y < H2; y++) {
-        const gy = (y + 0.5) / S - 0.5, y0 = Math.max(0, Math.floor(gy)), y1 = Math.min(h - 1, y0 + 1), fy = Math.min(1, Math.max(0, gy - y0));
+        const r = Math.max(1, Math.round(cfg.lightning.spacingKm / (rowKm[Math.floor(y / S)] / S)));
         for (let x = 0; x < W2; x++) {
-          const gx = (x + 0.5) / S - 0.5, x0 = Math.max(0, Math.floor(gx)), x1 = Math.min(w - 1, x0 + 1), fx = Math.min(1, Math.max(0, gx - x0));
-          const a = strat[y0 * w + x0], b = strat[y0 * w + x1], c = strat[y1 * w + x0], d = strat[y1 * w + x1];
-          if (!(a || b || c || d)) continue;
-          const v = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+          const i = y * W2 + x;
+          const l = lden[i];
+          if (l < cfg.lightning.coreThreshold || !cloudyAt(x, y)) continue;
+          let best = true;
+          for (let yy = Math.max(0, y - r); yy <= Math.min(H2 - 1, y + r) && best; yy++) {
+            for (let xx = Math.max(0, x - r); xx <= Math.min(W2 - 1, x + r); xx++) {
+              const j = yy * W2 + xx;
+              if (lden[j] > l || (lden[j] === l && j < i)) {
+                best = false;
+                break;
+              }
+            }
+          }
+          if (best) cores.push({ x: (x + 0.5) / S, y: (y + 0.5) / S, dbz: lightningCoreDbz(l, cfg), kind: 'lightning', ageMin: 0 });
+        }
+      }
+    }
+
+    // the cores on the rain grid: 5 km wide, stretched toward where the 850 hPa wind takes them
+    const rain: RainPixel = { cloudy: true, coreDbz: 0, acrossKm: 0, along: 0, lightning: 0 };
+    for (const c of cores) {
+      const yRow = Math.min(h - 1, Math.max(0, Math.floor(c.y)));
+      const [u8, v8] = windAt(Math.min(w - 1, Math.max(0, Math.floor(c.x))), yRow);
+      let tx = (u8 * cfg.core.trailMinutes * 60) / 1000;
+      let ty = -(v8 * cfg.core.trailMinutes * 60) / 1000;
+      const len = Math.hypot(tx, ty);
+      if (len > cfg.core.maxTrailKm) {
+        tx *= cfg.core.maxTrailKm / len;
+        ty *= cfg.core.maxTrailKm / len;
+      }
+      const km = rowKm[yRow] / S;
+      const ax = c.x * S, ay = c.y * S, bx = ax + tx / km, by = ay + ty / km;
+      const half = cfg.core.widthKm / 2 / km;
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - half)), x1 = Math.min(W2 - 1, Math.ceil(Math.max(ax, bx) + half));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by) - half)), y1 = Math.min(H2 - 1, Math.ceil(Math.max(ay, by) + half));
+      const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const qx = x + 0.5 - ax, qy = y + 0.5 - ay;
+          const t = l2 > 0 ? Math.min(1, Math.max(0, (qx * dx + qy * dy) / l2)) : 0;
+          rain.coreDbz = c.dbz;
+          rain.acrossKm = Math.hypot(qx - t * dx, qy - t * dy) * km;
+          rain.along = t;
+          const v = classifyPixel(rain, cfg);
           const i = y * W2 + x;
           if (v > dbz[i]) dbz[i] = v;
         }
       }
     }
-  }
-  // the rain right around the strokes
-  if (strikes > 0) {
-    rain.coreDbz = 0;
-    for (let y = 0; y < H2; y++) {
-      for (let x = 0; x < W2; x++) {
-        const i = y * W2 + x;
-        if (lden[i] < cfg.lightning.rainThreshold) continue;
-        rain.cloudy = cloudyAt(x, y);
-        rain.lightning = lden[i];
-        const v = classifyPixel(rain, cfg);
-        if (v > dbz[i]) dbz[i] = v;
+    // the blooms' patches, carried with the wind: each of the data's pixels spread as a soft tent 1.2 pixels wide and averaged, so the
+    // patch has a smooth outline (where the tents cover it at least a third) and not the data's squares
+    if (patches.length) {
+      const num = new Float32Array(n2), den = new Float32Array(n2);
+      const R = 1.2 * S;
+      for (const p of patches) {
+        for (let k = 0; k < p.at.length; k++) {
+          const v = p.value[k];
+          const cx = ((p.at[k] % w) + 0.5 + p.dx) * S, cy = (Math.floor(p.at[k] / w) + 0.5 + p.dy) * S;
+          for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(H2 - 1, Math.ceil(cy + R)); y++) {
+            for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W2 - 1, Math.ceil(cx + R)); x++) {
+              const t = 1 - Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / R;
+              if (t <= 0) continue;
+              num[y * W2 + x] += v * t;
+              den[y * W2 + x] += t;
+            }
+          }
+        }
+      }
+      for (let i = 0; i < n2; i++) {
+        if (den[i] < 0.35) continue;
+        const v = num[i] / den[i];
+        if (v >= cfg.output.minDbz && v > dbz[i]) dbz[i] = v;
       }
     }
+    // light rain under the thick anvil near the cores (data grid: distance from the nearest core or lightning core, chamfer)
+    {
+      const near = new Float32Array(n).fill(Infinity);
+      const seeds: number[] = [];
+      for (const c of cores) {
+        const x = Math.floor(c.x), y = Math.floor(c.y);
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        near[y * w + x] = 0;
+        seeds.push(y * w + x);
+      }
+      if (seeds.length) {
+        for (let pass = 0; pass < 2; pass++) {
+          const ys = pass === 0 ? [0, h, 1] : [h - 1, -1, -1];
+          for (let y = ys[0]; y !== ys[1]; y += ys[2]) {
+            const km = rowKm[y], dk = km * Math.SQRT2;
+            const xs = pass === 0 ? [0, w, 1] : [w - 1, -1, -1];
+            for (let x = xs[0]; x !== xs[1]; x += xs[2]) {
+              const i = y * w + x, sx = xs[2], sy = ys[2];
+              let v = near[i];
+              if (x - sx >= 0 && x - sx < w) v = Math.min(v, near[i - sx] + km);
+              if (y - sy >= 0 && y - sy < h) {
+                v = Math.min(v, near[i - sy * w] + km);
+                if (x - sx >= 0 && x - sx < w) v = Math.min(v, near[i - sy * w - sx] + dk);
+                if (x + sx >= 0 && x + sx < w) v = Math.min(v, near[i - sy * w + sx] + dk);
+              }
+              near[i] = v;
+            }
+          }
+        }
+        const st = cfg.stratiform;
+        const strat = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+          const t = ir[i];
+          if (!valid(t) || t > st.maxK || near[i] > st.reachKm) continue;
+          const l = cloudsNow.label[i];
+          if (l < 0 || !cloudsNow.rains[l] || !thick(i, ir, input.wv, input.vis, cfg.cell.patchSlackK, cfg.cell.patchVisSlack)) continue;
+          strat[i] = lerp(st.dbz, ((st.maxK - t) / (st.maxK - st.coldK)) * (1 - 0.5 * (near[i] / st.reachKm)));
+        }
+        // onto the rain grid smoothly (bilinear between the data's pixels, so their squares do not show)
+        for (let y = 0; y < H2; y++) {
+          const gy = (y + 0.5) / S - 0.5, y0 = Math.max(0, Math.floor(gy)), y1 = Math.min(h - 1, y0 + 1), fy = Math.min(1, Math.max(0, gy - y0));
+          for (let x = 0; x < W2; x++) {
+            const gx = (x + 0.5) / S - 0.5, x0 = Math.max(0, Math.floor(gx)), x1 = Math.min(w - 1, x0 + 1), fx = Math.min(1, Math.max(0, gx - x0));
+            const a = strat[y0 * w + x0], b = strat[y0 * w + x1], c = strat[y1 * w + x0], d = strat[y1 * w + x1];
+            if (!(a || b || c || d)) continue;
+            const v = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+            const i = y * W2 + x;
+            if (v > dbz[i]) dbz[i] = v;
+          }
+        }
+      }
+    }
+    // the rain right around the strokes
+    if (strikes > 0) {
+      rain.coreDbz = 0;
+      for (let y = 0; y < H2; y++) {
+        for (let x = 0; x < W2; x++) {
+          const i = y * W2 + x;
+          if (lden[i] < cfg.lightning.rainThreshold) continue;
+          rain.cloudy = cloudyAt(x, y);
+          rain.lightning = lden[i];
+          const v = classifyPixel(rain, cfg);
+          if (v > dbz[i]) dbz[i] = v;
+        }
+      }
+    }
+
   }
 
   // the spread on the ground: a light rim around the rain, fading outward (two chamfer passes carry the strongest rim value)
@@ -1159,6 +1152,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
       offsetDb,
       pairs,
       usedPrevious: history.length > 0,
+      learned: learned !== null,
       ms: Math.round(performance.now() - started),
     },
   };

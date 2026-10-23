@@ -142,3 +142,16 @@ Fine-grained tokens → Generate new token):
 - Set up 22 Oct 2026 (every 10 minutes, Asia/Kolkata). GitHub marks API version 2022-11-28 as deprecated: it stops working on
   **10 March 2028**, so change the `X-GitHub-Api-Version` header to the newer version before then. The token also expires on the date
   chosen when it was made: make a new one and paste it into the job before that.
+
+## The synthetic radar, learned from our radars (`learn_rain.py`)
+
+The nowcast bot keeps, every look, the satellite's inputs at each 3 km pixel against what Chennai and Karaikal saw there at the same time
+(the rain-pairs branch; see bot/README.md). The verify workflow fits two sets of gradient-boosted trees from the last 60 days (numpy only):
+whether a pixel rains (15 dBZ or more, the mean Z over the pixel) and how much. The days are split into four groups, each scored by a model
+fitted on the others against the hand-set rules' picture on the same pixels; the model goes to the app (`public/data/rain-model.json`)
+approved only when it beats the rules there (threat score at 15 dBZ, no worse at 35 dBZ, frequency bias 0.6 to 1.6) and there are 14 days
+and 8 rain days of pairs at least. `data/rain/learn.json` keeps how far the data has come, the scores and which inputs mattered most.
+
+```
+python learn_rain.py --pairs ../rain-pairs-data      # a checkout of the rain-pairs branch
+```

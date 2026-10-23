@@ -8,6 +8,8 @@ import { FieldLoaderService } from '../forecast/field-loader.service';
 import { decodeFieldBitmap } from '../forecast/field-decode';
 import { bracketSteps } from '../forecast/forecast.model';
 import { isPhone } from '../ui/device-profile';
+import { BOT_CAPTURE } from '../ui/bot-capture';
+import type { PairRadar, RainPairs } from './rain-features';
 
 /** How often the newest frame is looked for while the radar is on (the satellite workflow publishes every 15 minutes). */
 const REFRESH_MS = 5 * 60_000;
@@ -15,6 +17,8 @@ const REFRESH_MS = 5 * 60_000;
 const HISTORY_MINUTES = 75;
 /** How often the synthetic radar is built again for new lightning (a phone less often: it is a few hundred ms of a worker's time). */
 const LIGHTNING_MS = isPhone() ? 120_000 : 60_000;
+/** The learned model (pipeline/learn_rain.py; rain-features.ts), drawn instead of the hand-set rules once it beats them. */
+const MODEL_PATH = 'data/rain-model.json';
 
 export interface SatelliteRainData {
   /** Reflectivity x 4 per pixel over bounds (synthetic-radar.ts), 0 where there is none. */
@@ -27,10 +31,23 @@ export interface SatelliteRainData {
   stats: SyntheticRadarStats;
 }
 
+/** The newest frame of our own satellite data and the hour before it. */
+interface OwnFrame {
+  url: string;
+  rgbUrl?: string;
+  history: { url: string; minutesAgo: number }[];
+  bounds: GeoBounds;
+  minK: number;
+  spanK: number;
+  timeMs: number;
+}
+
 /** What the map gives the estimate: the lightning, and the real radar (its picture and the discs of the radars that work). */
 export interface SatelliteRainInputs {
   strikes: () => readonly StrikeInput[];
   radar: () => RealRadarInput | null;
+  /** The radar picture nearest a time (the live one or a step of the loop) with the discs of the radars that work, for the bot's pairs. */
+  radarAt?: (timeMs: number) => PairRadar | null;
 }
 
 /** The synthetic radar drawn where no working radar sees (synthetic-radar.ts, drawn by rendering/satellite-rain.layer.ts). */
@@ -43,7 +60,7 @@ export class SatelliteRainService {
   private inputs: SatelliteRainInputs | null = null;
   private frameTimer: ReturnType<typeof setInterval> | null = null;
   private lightningTimer: ReturnType<typeof setInterval> | null = null;
-  private frame: { url: string; rgbUrl?: string; history: { url: string; minutesAgo: number }[]; bounds: GeoBounds; minK: number; spanK: number; timeMs: number } | null = null;
+  private frame: OwnFrame | null = null;
   private worker: Worker | null = null;
   private nextId = 0;
   private busy = false;
@@ -64,6 +81,18 @@ export class SatelliteRainService {
         void this.build();
       },
     };
+    // the nowcast bot keeps the satellite's inputs against the radar at the same time, for learning the synthetic radar (bot/nowcast.mjs)
+    if (BOT_CAPTURE) (globalThis as Record<string, unknown>)['__atmosRainPairs'] = () => this.pairs();
+  }
+
+  /** The newest frame's pairs (rain-features.ts) against the radar picture nearest its time, or null (no frame yet, no radar then). */
+  async pairs(): Promise<(RainPairs & { stats: SyntheticRadarStats }) | null> {
+    if (!this.frame) await this.refresh();
+    const frame = this.frame;
+    const radar = frame ? this.inputs?.radarAt?.(frame.timeMs) ?? null : null;
+    if (!frame || !radar || typeof Worker === 'undefined') return null;
+    const reply = await this.run(await this.request(frame, radar));
+    return 'dbz4' in reply && reply.pairs ? { ...reply.pairs, stats: reply.stats } : null;
   }
 
   setInputs(inputs: SatelliteRainInputs): void {
@@ -128,22 +157,7 @@ export class SatelliteRainService {
     }
     this.busy = true;
     try {
-      const wind = await this.winds(frame.timeMs);
-      const req: SyntheticRadarRequest = {
-        id: ++this.nextId,
-        url: frame.url,
-        history: frame.history,
-        rgbUrl: frame.rgbUrl,
-        timeMs: frame.timeMs,
-        box: frame.bounds,
-        minK: frame.minK,
-        spanK: frame.spanK,
-        wind,
-        strikes: (this.inputs?.strikes() ?? []).map(s => ({ lat: s.lat, lon: s.lon, ageS: s.ageS })),
-        radar: this.inputs?.radar() ?? null,
-        config: this.config(),
-      };
-      const reply = await this.run(req);
+      const reply = await this.run(await this.request(frame, null));
       if ('dbz4' in reply && this.frame === frame) {
         this.latest.set({ dbz4: reply.dbz4, w: reply.w, h: reply.h, bounds: frame.bounds, timeMs: frame.timeMs, stats: reply.stats });
       }
@@ -156,6 +170,25 @@ export class SatelliteRainService {
         void this.build();
       }
     }
+  }
+
+  private async request(frame: OwnFrame, pairRadar: PairRadar | null): Promise<SyntheticRadarRequest> {
+    return {
+      id: ++this.nextId,
+      url: frame.url,
+      history: frame.history,
+      rgbUrl: frame.rgbUrl,
+      timeMs: frame.timeMs,
+      box: frame.bounds,
+      minK: frame.minK,
+      spanK: frame.spanK,
+      wind: await this.winds(frame.timeMs),
+      strikes: (this.inputs?.strikes() ?? []).map(s => ({ lat: s.lat, lon: s.lon, ageS: s.ageS })),
+      radar: this.inputs?.radar() ?? null,
+      config: this.config(),
+      modelUrl: typeof document === 'undefined' ? null : new URL(MODEL_PATH, document.baseURI).href,
+      pairRadar,
+    };
   }
 
   private run(req: SyntheticRadarRequest): Promise<SyntheticRadarResponse> {
