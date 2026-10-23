@@ -231,14 +231,22 @@ def latlon_area(g: dict, name: str):
     return create_area_def(name, "EPSG:4326", area_extent=[west, south, east, north], shape=(g["rows"], g["cols"]), units="degrees")
 
 
+EVIEW_IN = [0, 12, 37, 62, 87, 112, 137, 162, 187, 212, 237, 255]
+EVIEW_OUT = [40, 63, 87, 113, 135, 154, 175, 192, 209, 224, 240, 255]
+
+
 def hrv_clouds_rgb(vis: np.ndarray, bt: np.ndarray) -> np.ndarray:
     """EUMETSAT's HRV Cloud RGB as bytes: red = green = the visible reflectance (0..1, sun-normalised), blue = (323 K - BT) / 120 K. Where the
     visible has no value (outside its scan) red and green are 0 and the blue stays (the app then shows the infrared there, as with EUMETView);
     where neither has one, all 0 (nothing drawn)."""
-    v = np.clip(np.nan_to_num(vis, nan=0.0), 0, 1)
+    v = np.clip(np.nan_to_num(vis, nan=0.0), 0, 1) * 255
+    # EUMETView's brightness curve for the visible (it brightens the dark end): measured 23 Oct 02:00 UTC over India, the median of its
+    # rgb_eview red for each 25-step bin of ours (1.4 million pixels). The app's Windy colours and ground removal were tuned on its picture.
+    v = np.interp(v, EVIEW_IN, EVIEW_OUT)
+    v[~np.isfinite(vis)] = 0
     b = np.clip((323.0 - bt) / 120.0, 0, 1)
     out = np.zeros(vis.shape + (3,), np.uint8)
-    out[..., 0] = out[..., 1] = np.round(v * 255).astype(np.uint8)
+    out[..., 0] = out[..., 1] = np.round(v).astype(np.uint8)
     out[..., 2] = np.where(np.isfinite(bt), np.round(np.nan_to_num(b) * 255), 0).astype(np.uint8)
     return out
 
