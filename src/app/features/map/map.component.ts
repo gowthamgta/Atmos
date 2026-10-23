@@ -143,6 +143,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const kind = this.satellite.current()?.product.id;
     const threeD = this.satellite.threeD();
     const heightScale = this.satellite.heightScale();
+    this.satellite.irColour3D();   // redraw the 3D clouds when their colouring changes
     const custom = this.satellite.custom();
     if (!this.map || !this.isMapLoaded()) return;
     // our own pictures (own-products.ts): the 3D clouds are built from EUMETView's frames only
@@ -647,7 +648,11 @@ export class MapComponent implements OnInit, OnDestroy {
       this.tiltedFor3D = true;
       if (map.getPitch() < 30) map.easeTo({ pitch: 55, duration: 1200 });
     }
-    this.cloudVolume.setFrames(frames.map(f => ({ key: f.url, field: f.cloudField ?? null, timeMs: f.timeMs, picture: f.url })));
+    this.cloudVolume.setFrames(frames.map(f => ({
+      key: f.url, field: f.cloudField ?? null, timeMs: f.timeMs, picture: f.url,
+      ir: f.own ? { url: f.own.dataUrl, bounds: f.own.dataBounds ?? f.own.bounds } : undefined,
+    })));
+    this.cloudVolume.setIrColour(this.satellite.irColour3D());
     this.cloudVolume.setFlows(this.satellite.flows());
     this.cloudVolume.setHeightScale(heightScale);
     this.cloudVolume.setPosition(position, opacity);

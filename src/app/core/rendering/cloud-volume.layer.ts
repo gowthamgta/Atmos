@@ -3,6 +3,7 @@ import { mercatorUnitX, mercatorUnitY } from '../forecast/forecast.model';
 import { FIELD_KM_SCALE, FIELD_TAU_MAX, CloudField } from '../satellite/cloud-field';
 import type { FlowField } from '../satellite/satellite-flow';
 import { SATELLITE_BOUNDS, sunElevationDeg } from '../satellite/satellite.config';
+import { windyInfraredTable } from '../satellite/satellite-image';
 import { PendingProgram } from './gl-program';
 
 /**
@@ -92,6 +93,11 @@ uniform float u_shadow;     // how dark a cloud's shadow on the map is
 uniform sampler2D u_detA;   // the frame's own picture (Mercator, over the field's box): its visible brightness shapes the clouds
 uniform sampler2D u_detB;
 uniform float u_hasDet;
+uniform sampler2D u_irA;    // the frame's infrared (its data pack: red = 10.8 um, K = 180 + v x 140), as the flat Infrared draws it
+uniform sampler2D u_irB;
+uniform sampler2D u_lut;    // Windy's infrared colours over 180..320 K (satellite-image.ts windyInfraredTable)
+uniform float u_hasIr;      // 1: colour the clouds by the infrared
+uniform vec4 u_irAff;       // the field's uv -> the data pack's uv: scale x, y, offset x, y
 in vec2 v_uv;
 out vec4 o;
 
@@ -109,6 +115,22 @@ float detailAt(vec2 uvA, vec2 uvB) {
 }
 
 float g_det = 0.0;   // the picture's brightness where column() last looked
+vec2 g_uvA = vec2(0.0);   // and where it looked in each of the two frames
+vec2 g_uvB = vec2(0.0);
+
+// the cloud's colour from the infrared at a place, as the flat Infrared colours it (white where there is no infrared)
+vec3 irColour(vec2 uvA, vec2 uvB) {
+  vec2 a = uvA * u_irAff.xy + u_irAff.zw;
+  vec2 b = uvB * u_irAff.xy + u_irAff.zw;
+  float v = texture(u_irA, a).r;
+  if (u_hasB == 1) v = mix(v, texture(u_irB, b).r, u_mixB);
+  if (v <= 0.5 / 255.0) return vec3(1.0);
+  vec4 c = texture(u_lut, vec2(v, 0.5));
+  // the infrared's greys (warm low cloud) are lifted, so a low cloud stays a lit cloud and not a dark lump; its colours are kept
+  vec3 col = mix(vec3(1.0), c.rgb, c.a);
+  float chroma = max(col.r, max(col.g, col.b)) - min(col.r, min(col.g, col.b));
+  return chroma < 0.12 ? mix(vec3(0.82), vec3(1.0), col.r) : col;
+}
 
 // the cloud column at a map position (cover, top km, base km, optical thickness), moved along the loop's motion between two frames
 vec4 column(vec2 uv) {
@@ -123,6 +145,8 @@ vec4 column(vec2 uv) {
   vec4 f = texture(u_a, uvA);
   if (u_hasB == 1) f = mix(f, texture(u_b, uvB), u_mixB);
   g_det = u_hasDet > 0.5 ? detailAt(uvA, uvB) : 0.5;
+  g_uvA = uvA;
+  g_uvB = uvB;
   return vec4(f.r, f.g * KM, f.b * KM, f.a * f.a * TAU_MAX);
 }
 
@@ -201,6 +225,10 @@ void main() {
     if (i >= steps || t > tB || T < 0.02) break;
     vec3 p = ro + rd * t;
     vec2 c = cloudAt(vec3(p.xy, p.z / u_exag));
+    // what cloudAt found here, kept before the march toward the sun looks elsewhere
+    float det = g_det;
+    vec2 hereA = g_uvA;
+    vec2 hereB = g_uvB;
     float dt = dtBase;
     if (c.x > 0.002) {
       dt *= 0.5;
@@ -209,7 +237,8 @@ void main() {
       vec3 lum = u_sunColor * (exp(-tau) * ph0 + 0.5 * exp(-0.3 * tau) * ph1 + 0.25 * exp(-0.1 * tau) * ph2) * 0.6
         + u_skyColor * (0.35 + 0.65 * exp(-0.05 * tau)) * (0.6 + 0.4 * sat(p.z / (12.0 * u_exag)));
       // the light and shade the satellite itself saw on these tops (its brightness here): the real texture of the cloud's surface
-      if (u_hasDet > 0.5) lum *= mix(0.45, 1.1, smoothstep(0.2, 0.9, g_det));
+      if (u_hasDet > 0.5) lum *= mix(0.45, 1.1, smoothstep(0.2, 0.9, det));
+      if (u_hasIr > 0.5) lum *= irColour(hereA, hereB) * 1.1;
       float a = exp(-sigma * dt);
       L += T * lum * (1.0 - a);
       T *= a;
@@ -257,6 +286,8 @@ export interface CloudVolumeFrame {
   timeMs: number;
   /** The frame's own picture (an image address; Mercator over the field's box), whose brightness shapes the clouds. */
   picture?: string;
+  /** The frame's infrared (its data pack: an image address, and the Mercator box it covers), for the infrared colouring. */
+  ir?: { url: string; bounds: { west: number; east: number; south: number; north: number } };
 }
 
 /** The noise texture's size (a cube); made a few slices a frame. */
@@ -298,14 +329,17 @@ export class CloudVolumeLayer implements CustomLayerInterface {
 
   setFrames(frames: readonly CloudVolumeFrame[]): void {
     this.frames = frames;
-    const keep = new Set(frames.map(f => f.picture).filter(Boolean));
+    const keep = new Set(frames.flatMap(f => [f.picture, f.ir?.url]).filter(Boolean));
     for (const [url, t] of this.pictures) {
       if (keep.has(url)) continue;
       t.bitmap?.close();
       if (t.texture && this.gl) this.gl.deleteTexture(t.texture);
       this.pictures.delete(url);
     }
-    for (const f of frames) if (f.picture && !this.pictures.has(f.picture)) void this.loadPicture(f.picture);
+    for (const f of frames) {
+      if (f.picture && !this.pictures.has(f.picture)) void this.loadPicture(f.picture);
+      if (f.ir && !this.pictures.has(f.ir.url)) void this.loadPicture(f.ir.url);
+    }
     this.map?.triggerRepaint();
   }
 
@@ -358,6 +392,29 @@ export class CloudVolumeLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
+  /** Colour the clouds by the infrared (true) or keep them white. */
+  setIrColour(on: boolean): void {
+    this.irColour = on;
+    this.map?.triggerRepaint();
+  }
+
+  private irColour = true;
+  private lut: WebGLTexture | null = null;
+
+  private lutTexture(gl: WebGL2RenderingContext): WebGLTexture {
+    if (!this.lut) {
+      this.lut = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.lut);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, windyInfraredTable(180, 140, 256));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    return this.lut;
+  }
+
   setHeightScale(scale: number): void {
     this.exag = scale;
     this.map?.triggerRepaint();
@@ -394,6 +451,8 @@ export class CloudVolumeLayer implements CustomLayerInterface {
       if (t.texture) gl.deleteTexture(t.texture);
     }
     this.pictures.clear();
+    if (this.lut) gl.deleteTexture(this.lut);
+    this.lut = null;
     for (const p of [this.noiseProg, this.marchProg, this.compProg]) if (p?.handle) gl.deleteProgram(p.handle);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
@@ -577,6 +636,27 @@ export class CloudVolumeLayer implements CustomLayerInterface {
     gl.uniform1i(u('u_detA'), 4);
     gl.uniform1i(u('u_detB'), 5);
     gl.uniform1f(u('u_hasDet'), hasDet ? 1 : 0);
+    // the infrared colouring: the frames' data packs through Windy's infrared colours
+    const irA = this.irColour ? this.pictureTexture(gl, fa.ir?.url) : null;
+    const irB = fb ? this.pictureTexture(gl, fb.ir?.url) : irA;
+    const hasIr = !!irA && !!irB && !!fa.ir;
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, hasIr ? irA : this.fieldTexture(gl, fa.field));
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, hasIr ? irB : this.fieldTexture(gl, fa.field));
+    gl.activeTexture(gl.TEXTURE8);
+    gl.bindTexture(gl.TEXTURE_2D, this.lutTexture(gl));
+    gl.uniform1i(u('u_irA'), 6);
+    gl.uniform1i(u('u_irB'), 7);
+    gl.uniform1i(u('u_lut'), 8);
+    gl.uniform1f(u('u_hasIr'), hasIr ? 1 : 0);
+    if (hasIr) {
+      // the field covers the satellite box; the data pack its own box (both Mercator): uv maps across by an affine step
+      const db = fa.ir!.bounds;
+      const dx0 = mercatorUnitX(db.west), dx1 = mercatorUnitX(db.east), dy0 = mercatorUnitY(db.north), dy1 = mercatorUnitY(db.south);
+      const sx = (bx1 - bx0) / (dx1 - dx0), sy = (by1 - by0) / (dy1 - dy0);
+      gl.uniform4f(u('u_irAff'), sx, sy, (bx0 - dx0) / (dx1 - dx0), (by0 - dy0) / (dy1 - dy0));
+    }
     gl.uniform1i(u('u_hasB'), fb ? 1 : 0);
     gl.uniform1i(u('u_hasFlow'), flow ? 1 : 0);
     gl.uniform1f(u('u_mixB'), fb ? frac : 0);

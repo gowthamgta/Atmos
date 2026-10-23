@@ -214,6 +214,14 @@ export class SatelliteService {
     this.setSource(on ? (isDayNow() ? 'rgb' : 'eumetview') : this.wantedKind());
   }
 
+  /** The 3D clouds coloured by the infrared (Windy's colours), or white. */
+  readonly irColour3D = signal(readFlag('atmosiq.satellite.3dInfrared', true));
+
+  setIrColour3D(on: boolean): void {
+    this.irColour3D.set(on);
+    writeFlag('atmosiq.satellite.3dInfrared', on);
+  }
+
   setHeightScale(scale: number): void {
     this.heightScale.set(scale);
     try {
