@@ -1,21 +1,25 @@
 /**
- * Synthetic radar: the rain a radar would see where no working radar does, read from our own Meteosat data pack (measured 10.8 and 6.2 um
- * cloud-top temperatures, about 3 km a pixel), the frame 15 minutes before it, ILDN lightning and the forecast 850 and 250 hPa winds, the way
- * a forecaster reads the satellite:
+ * Synthetic radar: the rain a radar would see where no working radar does, read from our own Meteosat data pack (measured 10.8 um cloud-top
+ * temperatures, about 3 km a pixel), the frame 15 minutes before it, ILDN lightning and the forecast 850 and 250 hPa winds, the way the owner
+ * reads the satellite: rain falls under the cores only, not under the cloud.
  *
- * 1. Flat high cloud (cirrus, anvils blown off by the upper wind) is not rain, however cold. Rain is under a dome: a top colder than the
- *    cloud 15 to 25 km around it on both sides of some line through it (an anvil's edge is colder than the clear sky on one side only, so it
- *    is no dome), and bubbly (the temperatures' spread over 5 x 5 pixels). An anvil tail warming downwind along the 250 hPa wind (relative to
- *    the 850 hPa wind) from a colder core is worn away; the side the low cloud moves to (850 hPa) is the leading edge and gets the rain.
- * 2. New popups: a cloud colder than anything near the place it came from 15 minutes before (moved with the 850 hPa wind) by 4 K or more.
- *    The rain cells are grouped and drawn by size: small popups a tight core of 20 to 28 dBZ, medium cells 28 to 36 dBZ toward the low-level
- *    wind tapering to 18 to 24 dBZ, large ones only along their colder sub-cores and ridge lines (bands, not a solid fill).
- * 3. Lightning (last 15 minutes, newer weighed more) marks the heavy cores: 45 to 55+ dBZ within about 5 km, 35 to 44 within about 12 km,
- *    shaped by the cloud (its coldness and its edges), never on clear sky.
+ * 1. A core is where a cloud blooms: a top colder than anything within 12 km of it a frame (15 minutes) before, where the low-level wind
+ *    brought it from (at night the only sign: a dark core out of nowhere in the infrared; an anvil spreading out is never colder than the
+ *    core it comes from, so it is none), or a patch cooling faster than everything 12 km around it (a tower; a spreading anvil cools along
+ *    an arc, so it is none), or a dome standing out of the cloud (colder than the cloud 15 to 25 km around in all directions but
+ *    two, and bubbly). Flat high cloud (an anvil, cirrus, its rim) is none however cold, and an anvil tail warming downwind along the 250 hPa
+ *    shear from a colder core is worn away. Only the strongest point within about 8 km is a core.
+ * 2. The rain stays where the core bloomed and goes with the 850 hPa wind, while the anvil above spreads away: blooms of the last hour of
+ *    frames are carried to now with that wind and fade after 20 minutes (gone after an hour). Each core is drawn as rain about 5 km wide,
+ *    stretched toward where it goes (its next 15 minutes, 10 km at most): 24 to 42 dBZ by how strongly it bloomed, a little more in very
+ *    cold tops. A band is a row of such cores, never a filled cloud.
+ * 3. Lightning (last 15 minutes, newer weighed more) adds rain only where strokes come two or more within about 2 km (25 to 38 dBZ), and a
+ *    heavy core (47 to 58 dBZ, 5 km wide) where they crowd most, one within every 10 km; on cloud only.
  * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer fades the estimate out over the last 20 km of their range), and
  *    where both see rain the estimate is shifted by the median difference (a few dB at most) so it joins the radar without a step.
  *
- * Everything that can be tuned is in SYNTHETIC_RADAR_CONFIG (live, from the browser console: atmosSyntheticRadar.set({...})).
+ * The rain is drawn on a grid twice as fine as the data (about 1.5 km) so a 5 km core keeps its shape. Everything that can be tuned is in
+ * SYNTHETIC_RADAR_CONFIG (live, from the browser console: atmosSyntheticRadar.set({...})).
  */
 
 /** All thresholds. Temperatures in kelvin, distances in km, reflectivity in dBZ. */
@@ -23,77 +27,83 @@ export interface SyntheticRadarConfig {
   cloud: {
     /** Warmer than this is low cloud or ground (yellow in the infrared): never rain here (and the ring counts the ground as this warm). */
     topK: number;
-    /** A rain cell's pixels are colder than this (a low cloud popping up is white by then)... */
-    cellMaxK: number;
-    /** ...and its coldest pixel colder than this: yellow low cloud next to clear ground is no rain cell (lightning aside). */
+    /** A core is colder than this (a low cloud popping up is white by then). */
     coreMaxK: number;
   };
   anvil: {
-    /** The ring the dome is measured against. */
+    /** The ring a dome is measured against. */
     ringInnerKm: number;
     ringOuterKm: number;
-    /** Colder than the ring by less than this: flat (anvil, cirrus, stratiform). */
+    /** Colder than the ring by less than this: flat (anvil, cirrus, stratiform); by ringDiffFullK or more: a full dome. */
     ringDiffMinK: number;
-    /** Colder by this or more: a full dome. */
     ringDiffFullK: number;
     /** Spread of the temperatures over 5 x 5 pixels below which the cloud is smooth (cirrus), and above which it is fully bubbly. */
     textureMinK: number;
     textureFullK: number;
-    /** How far upwind along the shear an anvil tail's core is looked for. */
+    /** How far upwind along the shear an anvil tail's core is looked for, and the warming that makes a tail (start, full). */
     upshearKm: number;
-    /** Warmer than that core by this much (start, full): a tail. */
     tailWarmK: [number, number];
     /** How much of a tail is worn away (0 to 1). */
     erosion: number;
-    /** How far ahead along the 850 hPa wind the leading edge is looked for, and the warming there that counts as a sharp edge. */
+    /** How far ahead along the 850 hPa wind the leading edge is looked for, the warming there that makes it sharp, and its extra strength. */
     leadKm: number;
     leadEdgeK: [number, number];
-    /** Extra score at a sharp leading edge (fraction). */
     leadBoost: number;
   };
   popup: {
-    /** Colder than 15 minutes before by this much (start, full): a new popup. */
+    /** Colder than 15 minutes before by this much (start, full): the cloud bloomed. */
     coolingK: [number, number];
-    /** Where the cloud may have been 15 minutes before: this far around the place the 850 hPa wind brought it from. */
+    /** Nothing as cold this far around the place the 850 hPa wind brought it from, a frame before. */
     searchKm: number;
+    /** A bloom is a top colder than this (a warm-rain popup from low cloud is caught by then). */
+    bloomMaxK: number;
+    /** Or a patch cooling more than the cloud isolationKm around it in every direction, by this much (start, full): a tower, where an
+     * anvil spreading out cools along an arc. */
+    isolationKm: number;
+    isolationK: [number, number];
   };
-  size: {
-    /** Effective radius (sqrt(area / pi)) below which a cell is a small popup, above which a large band. */
-    smallKm: number;
-    largeKm: number;
-    small: [number, number];
-    medium: [number, number];
-    mediumEdge: [number, number];
-    large: [number, number];
-    /** The core covers about this fraction of the cell. */
-    coreFraction: number;
-    /** The core sits this fraction of the radius toward where the 850 hPa wind goes. */
-    inflowShift: number;
-    /** Large bands: the sub-cores are this much colder than the cloud within subcoreBoxKm. */
-    subcoreBoxKm: number;
-    subcoreDepthK: number;
+  core: {
+    /** A core needs at least this strength (0 to 1). */
+    minStrength: number;
+    /** Only the strongest core within this distance is drawn. */
+    spacingKm: number;
+    /** A dome's core is colder than its cloud within domeKm by standOutK, unless that cloud covers no more than smallCloudKm2. */
+    domeKm: number;
+    standOutK: number;
+    smallCloudKm2: number;
+    /** The rain's width across a core. */
+    widthKm: number;
+    /** It reaches as far as the 850 hPa wind takes it in this time, and no farther than maxTrailKm. */
+    trailMinutes: number;
+    maxTrailKm: number;
+    /** Reflectivity at the core (weakest, strongest bloom), the extra for a top as cold as coldK, and at its edge. */
+    dbz: [number, number];
+    coldBonusDbz: number;
+    coldK: number;
+    edgeDbz: number;
+    /** An older bloom keeps its strength this long, then loses fadeDbzPerMin a minute, and is gone at lifeMinutes. */
+    holdMinutes: number;
+    fadeDbzPerMin: number;
+    lifeMinutes: number;
   };
   lightning: {
     /** Weight of a stroke: exp(-age / tauMin), none after maxAgeMin. */
     tauMin: number;
     maxAgeMin: number;
-    /** Gaussian radii of the heavy core and of the convective envelope. */
-    coreKm: number;
-    envelopeKm: number;
-    envelopeWeight: number;
-    core: [number, number];
-    envelope: [number, number];
-    /** Shaped density from which a core, or an envelope, is drawn. */
+    /** How far around a stroke the rain is (Gaussian radius). */
+    radiusKm: number;
+    /** Density (about: fresh strokes within radiusKm) from which there is rain, and from which a heavy core (one within spacingKm). */
+    rainThreshold: number;
     coreThreshold: number;
-    envelopeThreshold: number;
-    /** Cloud-top temperature gradient (K/km) of a fully sharp edge. */
-    edgeKPerKm: number;
+    spacingKm: number;
+    rain: [number, number];
+    core: [number, number];
   };
   output: {
-    /** Pixels scoring below this are not rain. */
-    minScore: number;
     minDbz: number;
     maxDbz: number;
+    /** The rain grid is this many times finer than the data. */
+    scale: number;
   };
   blend: {
     /** The estimate fades out over this last stretch of a working radar's range. */
@@ -105,12 +115,12 @@ export interface SyntheticRadarConfig {
 }
 
 export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
-  cloud: { topK: 278.3, cellMaxK: 258, coreMaxK: 248 },
+  cloud: { topK: 278.3, coreMaxK: 250 },
   anvil: {
     ringInnerKm: 15,
     ringOuterKm: 25,
-    ringDiffMinK: 3.5,
-    ringDiffFullK: 10,
+    ringDiffMinK: 5,
+    ringDiffFullK: 15,
     textureMinK: 1.2,
     textureFullK: 4.5,
     upshearKm: 15,
@@ -118,38 +128,43 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     erosion: 0.85,
     leadKm: 9,
     leadEdgeK: [2, 10],
-    leadBoost: 0.25,
+    leadBoost: 0.2,
   },
-  popup: { coolingK: [4, 10], searchKm: 6 },
-  size: {
-    smallKm: 4,
-    largeKm: 12,
-    small: [20, 28],
-    medium: [28, 36],
-    mediumEdge: [18, 24],
-    large: [26, 40],
-    coreFraction: 0.6,
-    inflowShift: 0.3,
-    subcoreBoxKm: 9,
-    subcoreDepthK: 6,
+  popup: { coolingK: [8, 18], searchKm: 12, bloomMaxK: 252, isolationKm: 12, isolationK: [8, 18] },
+  core: {
+    minStrength: 0.5,
+    spacingKm: 8,
+    domeKm: 12,
+    standOutK: 2,
+    smallCloudKm2: 300,
+    widthKm: 5,
+    trailMinutes: 15,
+    maxTrailKm: 10,
+    dbz: [24, 42],
+    coldBonusDbz: 6,
+    coldK: 210,
+    edgeDbz: 18,
+    holdMinutes: 20,
+    fadeDbzPerMin: 0.4,
+    lifeMinutes: 60,
   },
   lightning: {
     tauMin: 8,
     maxAgeMin: 15,
-    coreKm: 5,
-    envelopeKm: 12,
-    envelopeWeight: 0.45,
-    core: [45, 56],
-    envelope: [35, 44],
-    coreThreshold: 0.45,
-    envelopeThreshold: 0.1,
-    edgeKPerKm: 3,
+    radiusKm: 2,
+    rainThreshold: 1,
+    coreThreshold: 3,
+    spacingKm: 10,
+    rain: [25, 38],
+    core: [47, 58],
   },
-  output: { minScore: 0.25, minDbz: 15, maxDbz: 60 },
+  output: { minDbz: 15, maxDbz: 60, scale: 2 },
   blend: { featherKm: 20, calibrationMaxDb: 8, calibrationMinPairs: 150 },
 };
 
-/** A copy of the config with some values changed (nested objects merged). */
+export type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
+
+/** A copy of the config with some values changed (each group merged). */
 export function tuneConfig(base: SyntheticRadarConfig, patch: DeepPartial<SyntheticRadarConfig>): SyntheticRadarConfig {
   const out = structuredClone(base) as unknown as Record<string, Record<string, unknown>>;
   for (const [group, values] of Object.entries(patch ?? {})) {
@@ -159,41 +174,20 @@ export function tuneConfig(base: SyntheticRadarConfig, patch: DeepPartial<Synthe
   return out as unknown as SyntheticRadarConfig;
 }
 
-export type DeepPartial<T> = { [K in keyof T]?: T[K] extends readonly unknown[] ? T[K] : T[K] extends object ? DeepPartial<T[K]> : T[K] };
-
-/** What is known at one pixel (the grid code below measures it; classifyPixel decides). */
-export interface PixelFeatures {
+/** What is known at a pixel of the data: enough to say whether a core is there and how strong. */
+export interface CoreFeatures {
   /** Cloud-top temperature (10.8 um). 0 or NaN: no data. */
   tK: number;
   /** How much colder than the ring 15 to 25 km around the pixel is, in all directions but two (the third least of eight). */
   ringDiffK: number;
   /** Spread of the temperatures over 5 x 5 pixels. */
   sigmaK: number;
-  /** Colder now than anything near where the cloud was 15 minutes before (negative = cooled); NaN without that frame. */
+  /** Colder now than anything near where the cloud was 15 minutes before (negative = it bloomed); NaN without that frame. */
   coolingK: number;
   /** tK minus the cloud upwind along the shear (positive: warmer than a core behind it, a tail). */
   tailK: number;
   /** The cloud ahead along the 850 hPa wind minus tK (positive: a sharp leading edge). */
   leadK: number;
-  /** The cell this pixel is in: effective radius, best score, where in it the core is (1 at the core) and how far in from its edge (1 on its ridge). */
-  cellRadiusKm: number;
-  cellScore: number;
-  coreProfile: number;
-  ridge: number;
-  /** The cloud within subcoreBoxKm minus tK (positive: a sub-core of a band). */
-  subcoreK: number;
-  /** Lightning density at the heavy-core and envelope radii (time-weighted). */
-  lightningCore: number;
-  lightningEnvelope: number;
-  /** Cloud-top temperature gradient, K/km. */
-  gradientKPerKm: number;
-}
-
-export type PixelCategory = 'none' | 'anvil' | 'popup' | 'cell' | 'band' | 'lightning';
-
-export interface PixelResult {
-  dbz: number;
-  category: PixelCategory;
 }
 
 const smooth = (a: number, b: number, x: number): number => {
@@ -202,77 +196,56 @@ const smooth = (a: number, b: number, x: number): number => {
 };
 const lerp = ([a, b]: readonly [number, number], t: number): number => a + (b - a) * Math.min(1, Math.max(0, t));
 
-/** How likely a pixel is to be under a rain cell (0 to 1), from rules 1 and 2. */
-export function convectiveScore(f: PixelFeatures, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
-  if (!(f.tK > 0) || f.tK >= cfg.cloud.cellMaxK) return 0;
+/** How strongly a core blooms at a pixel (0: no core), from rule 1. */
+export function coreStrength(f: CoreFeatures, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
+  if (!(f.tK > 0) || f.tK > cfg.cloud.coreMaxK) return 0;
   const a = cfg.anvil;
-  const dome = smooth(a.ringDiffMinK, a.ringDiffFullK, f.ringDiffK);
-  const texture = smooth(a.textureMinK, a.textureFullK, f.sigmaK);
-  const grow = Number.isFinite(f.coolingK) ? smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -f.coolingK) : 0;
-  if (dome === 0 && texture === 0 && grow === 0) return 0; // flat and smooth: anvil or cirrus
-  const tail = 1 - a.erosion * smooth(a.tailWarmK[0], a.tailWarmK[1], f.tailK) * (1 - dome);
+  const dome = smooth(a.ringDiffMinK, a.ringDiffFullK, f.ringDiffK) * (0.25 + 0.75 * smooth(a.textureMinK, a.textureFullK, f.sigmaK));
+  const bloom = Number.isFinite(f.coolingK) ? smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -f.coolingK) : 0;
+  const tail = 1 - a.erosion * smooth(a.tailWarmK[0], a.tailWarmK[1], f.tailK) * (1 - Math.max(dome, bloom));
   const lead = 1 + a.leadBoost * smooth(a.leadEdgeK[0], a.leadEdgeK[1], f.leadK);
-  return Math.min(1, Math.max(dome * (0.55 + 0.45 * texture), grow) * tail * lead);
+  return Math.min(1, Math.max(dome, bloom) * tail * lead);
 }
 
-/** The lightning density shaped by the cloud: cold cloud and its sharp edges carry it, clear sky none. */
-export function shapedLightning(f: PixelFeatures, score: number, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
-  if (!(f.tK > 0) || f.tK >= cfg.cloud.topK) return 0;
-  const l = cfg.lightning;
-  const density = f.lightningCore + l.envelopeWeight * f.lightningEnvelope;
-  if (density <= 0) return 0;
-  const cold = smooth(0, 40, cfg.cloud.topK - f.tK);
-  const edge = Math.min(1, f.gradientKPerKm / l.edgeKPerKm);
-  return density * cold * (0.4 + 0.6 * Math.max(score, edge));
+/** The reflectivity at a core: by its strength, more in a very cold top. */
+export function coreDbz(strength: number, tK: number, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
+  const c = cfg.core;
+  return lerp(c.dbz, (strength - c.minStrength) / (1 - c.minStrength)) + c.coldBonusDbz * smooth(cfg.cloud.coreMaxK - 10, c.coldK, tK);
 }
 
-/**
- * The reflectivity a radar would see at a pixel (rules 1 to 3). The cell measures (radius, core, ridge) come from grouping the pixels that
- * score as rain; a pixel that is in no cell has cellRadiusKm 0.
- */
-export function classifyPixel(f: PixelFeatures, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): PixelResult {
-  const score = convectiveScore(f, cfg);
-  const lightning = shapedLightning(f, score, cfg);
-  const l = cfg.lightning;
-  const s = cfg.size;
+/** The reflectivity of a lightning core of density l (at least coreThreshold). */
+export function lightningCoreDbz(l: number, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
+  return lerp(cfg.lightning.core, (l - cfg.lightning.coreThreshold) / (2 * cfg.lightning.coreThreshold));
+}
+
+/** What a pixel of the rain grid needs to know: the nearest core's reflectivity and how far across and along it the pixel is. */
+export interface RainPixel {
+  /** On cloud (lightning rain is drawn on cloud only). */
+  cloudy: boolean;
+  /** The core's reflectivity (0: no core near), the distance from its line (km) and how far along it (0 where it bloomed, 1 at its end). */
+  coreDbz: number;
+  acrossKm: number;
+  along: number;
+  /** Lightning density (time-weighted strokes within about radiusKm). */
+  lightning: number;
+}
+
+/** The radar reflectivity at a pixel of the rain grid (rules 2 and 3); 0: none. */
+export function classifyPixel(p: RainPixel, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): number {
   let dbz = 0;
-  let category: PixelCategory = 'none';
-  if (score >= cfg.output.minScore && f.cellRadiusKm > 0) {
-    if (f.cellRadiusKm < s.smallKm) {
-      const peak = lerp(s.small, f.cellScore);
-      dbz = 12 + (peak - 12) * f.coreProfile;
-      category = 'popup';
-    } else if (f.cellRadiusKm <= s.largeKm) {
-      const peak = lerp(s.medium, f.cellScore);
-      const edge = lerp(s.mediumEdge, score);
-      dbz = edge + (peak - edge) * f.coreProfile;
-      category = 'cell';
-    } else {
-      // a band: rain along its colder sub-cores and its ridge, not the whole cloud
-      const w = Math.max(smooth(0, s.subcoreDepthK, f.subcoreK), 0.75 * smooth(0.35, 0.85, f.ridge)) * score;
-      if (w > 0.12) {
-        dbz = lerp(s.large, w);
-        category = 'band';
-      }
-    }
-  } else if (score === 0 && f.tK > 0 && f.tK < cfg.cloud.topK) {
-    category = 'anvil';
+  const half = cfg.core.widthKm / 2;
+  if (p.coreDbz > 0 && p.acrossKm < half) {
+    const peak = p.coreDbz - 4 * p.along; // a little weaker toward where it goes
+    const r = p.acrossKm / half;
+    const edge = Math.max(cfg.core.edgeDbz, peak - 14);
+    dbz = edge + (peak - edge) * (1 - r * r * r * r); // flat-topped: the core keeps its strength across most of its width
   }
-  if (lightning >= l.coreThreshold) {
-    dbz = Math.max(dbz, lerp(l.core, (lightning - l.coreThreshold) / l.coreThreshold));
-    category = 'lightning';
-  } else if (lightning >= l.envelopeThreshold) {
-    const e = lerp(l.envelope, (lightning - l.envelopeThreshold) / (l.coreThreshold - l.envelopeThreshold));
-    if (e > dbz) {
-      dbz = e;
-      category = 'lightning';
-    }
-  }
-  if (dbz < cfg.output.minDbz) return { dbz: 0, category: category === 'anvil' ? 'anvil' : 'none' };
-  return { dbz: Math.min(cfg.output.maxDbz, dbz), category };
+  const l = cfg.lightning;
+  if (p.cloudy && p.lightning >= l.rainThreshold) dbz = Math.max(dbz, lerp(l.rain, (p.lightning - l.rainThreshold) / (l.coreThreshold - l.rainThreshold)));
+  return dbz < cfg.output.minDbz ? 0 : Math.min(cfg.output.maxDbz, dbz);
 }
 
-/** The radar's colour of a reflectivity, as the radar layer draws it (intensity v = (dBZ - 12) / 9.6). */
+/** The radar's intensity for a reflectivity (as the radar layer draws it: v = (dBZ - 12) / 9.6). */
 export const dbzToIntensity = (dbz: number): number => (dbz <= 12 ? 0 : (dbz - 12) / 9.6);
 
 // ── The grid ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -315,32 +288,44 @@ export interface SyntheticRadarInput {
   w: number;
   h: number;
   box: MercatorBox;
-  /** Cloud-top temperatures (K, 0 = no data): 10.8 um now, and 15 minutes before (optional). */
+  /** Cloud-top temperatures (K, 0 = no data): 10.8 um now... */
   ir: Float32Array;
-  irPrev?: Float32Array | null;
-  /** Minutes between the two frames. */
-  prevMinutes?: number;
+  /** ...and in the frames of the last hour before it (each with how many minutes older it is), for the blooms. */
+  history?: { ir: Float32Array; minutesAgo: number }[];
   wind?: WindGrids | null;
   strikes?: readonly StrikeInput[];
   radar?: RealRadarInput | null;
 }
 
+/** A core drawn (for the stats and the tests): where it is now, how strong, what made it and how many minutes ago. */
+export interface Core {
+  lat: number;
+  lon: number;
+  dbz: number;
+  kind: 'dome' | 'bloom' | 'lightning';
+  ageMin: number;
+}
+
 export interface SyntheticRadarStats {
-  cells: number;
+  cores: number;
+  /** Cores from blooms (in the last hour). */
   popups: number;
-  lightningCores: number;
+  /** Lightning strokes over the grid, and the area of heavy rain (45 dBZ or more, km2). */
+  strikes: number;
+  heavyKm2: number;
   /** The shift applied to match the real radar (dB), and from how many pixels. */
   offsetDb: number;
   pairs: number;
   usedPrevious: boolean;
-  /** Lightning strokes over the grid. */
-  strikes: number;
   ms: number;
 }
 
 export interface SyntheticRadarOutput {
-  /** Reflectivity x 4 per pixel (0: none), row-major over the same box as the input. */
+  /** Reflectivity x 4 per pixel (0: none), row-major over the same box as the input, w x h pixels (scale times the data's). */
   dbz4: Uint8Array;
+  w: number;
+  h: number;
+  cores: Core[];
   stats: SyntheticRadarStats;
 }
 
@@ -386,7 +371,7 @@ function thirdLeast(v: Float64Array): number {
   return c;
 }
 
-/** The synthetic radar over the data pack's grid (rules 1 to 4). */
+/** The synthetic radar over the data pack's box (rules 1 to 4). */
 export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarConfig = SYNTHETIC_RADAR_CONFIG): SyntheticRadarOutput {
   const started = performance.now();
   const { w, h, box, ir } = input;
@@ -397,7 +382,6 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
   const y0m = mercY(box.north);
   const y1m = mercY(box.south);
   const pxMerc = (x1m - x0m) / w; // square pixels in Mercator
-  // per row: latitude and km per pixel
   const rowLat = new Float32Array(h);
   const rowKm = new Float32Array(h);
   for (let y = 0; y < h; y++) {
@@ -405,18 +389,34 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     rowKm[y] = pxMerc * EARTH_KM * Math.cos((rowLat[y] * Math.PI) / 180);
   }
   const lonOf = (x: number): number => box.west + ((x + 0.5) / w) * (box.east - box.west);
-
   const valid = (v: number): boolean => v > 0;
+
   const sumT = summed(ir, w, h, v => (valid(v) ? Math.min(v, topK) : 0));
-  const sumT2 = summed(ir, w, h, v => (valid(v) ? Math.min(v, topK) ** 2 : 0));
+  // the texture counts cloud only (a cloud's edge against the ground is no bubbling)
+  const cloud = (v: number): boolean => valid(v) && v < topK;
+  const sumC = summed(ir, w, h, v => (cloud(v) ? 1 : 0));
+  const sumTc = summed(ir, w, h, v => (cloud(v) ? v : 0));
+  const sumT2c = summed(ir, w, h, v => (cloud(v) ? v * v : 0));
   const sumN = summed(ir, w, h, v => (valid(v) ? 1 : 0));
   const boxMean = (cx: number, cy: number, r: number): number => {
     const x0 = Math.round(cx - r), x1 = Math.round(cx + r), y0 = Math.round(cy - r), y1 = Math.round(cy + r);
     const c = boxSum(sumN, w, h, x0, y0, x1, y1);
     return c > 0 ? boxSum(sumT, w, h, x0, y0, x1, y1) / c : NaN;
   };
+  // the cloud averaged over the ring's width, once: the ring is then read at 16 points
+  const blur = new Float32Array(n);
+  for (let y = 0; y < h; y++) {
+    const r = Math.max(1, (cfg.anvil.ringOuterKm - cfg.anvil.ringInnerKm) / 4 / rowKm[y]);
+    for (let x = 0; x < w; x++) blur[y * w + x] = valid(ir[y * w + x]) && ir[y * w + x] <= cfg.cloud.coreMaxK ? boxMean(x, y, r) : NaN;
+  }
+  const blurAt = (x: number, y: number): number => {
+    const xi = Math.round(x), yi = Math.round(y);
+    if (xi < 0 || yi < 0 || xi >= w || yi >= h) return NaN;
+    const b = blur[yi * w + xi];
+    return Number.isNaN(b) ? boxMean(xi, yi, Math.max(1, (cfg.anvil.ringOuterKm - cfg.anvil.ringInnerKm) / 4 / rowKm[yi])) : b;
+  };
 
-  // winds (nearest forecast grid point) in pixels: x east, y south
+  // winds (nearest forecast grid point), m/s east and north
   const windAt = (x: number, y: number): [number, number, number, number] => {
     const wg = input.wind;
     if (!wg) return [0, 0, 0, 0];
@@ -428,61 +428,113 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     return v.some(Number.isNaN) ? [0, 0, 0, 0] : (v as [number, number, number, number]);
   };
 
-  // rule 3: the lightning density, time-weighted, at two radii
-  const lcore = new Float32Array(n);
-  const lenv = new Float32Array(n);
-  let strikesUsed = 0;
-  for (const s of input.strikes ?? []) {
-    const age = s.ageS / 60;
-    if (age < 0 || age > cfg.lightning.maxAgeMin) continue;
-    const sx = ((s.lon + 180) / 360 - x0m) / pxMerc - 0.5;
-    const sy = (mercY(s.lat) - y0m) / pxMerc - 0.5;
-    if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
-    strikesUsed++;
-    const km = rowKm[Math.min(h - 1, Math.max(0, Math.round(sy)))];
-    const wt = Math.exp(-age / cfg.lightning.tauMin);
-    const sc = cfg.lightning.coreKm / km;
-    const se = cfg.lightning.envelopeKm / km;
-    const r = Math.ceil(se * 2.5);
-    for (let y = Math.max(0, Math.floor(sy - r)); y <= Math.min(h - 1, Math.ceil(sy + r)); y++) {
-      for (let x = Math.max(0, Math.floor(sx - r)); x <= Math.min(w - 1, Math.ceil(sx + r)); x++) {
-        const d2 = (x - sx) ** 2 + (y - sy) ** 2;
-        const i = y * w + x;
-        lcore[i] += wt * Math.exp(-d2 / (2 * sc * sc));
-        lenv[i] += wt * Math.exp(-d2 / (2 * se * se));
+  // a frame's coldest within radiusKm of each pixel (a min filter, rows then columns)
+  const coldestAround = (frame: Float32Array, radiusKm = cfg.popup.searchKm): Float32Array => {
+    const r = Math.max(1, Math.round(radiusKm / rowKm[h >> 1]));
+    const a = new Float32Array(n), b = new Float32Array(n);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let m = Infinity;
+        for (let k = Math.max(0, x - r); k <= Math.min(w - 1, x + r); k++) {
+          const v = frame[y * w + k];
+          if (valid(v) && v < m) m = v;
+        }
+        a[y * w + x] = m;
       }
     }
-  }
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        let m = Infinity;
+        for (let k = Math.max(0, y - r); k <= Math.min(h - 1, y + r); k++) if (a[k * w + x] < m) m = a[k * w + x];
+        b[y * w + x] = m;
+      }
+    }
+    return b;
+  };
+  // how much a top cooled against the coldest near where the 850 hPa wind brought it from, or near the same place (the anvil spreads with
+  // the upper wind, not the low one), per 15 minutes (NaN: no data there)
+  const cooling = (t: number, x: number, y: number, coldest: Float32Array, minutes: number): number => {
+    const [u8, v8] = windAt(x, y);
+    const fx = Math.round(x - (u8 * minutes * 60) / 1000 / rowKm[y]);
+    const fy = Math.round(y + (v8 * minutes * 60) / 1000 / rowKm[y]);
+    if (fx < 0 || fy < 0 || fx >= w || fy >= h) return NaN;
+    const c = Math.min(coldest[fy * w + fx], coldest[y * w + x]);
+    return c === Infinity ? NaN : ((t - Math.min(c, topK)) * 15) / Math.max(5, minutes);
+  };
+  // the strongest within spacingKm (the colder on a tie)
+  const pick = (strength: Float32Array, frame: Float32Array): number[] => {
+    const out: number[] = [];
+    for (let y = 0; y < h; y++) {
+      const r = Math.max(1, Math.round(cfg.core.spacingKm / rowKm[y]));
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (strength[i] < cfg.core.minStrength) continue;
+        const key = strength[i] + 0.002 * (topK - frame[i]);
+        let best = true;
+        for (let yy = Math.max(0, y - r); yy <= Math.min(h - 1, y + r) && best; yy++) {
+          for (let xx = Math.max(0, x - r); xx <= Math.min(w - 1, x + r); xx++) {
+            const j = yy * w + xx;
+            if (j === i || strength[j] < cfg.core.minStrength) continue;
+            const k = strength[j] + 0.002 * (topK - frame[j]);
+            if (k > key || (k === key && j < i)) {
+              best = false;
+              break;
+            }
+          }
+        }
+        if (best) out.push(i);
+      }
+    }
+    return out;
+  };
 
-  // rules 1 and 2, pixel by pixel: the features that do not need the cells
-  const feats = {
-    ring: new Float32Array(n),
-    sigma: new Float32Array(n),
-    cooling: new Float32Array(n).fill(NaN),
-    tail: new Float32Array(n),
-    lead: new Float32Array(n),
-    grad: new Float32Array(n),
-    sub: new Float32Array(n),
+  // a tower: a patch cooling (per 15 minutes) more than the cloud isolationKm around it in every direction (0 to 1)
+  const isolated = (newer: Float32Array, older: Float32Array, minutes: number): Float32Array => {
+    const cool = new Float32Array(n).fill(NaN);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const t = newer[i];
+        if (!valid(t)) continue;
+        const [u8, v8] = windAt(x, y);
+        const fx = Math.round(x - (u8 * minutes * 60) / 1000 / rowKm[y]);
+        const fy = Math.round(y + (v8 * minutes * 60) / 1000 / rowKm[y]);
+        if (fx < 0 || fy < 0 || fx >= w || fy >= h) continue;
+        const o = older[fy * w + fx], same = older[i];
+        const before = valid(o) && valid(same) ? Math.min(o, same) : valid(o) ? o : same;
+        if (valid(before)) cool[i] = ((Math.min(t, topK) - Math.min(before, topK)) * 15) / Math.max(5, minutes);
+      }
+    }
+    const out = new Float32Array(n);
+    for (let y = 0; y < h; y++) {
+      const r = cfg.popup.isolationKm / rowKm[y];
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const c = cool[i];
+        if (!(c <= -cfg.popup.coolingK[0]) || newer[i] > cfg.popup.bloomMaxK) continue;
+        let least = Infinity;
+        for (const [dx, dy] of dirs) {
+          const xx = Math.round(x + dx * r), yy = Math.round(y + dy * r);
+          const v = xx >= 0 && yy >= 0 && xx < w && yy < h ? cool[yy * w + xx] : NaN;
+          least = Math.min(least, Number.isNaN(v) ? 0 : v - c);
+        }
+        out[i] = smooth(cfg.popup.isolationK[0], cfg.popup.isolationK[1], least);
+      }
+    }
+    return out;
   };
-  const score = new Float32Array(n);
-  const prev = input.irPrev ?? null;
-  const prevScale = 15 / Math.max(5, input.prevMinutes ?? 15);
-  // the cloud averaged over the ring's width (a quarter of it each way), once: the ring is then read at 16 points
-  const blur = new Float32Array(n);
-  for (let y = 0; y < h; y++) {
-    const r = Math.max(1, (cfg.anvil.ringOuterKm - cfg.anvil.ringInnerKm) / 4 / rowKm[y]);
-    for (let x = 0; x < w; x++) blur[y * w + x] = boxMean(x, y, r);
-  }
-  const blurAt = (x: number, y: number): number => {
-    const xi = Math.round(x), yi = Math.round(y);
-    return xi < 0 || yi < 0 || xi >= w || yi >= h ? NaN : blur[yi * w + xi];
-  };
-  const side = new Float64Array(8);
   const dirs = Array.from({ length: 8 }, (_, k) => [Math.cos((k * Math.PI) / 4), Math.sin((k * Math.PI) / 4)]);
-  const f: PixelFeatures = {
-    tK: 0, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0, cellRadiusKm: 0, cellScore: 0, coreProfile: 0, ridge: 0, subcoreK: 0,
-    lightningCore: 0, lightningEnvelope: 0, gradientKPerKm: 0,
-  };
+
+  const history = (input.history ?? []).filter(fr => fr.ir.length === n && fr.minutesAgo > 0).sort((a, b) => a.minutesAgo - b.minutesAgo);
+  const cores: { x: number; y: number; dbz: number; kind: Core['kind']; ageMin: number }[] = [];
+
+  // rule 1, now: domes, and blooms since the newest frame before
+  const strength = new Float32Array(n);
+  const coldestPrev = history.length ? coldestAround(history[0].ir) : null;
+  const side = new Float64Array(8);
+  const towerNow = history.length ? isolated(ir, history[0].ir, history[0].minutesAgo) : null;
+  const f: CoreFeatures = { tK: 0, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0 };
+  const bloomedNow = new Uint8Array(n);
   for (let y = 0; y < h; y++) {
     const km = rowKm[y];
     const rIn = cfg.anvil.ringInnerKm / km;
@@ -490,8 +542,17 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const t = ir[i];
-      if (!valid(t) || t >= topK) continue;
-      // the dome: colder than the ring in all directions but two (a band is cold along its own line; the rim of a cold mass has three or
+      if (!valid(t) || t > Math.max(cfg.cloud.coreMaxK, cfg.popup.bloomMaxK)) continue;
+      f.tK = t;
+      f.coolingK = coldestPrev && t <= cfg.popup.bloomMaxK ? cooling(t, x, y, coldestPrev, history[0].minutesAgo) : NaN;
+      if (t > cfg.cloud.coreMaxK) {
+        // warmer than a dome can be: only a bloom
+        const b = Math.max(Number.isFinite(f.coolingK) ? smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -f.coolingK) : 0, towerNow?.[i] ?? 0);
+        strength[i] = b;
+        if (b > 0) bloomedNow[i] = 1;
+        continue;
+      }
+      // a dome: colder than the ring in all directions but two (a band is cold along its own line; the rim of a cold mass has three or
       // more cold directions, toward its middle)
       for (let k = 0; k < 8; k++) {
         const [dx, dy] = dirs[k];
@@ -500,196 +561,188 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
         const m = Number.isNaN(a) ? b : Number.isNaN(b) ? a : (a + b) / 2;
         side[k] = Number.isNaN(m) ? 0 : m - t;
       }
-      const ring = thirdLeast(side);
-      feats.ring[i] = ring;
-      const c = boxSum(sumN, w, h, x - 2, y - 2, x + 2, y + 2);
-      const m1 = boxSum(sumT, w, h, x - 2, y - 2, x + 2, y + 2) / c;
-      const m2 = boxSum(sumT2, w, h, x - 2, y - 2, x + 2, y + 2) / c;
-      feats.sigma[i] = Math.sqrt(Math.max(0, m2 - m1 * m1));
-      // the gradient (K/km)
-      const gx = (boxMean(x + 1, y, 0) - boxMean(x - 1, y, 0)) / (2 * km);
-      const gy = (boxMean(x, y + 1, 0) - boxMean(x, y - 1, 0)) / (2 * km);
-      feats.grad[i] = Number.isNaN(gx + gy) ? 0 : Math.hypot(gx, gy);
-      // the winds: the shear (250 minus 850 hPa) and the low cloud's motion, as unit vectors on the grid (y down)
+      f.ringDiffK = thirdLeast(side);
+      const c = boxSum(sumC, w, h, x - 2, y - 2, x + 2, y + 2);
+      const m1 = boxSum(sumTc, w, h, x - 2, y - 2, x + 2, y + 2) / c;
+      const m2 = boxSum(sumT2c, w, h, x - 2, y - 2, x + 2, y + 2) / c;
+      f.sigmaK = c >= 15 ? Math.sqrt(Math.max(0, m2 - m1 * m1)) : cfg.anvil.textureFullK; // a small cloud (part of the 5 x 5) is a tower
       const [u8, v8, u2, v2] = windAt(x, y);
+      // an anvil tail: warmer than the cloud upwind along the shear (250 minus 850 hPa; y runs south)
       const su = u2 - u8, sv = -(v2 - v8);
       const ss = Math.hypot(su, sv);
+      f.tailK = 0;
       if (ss > 3) {
         const up = cfg.anvil.upshearKm / km;
         const behind = boxMean(x - (su / ss) * up, y - (sv / ss) * up, 1);
-        feats.tail[i] = Number.isNaN(behind) ? 0 : t - behind;
+        if (!Number.isNaN(behind)) f.tailK = t - behind;
       }
+      // the leading edge: warmer ahead along the 850 hPa wind
       const ls = Math.hypot(u8, v8);
+      f.leadK = 0;
       if (ls > 1) {
         const ahead = cfg.anvil.leadKm / km;
         const a = boxMean(x + (u8 / ls) * ahead, y - (v8 / ls) * ahead, 1);
-        feats.lead[i] = Number.isNaN(a) ? 0 : a - t;
+        if (!Number.isNaN(a)) f.leadK = a - t;
       }
-      // rule 2: colder than anything near where the cloud was a frame before
-      if (prev) {
-        const minutes = (input.prevMinutes ?? 15) * 60;
-        const fx = Math.round(x - (u8 * minutes) / 1000 / km);
-        const fy = Math.round(y + (v8 * minutes) / 1000 / km);
-        const r = Math.max(1, Math.round(cfg.popup.searchKm / km));
-        let coldest = Infinity;
-        for (let yy = Math.max(0, fy - r); yy <= Math.min(h - 1, fy + r); yy++) {
-          for (let xx = Math.max(0, fx - r); xx <= Math.min(w - 1, fx + r); xx++) {
-            const p = prev[yy * w + xx];
-            if (valid(p) && p < coldest) coldest = p;
+      strength[i] = Math.max(coreStrength(f, cfg), towerNow?.[i] ?? 0);
+      if (f.coolingK <= -cfg.popup.coolingK[0] || (towerNow?.[i] ?? 0) > 0) bloomedNow[i] = 1;
+    }
+  }
+  // a dome's core stands out of its own cloud (the rest of a popup's cloud stands out of the ground too, but does not rain), unless the
+  // whole cloud is small (a tower of a few pixels)
+  for (let y = 0; y < h; y++) {
+    const r = Math.round(cfg.core.domeKm / rowKm[y]);
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!(strength[i] > 0) || bloomedNow[i]) continue;
+      const c = boxSum(sumC, w, h, x - r, y - r, x + r, y + r);
+      if (c * rowKm[y] * rowKm[y] <= cfg.core.smallCloudKm2) continue;
+      if (boxSum(sumTc, w, h, x - r, y - r, x + r, y + r) / c - ir[i] < cfg.core.standOutK) strength[i] = 0;
+    }
+  }
+  for (const i of pick(strength, ir)) {
+    cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: coreDbz(strength[i], ir[i], cfg), kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
+  }
+
+  // rule 2: the blooms of the older frames, carried to now with the 850 hPa wind
+  for (let k = 0; k + 1 < history.length; k++) {
+    const newer = history[k], older = history[k + 1];
+    if (newer.minutesAgo > cfg.core.lifeMinutes) break;
+    const coldest = coldestAround(older.ir);
+    const gap = older.minutesAgo - newer.minutesAgo;
+    const s = isolated(newer.ir, older.ir, gap);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const t = newer.ir[i];
+        if (!valid(t) || t > cfg.popup.bloomMaxK) continue;
+        const c = cooling(t, x, y, coldest, gap);
+        if (Number.isFinite(c)) s[i] = Math.max(s[i], smooth(cfg.popup.coolingK[0], cfg.popup.coolingK[1], -c));
+      }
+    }
+    const age = newer.minutesAgo;
+    const fade = cfg.core.fadeDbzPerMin * Math.max(0, age - cfg.core.holdMinutes);
+    for (const i of pick(s, newer.ir)) {
+      const x = i % w, y = Math.floor(i / w);
+      const [u8, v8] = windAt(x, y);
+      const d = coreDbz(s[i], newer.ir[i], cfg) - fade;
+      if (d < cfg.output.minDbz + 3) continue;
+      cores.push({ x: x + 0.5 + (u8 * age * 60) / 1000 / rowKm[y], y: y + 0.5 - (v8 * age * 60) / 1000 / rowKm[y], dbz: d, kind: 'bloom', ageMin: age });
+    }
+  }
+
+  // rule 3: lightning density on the rain grid (scale times finer than the data)
+  const S = Math.max(1, Math.round(cfg.output.scale));
+  const W2 = w * S, H2 = h * S, n2 = W2 * H2;
+  const cloudyAt = (x2: number, y2: number): boolean => {
+    const t = ir[Math.min(h - 1, Math.floor(y2 / S)) * w + Math.min(w - 1, Math.floor(x2 / S))];
+    return valid(t) && t < topK;
+  };
+  const lden = new Float32Array(n2);
+  let strikes = 0;
+  for (const st of input.strikes ?? []) {
+    const age = st.ageS / 60;
+    if (age < 0 || age > cfg.lightning.maxAgeMin) continue;
+    const sx = (((st.lon + 180) / 360 - x0m) / pxMerc) * S;
+    const sy = ((mercY(st.lat) - y0m) / pxMerc) * S;
+    if (sx < 0 || sy < 0 || sx >= W2 || sy >= H2) continue;
+    strikes++;
+    const km = rowKm[Math.min(h - 1, Math.floor(sy / S))] / S;
+    const sg = cfg.lightning.radiusKm / km;
+    const wt = Math.exp(-age / cfg.lightning.tauMin);
+    const r = Math.ceil(sg * 3);
+    for (let y = Math.max(0, Math.floor(sy - r)); y <= Math.min(H2 - 1, Math.ceil(sy + r)); y++) {
+      for (let x = Math.max(0, Math.floor(sx - r)); x <= Math.min(W2 - 1, Math.ceil(sx + r)); x++) {
+        const d2 = (x + 0.5 - sx) ** 2 + (y + 0.5 - sy) ** 2;
+        lden[y * W2 + x] += wt * Math.exp(-d2 / (2 * sg * sg));
+      }
+    }
+  }
+  // its heavy cores: the densest within spacingKm
+  if (strikes > 0) {
+    for (let y = 0; y < H2; y++) {
+      const r = Math.max(1, Math.round(cfg.lightning.spacingKm / (rowKm[Math.floor(y / S)] / S)));
+      for (let x = 0; x < W2; x++) {
+        const i = y * W2 + x;
+        const l = lden[i];
+        if (l < cfg.lightning.coreThreshold || !cloudyAt(x, y)) continue;
+        let best = true;
+        for (let yy = Math.max(0, y - r); yy <= Math.min(H2 - 1, y + r) && best; yy++) {
+          for (let xx = Math.max(0, x - r); xx <= Math.min(W2 - 1, x + r); xx++) {
+            const j = yy * W2 + xx;
+            if (lden[j] > l || (lden[j] === l && j < i)) {
+              best = false;
+              break;
+            }
           }
         }
-        if (coldest < Infinity) feats.cooling[i] = (t - Math.min(coldest, topK)) * prevScale;
+        if (best) cores.push({ x: (x + 0.5) / S, y: (y + 0.5) / S, dbz: lightningCoreDbz(l, cfg), kind: 'lightning', ageMin: 0 });
       }
-      const sub = boxMean(x, y, cfg.size.subcoreBoxKm / 2 / km);
-      feats.sub[i] = Number.isNaN(sub) ? 0 : sub - t;
-      f.tK = t;
-      f.ringDiffK = ring;
-      f.sigmaK = feats.sigma[i];
-      f.coolingK = feats.cooling[i];
-      f.tailK = feats.tail[i];
-      f.leadK = feats.lead[i];
-      score[i] = convectiveScore(f, cfg);
     }
   }
 
-  // the cells: pixels that score as rain (or carry lightning), grouped 8-connected
-  const inCell = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    if (score[i] >= cfg.output.minScore) inCell[i] = 1;
-    else if (lcore[i] + lenv[i] > 0 && valid(ir[i]) && ir[i] < topK) {
-      f.tK = ir[i];
-      f.lightningCore = lcore[i];
-      f.lightningEnvelope = lenv[i];
-      f.gradientKPerKm = feats.grad[i];
-      if (shapedLightning(f, score[i], cfg) >= cfg.lightning.envelopeThreshold) inCell[i] = 1;
+  // the cores on the rain grid: 5 km wide, stretched toward where the 850 hPa wind takes them
+  const dbz = new Float32Array(n2);
+  const rain: RainPixel = { cloudy: true, coreDbz: 0, acrossKm: 0, along: 0, lightning: 0 };
+  for (const c of cores) {
+    const yRow = Math.min(h - 1, Math.max(0, Math.floor(c.y)));
+    const [u8, v8] = windAt(Math.min(w - 1, Math.max(0, Math.floor(c.x))), yRow);
+    let tx = (u8 * cfg.core.trailMinutes * 60) / 1000;
+    let ty = -(v8 * cfg.core.trailMinutes * 60) / 1000;
+    const len = Math.hypot(tx, ty);
+    if (len > cfg.core.maxTrailKm) {
+      tx *= cfg.core.maxTrailKm / len;
+      ty *= cfg.core.maxTrailKm / len;
     }
-  }
-  // distance from the cell's edge (chamfer 3-4, in pixels x 3)
-  const dist = new Uint16Array(n);
-  for (let i = 0; i < n; i++) dist[i] = inCell[i] ? 65000 : 0;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = y * w + x;
-    if (!dist[i]) continue;
-    let d = dist[i];
-    if (x > 0) d = Math.min(d, dist[i - 1] + 3);
-    else d = Math.min(d, 3);
-    if (y > 0) {
-      d = Math.min(d, dist[i - w] + 3);
-      if (x > 0) d = Math.min(d, dist[i - w - 1] + 4);
-      if (x < w - 1) d = Math.min(d, dist[i - w + 1] + 4);
-    } else d = Math.min(d, 3);
-    dist[i] = d;
-  }
-  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
-    const i = y * w + x;
-    if (!dist[i]) continue;
-    let d = dist[i];
-    if (x < w - 1) d = Math.min(d, dist[i + 1] + 3);
-    if (y < h - 1) {
-      d = Math.min(d, dist[i + w] + 3);
-      if (x < w - 1) d = Math.min(d, dist[i + w + 1] + 4);
-      if (x > 0) d = Math.min(d, dist[i + w - 1] + 4);
-    }
-    dist[i] = d;
-  }
-  const label = new Int32Array(n).fill(-1);
-  const stack = new Int32Array(n);
-  interface Cell { radiusKm: number; score: number; cx: number; cy: number; sigmaPx: number; maxDist: number; real: boolean; }
-  const cells: Cell[] = [];
-  const members: number[] = [];
-  for (let start = 0; start < n; start++) {
-    if (!inCell[start] || label[start] >= 0) continue;
-    const id = cells.length;
-    let top = 0;
-    stack[top++] = start;
-    label[start] = id;
-    members.length = 0;
-    let area = 0, sw = 0, sx = 0, sy = 0, best = 0, maxDist = 0, coldest = Infinity, lit = false;
-    while (top > 0) {
-      const i = stack[--top];
-      members.push(i);
-      const x = i % w, y = (i - x) / w;
-      area += rowKm[y] * rowKm[y];
-      const wt = score[i] + 0.05 + lcore[i];
-      sw += wt;
-      sx += x * wt;
-      sy += y * wt;
-      best = Math.max(best, score[i]);
-      maxDist = Math.max(maxDist, dist[i]);
-      coldest = Math.min(coldest, ir[i]);
-      if (lcore[i] > 0.05) lit = true;
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const xx = x + dx, yy = y + dy;
-        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-        const j = yy * w + xx;
-        if (inCell[j] && label[j] < 0) {
-          label[j] = id;
-          stack[top++] = j;
-        }
+    const km = rowKm[yRow] / S;
+    const ax = c.x * S, ay = c.y * S, bx = ax + tx / km, by = ay + ty / km;
+    const half = cfg.core.widthKm / 2 / km;
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - half)), x1 = Math.min(W2 - 1, Math.ceil(Math.max(ax, bx) + half));
+    const y0 = Math.max(0, Math.floor(Math.min(ay, by) - half)), y1 = Math.min(H2 - 1, Math.ceil(Math.max(ay, by) + half));
+    const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const qx = x + 0.5 - ax, qy = y + 0.5 - ay;
+        const t = l2 > 0 ? Math.min(1, Math.max(0, (qx * dx + qy * dy) / l2)) : 0;
+        rain.coreDbz = c.dbz;
+        rain.acrossKm = Math.hypot(qx - t * dx, qy - t * dy) * km;
+        rain.along = t;
+        const v = classifyPixel(rain, cfg);
+        const i = y * W2 + x;
+        if (v > dbz[i]) dbz[i] = v;
       }
     }
-    let cx = sx / sw, cy = sy / sw;
-    const yc = Math.min(h - 1, Math.max(0, Math.round(cy)));
-    const km = rowKm[yc];
-    const radiusKm = Math.sqrt(area / Math.PI);
-    // the core toward where the low cloud goes (850 hPa)
-    const [u8, v8] = windAt(Math.round(cx), yc);
-    const ls = Math.hypot(u8, v8);
-    if (ls > 1) {
-      cx += (u8 / ls) * cfg.size.inflowShift * radiusKm / km;
-      cy -= (v8 / ls) * cfg.size.inflowShift * radiusKm / km;
-    }
-    const sigmaPx = Math.max(1.5 / km, (cfg.size.coreFraction * radiusKm) / 1.55 / km);
-    cells.push({ radiusKm, score: best, cx, cy, sigmaPx, maxDist, real: coldest <= cfg.cloud.coreMaxK || lit });
   }
-
-  // the reflectivity
-  const dbz = new Float32Array(n);
-  let popups = 0, cores = 0;
-  const popupCells = new Set<number>();
-  for (let i = 0; i < n; i++) {
-    const t = ir[i];
-    if (!valid(t) || t >= topK) continue;
-    if (lcore[i] + lenv[i] === 0 && label[i] < 0) continue;
-    const x = i % w, y = (i - x) / w;
-    const c = label[i] >= 0 && cells[label[i]].real ? cells[label[i]] : null;
-    f.tK = t;
-    f.ringDiffK = feats.ring[i];
-    f.sigmaK = feats.sigma[i];
-    f.coolingK = feats.cooling[i];
-    f.tailK = feats.tail[i];
-    f.leadK = feats.lead[i];
-    f.cellRadiusKm = c ? c.radiusKm : 0;
-    f.cellScore = c ? c.score : 0;
-    f.coreProfile = c ? Math.exp(-((x - c.cx) ** 2 + (y - c.cy) ** 2) / (2 * c.sigmaPx * c.sigmaPx)) : 0;
-    f.ridge = c && c.maxDist > 0 ? dist[i] / c.maxDist : 0;
-    f.subcoreK = feats.sub[i];
-    f.lightningCore = lcore[i];
-    f.lightningEnvelope = lenv[i];
-    f.gradientKPerKm = feats.grad[i];
-    const r = classifyPixel(f, cfg);
-    dbz[i] = r.dbz;
-    if (r.category === 'lightning' && r.dbz >= cfg.lightning.core[0]) cores++;
-    if (c && f.coolingK <= -cfg.popup.coolingK[0] && !popupCells.has(label[i])) {
-      popupCells.add(label[i]);
-      popups++;
+  // the rain right around the strokes
+  if (strikes > 0) {
+    rain.coreDbz = 0;
+    for (let y = 0; y < H2; y++) {
+      for (let x = 0; x < W2; x++) {
+        const i = y * W2 + x;
+        if (lden[i] < cfg.lightning.rainThreshold) continue;
+        rain.cloudy = cloudyAt(x, y);
+        rain.lightning = lden[i];
+        const v = classifyPixel(rain, cfg);
+        if (v > dbz[i]) dbz[i] = v;
+      }
     }
   }
 
   // rule 4: shift to match the real radar where both see rain
   let offsetDb = 0, pairs = 0;
   const rad = input.radar;
+  const pxMerc2 = pxMerc / S;
   if (rad && rad.discs.length) {
     const diffs: number[] = [];
     const rx0 = (rad.box.west + 180) / 360, rx1 = (rad.box.east + 180) / 360;
     const ry0 = mercY(rad.box.north), ry1 = mercY(rad.box.south);
     const discs = rad.discs.map(d => ({ x: (d.lng + 180) / 360, y: mercY(d.lat), r: d.rangeKm / EARTH_KM / Math.cos((d.lat * Math.PI) / 180) }));
-    for (let y = 0; y < h; y++) {
-      const my = y0m + (y + 0.5) * pxMerc;
-      for (let x = 0; x < w; x++) {
-        const i = y * w + x;
+    for (let y = 0; y < H2; y++) {
+      const my = y0m + (y + 0.5) * pxMerc2;
+      for (let x = 0; x < W2; x++) {
+        const i = y * W2 + x;
         if (dbz[i] <= 0) continue;
-        const mx = x0m + (x + 0.5) * pxMerc;
+        const mx = x0m + (x + 0.5) * pxMerc2;
         if (!discs.some(d => Math.hypot(mx - d.x, my - d.y) < d.r)) continue;
         const u = Math.floor(((mx - rx0) / (rx1 - rx0)) * rad.width);
         const v = Math.floor(((my - ry0) / (ry1 - ry0)) * rad.height);
@@ -707,14 +760,29 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     }
   }
 
-  const dbz4 = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
+  const dbz4 = new Uint8Array(n2);
+  let heavy = 0;
+  for (let i = 0; i < n2; i++) {
     if (dbz[i] <= 0) continue;
     const d = Math.min(cfg.output.maxDbz, dbz[i] + offsetDb);
-    if (d >= cfg.output.minDbz) dbz4[i] = Math.min(255, Math.round(d * 4));
+    if (d < cfg.output.minDbz) continue;
+    dbz4[i] = Math.min(255, Math.round(d * 4));
+    if (d >= 45) heavy += (rowKm[Math.floor(Math.floor(i / W2) / S)] / S) ** 2;
   }
   return {
     dbz4,
-    stats: { cells: cells.filter(c => c.real).length, popups, lightningCores: cores, offsetDb, pairs, usedPrevious: !!prev, strikes: strikesUsed, ms: Math.round(performance.now() - started) },
+    w: W2,
+    h: H2,
+    cores: cores.map(c => ({ lat: latOfMercY(y0m + c.y * pxMerc), lon: box.west + (c.x / w) * (box.east - box.west), dbz: c.dbz, kind: c.kind, ageMin: c.ageMin })),
+    stats: {
+      cores: cores.length,
+      popups: cores.filter(c => c.kind === 'bloom').length,
+      strikes,
+      heavyKm2: Math.round(heavy),
+      offsetDb,
+      pairs,
+      usedPrevious: history.length > 0,
+      ms: Math.round(performance.now() - started),
+    },
   };
 }

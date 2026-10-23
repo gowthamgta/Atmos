@@ -1,11 +1,8 @@
-import { PixelFeatures, SYNTHETIC_RADAR_CONFIG, classifyPixel, synthesizeRadar, tuneConfig } from './synthetic-radar';
+import { CoreFeatures, SYNTHETIC_RADAR_CONFIG, SyntheticRadarOutput, WindGrids, classifyPixel, coreStrength, synthesizeRadar, tuneConfig } from './synthetic-radar';
 
-const pixel = (p: Partial<PixelFeatures>): PixelFeatures => ({
-  tK: 230, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0, cellRadiusKm: 0, cellScore: 0, coreProfile: 0, ridge: 0, subcoreK: 0,
-  lightningCore: 0, lightningEnvelope: 0, gradientKPerKm: 0, ...p,
-});
+const features = (p: Partial<CoreFeatures>): CoreFeatures => ({ tK: 230, ringDiffK: 0, sigmaK: 0, coolingK: NaN, tailK: 0, leadK: 0, ...p });
 
-// a grid about 3 km a pixel over South India (the data pack's spacing)
+// a grid about 3 km a pixel over South India (the data pack's spacing); the rain grid is twice as fine
 const box = { west: 76, east: 79, south: 9, north: 12 };
 const W = 110, H = 110;
 const grid = (fill: (x: number, y: number) => number): Float32Array => {
@@ -13,97 +10,110 @@ const grid = (fill: (x: number, y: number) => number): Float32Array => {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) a[y * W + x] = fill(x, y);
   return a;
 };
-const dbzAt = (out: { dbz4: Uint8Array }, x: number, y: number): number => out.dbz4[y * W + x] / 4;
-const maxIn = (out: { dbz4: Uint8Array }, x0: number, y0: number, x1: number, y1: number): number => {
+/** The strongest reflectivity over data pixels x0..x1, y0..y1. */
+const maxIn = (out: SyntheticRadarOutput, x0: number, y0: number, x1: number, y1: number): number => {
+  const s = out.w / W;
   let m = 0;
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m = Math.max(m, dbzAt(out, x, y));
+  for (let y = y0 * s; y < (y1 + 1) * s; y++) for (let x = x0 * s; x < (x1 + 1) * s; x++) m = Math.max(m, out.dbz4[y * out.w + x] / 4);
   return m;
 };
+/** How many data pixels' worth of rain (any reflectivity) there is over the box. */
+const rainArea = (out: SyntheticRadarOutput): number => out.dbz4.reduce((a, v) => a + (v > 0 ? 1 : 0), 0) / (out.w / W) ** 2;
+const mercY = (lat: number) => 0.5 - Math.log((1 + Math.sin((lat * Math.PI) / 180)) / (1 - Math.sin((lat * Math.PI) / 180))) / (4 * Math.PI);
 const latOf = (y: number) => {
-  const m0 = 0.5 - Math.log((1 + Math.sin(12 * Math.PI / 180)) / (1 - Math.sin(12 * Math.PI / 180))) / (4 * Math.PI);
-  const m1 = 0.5 - Math.log((1 + Math.sin(9 * Math.PI / 180)) / (1 - Math.sin(9 * Math.PI / 180))) / (4 * Math.PI);
-  const m = m0 + ((y + 0.5) / H) * (m1 - m0);
+  const m = mercY(12) + ((y + 0.5) / H) * (mercY(9) - mercY(12));
   return (Math.atan(Math.sinh(Math.PI * (1 - 2 * m))) * 180) / Math.PI;
 };
 const lonOf = (x: number) => box.west + ((x + 0.5) / W) * (box.east - box.west);
+const steady = (u: number, v: number): WindGrids => {
+  const n = 20 * 20;
+  return { grid: { latMax: 12.5, lonMin: 75.5, step: 0.25, nx: 20, ny: 20 }, u850: new Float32Array(n).fill(u), v850: new Float32Array(n).fill(v), u250: new Float32Array(n), v250: new Float32Array(n) };
+};
 
-describe('synthetic radar: one pixel', () => {
-  it('leaves a flat, smooth cold anvil out however cold it is', () => {
-    const r = classifyPixel(pixel({ tK: 205, ringDiffK: 0.5, sigmaK: 0.4, cellRadiusKm: 30 }));
-    expect(r.dbz).toBe(0);
-    expect(r.category).toBe('anvil');
+describe('synthetic radar: one core', () => {
+  it('finds none in a flat, smooth cold anvil however cold, nor in yellow low cloud', () => {
+    expect(coreStrength(features({ tK: 200, ringDiffK: 0.5, sigmaK: 0.4 }))).toBe(0);
+    expect(coreStrength(features({ tK: 268, ringDiffK: 25, sigmaK: 6 }))).toBe(0);
   });
 
-  it('never rains from yellow low cloud or ground', () => {
-    expect(classifyPixel(pixel({ tK: 272, ringDiffK: 20, sigmaK: 6, cellRadiusKm: 3, cellScore: 1, coreProfile: 1 })).dbz).toBe(0);
-    expect(classifyPixel(pixel({ tK: 295, lightningCore: 3 })).dbz).toBe(0);
-  });
-
-  it('draws a small popup as a light core of 20 to 28 dBZ, a medium cell 28 to 36, and a lightning core 45 or more', () => {
-    const popup = classifyPixel(pixel({ tK: 240, ringDiffK: 15, sigmaK: 5, cellRadiusKm: 3, cellScore: 1, coreProfile: 1 }));
-    expect(popup.category).toBe('popup');
-    expect(popup.dbz).toBeGreaterThanOrEqual(20);
-    expect(popup.dbz).toBeLessThanOrEqual(28);
-    const cell = classifyPixel(pixel({ tK: 225, ringDiffK: 15, sigmaK: 5, cellRadiusKm: 8, cellScore: 1, coreProfile: 1 }));
-    expect(cell.category).toBe('cell');
-    expect(cell.dbz).toBeGreaterThanOrEqual(28);
-    expect(cell.dbz).toBeLessThanOrEqual(36);
-    const storm = classifyPixel(pixel({ tK: 205, ringDiffK: 2, sigmaK: 1, lightningCore: 2, gradientKPerKm: 3 }));
-    expect(storm.category).toBe('lightning');
-    expect(storm.dbz).toBeGreaterThanOrEqual(45);
+  it('finds one under a dome standing out of its cloud, and under a top that bloomed', () => {
+    expect(coreStrength(features({ tK: 225, ringDiffK: 18, sigmaK: 5 }))).toBeGreaterThan(0.9);
+    expect(coreStrength(features({ tK: 235, coolingK: -20 }))).toBe(1);
   });
 
   it('wears away an anvil tail downwind of its core', () => {
-    const base = { tK: 230, ringDiffK: 7, sigmaK: 3, cellRadiusKm: 8, cellScore: 0.6, coreProfile: 0.5 };
-    expect(classifyPixel(pixel({ ...base, tailK: 8 })).dbz).toBeLessThan(classifyPixel(pixel(base)).dbz);
+    const base = { tK: 230, ringDiffK: 9, sigmaK: 3 };
+    expect(coreStrength(features({ ...base, tailK: 8 }))).toBeLessThan(coreStrength(features(base)));
+  });
+
+  it('draws a core about 5 km wide, lightning rain only on cloud', () => {
+    const core = { cloudy: true, coreDbz: 40, along: 0, lightning: 0 };
+    expect(classifyPixel({ ...core, acrossKm: 0 })).toBe(40);
+    expect(classifyPixel({ ...core, acrossKm: 2 })).toBeGreaterThan(30);
+    expect(classifyPixel({ ...core, acrossKm: 2.6 })).toBe(0);
+    expect(classifyPixel({ cloudy: true, coreDbz: 0, acrossKm: 0, along: 0, lightning: 2 })).toBeGreaterThanOrEqual(25);
+    expect(classifyPixel({ cloudy: false, coreDbz: 0, acrossKm: 0, along: 0, lightning: 9 })).toBe(0);
   });
 
   it('can be tuned', () => {
-    const cfg = tuneConfig(SYNTHETIC_RADAR_CONFIG, { cloud: { coreMaxK: 240 } });
-    expect(cfg.cloud.coreMaxK).toBe(240);
-    expect(cfg.cloud.topK).toBe(SYNTHETIC_RADAR_CONFIG.cloud.topK);
-    expect(SYNTHETIC_RADAR_CONFIG.cloud.coreMaxK).toBe(248);
+    const cfg = tuneConfig(SYNTHETIC_RADAR_CONFIG, { core: { widthKm: 4 } });
+    expect(cfg.core.widthKm).toBe(4);
+    expect(cfg.core.spacingKm).toBe(SYNTHETIC_RADAR_CONFIG.core.spacingKm);
+    expect(SYNTHETIC_RADAR_CONFIG.core.widthKm).toBe(5);
   });
 });
 
 describe('synthetic radar: the grid', () => {
-  it('rains under an isolated cold dome in low cloud, not under a wide flat anvil', () => {
+  it('rains only at the core of a popup, not over its whole cloud, and never under a wide flat anvil', () => {
     const ir = grid((x, y) => {
-      if (x < 50) return Math.hypot(x - 20, y - 55) < 4 ? 225 : 285; // a popup over yellow low cloud and ground
-      return x > 60 && x < 108 && y > 5 && y < 105 ? 210 : 290; // a flat anvil sheet 140 km wide
+      if (x < 50) {
+        const d = Math.hypot(x - 20, y - 55);
+        return d < 2 ? 215 : d < 8 ? 240 : 285; // a popup (cold top) in a cloud 50 km wide over warm low cloud
+      }
+      return x > 60 && x < 108 && y > 5 && y < 105 ? 205 : 290; // a flat anvil sheet 140 km wide
     });
     const out = synthesizeRadar({ w: W, h: H, box, ir });
-    expect(maxIn(out, 15, 50, 25, 60)).toBeGreaterThanOrEqual(20);
+    expect(maxIn(out, 18, 53, 22, 57)).toBeGreaterThanOrEqual(30);
+    expect(maxIn(out, 12, 47, 14, 49)).toBe(0); // the popup's cloud away from the core
     expect(maxIn(out, 70, 15, 98, 95)).toBe(0);
-    expect(maxIn(out, 0, 0, 10, 10)).toBe(0);
+    expect(rainArea(out)).toBeLessThan(12); // about one 5 km core
   });
 
-  it('puts heavy cores where the lightning is on cloud, and none on clear sky', () => {
-    const ir = grid(x => (x < 55 ? 215 : 300));
+  it('marks where a top bloomed and carries it with the 850 hPa wind, while the anvil spreading out is none', () => {
+    // 30 minutes ago a tower bloomed at x 30; since then its anvil spread out about 12 km a frame, as cold as the tower
+    const disc = (r: number, t: number) => grid((x, y) => (Math.hypot(x - 30, y - 55) < r ? t : 285));
+    const wind = steady(5, 0); // 850 hPa: 5 m/s from the west, 9 km in 30 minutes
+    const history = [{ ir: disc(5, 200), minutesAgo: 15 }, { ir: disc(2, 205), minutesAgo: 30 }, { ir: disc(0, 285), minutesAgo: 45 }];
+    const out = synthesizeRadar({ w: W, h: H, box, ir: disc(9, 200), wind, history });
+    const bloomed = out.cores.filter(c => c.kind === 'bloom');
+    const first = bloomed.find(c => c.ageMin === 30);
+    expect(first).toBeDefined();
+    expect(first!.lon).toBeGreaterThan(lonOf(30) + 0.05); // moved east with the wind
+    // every bloom is the tower or its first minutes, near it: none out on the anvil
+    for (const c of bloomed) expect(Math.abs(c.lon - lonOf(32))).toBeLessThan(0.1);
+    expect(out.cores.filter(c => c.kind === 'dome').length).toBe(0); // the flat anvil's edge is no dome
+    expect(maxIn(out, 32, 53, 37, 57)).toBeGreaterThan(30);
+    expect(maxIn(out, 22, 61, 26, 63)).toBe(0); // the rest of the anvil
+  });
+
+  it('puts heavy cores where the lightning crowds, a little rain around the rest, none on clear sky', () => {
+    const ir = grid(x => (x < 55 ? 205 : 300));
     const strikes = [
-      { lat: latOf(55), lon: lonOf(25), ageS: 60 },
-      { lat: latOf(55), lon: lonOf(25.5), ageS: 120 },
+      ...Array.from({ length: 6 }, (_, k) => ({ lat: latOf(55), lon: lonOf(25 + k * 0.1), ageS: 60 })),
+      { lat: latOf(20), lon: lonOf(25), ageS: 600 }, // a lone old stroke: no rain
       { lat: latOf(55), lon: lonOf(85), ageS: 60 },
+      { lat: latOf(55), lon: lonOf(85.2), ageS: 60 },
     ];
     const out = synthesizeRadar({ w: W, h: H, box, ir, strikes });
-    expect(maxIn(out, 22, 52, 28, 58)).toBeGreaterThanOrEqual(45);
-    expect(maxIn(out, 70, 40, 100, 70)).toBe(0);
-    expect(out.stats.strikes).toBe(3);
-  });
-
-  it('marks a cloud that cooled since the frame before as a new popup', () => {
-    const ir = grid((x, y) => (Math.hypot(x - 50, y - 50) < 3 ? 240 : 285));
-    const irPrev = grid(() => 285);
-    const out = synthesizeRadar({ w: W, h: H, box, ir, irPrev, prevMinutes: 15 });
-    expect(out.stats.popups).toBe(1);
-    expect(out.stats.usedPrevious).toBe(true);
+    expect(maxIn(out, 23, 53, 28, 57)).toBeGreaterThanOrEqual(47);
+    expect(maxIn(out, 22, 17, 28, 23)).toBe(0);
+    expect(maxIn(out, 75, 40, 100, 70)).toBe(0);
+    expect(out.cores.filter(c => c.kind === 'lightning').length).toBe(1);
+    expect(out.stats.strikes).toBe(9);
   });
 
   it('is shifted to match the real radar where both see rain', () => {
-    const ir = grid((x, y) => {
-      const d = Math.hypot(x - 55, y - 55);
-      return d < 30 && Math.hypot((x % 10) - 5, (y % 10) - 5) < 3 ? 225 : 285; // many popups near a radar
-    });
+    const ir = grid((x, y) => (Math.hypot((x % 10) - 5, (y % 10) - 5) < 1.5 ? 220 : 285)); // many popups near a radar
     const plain = synthesizeRadar({ w: W, h: H, box, ir });
     const field = new Uint8Array(200 * 200).fill(Math.round(((45 - 12) / 9.6 / 6) * 255)); // the radar sees 45 dBZ everywhere
     const radar = { field, width: 200, height: 200, box, maxIntensity: 6, discs: [{ lat: latOf(55), lng: lonOf(55), rangeKm: 250 }] };

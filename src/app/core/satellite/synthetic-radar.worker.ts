@@ -3,10 +3,9 @@ import { MercatorBox, RealRadarInput, StrikeInput, SyntheticRadarConfig, Synthet
 
 export interface SyntheticRadarRequest {
   id: number;
-  /** The newest data pack and the one a frame before it (optional). */
+  /** The newest data pack, and those of the last hour before it (each with how many minutes older it is). */
   url: string;
-  prevUrl?: string;
-  prevMinutes?: number;
+  history: { url: string; minutesAgo: number }[];
   box: MercatorBox;
   minK: number;
   spanK: number;
@@ -20,7 +19,7 @@ export type SyntheticRadarResponse =
   | { id: number; w: number; h: number; dbz4: Uint8Array; stats: SyntheticRadarStats }
   | { id: number; error: string };
 
-/** Decoded packs (10.8 um temperatures, K, 0 = no data) by address: the newest two are kept for the next run. */
+/** Decoded packs (10.8 um temperatures, K, 0 = no data) by address: the newest hour's are kept for the next run. */
 const packs = new Map<string, { w: number; h: number; ir: Float32Array }>();
 
 async function irOf(url: string, minK: number, spanK: number): Promise<{ w: number; h: number; ir: Float32Array } | null> {
@@ -41,7 +40,7 @@ async function irOf(url: string, minK: number, spanK: number): Promise<{ w: numb
   const pack = { w: bitmap.width, h: bitmap.height, ir };
   bitmap.close();
   packs.set(url, pack);
-  while (packs.size > 2) packs.delete(packs.keys().next().value!);
+  while (packs.size > 6) packs.delete(packs.keys().next().value!);
   return pack;
 }
 
@@ -51,15 +50,18 @@ addEventListener('message', async (event: MessageEvent<SyntheticRadarRequest>) =
   try {
     const now = await irOf(r.url, r.minK, r.spanK);
     if (!now) throw new Error('no data pack');
-    let prev = r.prevUrl ? await irOf(r.prevUrl, r.minK, r.spanK).catch(() => null) : null;
-    if (prev && (prev.w !== now.w || prev.h !== now.h)) prev = null;
+    const history: { ir: Float32Array; minutesAgo: number }[] = [];
+    for (const fr of r.history) {
+      const p = await irOf(fr.url, r.minK, r.spanK).catch(() => null);
+      if (p && p.w === now.w && p.h === now.h) history.push({ ir: p.ir, minutesAgo: fr.minutesAgo });
+    }
     packs.delete(r.url); // the newest stays last (kept longest)
     packs.set(r.url, now);
     const out = synthesizeRadar(
-      { w: now.w, h: now.h, box: r.box, ir: now.ir, irPrev: prev?.ir ?? null, prevMinutes: r.prevMinutes, wind: r.wind, strikes: r.strikes, radar: r.radar },
+      { w: now.w, h: now.h, box: r.box, ir: now.ir, history, wind: r.wind, strikes: r.strikes, radar: r.radar },
       r.config,
     );
-    postMessage({ id: r.id, w: now.w, h: now.h, dbz4: out.dbz4, stats: out.stats } satisfies SyntheticRadarResponse, [out.dbz4.buffer]);
+    postMessage({ id: r.id, w: out.w, h: out.h, dbz4: out.dbz4, stats: out.stats } satisfies SyntheticRadarResponse, [out.dbz4.buffer]);
   } catch (e) {
     postMessage({ id: r.id, error: String(e) } satisfies SyntheticRadarResponse);
   }

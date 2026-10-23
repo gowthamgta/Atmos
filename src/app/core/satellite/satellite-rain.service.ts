@@ -11,6 +11,8 @@ import { isPhone } from '../ui/device-profile';
 
 /** How often the newest frame is looked for while the radar is on (the satellite workflow publishes every 15 minutes). */
 const REFRESH_MS = 5 * 60_000;
+/** The blooms of this last stretch of frames are drawn (they fade within the hour: synthetic-radar.ts). */
+const HISTORY_MINUTES = 75;
 /** How often the synthetic radar is built again for new lightning (a phone less often: it is a few hundred ms of a worker's time). */
 const LIGHTNING_MS = isPhone() ? 120_000 : 60_000;
 
@@ -41,7 +43,7 @@ export class SatelliteRainService {
   private inputs: SatelliteRainInputs | null = null;
   private frameTimer: ReturnType<typeof setInterval> | null = null;
   private lightningTimer: ReturnType<typeof setInterval> | null = null;
-  private frame: { url: string; prevUrl?: string; prevMinutes?: number; bounds: GeoBounds; minK: number; spanK: number; timeMs: number } | null = null;
+  private frame: { url: string; history: { url: string; minutesAgo: number }[]; bounds: GeoBounds; minK: number; spanK: number; timeMs: number } | null = null;
   private worker: Worker | null = null;
   private nextId = 0;
   private busy = false;
@@ -98,15 +100,13 @@ export class SatelliteRainService {
       const url = base + f.files.data!;
       if (this.frame?.url === url) return;
       const timeMs = Date.parse(f.time);
-      // the frame before it, 10 to 20 minutes older, for the new popups
-      const before = [...withData].reverse().find(fr => {
-        const dt = timeMs - Date.parse(fr.time);
-        return dt >= 10 * 60_000 && dt <= 20 * 60_000;
-      });
+      // the frames of the hour before it, for where the cores bloomed
+      const history = withData
+        .map(fr => ({ url: base + fr.files.data!, minutesAgo: (timeMs - Date.parse(fr.time)) / 60_000 }))
+        .filter(fr => fr.minutesAgo > 0 && fr.minutesAgo <= HISTORY_MINUTES);
       this.frame = {
         url,
-        prevUrl: before ? base + before.files.data! : undefined,
-        prevMinutes: before ? (timeMs - Date.parse(before.time)) / 60_000 : undefined,
+        history,
         bounds: index.bounds,
         minK: index.data.minK,
         spanK: index.data.spanK,
@@ -131,8 +131,7 @@ export class SatelliteRainService {
       const req: SyntheticRadarRequest = {
         id: ++this.nextId,
         url: frame.url,
-        prevUrl: frame.prevUrl,
-        prevMinutes: frame.prevMinutes,
+        history: frame.history,
         box: frame.bounds,
         minK: frame.minK,
         spanK: frame.spanK,
