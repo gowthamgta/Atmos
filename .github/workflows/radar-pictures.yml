@@ -27,8 +27,13 @@ jobs:
           for p in responsive/radar.php imd_latest/contents/index_radar.php responsive/radar_new.php Radar/; do
             curl -sSL -m 60 -A "$UA" "https://mausam.imd.gov.in/$p" -o "out/pages/$(echo $p | tr '/' '_').html" || true
           done
+          # each station's own page (radar.php?id=<the marker's title>) names its pictures
+          for id in $(grep -oE "addMarker\(location[0-9]+, '[^']+'" out/pages/responsive_radar.php.html | sed -E "s/.*, '//; s/'$//" | tr ' ' '+' | sort -u); do
+            curl -sSL -m 60 -A "$UA" "https://mausam.imd.gov.in/responsive/radar.php?id=$id" -o "out/pages/station_$id.html" || true
+            grep -oiE 'Radar/[a-z0-9]+_[a-z0-9]+\.gif' "out/pages/station_$id.html" | sort -u | sed "s|^|$id |" >> out/station-files.txt || true
+          done
           # every radar picture the pages name, and the known IMD codes besides
-          codes=$(cat out/pages/*.html 2>/dev/null | grep -oiE '(caz|ppi|ppz|sri|pac|maxz)_[a-z]{3,4}\.gif' | sed -E 's/^[a-z]+_//I; s/\.gif$//I' | tr 'A-Z' 'a-z' | sort -u)
+          codes=$(cat out/pages/*.html 2>/dev/null | grep -oiE '(caz|ppi|ppz|sri|pac|maxz)_[a-z0-9]{3,12}\.gif' | sed -E 's/^[a-z]+_//I; s/\.gif$//I' | tr 'A-Z' 'a-z' | sort -u)
           known="agt bhj bhp cni dlh goa hyd jpr kkl koc kol lck mpt mum ngp ptl ptn pdp shr vsk tvm mlr plk srn jmu cpj mks kuf mur lns bnh vrv gop mbr sur jot ptm"
           codes=$(printf "%s\n" $codes $known | sort -u)
           echo "$codes" > out/codes.txt
