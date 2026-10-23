@@ -186,7 +186,7 @@ def make_scan(files: list[str], t: datetime, folder: str) -> dict:
         def make(gl):
             area = latlon_area(gl, f"h9_ll_{gl['step']}")
             ll = scn.resample(area, resampler="gradient_search", datasets=["B03", "B13"])
-            cos_z = np.cos(np.radians(np.minimum(sun_zenith(t, gl["lat"], gl["lon"]), 85)))
+            cos_z = np.cos(np.radians(np.minimum(sun_zenith(t, gl["lat"], gl["lon"]), SUN_CAP_ZENITH)))
             vis = np.asarray(ll["B03"].values, float) / 100 / cos_z
             b13 = np.asarray(ll["B13"].values, float)
             b13c, (visc,) = H.parallax_correct(b13, [vis], gl["lat"], gl["lon"])
@@ -231,6 +231,9 @@ def latlon_area(g: dict, name: str):
     return create_area_def(name, "EPSG:4326", area_extent=[west, south, east, north], shape=(g["rows"], g["cols"]), units="degrees")
 
 
+HIGHLIGHT_KNEE, HIGHLIGHT_SLOPE = 190.0, 0.55   # 255 -> 226
+# the sun normalisation is capped at a sun this high (degrees from the zenith): a low morning sun no longer boosts the visible 4x into white
+SUN_CAP_ZENITH = 70.0
 EVIEW_IN = [0, 12, 37, 62, 87, 112, 137, 162, 187, 212, 237, 255]
 EVIEW_OUT = [40, 63, 87, 113, 135, 154, 175, 192, 209, 224, 240, 255]
 
@@ -243,6 +246,8 @@ def hrv_clouds_rgb(vis: np.ndarray, bt: np.ndarray) -> np.ndarray:
     # EUMETView's brightness curve for the visible (it brightens the dark end): measured 23 Oct 02:00 UTC over India, the median of its
     # rgb_eview red for each 25-step bin of ours (1.4 million pixels). The app's Windy colours and ground removal were tuned on its picture.
     v = np.interp(v, EVIEW_IN, EVIEW_OUT)
+    # the highlights rolled off (the owner found the cloud tops too bright, 23 Oct): thick sunlit cloud keeps its texture instead of a flat white
+    v = np.where(v > HIGHLIGHT_KNEE, HIGHLIGHT_KNEE + (v - HIGHLIGHT_KNEE) * HIGHLIGHT_SLOPE, v)
     v[~np.isfinite(vis)] = 0
     b = np.clip((323.0 - bt) / 120.0, 0, 1)
     out = np.zeros(vis.shape + (3,), np.uint8)

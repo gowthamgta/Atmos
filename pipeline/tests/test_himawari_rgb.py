@@ -85,6 +85,6 @@ def test_hrv_clouds_takes_eumetviews_brightness_curve():
     vis = np.array([[0.0, 87 / 255, 1.0, np.nan]])
     bt = np.array([[300.0, 250.0, 203.0, 260.0]])
     px = G.hrv_clouds_rgb(vis, bt)
-    assert px[0, 0, 0] == 40 and px[0, 1, 0] == 135 and px[0, 2, 0] == 255   # brightened as EUMETView's picture is
+    assert px[0, 0, 0] == 40 and px[0, 1, 0] == 135 and px[0, 2, 0] == 226   # EUMETView's curve, highlights rolled off
     assert px[0, 3, 0] == 0 and px[0, 3, 2] > 0                              # no visible: red and green 0, the infrared stays
     assert px[0, 2, 2] == 255                                                 # 203 K: blue full

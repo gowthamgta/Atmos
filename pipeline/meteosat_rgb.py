@@ -111,7 +111,7 @@ def make_scan(path: str, t, folder: str) -> dict:
             area = G.latlon_area(gl, f"msg_ll_{gl['step']}")
             ll = scn.resample(area, resampler="gradient_search", datasets=["VIS006", "IR_108"])
             hrv_ll = np.asarray(scn_hrv.resample(area, resampler="nearest", radius_of_influence=2500)["HRV"].values, float)
-            cos_z = np.cos(np.radians(np.minimum(G.sun_zenith(t, gl["lat"], gl["lon"]), 85)))
+            cos_z = np.cos(np.radians(np.minimum(G.sun_zenith(t, gl["lat"], gl["lon"]), G.SUN_CAP_ZENITH)))
             vis = np.where(np.isfinite(hrv_ll), hrv_ll, np.asarray(ll["VIS006"].values, float)) / 100 / cos_z
             b108 = np.asarray(ll["IR_108"].values, float)
             b108c, (visc,) = H.parallax_correct(b108, [vis], gl["lat"], gl["lon"], sub_lon=SUB_LON, max_view=MAX_VIEW_DEG)
