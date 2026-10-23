@@ -63,7 +63,7 @@ export interface CustomChannel {
 export const DEFAULT_CUSTOM: readonly CustomChannel[] = [
   { source: 0, min: 303, max: 203, gamma: 1 },   // red: 10.4 um, warm ground dark, cold tops bright
   { source: 0, min: 303, max: 203, gamma: 1 },   // green: the same, so cloud is grey to white
-  { source: 1, min: 263, max: 213, gamma: 1 },   // blue: 6.2 um, moist upper air (cold at 6.2 um) adds blue
+  { source: 1, min: 243, max: 213, gamma: 1 },   // blue: 6.2 um, moist upper air (cold at 6.2 um) adds blue; dry clear air none
 ];
 
 /** The WMO RGB formula for one channel: ((v - min) / (max - min)) ^ (1 / gamma), 0..1. */
@@ -110,3 +110,24 @@ export function autoKind(satellite: OwnSatellite, day: boolean): OwnKind {
   if (!day) return 'infrared';
   return satellite === 'msg' ? 'natural' : 'truecolor';
 }
+
+/**
+ * Recipes for the custom RGB to start from (WMO formula, ranges in kelvin; a range from high to low makes colder brighter):
+ * - Cloud tops: the window channel in grey (cold tops white, warm ground dark), blue where the upper air is moist (6.2 um cold).
+ * - Storms: red where the top is cold (below about -20 C, full at -80 C), green where 6.2 is as warm as 7.3 or warmer (water vapour
+ *   lifted above the 7.3 um level: overshooting tops), blue from the window minus 7.3 um (near nothing in deep cloud, large over low cloud
+ *   and clear ground): deep convection red, overshooting tops yellow, low cloud and clear ground blue.
+ * - Moisture aloft: red where the mid levels are dry (7.3 um warm), green where the upper levels are moist (6.2 um cold), blue where they
+ *   are very moist or cloud tops: dry intrusions red-orange, moist air green, high cloud cyan to white.
+ */
+export const CUSTOM_PRESETS: readonly { id: string; label: string; title: string; recipe: readonly CustomChannel[] }[] = [
+  { id: 'tops', label: 'Cloud tops', title: 'Cold tops white, warm ground dark, moist upper air blue', recipe: DEFAULT_CUSTOM },
+  {
+    id: 'storms', label: 'Storms', title: 'Deep convection red, its overshooting tops yellow; low cloud and clear ground blue',
+    recipe: [{ source: 0, min: 253, max: 193, gamma: 1 }, { source: 3, min: -1, max: 4, gamma: 1 }, { source: 4, min: 8, max: 55, gamma: 1 }],
+  },
+  {
+    id: 'moisture', label: 'Moisture aloft', title: 'Dry air in the middle levels red-orange, moist upper air green, high cloud cyan to white',
+    recipe: [{ source: 2, min: 233, max: 258, gamma: 1 }, { source: 1, min: 248, max: 218, gamma: 1 }, { source: 1, min: 228, max: 208, gamma: 1 }],
+  },
+];

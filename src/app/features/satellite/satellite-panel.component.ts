@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
 import { IconComponent } from '../../shared/icon.component';
 import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
@@ -6,7 +6,7 @@ import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
 import { cloudTopGradient, greyScaleTempFromMeasured } from '../../core/satellite/satellite-image';
-import { CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
+import { CUSTOM_PRESETS, CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
 
@@ -28,7 +28,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
   imports: [IconComponent, LightningKeyComponent],
   template: `
     @if (active()) {
-      <section class="panel glass-panel" aria-label="Satellite settings">
+      <section class="panel glass-panel" [class.compact]="!expanded()" aria-label="Satellite settings">
         <header>
           <span class="live" [class.off]="failed()" aria-hidden="true"></span>
           <div class="heading">
@@ -52,6 +52,9 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             <button type="button" class="btn-step" (click)="sat.step(1)" [disabled]="noLoop()" aria-label="Next frame" title="Next frame (15 min)">
               <app-icon name="next" [size]="11" />
             </button>
+            <button type="button" class="btn-step more" (click)="expanded.set(!expanded())" [attr.aria-expanded]="expanded()" [attr.aria-label]="expanded() ? 'Show less' : 'Show more'" [title]="expanded() ? 'Show less' : 'Show more'">
+              <app-icon name="chevron" [size]="12" [style.transform]="expanded() ? 'rotate(180deg)' : ''" />
+            </button>
           </div>
         </header>
 
@@ -70,7 +73,12 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
               }
             </div>
             @if (sat.source() === 'custom') {
-              <div class="custom" aria-label="Custom RGB recipe: value = ((v − min) / (max − min)) ^ (1 / gamma)">
+              <div class="presets full-only" role="group" aria-label="Recipes">
+                @for (p of presets; track p.id) {
+                  <button type="button" class="kind" [class.on]="isPreset(p.recipe)" [title]="p.title" (click)="sat.setCustom(p.recipe)">{{ p.label }}</button>
+                }
+              </div>
+              <div class="custom full-only" aria-label="Custom RGB recipe: value = ((v − min) / (max − min)) ^ (1 / gamma)">
                 @for (c of sat.custom(); track $index; let i = $index) {
                   <div class="crow">
                     <span class="cname" [class]="'cname c' + i">{{ 'RGB'[i] }}</span>
@@ -90,14 +98,14 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             } @else if (sat.ownEmpty() === 'none') {
               <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow.</p>
             }
-            <p class="hint3d">{{ ownSat().note }}</p>
+            <p class="hint3d full-only">{{ ownSat().note }}</p>
           }
-          <div class="channel view3d" role="group" aria-label="View">
+          <div class="channel view3d full-only" role="group" aria-label="View">
             <button type="button" [class.on]="!sat.threeD()" [attr.aria-pressed]="!sat.threeD()" (click)="sat.setThreeD(false)">Flat</button>
             <button type="button" [class.on]="sat.threeD()" [attr.aria-pressed]="sat.threeD()" (click)="sat.setThreeD(true)" title="The clouds of the live picture in 3D at their heights: tops from the infrared temperature, thickness from the visible brightness">3D clouds</button>
           </div>
           @if (sat.threeD()) {
-            <div class="heights">
+            <div class="heights full-only">
               <span>Heights</span>
               <div class="channel" role="group" aria-label="Height scale">
                 @for (k of heightScales; track k) {
@@ -105,20 +113,20 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 }
               </div>
             </div>
-            <p class="hint3d">Built from Meteosat-9's live pictures (EUMETView). Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
+            <p class="hint3d full-only">Built from Meteosat-9's live pictures (EUMETView). Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
           }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
           </div>
           <input type="range" class="frames" min="0" [max]="Math.max(count() - 1, 0)" step="0.01" [value]="sat.position()" [disabled]="noLoop()" (input)="onFrame($event)" aria-label="Satellite time" />
-          <div class="ends"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
+          <div class="ends full-only"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
           @if (sat.loading()) { <div class="loading">Loading pictures…</div> }
           @else if (historyHint()) { <div class="loading">Press play to load the last hour.</div> }
         }
 
         @if (nightLegend()) {
-          <div class="cloud-legend" role="img" aria-label="Cloud-top temperature (°C): the colder the top, the brighter the colour">
+          <div class="cloud-legend full-only" role="img" aria-label="Cloud-top temperature (°C): the colder the top, the brighter the colour">
             <div class="label">Cloud-top temperature (°C)</div>
             <div class="cloud-bar" [style.background]="gradient"></div>
             <div class="cloud-scale">
@@ -142,12 +150,12 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           }
         </div>
 
-        <label class="opacity">
+        <label class="opacity full-only">
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
           <input type="range" min="0.2" max="1" step="0.05" [value]="sat.opacity()" (input)="onOpacity($event)" aria-label="Satellite opacity" />
         </label>
-        <app-lightning-key />
-        <p class="note">{{ own() ? ownNote : note }}</p>
+        <app-lightning-key class="full-only" />
+        <p class="note full-only">{{ own() ? ownNote : note }}</p>
       </section>
     }
   `,
@@ -209,6 +217,15 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .opacity { display: block; margin-top: 10px; }
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .note { margin: 10px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
+    .presets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    /* compact (phones by default): the satellite, the pictures in one row that scrolls, the time and the slider */
+    .panel.compact .full-only { display: none; }
+    .panel.compact .kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+    .panel.compact .kinds::-webkit-scrollbar { display: none; }
+    .panel.compact .kind { flex: none; }
+    .panel.compact .hover-readout { display: none; }
+    /* a touch screen has no pointer to hover with */
+    @media (pointer: coarse) { .hover-readout { display: none; } }
     /* phones: keep it to a small card (time, slider) so the picture stays visible */
     @media (max-width: 700px) {
       .panel { bottom: 84px; width: min(280px, calc(100vw - 24px)); padding: 8px 10px; }
@@ -222,6 +239,13 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
   `]
 })
 export class SatellitePanelComponent {
+  /** Phones start with the compact panel (the full one covered most of the screen); larger screens start expanded. */
+  protected readonly expanded = signal(typeof window === 'undefined' || window.innerWidth > 700);
+  protected readonly presets = CUSTOM_PRESETS;
+  protected isPreset(recipe: readonly CustomChannel[]): boolean {
+    const c = this.sat.custom();
+    return recipe.every((r, i) => c[i] && r.source === c[i].source && r.min === c[i].min && r.max === c[i].max && r.gamma === c[i].gamma);
+  }
   protected readonly sat = inject(SatelliteService);
   private readonly detail = inject(SatelliteDetailService);
   private readonly layers = inject(MapLayerService);
