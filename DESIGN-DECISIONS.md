@@ -56,7 +56,9 @@ fingerprint only together with this file, on the owner's request.
   🔒 **rain only at the cores, never over a whole cloud or lightning area** (the owner, Trichy storm 2026-10-23): where a top bloomed in the
   last hour (a new cold core; a spreading anvil is none), carried with the 850 hPa wind, or a dome standing out of its cloud; each core 5 km
   wide, stretched toward where it goes; lightning only light rain right at the strokes and a heavy core (47 to 58 dBZ) where they crowd most.
-  Flat anvils, their rims and yellow low cloud stay dry. By day the owner will share how the RGB shows popups, to refine this. It fades into the real
+  Flat anvils far from storms, their rims, thin cirrus and yellow low cloud stay dry; the thick anvil within 50 km of active cores gets light
+  rain (13 to 28 dBZ), as Karaikal showed on 23 Oct. **It looks like radar** (the owner, 23 Oct): a fixed fractal texture (25, 9 and 3.5 km,
+  up to 10 dB) makes it patchy with frayed edges, never round blobs. Tuned on the owner's 92 marks (rain-marks page). It fades into the real
   radar over the last 20 km of a working radar's range and is shifted to match it where both see rain. Thresholds in
   `SYNTHETIC_RADAR_CONFIG`, tunable live with `atmosSyntheticRadar.set({...})` in the browser console.
 

@@ -98,7 +98,7 @@ describe('synthetic radar: the grid', () => {
     for (const c of bloomed) expect(Math.abs(c.lon - lonOf(32))).toBeLessThan(0.1);
     expect(out.cores.filter(c => c.kind === 'dome').length).toBe(0); // the flat anvil's edge is no dome
     expect(maxIn(out, 32, 53, 37, 57)).toBeGreaterThan(30);
-    expect(maxIn(out, 22, 61, 26, 63)).toBe(0); // the rest of the anvil
+    expect(maxIn(out, 22, 61, 26, 63)).toBeLessThanOrEqual(30); // the rest of the anvil: light rain at most (as the radar shows under an anvil)
   });
 
   it('rains over the shape that bloomed: a long cell stays long, lighter at its edge than at its core', () => {
@@ -120,7 +120,7 @@ describe('synthetic radar: the grid', () => {
       { lat: latOf(55), lon: lonOf(85), ageS: 60 },
       { lat: latOf(55), lon: lonOf(85.2), ageS: 60 },
     ];
-    const out = synthesizeRadar({ w: W, h: H, box, ir, strikes });
+    const out = synthesizeRadar({ w: W, h: H, box, ir, strikes }, tuneConfig(SYNTHETIC_RADAR_CONFIG, { texture: { amplitudeDbz: 0 } }));
     expect(maxIn(out, 23, 53, 28, 57)).toBeGreaterThanOrEqual(47);
     expect(maxIn(out, 22, 17, 28, 23)).toBe(0);
     expect(maxIn(out, 75, 40, 100, 70)).toBe(0);

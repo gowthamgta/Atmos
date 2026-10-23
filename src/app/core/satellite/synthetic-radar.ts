@@ -20,7 +20,8 @@
  *    24 to 42 dBZ by how strongly it bloomed, a little more in very cold tops. A band is a row of such cores, never a filled cloud.
  * 3. Lightning (last 15 minutes, newer weighed more) adds rain only where strokes come two or more within about 2 km (25 to 38 dBZ), and a
  *    heavy core (47 to 58 dBZ, 5 km wide) where they crowd most, one within every 10 km; on cloud only.
- *    Rain reaching the ground spreads a little: a light rim (15 to 22 dBZ, 2 to 3 km) around it, under cloud only.
+ *    Under the thick anvil of an active storm, light rain (13 to 28 dBZ) within 50 km of its cores, as the radar shows.
+ *    Rain reaching the ground spreads a little: a light rim (15 to 26 dBZ, about 5 km, frayed by the texture) around it, under cloud only.
  * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer fades the estimate out over the last 20 km of their range), and
  *    where both see rain the estimate is shifted by the median difference (a few dB at most) so it joins the radar without a step.
  *
@@ -142,12 +143,28 @@ export interface SyntheticRadarConfig {
     rain: [number, number];
     core: [number, number];
   };
+  stratiform: {
+    /** Under the thick anvil of an active storm the radar shows widespread light rain (Karaikal, 23 Oct: 20 to 28 dBZ under the Trichy
+     * anvil, its cores at the edge): tops at maxK or colder, thick (the cell tests), in a cloud that rains, within reachKm of a core or
+     * lightning; dbz from its warmest to its coldest (coldK) and nearest, before the texture breaks it up. */
+    maxK: number;
+    coldK: number;
+    reachKm: number;
+    dbz: [number, number];
+  };
   spread: {
     /** Rain reaching the ground spreads a little beyond its cores: a rim at most maxDbz (and no more than the rain it comes from), losing
      * dbzPerKm a kilometre, under cloud colder than cloudMaxK only. */
     maxDbz: number;
     dbzPerKm: number;
     cloudMaxK: number;
+  };
+  texture: {
+    /** Radar rain is uneven: a fixed fractal pattern (fixed to the ground, so it does not flicker from frame to frame) raises and lowers the
+     * rain by up to amplitudeDbz, at these scales (km) and weights, so the edges fray and the inside is patchy as on the real radar. */
+    amplitudeDbz: number;
+    scalesKm: number[];
+    weights: number[];
   };
   output: {
     minDbz: number;
@@ -212,7 +229,9 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     rain: [25, 38],
     core: [47, 58],
   },
-  spread: { maxDbz: 22, dbzPerKm: 3, cloudMaxK: 265 },
+  stratiform: { maxK: 235, coldK: 200, reachKm: 50, dbz: [13, 28] },
+  spread: { maxDbz: 26, dbzPerKm: 2, cloudMaxK: 265 },
+  texture: { amplitudeDbz: 10, scalesKm: [25, 9, 3.5], weights: [0.5, 0.3, 0.2] },
   output: { minDbz: 15, maxDbz: 60, scale: 2 },
   blend: { featherKm: 20, calibrationMaxDb: 8, calibrationMinPairs: 150 },
 };
@@ -950,6 +969,58 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
       if (v >= cfg.output.minDbz && v > dbz[i]) dbz[i] = v;
     }
   }
+  // light rain under the thick anvil near the cores (data grid: distance from the nearest core or lightning core, chamfer)
+  {
+    const near = new Float32Array(n).fill(Infinity);
+    const seeds: number[] = [];
+    for (const c of cores) {
+      const x = Math.floor(c.x), y = Math.floor(c.y);
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      near[y * w + x] = 0;
+      seeds.push(y * w + x);
+    }
+    if (seeds.length) {
+      for (let pass = 0; pass < 2; pass++) {
+        const ys = pass === 0 ? [0, h, 1] : [h - 1, -1, -1];
+        for (let y = ys[0]; y !== ys[1]; y += ys[2]) {
+          const km = rowKm[y], dk = km * Math.SQRT2;
+          const xs = pass === 0 ? [0, w, 1] : [w - 1, -1, -1];
+          for (let x = xs[0]; x !== xs[1]; x += xs[2]) {
+            const i = y * w + x, sx = xs[2], sy = ys[2];
+            let v = near[i];
+            if (x - sx >= 0 && x - sx < w) v = Math.min(v, near[i - sx] + km);
+            if (y - sy >= 0 && y - sy < h) {
+              v = Math.min(v, near[i - sy * w] + km);
+              if (x - sx >= 0 && x - sx < w) v = Math.min(v, near[i - sy * w - sx] + dk);
+              if (x + sx >= 0 && x + sx < w) v = Math.min(v, near[i - sy * w + sx] + dk);
+            }
+            near[i] = v;
+          }
+        }
+      }
+      const st = cfg.stratiform;
+      const strat = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const t = ir[i];
+        if (!valid(t) || t > st.maxK || near[i] > st.reachKm) continue;
+        const l = cloudsNow.label[i];
+        if (l < 0 || !cloudsNow.rains[l] || !thick(i, ir, input.wv, input.vis, cfg.cell.patchSlackK, cfg.cell.patchVisSlack)) continue;
+        strat[i] = lerp(st.dbz, ((st.maxK - t) / (st.maxK - st.coldK)) * (1 - 0.5 * (near[i] / st.reachKm)));
+      }
+      // onto the rain grid smoothly (bilinear between the data's pixels, so their squares do not show)
+      for (let y = 0; y < H2; y++) {
+        const gy = (y + 0.5) / S - 0.5, y0 = Math.max(0, Math.floor(gy)), y1 = Math.min(h - 1, y0 + 1), fy = Math.min(1, Math.max(0, gy - y0));
+        for (let x = 0; x < W2; x++) {
+          const gx = (x + 0.5) / S - 0.5, x0 = Math.max(0, Math.floor(gx)), x1 = Math.min(w - 1, x0 + 1), fx = Math.min(1, Math.max(0, gx - x0));
+          const a = strat[y0 * w + x0], b = strat[y0 * w + x1], c = strat[y1 * w + x0], d = strat[y1 * w + x1];
+          if (!(a || b || c || d)) continue;
+          const v = (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+          const i = y * W2 + x;
+          if (v > dbz[i]) dbz[i] = v;
+        }
+      }
+    }
+  }
   // the rain right around the strokes
   if (strikes > 0) {
     rain.coreDbz = 0;
@@ -998,12 +1069,37 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
         rim[i] = v;
       }
     }
+    // the texture: value noise on a fixed grid of the ground (km), three octaves
+    const A = cfg.texture.amplitudeDbz;
+    const hash = (ix: number, iy: number): number => {
+      let k = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) | 0;
+      k = Math.imul(k ^ (k >>> 13), 1274126177);
+      return (((k ^ (k >>> 16)) >>> 0) / 4294967295) * 2 - 1;
+    };
+    const fade = (t: number): number => t * t * (3 - 2 * t);
+    const noise = (xKm: number, yKm: number): number => {
+      let v = 0;
+      cfg.texture.scalesKm.forEach((sc, o) => {
+        const gx = xKm / sc + o * 17.3, gy = yKm / sc + o * 31.7;
+        const ix = Math.floor(gx), iy = Math.floor(gy), fx = fade(gx - ix), fy = fade(gy - iy);
+        const a = hash(ix, iy), b = hash(ix + 1, iy), c = hash(ix, iy + 1), d = hash(ix + 1, iy + 1);
+        v += cfg.texture.weights[o] * (a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy);
+      });
+      return v;
+    };
+    const pxKm2 = (pxMerc / S) * EARTH_KM;
     for (let y = 0; y < H2; y++) {
+      const yKm = (y0m / (pxMerc / S) + y) * pxKm2;
       for (let x = 0; x < W2; x++) {
         const i = y * W2 + x;
-        if (dbz[i] > 0 || rim[i] < cfg.output.minDbz) continue;
-        const t = ir[Math.min(h - 1, Math.floor(y / S)) * w + Math.min(w - 1, Math.floor(x / S))];
-        if (valid(t) && t < cfg.spread.cloudMaxK) dbz[i] = rim[i];
+        const base = dbz[i] > 0 ? dbz[i] : rim[i];
+        if (!(base >= cfg.output.minDbz - A)) continue;
+        if (dbz[i] <= 0) {
+          const t = ir[Math.min(h - 1, Math.floor(y / S)) * w + Math.min(w - 1, Math.floor(x / S))];
+          if (!(valid(t) && t < cfg.spread.cloudMaxK)) continue;
+        }
+        const v = A > 0 ? base + A * noise((x0m / (pxMerc / S) + x) * pxKm2, yKm) : base;
+        dbz[i] = v >= cfg.output.minDbz ? v : 0;
       }
     }
   }
