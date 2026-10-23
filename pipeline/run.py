@@ -214,4 +214,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as e:
+        # as an annotation, which the run's public summary page shows (the step's log needs a signed-in viewer)
+        import traceback
+        tb = traceback.extract_tb(e.__traceback__)
+        where = " < ".join(f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in tb[-3:][::-1])
+        print(f"::error::{' '.join(sys.argv[1:3])}: {type(e).__name__}: {str(e)[:300]} (at {where})", flush=True)
+        raise

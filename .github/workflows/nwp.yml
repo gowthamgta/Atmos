@@ -80,6 +80,7 @@ jobs:
             echo "waiting for the cycle $expect"
           fi
           pending="$models"
+          failed=""
           for attempt in $(seq 1 3); do
             waiting=""
             for model in $pending; do
@@ -90,14 +91,25 @@ jobs:
               if [ "$code" -eq 3 ]; then
                 echo "::notice::$model: the cycle is not published yet (attempt $attempt)"
                 waiting="$waiting $model"
+              elif [ "$attempt" -lt 3 ]; then
+                # a failure (a download that broke off, a busy server) is tried again: once it left a model unpublished all day
+                echo "::warning::$model failed (exit $code) on attempt $attempt; trying again"
+                waiting="$waiting $model"
+                failed="$failed $model"
               else
-                echo "::warning::$model failed (exit $code); not retried, the live copy stays in place"
+                echo "::warning::$model failed (exit $code) three times; the live copy stays in place"
               fi
             done
             pending="${waiting# }"
             [ -z "$pending" ] && break
-            [ -z "$expect" ] && break        # not a scheduled run: one try
-            [ "$attempt" -lt 3 ] && sleep 1200        # a late cycle: try again in 20 minutes
+            # a late cycle waits 20 minutes; a failure only 5 (and a run started by hand retries failures, not late cycles)
+            only_failed=1
+            for model in $pending; do case " $failed " in *" $model "*) ;; *) only_failed=0;; esac; done
+            if [ "$only_failed" = 1 ]; then sleep 300
+            elif [ -z "$expect" ]; then break
+            elif [ "$attempt" -lt 3 ]; then sleep 1200
+            fi
+            failed=""
           done
           for model in $pending; do echo "::warning::$model: the cycle was still not published; the live copy stays in place"; done
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
@@ -115,6 +127,10 @@ jobs:
           cp -r data/terrain site/terrain
           # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
+          # GitHub Pages takes a site of at most 1 GB: say so plainly when it is over (the deploy may then be refused)
+          size=$(du -sb site | cut -f1)
+          echo "site size: $size bytes"
+          if [ "$size" -gt 1000000000 ]; then echo "::warning::the site is $size bytes, over GitHub Pages' 1 GB: the deploy may be refused"; fi
           if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
