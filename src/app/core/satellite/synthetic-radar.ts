@@ -9,6 +9,10 @@
  *    an arc, so it is none), or a dome standing out of the cloud (colder than the cloud 15 to 25 km around in all directions but
  *    two, and bubbly). Flat high cloud (an anvil, cirrus, its rim) is none however cold, and an anvil tail warming downwind along the 250 hPa
  *    shear from a colder core is worn away. Only the strongest point within about 8 km is a core.
+ *    Only a cold cloud that is big and cold enough rains (its coldest top 225 K or colder over 300 km2 or more, at 250 K), unless it
+ *    bloomed hard or has lightning: small lukewarm specks never do. Each core rains over its cold patch (tops 245 K or colder within
+ *    13 km: the owner's marks were about 500 km2 each), heaviest at the core. Only thick cloud: the 10.8 um top within 3 K of the 6.2 um
+ *    one (thin cirrus is as cold in the infrared but reads warmer at 10.8), and by day bright in the visible.
  * 2. The rain stays where the core bloomed and goes with the 850 hPa wind, while the anvil above spreads away: blooms of the last hour of
  *    frames are carried to now with that wind and fade after 20 minutes (gone after an hour). A bloom rains over the patch that bloomed
  *    with it (the shape it bloomed in: a cell 10 km wide and 30 km long stays so), lighter at its edge and as heavy as the core where it
@@ -64,12 +68,37 @@ export interface SyntheticRadarConfig {
     isolationKm: number;
     isolationK: [number, number];
   };
+  cell: {
+    /** A cold cloud (connected tops at blobK or colder) rains only when its coldest top reaches coreK and it covers minKm2 (the owner's
+     * marks of 23 Oct: the clouds marked rainy were 700 km2 and more with tops near 205 K, the small lukewarm ones near 243 K were not),
+     * or when a core in it bloomed at least bloomPass strongly (a fresh popup), or lightning is in it. */
+    blobK: number;
+    coreK: number;
+    minKm2: number;
+    bloomPass: number;
+    /** Each core's rain covers its cold patch: connected tops at areaMaxK or colder within radiusKm (the marks: about 500 km2 each), lighter
+     * toward the patch's warmer edge (edgeDbz). */
+    areaMaxK: number;
+    radiusKm: number;
+    edgeDbz: number;
+    /** Thick cloud only: a core's 10.8 um top no more than deepK warmer than its 6.2 um (a storm top reaches the water-vapour level; thin
+     * cirrus, as cold in the infrared, reads several kelvin warmer at 10.8: the owner's marks had -1 K, the cirrus we drew +5 to +11), its
+     * patch no more than deepK + patchSlackK. */
+    deepK: number;
+    patchSlackK: number;
+    /** By day (the sun over sunDeg) also bright in the visible: our RGB's red (the HRV) at visMin or more at the core (the marks: about 220,
+     * the cirrus about 175), visMin - patchVisSlack over the patch. */
+    visMin: number;
+    patchVisSlack: number;
+    sunDeg: number;
+  };
   core: {
     /** A core needs at least this strength (0 to 1). */
     minStrength: number;
     /** Only the strongest core within this distance is drawn. */
     spacingKm: number;
-    /** A dome's core is colder than its cloud within domeKm by standOutK, unless that cloud covers no more than smallCloudKm2. */
+    /** A dome's core is colder than its cloud within domeKm by standOutK, unless its whole cold cloud (blobK) covers no more than
+     * smallCloudKm2. */
     domeKm: number;
     standOutK: number;
     smallCloudKm2: number;
@@ -145,12 +174,13 @@ export const SYNTHETIC_RADAR_CONFIG: SyntheticRadarConfig = {
     leadBoost: 0.2,
   },
   popup: { coolingK: [8, 18], searchKm: 12, bloomMaxK: 252, isolationKm: 12, isolationK: [8, 18] },
+  cell: { blobK: 250, coreK: 225, minKm2: 300, bloomPass: 0.8, areaMaxK: 245, radiusKm: 13, edgeDbz: 22, deepK: 3, patchSlackK: 4, visMin: 200, patchVisSlack: 25, sunDeg: 20 },
   core: {
     minStrength: 0.5,
     spacingKm: 8,
     domeKm: 12,
     standOutK: 2,
-    smallCloudKm2: 300,
+    smallCloudKm2: 800,
     widthKm: 5,
     trailMinutes: 15,
     maxTrailKm: 10,
@@ -315,8 +345,13 @@ export interface SyntheticRadarInput {
   box: MercatorBox;
   /** Cloud-top temperatures (K, 0 = no data): 10.8 um now... */
   ir: Float32Array;
-  /** ...and in the frames of the last hour before it (each with how many minutes older it is), for the blooms. */
-  history?: { ir: Float32Array; minutesAgo: number }[];
+  /** The same frame's 6.2 um temperatures (K, 0 = no data), for thick cloud; and by day the visible brightness (our RGB's red, 0 to 255,
+   * resampled to this grid) with the frame's time, for the sun. */
+  wv?: Float32Array | null;
+  vis?: Uint8Array | null;
+  timeMs?: number;
+  /** ...and the frames of the last hour before it (each with how many minutes older it is), for the blooms. */
+  history?: { ir: Float32Array; wv?: Float32Array | null; minutesAgo: number }[];
   wind?: WindGrids | null;
   strikes?: readonly StrikeInput[];
   radar?: RealRadarInput | null;
@@ -557,8 +592,8 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
 
   const history = (input.history ?? []).filter(fr => fr.ir.length === n && fr.minutesAgo > 0).sort((a, b) => a.minutesAgo - b.minutesAgo);
   const cores: { x: number; y: number; dbz: number; kind: Core['kind']; ageMin: number }[] = [];
-  // a bloom's patch: the pixels around its core that cooled at least patchShare as much, within patchMaxKm, each with its share
-  const patches: { at: number[]; share: number[]; dbz: number; dx: number; dy: number }[] = [];
+  // a core's patches (each pixel with its reflectivity), carried as the core is
+  const patches: { at: number[]; value: number[]; dx: number; dy: number }[] = [];
   const grown = new Int32Array(n).fill(-1);
   const addPatch = (i0: number, cool: Float32Array, frame: Float32Array, dbz: number, dx: number, dy: number): void => {
     const c0 = cool[i0];
@@ -568,20 +603,116 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     const maxPx = cfg.core.patchMaxKm / rowKm[y0];
     const id = patches.length;
     const at: number[] = [i0], share: number[] = [1];
-    grown[i0] = id;
+    grown[i0] = id + 1;
     for (let q = 0; q < at.length; q++) {
       const i = at[q], x = i % w, y = Math.floor(i / w);
       for (let yy = Math.max(0, y - 1); yy <= Math.min(h - 1, y + 1); yy++) {
         for (let xx = Math.max(0, x - 1); xx <= Math.min(w - 1, x + 1); xx++) {
           const j = yy * w + xx;
-          if (grown[j] === id || !(cool[j] <= limit) || frame[j] > cfg.popup.bloomMaxK || Math.hypot(xx - x0, yy - y0) > maxPx) continue;
-          grown[j] = id;
+          if (grown[j] === id + 1 || !(cool[j] <= limit) || frame[j] > cfg.popup.bloomMaxK || Math.hypot(xx - x0, yy - y0) > maxPx) continue;
+          grown[j] = id + 1;
           at.push(j);
           share.push(Math.min(1, cool[j] / c0));
         }
       }
     }
-    patches.push({ at, share, dbz, dx, dy });
+    patches.push({ at, value: share.map(v => patchDbz(dbz, v, cfg)), dx, dy });
+  };
+  // a core's cold patch: the connected tops at areaMaxK or colder within radiusKm, heaviest where coldest
+  const addColdPatch = (i0: number, frame: Float32Array, dbz: number, dx: number, dy: number, wv?: Float32Array | null, vis?: Uint8Array | null): void => {
+    const t0 = frame[i0], top = cfg.cell.areaMaxK;
+    if (!(t0 < top)) return;
+    const x0 = i0 % w, y0 = Math.floor(i0 / w);
+    const maxPx = cfg.cell.radiusKm / rowKm[y0];
+    const id = patches.length;
+    const at: number[] = [i0], value: number[] = [dbz];
+    grown[i0] = id + 1;
+    for (let q = 0; q < at.length; q++) {
+      const i = at[q], x = i % w, y = Math.floor(i / w);
+      for (let yy = Math.max(0, y - 1); yy <= Math.min(h - 1, y + 1); yy++) {
+        for (let xx = Math.max(0, x - 1); xx <= Math.min(w - 1, x + 1); xx++) {
+          const j = yy * w + xx;
+          if (grown[j] === id + 1 || !valid(frame[j]) || frame[j] > top || Math.hypot(xx - x0, yy - y0) > maxPx) continue;
+          if (!thick(j, frame, wv, vis, cfg.cell.patchSlackK, cfg.cell.patchVisSlack)) continue;
+          grown[j] = id + 1;
+          at.push(j);
+          const sh = Math.min(1, Math.max(0, (top - frame[j]) / (top - t0)));
+          value.push(cfg.cell.edgeDbz + (Math.max(dbz, cfg.cell.edgeDbz) - cfg.cell.edgeDbz) * sh * sh);
+        }
+      }
+    }
+    patches.push({ at, value, dx, dy });
+  };
+  // the sun's height (degrees) at a pixel, for the visible test (a solar-position formula good to about a degree)
+  const sunAt = (() => {
+    if (input.timeMs === undefined || !input.vis) return null;
+    const d = new Date(input.timeMs);
+    const doy = (Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - Date.UTC(d.getUTCFullYear(), 0, 0)) / 86_400_000;
+    const g = (2 * Math.PI / 365) * (doy - 1 + (d.getUTCHours() - 12) / 24);
+    const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g);
+    const eqt = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+    return (x: number, y: number): number => {
+      const lat = (rowLat[y] * Math.PI) / 180;
+      const ha = (((utcMin + eqt + 4 * lonOf(x)) / 4 - 180) * Math.PI) / 180;
+      return (Math.asin(Math.sin(lat) * Math.sin(decl) + Math.cos(lat) * Math.cos(decl) * Math.cos(ha)) * 180) / Math.PI;
+    };
+  })();
+  // thick cloud at a pixel (slack widens the tests over a patch)
+  const thick = (i: number, frame: Float32Array, wv: Float32Array | null | undefined, vis: Uint8Array | null | undefined, slackK: number, slackVis: number): boolean => {
+    if (wv && valid(wv[i]) && frame[i] - wv[i] > cfg.cell.deepK + slackK) return false;
+    if (vis && sunAt) {
+      const x = i % w, y = (i - x) / w;
+      if (sunAt(x, y) >= cfg.cell.sunDeg && vis[i] < cfg.cell.visMin - slackVis) return false;
+    }
+    return true;
+  };
+
+  // the cold clouds of a frame (connected tops at blobK or colder) and whether each can rain
+  const cloudsOf = (frame: Float32Array): { label: Int32Array; rains: Uint8Array; areaKm2: number[] } => {
+    const label = new Int32Array(n).fill(-1);
+    const rainsList: number[] = [];
+    const areas: number[] = [];
+    const stack: number[] = [];
+    for (let s0 = 0; s0 < n; s0++) {
+      if (label[s0] >= 0 || !valid(frame[s0]) || frame[s0] > cfg.cell.blobK) continue;
+      const id = rainsList.length;
+      let area = 0, coldest = Infinity;
+      label[s0] = id;
+      stack.push(s0);
+      while (stack.length) {
+        const i = stack.pop()!, x = i % w, y = (i - x) / w;
+        area += rowKm[y] * rowKm[y];
+        if (frame[i] < coldest) coldest = frame[i];
+        for (let yy = Math.max(0, y - 1); yy <= Math.min(h - 1, y + 1); yy++) {
+          for (let xx = Math.max(0, x - 1); xx <= Math.min(w - 1, x + 1); xx++) {
+            const j = yy * w + xx;
+            if (label[j] < 0 && valid(frame[j]) && frame[j] <= cfg.cell.blobK) {
+              label[j] = id;
+              stack.push(j);
+            }
+          }
+        }
+      }
+      rainsList.push(coldest <= cfg.cell.coreK && area >= cfg.cell.minKm2 ? 1 : 0);
+      areas.push(area);
+    }
+    return { label, rains: Uint8Array.from(rainsList), areaKm2: areas };
+  };
+  // a core counts when its cloud rains, or it bloomed hard
+  const gate = (strength: Float32Array, frame: Float32Array, bloomStrength: (i: number) => number, wv?: Float32Array | null, vis?: Uint8Array | null, clouds = cloudsOf(frame)): void => {
+    const { label, rains } = clouds;
+    for (let i = 0; i < n; i++) {
+      if (!(strength[i] > 0)) continue;
+      if (!thick(i, frame, wv, vis, 0, 0)) {
+        strength[i] = 0;
+        continue;
+      }
+      const l = label[i];
+      if (l >= 0 && rains[l]) continue;
+      if (bloomStrength(i) >= cfg.cell.bloomPass) continue;
+      strength[i] = 0;
+    }
   };
 
   // rule 1, now: domes, and blooms since the newest frame before
@@ -646,20 +777,24 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     }
   }
   // a dome's core stands out of its own cloud (the rest of a popup's cloud stands out of the ground too, but does not rain), unless the
-  // whole cloud is small (a tower of a few pixels)
+  // whole cold cloud is small (a tower on its own)
+  const cloudsNow = cloudsOf(ir);
   for (let y = 0; y < h; y++) {
     const r = Math.round(cfg.core.domeKm / rowKm[y]);
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       if (!(strength[i] > 0) || bloomedNow[i]) continue;
+      const l = cloudsNow.label[i];
+      if (l >= 0 && cloudsNow.areaKm2[l] <= cfg.core.smallCloudKm2) continue;
       const c = boxSum(sumC, w, h, x - r, y - r, x + r, y + r);
-      if (c * rowKm[y] * rowKm[y] <= cfg.core.smallCloudKm2) continue;
       if (boxSum(sumTc, w, h, x - r, y - r, x + r, y + r) / c - ir[i] < cfg.core.standOutK) strength[i] = 0;
     }
   }
+  gate(strength, ir, i => (bloomedNow[i] ? strength[i] : 0), input.wv, input.vis, cloudsNow);
   for (const i of pick(strength, ir)) {
     const d = coreDbz(strength[i], ir[i], cfg);
     cores.push({ x: (i % w) + 0.5, y: Math.floor(i / w) + 0.5, dbz: d, kind: bloomedNow[i] ? 'bloom' : 'dome', ageMin: 0 });
+    addColdPatch(i, ir, d, 0, 0, input.wv, input.vis);
     if (bloomedNow[i] && coolNow) addPatch(i, coolNow, ir, d, 0, 0);
   }
 
@@ -682,6 +817,8 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     }
     const age = newer.minutesAgo;
     const fade = cfg.core.fadeDbzPerMin * Math.max(0, age - cfg.core.holdMinutes);
+    const bloomOf = Float32Array.from(s);
+    gate(s, newer.ir, i => bloomOf[i], newer.wv);
     for (const i of pick(s, newer.ir)) {
       const x = i % w, y = Math.floor(i / w);
       const [u8, v8] = windAt(x, y);
@@ -689,6 +826,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
       if (d < cfg.output.minDbz + 3) continue;
       const dx = (u8 * age * 60) / 1000 / rowKm[y], dy = -(v8 * age * 60) / 1000 / rowKm[y];
       cores.push({ x: x + 0.5 + dx, y: y + 0.5 + dy, dbz: d, kind: 'bloom', ageMin: age });
+      addColdPatch(i, newer.ir, d, dx, dy, newer.wv);
       addPatch(i, cool, newer.ir, d, dx, dy);
     }
   }
@@ -782,7 +920,7 @@ export function synthesizeRadar(input: SyntheticRadarInput, cfg: SyntheticRadarC
     const R = 1.2 * S;
     for (const p of patches) {
       for (let k = 0; k < p.at.length; k++) {
-        const v = patchDbz(p.dbz, p.share[k], cfg);
+        const v = p.value[k];
         const cx = ((p.at[k] % w) + 0.5 + p.dx) * S, cy = (Math.floor(p.at[k] / w) + 0.5 + p.dy) * S;
         for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(H2 - 1, Math.ceil(cy + R)); y++) {
           for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W2 - 1, Math.ceil(cx + R)); x++) {

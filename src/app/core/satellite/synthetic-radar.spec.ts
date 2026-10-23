@@ -68,7 +68,7 @@ describe('synthetic radar: the grid', () => {
     const ir = grid((x, y) => {
       if (x < 50) {
         const d = Math.hypot(x - 20, y - 55);
-        return d < 2 ? 215 : d < 8 ? 240 : 285; // a popup (cold top) in a cloud 50 km wide over warm low cloud
+        return d < 2 ? 215 : d < 8 ? 248 : 285; // a popup (cold top) in a cloud 50 km wide, a lukewarm 248 K around it, over warm low cloud
       }
       return x > 60 && x < 108 && y > 5 && y < 105 ? 205 : 290; // a flat anvil sheet 140 km wide
     });
@@ -77,8 +77,8 @@ describe('synthetic radar: the grid', () => {
     expect(maxIn(out, 12, 47, 14, 49)).toBe(0); // the popup's cloud away from the core
     expect(maxIn(out, 70, 15, 98, 95)).toBe(0);
     expect(rainArea(out)).toBeLessThan(70); // one 5 km core and its light rim on the ground (a few km), not the cloud's 200
-    expect(maxIn(out, 22, 55, 22, 55)).toBeGreaterThan(0); // the rim, 5 km from the core...
-    expect(maxIn(out, 22, 55, 22, 55)).toBeLessThanOrEqual(26); // ...is light
+    expect(maxIn(out, 23, 55, 23, 55)).toBeGreaterThan(0); // the rim, a few km out from the core...
+    expect(maxIn(out, 23, 55, 23, 55)).toBeLessThanOrEqual(26); // ...is light
   });
 
   it('marks where a top bloomed and carries it with the 850 hPa wind, while the anvil spreading out is none', () => {
@@ -126,7 +126,7 @@ describe('synthetic radar: the grid', () => {
   });
 
   it('is shifted to match the real radar where both see rain', () => {
-    const ir = grid((x, y) => (Math.hypot((x % 10) - 5, (y % 10) - 5) < 1.5 ? 220 : 285)); // many popups near a radar
+    const ir = grid((x, y) => { const d = Math.hypot((x % 16) - 8, (y % 16) - 8); return d < 1.5 ? 212 : d < 4.5 ? 235 : 285; }); // many cells near a radar
     const plain = synthesizeRadar({ w: W, h: H, box, ir });
     const field = new Uint8Array(200 * 200).fill(Math.round(((45 - 12) / 9.6 / 6) * 255)); // the radar sees 45 dBZ everywhere
     const radar = { field, width: 200, height: 200, box, maxIntensity: 6, discs: [{ lat: latOf(55), lng: lonOf(55), rangeKm: 250 }] };

@@ -43,7 +43,7 @@ export class SatelliteRainService {
   private inputs: SatelliteRainInputs | null = null;
   private frameTimer: ReturnType<typeof setInterval> | null = null;
   private lightningTimer: ReturnType<typeof setInterval> | null = null;
-  private frame: { url: string; history: { url: string; minutesAgo: number }[]; bounds: GeoBounds; minK: number; spanK: number; timeMs: number } | null = null;
+  private frame: { url: string; rgbUrl?: string; history: { url: string; minutesAgo: number }[]; bounds: GeoBounds; minK: number; spanK: number; timeMs: number } | null = null;
   private worker: Worker | null = null;
   private nextId = 0;
   private busy = false;
@@ -106,6 +106,7 @@ export class SatelliteRainService {
         .filter(fr => fr.minutesAgo > 0 && fr.minutesAgo <= HISTORY_MINUTES);
       this.frame = {
         url,
+        rgbUrl: f.files.rgb ? base + f.files.rgb : undefined,
         history,
         bounds: index.bounds,
         minK: index.data.minK,
@@ -132,6 +133,8 @@ export class SatelliteRainService {
         id: ++this.nextId,
         url: frame.url,
         history: frame.history,
+        rgbUrl: frame.rgbUrl,
+        timeMs: frame.timeMs,
         box: frame.bounds,
         minK: frame.minK,
         spanK: frame.spanK,
