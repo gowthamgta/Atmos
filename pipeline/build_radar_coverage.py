@@ -6,7 +6,8 @@ Output, in public/data (served by the app itself, a few tens of kilobytes):
 
 For each radar, rays every half a degree are traced over the terrain (the 270 m level of the app's terrain, level L1): how high the beam is above
 the ground at each kilometre, and how much of it the ground in front blocks (see radar_coverage.py). Each cell takes the best of the radars in
-whose range it lies. When a radar is added to radar.model.ts, add it to STATIONS and run this again (a spec in the app checks the two agree).
+whose range it lies. When a radar is added to radar.model.ts, add it to STATIONS and run this again (a spec in the app checks the two agree;
+the radar-coverage workflow runs it on GitHub).
 
   python pipeline/build_radar_coverage.py --cache C:/Temp/dem-l1
 Needs: numpy, Pillow, scipy
@@ -34,10 +35,19 @@ TERRAIN = "https://gowthamgta.github.io/Atmos/terrain/L1"   # published with the
 PER_DEG = 400                                              # cells per degree of an L1 tile (270 m)
 MAX_M = 4000.0
 
-# Mirrors IMD_RADAR_STATIONS in src/app/core/domain/models/radar.model.ts: id, latitude, longitude, band, range of the column-maximum picture (km)
+# The IMD radars of src/app/core/domain/models/radar.model.ts whose column-maximum picture reaches this box: id, latitude, longitude, band,
+# range of that picture (km). A spec in the app checks the list against the app's.
 STATIONS = [
     ("karaikal", 10.9129, 79.8418, "S-Band", 250),
     ("chennai", 13.0839, 80.2901, "S-Band", 250),
+    ("pallikaranai", 12.9451, 80.2115, "X-Band", 87),
+    ("sriharikota", 13.6646, 80.2276, "S-Band", 240),
+    ("kochi", 9.9312, 76.2673, "S-Band", 255),
+    ("thiruvananthapuram", 8.5374, 76.8657, "C-Band", 240),
+    ("mangaluru", 12.901, 74.856, "C-Band", 250),
+    ("goa", 15.4909, 73.8278, "S-Band", 250),
+    ("hyderabad", 17.385, 78.4867, "S-Band", 250),
+    ("visakhapatnam", 17.6868, 83.2185, "S-Band", 250),
 ]
 
 SOUTH, NORTH, WEST, EAST, STEP = 5.8, 16.4, 72.0, 83.1, 0.02

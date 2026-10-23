@@ -1,0 +1,29 @@
+name: radar-coverage
+
+# By hand, after a radar is added to radar.model.ts (and to STATIONS in pipeline/build_radar_coverage.py): bakes where the radars see low rain
+# over the South Indian box from the terrain (public/data/radar-coverage.png and .json, read by the place card's rain line) and commits it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bake:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install numpy pillow scipy
+      - run: python pipeline/build_radar_coverage.py --cache /tmp/dem-l1
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/radar-coverage.png public/data/radar-coverage.json
+          if git diff --cached --quiet; then echo "nothing new"; exit 0; fi
+          git commit -m "Radar coverage baked again for the radars that reach South India"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 10; done
