@@ -110,8 +110,9 @@ float hash12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx +
 
 // the picture's brightness at a place (0..1, the visible channel of the frame's own picture), moved as the column is
 float detailAt(vec2 uvA, vec2 uvB) {
-  float a = texture(u_detA, uvA).r;
-  return u_hasB == 1 ? mix(a, texture(u_detB, uvB).r, u_mixB) : a;
+  // read a little blurred (a coarser mip level): the cloud takes the picture's shapes, not its pixel grain
+  float a = texture(u_detA, uvA, 1.5).r;
+  return u_hasB == 1 ? mix(a, texture(u_detB, uvB, 1.5).r, u_mixB) : a;
 }
 
 float g_det = 0.0;   // the picture's brightness where column() last looked
@@ -122,14 +123,14 @@ vec2 g_uvB = vec2(0.0);
 vec3 irColour(vec2 uvA, vec2 uvB) {
   vec2 a = uvA * u_irAff.xy + u_irAff.zw;
   vec2 b = uvB * u_irAff.xy + u_irAff.zw;
-  float v = texture(u_irA, a).r;
-  if (u_hasB == 1) v = mix(v, texture(u_irB, b).r, u_mixB);
+  float v = texture(u_irA, a, 1.0).r;   // a little smoothed: the 3 km temperatures are noisy over low cloud
+  if (u_hasB == 1) v = mix(v, texture(u_irB, b, 1.0).r, u_mixB);
   if (v <= 0.5 / 255.0) return vec3(1.0);
   vec4 c = texture(u_lut, vec2(v, 0.5));
   // the infrared's greys (warm low cloud) are lifted, so a low cloud stays a lit cloud and not a dark lump; its colours are kept
   vec3 col = mix(vec3(1.0), c.rgb, c.a);
   float chroma = max(col.r, max(col.g, col.b)) - min(col.r, min(col.g, col.b));
-  return chroma < 0.12 ? mix(vec3(0.82), vec3(1.0), col.r) : col;
+  return chroma < 0.12 ? vec3(0.95) : col;   // warm low cloud a plain soft white, not mottled grey
 }
 
 // the cloud column at a map position (cover, top km, base km, optical thickness), moved along the loop's motion between two frames
@@ -164,14 +165,15 @@ vec2 cloudAt(vec3 p) {
   float prof = cirrus ? smoothstep(-0.1, 0.3, h) * (1.0 - smoothstep(0.6, 1.05, h)) : smoothstep(-0.03, 0.1, h) * (1.0 - smoothstep(0.7, 1.02, h));
   // the shape comes from the satellite's own picture (1.25 km): where it is bright there is cloud, its gaps are holes, its texture the
   // billows; the noise only adds the small detail the picture cannot show, warped so it never repeats in a visible pattern
-  vec3 q = cirrus ? vec3(p.x * 0.008, p.y * 0.025, z * 0.12) : vec3(p.xy * 0.05, z * 0.09);
+  // soft rounded puffs a few km across (the noise's billowy channel only: no fine erosion, which made the surface look like foam)
+  vec3 q = cirrus ? vec3(p.x * 0.008, p.y * 0.025, z * 0.12) : vec3(p.xy * 0.032, z * 0.06);
   q.xy += (texture(u_noise, q * 0.31 + 0.17).gb - 0.5) * 0.35;
   vec4 n = texture(u_noise, q);
-  float pic = smoothstep(0.28, 0.78, g_det);
-  float shape = mix(n.r, pic * (0.75 + 0.25 * n.r), u_hasDet * 0.8);
+  float pic = smoothstep(0.25, 0.8, g_det);
+  float shape = mix(n.r, pic * (0.8 + 0.2 * n.r), u_hasDet * 0.8);
   float coverage = c.r * prof;
-  float d = sat(remap(shape, 1.0 - coverage, 1.0, 0.0, 1.0));
-  d = sat(remap(d, n.g * (cirrus ? 0.15 : 0.25), 1.0, 0.0, 1.0));
+  // a soft edge: density rises gently from the cloud's rim, so its outline is wispy rather than a hard crust
+  float d = smoothstep(0.0, 0.55, remap(shape, 1.0 - coverage, 1.0, 0.0, 1.0));
   float sigma = clamp(c.a / thick, 0.05, 60.0);
   return vec2(d, sigma);
 }
@@ -278,7 +280,14 @@ uniform sampler2D u_tex;
 uniform float u_opacity;
 in vec2 v_uv;
 out vec4 o;
-void main() { o = texture(u_tex, v_uv) * u_opacity; }`;
+// the march's dither smoothed away as it is scaled up: a small tent of five taps one low-resolution pixel apart
+void main() {
+  vec2 px = 1.0 / vec2(textureSize(u_tex, 0));
+  vec4 c = texture(u_tex, v_uv) * 0.4
+    + (texture(u_tex, v_uv + vec2(px.x, 0.0)) + texture(u_tex, v_uv - vec2(px.x, 0.0))
+     + texture(u_tex, v_uv + vec2(0.0, px.y)) + texture(u_tex, v_uv - vec2(0.0, px.y))) * 0.15;
+  o = c * u_opacity;
+}`;
 
 export interface CloudVolumeFrame {
   key: string;

@@ -91,13 +91,6 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 }
               </div>
             </div>
-            <div class="heights full-only">
-              <span>Colour</span>
-              <div class="channel" role="group" aria-label="3D cloud colour">
-                <button type="button" [class.on]="!sat.irColour3D()" [attr.aria-pressed]="!sat.irColour3D()" (click)="sat.setIrColour3D(false)">White</button>
-                <button type="button" [class.on]="sat.irColour3D()" [attr.aria-pressed]="sat.irColour3D()" (click)="sat.setIrColour3D(true)" title="Each cloud in the infrared's colours: its measured cloud-top temperature, as the flat Infrared shows it">Infrared</button>
-              </div>
-            </div>
             <p class="hint3d full-only">Shaped by the satellite's own 1.25 km picture, tops from the measured cloud-top temperature, thickness from how bright the cloud is; only the finest billows are drawn. Tilt with right-drag or two fingers.</p>
           }
           <div class="scan">

@@ -215,7 +215,7 @@ export class SatelliteService {
   }
 
   /** The 3D clouds coloured by the infrared (Windy's colours), or white. */
-  readonly irColour3D = signal(readFlag('atmosiq.satellite.3dInfrared', true));
+  readonly irColour3D = signal(true);   // the owner: always in the infrared's colours
 
   setIrColour3D(on: boolean): void {
     this.irColour3D.set(on);
