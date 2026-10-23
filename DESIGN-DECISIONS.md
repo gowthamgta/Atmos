@@ -51,6 +51,13 @@ fingerprint only together with this file, on the owner's request.
 - **Each radar can be turned off and on** in the panel, both off allowed; the map does not move when toggling (ef6d868, b6f48f9).
 - **Hovering shows the height of each radar's beam** over the place (28e1541).
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner). Sriharikota was removed.
+- **Only Karaikal and Chennai** (the owner, 2026-10-23: no other IMD radars). **Outside their range, a synthetic radar from our own Meteosat
+  data** (`core/satellite/synthetic-radar.ts`), built the way the owner reads the satellite and checked against the cells they circled by hand:
+  rain only under domes and new popups (colder than the cloud 15 to 25 km around in all directions but two, a core colder than 248 K), never
+  under flat anvils or yellow low cloud; anvil tails worn away along the 250 hPa shear, cores moved toward the 850 hPa wind; cells drawn by size
+  (popups 20 to 28 dBZ, cells 28 to 36, bands along their sub-cores); lightning cores 45 to 55+ dBZ shaped by the cloud. It fades into the real
+  radar over the last 20 km of a working radar's range and is shifted to match it where both see rain. Thresholds in
+  `SYNTHETIC_RADAR_CONFIG`, tunable live with `atmosSyntheticRadar.set({...})` in the browser console.
 
 ## Forecast and the rest of the map
 

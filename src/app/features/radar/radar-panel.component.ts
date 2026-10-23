@@ -117,7 +117,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <p class="aloft-note full-only">See-through faint echoes: the radars see them only from 2 km or more up, so that rain may not reach the ground.</p>
         </div>
         @if (satRainAge(); as age) {
-          <p class="aloft-note full-only">Outside the working radars' range: rain estimated from Meteosat-9 cloud tops ({{ age }} min old), drawn fainter. An estimate, not radar.</p>
+          <p class="aloft-note full-only">Outside Chennai and Karaikal's range: synthetic radar from Meteosat-9 ({{ age }} min old): new and rising cloud tops, the winds and the lightning. An estimate, not radar.</p>
         }
         <app-lightning-key class="full-only" />
       </section>

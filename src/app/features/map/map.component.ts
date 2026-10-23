@@ -22,6 +22,8 @@ import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer'
 import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
 import { SatelliteRainLayer } from '../../core/rendering/satellite-rain.layer';
 import { SatelliteRainService } from '../../core/satellite/satellite-rain.service';
+import type { RealRadarInput } from '../../core/satellite/synthetic-radar';
+import { RADAR_FIELD_MAX } from '../../core/services/radar-field';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
@@ -117,7 +119,11 @@ export class MapComponent implements OnInit, OnDestroy {
     const hidden = this.radarService.hiddenStations();
     this.radarService.stationTimings();
     const opacity = this.radarService.radarOpacity();
-    untracked(() => (on ? this.satelliteRain.activate() : this.satelliteRain.deactivate()));
+    untracked(() => {
+      this.satelliteRain.setInputs({ strikes: () => this.forecastMap.lightningNow(), radar: () => this.realRadarForEstimate() });
+      if (on) this.satelliteRain.activate();
+      else this.satelliteRain.deactivate();
+    });
     if (!this.map || !this.isMapLoaded()) return;
     if (!on || !data) {
       if (this.satelliteRainLayer && this.map.getLayer(this.satelliteRainLayer.id)) this.map.removeLayer(this.satelliteRainLayer.id);
@@ -128,12 +134,31 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteRainLayer = new SatelliteRainLayer();
       this.map.addLayer(this.satelliteRainLayer, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
     }
-    void this.satelliteRainLayer.setData(data.url, data.bounds, data.minK, data.spanK);
+    this.satelliteRainLayer.setField(data.dbz4, data.w, data.h, data.bounds);
     // the radars that show something: not down, not turned off, a picture under 3 hours old
     const working = this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline');
     this.satelliteRainLayer.setRadars(working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.operationalRangeKm })));
     this.satelliteRainLayer.setOpacity(opacity);
   });
+
+  // a new live radar picture: the estimate is matched to it again (rule 4 of synthetic-radar.ts)
+  private satelliteRainCalibration = effect(() => {
+    if (!this.radarService.liveFrame()) return;
+    untracked(() => this.satelliteRain.rebuild());
+  });
+
+  /** The live radar picture and the discs of the radars that work, for matching the estimate to the radar. */
+  private realRadarForEstimate(): RealRadarInput | null {
+    const live = this.radarService.liveFrame();
+    if (!live) return null;
+    const unavailable = this.radarService.unavailableStations();
+    const hidden = this.radarService.hiddenStations();
+    const discs = this.radarService.stations
+      .filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline')
+      .map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.operationalRangeKm }));
+    const c = live.coordinates;
+    return { field: live.field, width: live.width, height: live.height, box: { west: c[0][0], north: c[0][1], east: c[1][0], south: c[2][1] }, maxIntensity: RADAR_FIELD_MAX, discs };
+  }
 
   private satelliteRainLayer: SatelliteRainLayer | null = null;
   private readonly satelliteRain = inject(SatelliteRainService);

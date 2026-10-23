@@ -496,6 +496,11 @@ export class ForecastMapController {
     this.lightningFetchedAt = 0;
   }
 
+  /** The strokes of the last 15 minutes, aged to now (for the synthetic radar's heavy cores). */
+  lightningNow(): Stroke[] {
+    return this.lightningFetchedAt ? ageStrokes(this.lightningStrokes, (Date.now() - this.lightningFetchedAt) / 1000) : [];
+  }
+
   /** Shows the bolts while the radar or the satellite is on: fetched now and every five seconds, redrawn every second (nothing runs while it is off). */
   private updateLightning(): void {
     const map = this.map;
