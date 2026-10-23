@@ -25,7 +25,7 @@ describe('radar beam height', () => {
 
   it('leaves out a radar that is turned off or does not reach the place', () => {
     expect(beamsOverPlace(IMD_RADAR_STATIONS, 'caz', 11.74, 78.96, id => id !== 'karaikal').map(b => b.stationId)).toEqual(['chennai']);
-    expect(beamsOverPlace(IMD_RADAR_STATIONS, 'caz', 20, 75)).toEqual([]);
+    expect(beamsOverPlace(IMD_RADAR_STATIONS, 'caz', 20, 66)).toEqual([]); // the open Arabian Sea, beyond every radar
     // Bengaluru is about 290 km from Chennai: past its 250 km column-maximum picture
     expect(groundDistanceKm(13.0839, 80.2901, 12.97, 77.59)).toBeGreaterThan(250);
     expect(beamsOverPlace(IMD_RADAR_STATIONS, 'caz', 12.97, 77.59)).toEqual([]);

@@ -50,26 +50,18 @@ fingerprint only together with this file, on the owner's request.
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
 - **Each radar can be turned off and on** in the panel, both off allowed; the map does not move when toggling (ef6d868, b6f48f9).
 - **Hovering shows the height of each radar's beam** over the place (28e1541).
-- Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner). Sriharikota was removed.
-- **Only Karaikal and Chennai** (the owner, 2026-10-23: no other IMD radars). **Outside their range, a synthetic radar from our own Meteosat
-  data** (`core/satellite/synthetic-radar.ts`), built the way the owner reads the satellite and checked against the cells they circled by hand:
-  🔒 **rain only at the cores, never over a whole cloud or lightning area** (the owner, Trichy storm 2026-10-23): where a top bloomed in the
-  last hour (a new cold core; a spreading anvil is none), carried with the 850 hPa wind, or a dome standing out of its cloud; each core 5 km
-  wide, stretched toward where it goes; lightning only light rain right at the strokes and a heavy core (47 to 58 dBZ) where they crowd most.
-  Flat anvils far from storms, their rims, thin cirrus and yellow low cloud stay dry; the thick anvil within 50 km of active cores gets light
-  rain (13 to 28 dBZ), as Karaikal showed on 23 Oct. **It looks like radar** (the owner, 23 Oct): a fixed fractal texture (25, 9 and 3.5 km,
-  up to 10 dB) makes it patchy with frayed edges, never round blobs. Tuned on the owner's 92 marks (rain-marks page). It fades into the real
-  radar: it is left out of a working radar's whole range (as far as the product on the map reaches) and fades in over the first 20 km past it, never overlapping it, and is shifted to match it where both see rain. Thresholds in
-  `SYNTHETIC_RADAR_CONFIG`, tunable live with `atmosSyntheticRadar.set({...})` in the browser console.
-- **The synthetic radar learns from Chennai and Karaikal** (the owner, 23 Oct: "do everything": the GREMLIN and IMSRA idea at our scale).
-  Every look, the nowcast bot keeps the satellite's inputs at each 3 km pixel against what the radars saw at the same time
-  (`core/satellite/rain-features.ts`, bot/pairs.mjs; the rain-pairs branch, never main). The verify workflow fits gradient-boosted trees from
-  them (pipeline/learn_rain.py): whether it rains and how much, from the cloud top and water-vapour channels, the dome and texture, the
-  cloud patch's size and coldest top at 250 and 273 K (a rain curve per kind of patch, PERSIANN-CCS, and the warm-topped monsoon showers,
-  IMSRA), 15 and 30 minute cooling and the water-vapour trend (Mecikalski), the shear tail, lightning and the winds. **It replaces the
-  hand-set rules only once it beats them on held-back days** (threat score at 15 dBZ, no worse at 35, frequency bias 0.6 to 1.6, with 14
-  days and 8 rain days at least); until then the rules above draw it. The rim, the texture and the fit to the real radar stay either way.
-  `atmosSyntheticRadar.set({ learned: { use: false } })` goes back to the rules; data/rain/learn.json (pipeline) shows how far it has come.
+- Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
+- **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45
+  radars, Karaikal and Chennai first. Pallikaranai, Sriharikota, Kochi, Thiruvananthapuram and Mangaluru as measured before; every other
+  one from its own pictures of 23 Oct (`core/domain/models/imd-radar-network.ts`, copies kept by the radar-pictures workflow on the
+  imd-radar-samples branch): the map square, the range printed on the picture, the legend's colours with their values. A product whose
+  picture could not be measured (the radar down, no range printed) is never fetched. Machilipatnam is left out (shut down, nothing to
+  measure). Only Karaikal, Chennai and Kochi download the loop's animations; the others join the loop with their live pictures.
+- **Where no working radar reaches, the map is a little grey** (the owner, 23 Oct 2026), so the radars' coverage shows: outside every
+  working radar's range for the product on the map (`features/map/radar-reach-overlay.ts`), under the echoes; a radar down, too old or
+  turned off leaves its ground grey; with no radar picture on the map at all, all of it is grey.
+- **Turned down: the synthetic radar from the satellite** (23 Oct 2026, the owner: "lets remove this synthetic radar changes completely"):
+  the estimate drawn outside the radars' range, its learning from the radars and the bot's pairs were all removed.
 
 ## Forecast and the rest of the map
 

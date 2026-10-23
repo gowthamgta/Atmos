@@ -547,6 +547,8 @@ export class RadarService implements OnDestroy {
     isTransparent: boolean
   ): Promise<ProcessedRadarResult | null> {
     const productConfig = station.products[productKey] || station.products.caz;
+    // a product whose picture's layout was never measured is not drawn (it would put the echoes in the wrong place)
+    if (productConfig.unmeasured) return null;
     // One address per minute: the proxy caches for 60 s, so the same picture asked for twice in a minute is downloaded once
     const cacheBuster = Math.floor(Date.now() / 60_000);
 
@@ -838,7 +840,8 @@ export class RadarService implements OnDestroy {
         await Promise.all(
           this.stations.map(async station => {
             if (this.unavailableStations().has(station.id) || this.hiddenStations().has(station.id)) return null;
-            const file = animationFile(station.code, product);
+            // only the radars that name an animation download one (a few MB each); the others join the loop with their live pictures
+            const file = station.animationFile ? animationFile(station.code, product) : null;
             // The Pallikaranai X-band and Sriharikota animations are over 20 MB each, so the loop leaves them out (their live
             // stills are still used).
             const bytes = file && station.band !== 'X-Band' && !station.skipAnimation ? await this.fetchRadarFile(file) : null;

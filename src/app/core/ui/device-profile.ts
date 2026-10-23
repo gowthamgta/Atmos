@@ -18,9 +18,11 @@ export function satelliteImageSize(phone: boolean): { width: number; height: num
   return phone ? { width: 1000, height: 1000 } : { width: 2000, height: 2000 };
 }
 
-/** Largest side of the radar mosaic (pixels): 0.5 km per pixel on desktop; about 0.6 km on a phone. */
+/** Largest side of the radar mosaic (pixels): 0.5 km per pixel where it fits, coarser over all of India. */
 export function radarMosaicMaxPx(phone: boolean): number {
-  return phone ? 2300 : 2800;
+  // the radars span all of India (about 3,500 km with their 500 km pictures): 4096 (a texture size desktop GPUs take) keeps a desktop
+  // near 0.85 km a pixel; a phone stays at 2300 for its memory
+  return phone ? 2300 : 4096;
 }
 
 /** Screen pixel ratio cap: phones draw at up to 2x (the forecast shading is light enough there), desktops at native. */

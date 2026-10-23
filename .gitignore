@@ -68,7 +68,3 @@ pipeline/data/rain_history/
 /playwright-report/
 /blob-report/
 /e2e/perf-report.json
-
-# the nowcast bot's pairs outside the workflow (bot/pairs.mjs), and the workflow's worktree of the rain-pairs branch
-/bot/pairs-out
-/rain-pairs-data

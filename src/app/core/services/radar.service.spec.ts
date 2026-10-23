@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { KARAIKAL_DWR_CONFIG, IMD_RADAR_STATIONS, rainRateToDbz } from '../domain/models/radar.model';
+import { MEASURED_STATIONS } from '../domain/models/imd-radar-network';
 import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scanNotDue, pictureNotDue } from './radar.service';
 
 describe('Radar Domain & Config', () => {
@@ -21,8 +22,24 @@ describe('Radar Domain & Config', () => {
     expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.67, 1);
   });
 
-  it('should have the two radars kept (Karaikal and Chennai) properly configured', () => {
-    expect(IMD_RADAR_STATIONS.length).toBe(2);
+  it('has every IMD radar, Karaikal and Chennai first, each product a file of its own code', () => {
+    expect(IMD_RADAR_STATIONS.length).toBeGreaterThanOrEqual(40);
+    expect(IMD_RADAR_STATIONS.slice(0, 2).map(s => s.id)).toEqual(['karaikal', 'chennai']);
+    expect(new Set(IMD_RADAR_STATIONS.map(s => s.id)).size).toBe(IMD_RADAR_STATIONS.length);
+    for (const st of IMD_RADAR_STATIONS) {
+      expect(st.lat).toBeGreaterThan(6);
+      expect(st.lat).toBeLessThan(36);
+      expect(st.lng).toBeGreaterThan(68);
+      expect(st.lng).toBeLessThan(98);
+      for (const product of Object.values(st.products)) {
+        expect(product.file).toContain(`_${st.code}.gif`);
+        if (product.unmeasured) continue;
+        // the measured network (imd-radar-network.ts): a map square, spanning its range to each side
+        if (MEASURED_STATIONS.some(m => m.id === st.id)) expect(Math.abs(product.crop!.w - product.crop!.h)).toBeLessThanOrEqual(3);
+        expect(product.rangeKm).toBeGreaterThan(50);
+        expect(product.rangeKm).toBeLessThanOrEqual(600);
+      }
+    }
 
     const requiredStations = ['karaikal', 'chennai'];
     for (const id of requiredStations) {

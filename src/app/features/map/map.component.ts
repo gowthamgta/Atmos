@@ -20,11 +20,6 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
-import { SatelliteRainLayer } from '../../core/rendering/satellite-rain.layer';
-import { SatelliteRainService } from '../../core/satellite/satellite-rain.service';
-import type { RealRadarInput } from '../../core/satellite/synthetic-radar';
-import type { PairRadar } from '../../core/satellite/rain-features';
-import { RADAR_FIELD_MAX } from '../../core/services/radar-field';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
@@ -36,12 +31,11 @@ import type { MapView } from '../../core/satellite/satellite-window';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
 import { TerrainService } from '../../core/forecast/terrain.service';
 import { syncCoverageLayer } from './radar-coverage-overlay';
+import { REACH_LAYER_ID, drawReach, syncReachLayer } from './radar-reach-overlay';
 
 /** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
 const KALLAKURICHI = { lng: 78.96, lat: 11.74 } as const;
 const HOME_ZOOM = 6.2;
-/** The bot pairs a satellite frame with a radar picture at most this far from its time (the loop's steps are 10 minutes apart). */
-const PAIR_MAX_GAP_MIN = 6;
 /** How far the map can be panned and zoomed out: wide enough to roam freely beyond the forecast area. */
 
 // State and district outlines for South India and Sri Lanka (built by scripts/build-boundaries.py).
@@ -114,73 +108,24 @@ export class MapComponent implements OnInit, OnDestroy {
     this.syncOverlays(layers);
   });
 
-  // Reactive Effect: rain estimated from the satellite where no working radar sees (satellite-rain.layer.ts), under the radar echoes
-  private satelliteRainEffect = effect(() => {
+  // Reactive Effect: a light grey wherever no working radar reaches (radar-reach-overlay.ts), under the echoes, while the radar is on
+  private reachKey = '';
+  private reachEffect = effect(() => {
     const on = this.layerService.layers().some(l => l.id === 'radar' && l.active);
-    const data = this.satelliteRain.latest();
     const unavailable = this.radarService.unavailableStations();
     const hidden = this.radarService.hiddenStations();
     this.radarService.stationTimings();
     const product = this.radarService.activeProduct();
-    // no radar picture on the map at all (its newest scan too old to show): the estimate covers the radars' ground too, no hole
+    // no radar picture on the map at all (every scan too old to show): all of it is grey
     const radarDrawn = this.radarService.displayed() !== null;
-    const opacity = this.radarService.radarOpacity();
-    untracked(() => {
-      this.satelliteRain.setInputs({ strikes: () => this.forecastMap.lightningNow(), radar: () => this.realRadarForEstimate(), radarAt: t => this.radarNear(t) });
-      if (on) this.satelliteRain.activate();
-      else this.satelliteRain.deactivate();
-    });
     if (!this.map || !this.isMapLoaded()) return;
-    if (!on || !data) {
-      if (this.satelliteRainLayer && this.map.getLayer(this.satelliteRainLayer.id)) this.map.removeLayer(this.satelliteRainLayer.id);
-      this.satelliteRainLayer = null;
-      return;
-    }
-    if (!this.satelliteRainLayer) {
-      this.satelliteRainLayer = new SatelliteRainLayer();
-      this.map.addLayer(this.satelliteRainLayer, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
-    }
-    this.satelliteRainLayer.setField(data.dbz4, data.w, data.h, data.bounds);
-    // the radars that show something (not down, not turned off, a picture under 3 hours old), each as far as the product on the map
-    // reaches (a PPZ can reach 500 km, the CAZ 250): the estimate stays out of all of it, so the two never overlap
-    const working = radarDrawn ? this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline') : [];
-    this.satelliteRainLayer.setRadars(working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[product]?.rangeKm ?? st.operationalRangeKm })));
-    this.satelliteRainLayer.setOpacity(opacity);
+    const working = on && radarDrawn ? this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline') : [];
+    const discs = working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[product]?.rangeKm ?? st.operationalRangeKm }));
+    const key = on ? JSON.stringify(discs) : '';
+    if (key === this.reachKey && (!on || this.map.getLayer(REACH_LAYER_ID))) return;
+    this.reachKey = key;
+    syncReachLayer(this.map, on ? drawReach(discs) : null, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
   });
-
-  // a new live radar picture: the estimate is matched to it again (rule 4 of synthetic-radar.ts)
-  private satelliteRainCalibration = effect(() => {
-    if (!this.radarService.liveFrame()) return;
-    untracked(() => this.satelliteRain.rebuild());
-  });
-
-  /** The live radar picture and the discs of the radars that work, for matching the estimate to the radar. */
-  private realRadarForEstimate(): RealRadarInput | null {
-    const live = this.radarService.liveFrame();
-    return live ? this.radarInput(live) : null;
-  }
-
-  private radarInput(frame: RadarDisplayFrame): RealRadarInput {
-    const unavailable = this.radarService.unavailableStations();
-    const hidden = this.radarService.hiddenStations();
-    const discs = this.radarService.stations
-      .filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline')
-      .map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[this.radarService.activeProduct()]?.rangeKm ?? st.operationalRangeKm }));
-    const c = frame.coordinates;
-    return { field: frame.field, width: frame.width, height: frame.height, box: { west: c[0][0], north: c[0][1], east: c[1][0], south: c[2][1] }, maxIntensity: RADAR_FIELD_MAX, discs };
-  }
-
-  /** The radar picture nearest a time (the live one or a step of the last hour's loop), within PAIR_MAX_GAP_MIN, for the bot's pairs. */
-  private radarNear(timeMs: number): PairRadar | null {
-    const frames: RadarDisplayFrame[] = [...this.radarService.history(), ...(this.radarService.liveFrame() ? [this.radarService.liveFrame()!] : [])];
-    let best: RadarDisplayFrame | null = null;
-    for (const f of frames) if (f.timeMs !== null && (!best || Math.abs(f.timeMs - timeMs) < Math.abs(best.timeMs! - timeMs))) best = f;
-    if (!best || Math.abs(best.timeMs! - timeMs) > PAIR_MAX_GAP_MIN * 60_000) return null;
-    return { ...this.radarInput(best), timeMs: best.timeMs! };
-  }
-
-  private satelliteRainLayer: SatelliteRainLayer | null = null;
-  private readonly satelliteRain = inject(SatelliteRainService);
 
   // Reactive Effect: Unified Merged Radar Mosaic across all active stations
   private radarMosaicEffect = effect(() => {

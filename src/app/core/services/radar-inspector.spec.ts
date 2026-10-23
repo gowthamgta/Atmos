@@ -41,6 +41,6 @@ describe('radar inspector', () => {
     expect(empty.dbz).toBeNull();
     expect(empty.label).toBe('No echo');
     expect(empty.beams.length).toBe(2);
-    expect(inspectRadar(input(null), 20, 72, { x: 0, y: 0 })).toBeNull();
+    expect(inspectRadar(input(null), 20, 66, { x: 0, y: 0 })).toBeNull(); // the open Arabian Sea, beyond every radar
   });
 });

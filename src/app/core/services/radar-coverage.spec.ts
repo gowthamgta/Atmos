@@ -112,10 +112,16 @@ describe('the haze picture', () => {
 describe('the baked file', () => {
   const meta = parseCoverageMeta(JSON.parse(readFileSync('public/data/radar-coverage.json', 'utf8')));
 
-  it('is for exactly the radars the app has (add a radar, bake the file again: pipeline/build_radar_coverage.py)', () => {
+  it('is for exactly the radars of the app that reach its box (add a radar, bake the file again: pipeline/build_radar_coverage.py)', () => {
     expect(meta).not.toBeNull();
     const baked = meta!.stations.map(s => s.id).sort();
-    expect(baked).toEqual(IMD_RADAR_STATIONS.map(s => s.id).sort());
+    // a radar's column-maximum picture, as a box in degrees, overlapping the file's box
+    const reaches = IMD_RADAR_STATIONS.filter(s => {
+      if (s.products.caz.unmeasured) return false;
+      const dLat = s.products.caz.rangeKm / 111.32, dLng = s.products.caz.rangeKm / (111.32 * Math.cos((s.lat * Math.PI) / 180));
+      return s.lat - dLat < meta!.north && s.lat + dLat > meta!.south && s.lng - dLng < meta!.east && s.lng + dLng > meta!.west;
+    });
+    expect(baked).toEqual(reaches.map(s => s.id).sort());
     for (const s of meta!.stations) {
       const app = IMD_RADAR_STATIONS.find(x => x.id === s.id)!;
       expect(s.lat).toBeCloseTo(app.lat, 4);
@@ -126,9 +132,14 @@ describe('the baked file', () => {
 
   it('has the site of every radar seen well, and nothing at the corners of the box', () => {
     const grid: CoverageGrid = { meta: meta!, classes: decodeGrayPng(readFileSync('public/data/radar-coverage.png'), meta!.nx, meta!.ny) };
-    for (const s of meta!.stations) expect(coverageAt(grid, s.lat, s.lng), s.id).toBe(COVERAGE_GOOD);
-    expect(coverageAt(grid, meta!.south, meta!.west)).toBe(COVERAGE_NONE);
-    expect(coverageAt(grid, meta!.north, meta!.east)).toBe(COVERAGE_NONE);
+    // (a radar north of the box, Hyderabad say, reaches into it from outside)
+    const inside = meta!.stations.filter(s => s.lat > meta!.south && s.lat < meta!.north && s.lng > meta!.west && s.lng < meta!.east);
+    expect(inside.length).toBeGreaterThanOrEqual(7);
+    for (const s of inside) expect(coverageAt(grid, s.lat, s.lng), s.id).toBe(COVERAGE_GOOD);
+    expect(coverageAt(grid, meta!.south, meta!.west)).toBe(COVERAGE_NONE);   // the open Arabian Sea
+    // the north-east corner is now within Visakhapatnam's range: some coverage there, none at the far south-east sea
+    expect(coverageAt(grid, meta!.north, meta!.east)).not.toBe(COVERAGE_NONE);
+    expect(coverageAt(grid, meta!.south, meta!.east)).toBe(COVERAGE_NONE);
     // the classes are all there: the beam rises with distance, so some places are partly or poorly seen
     const seen = new Set(grid.classes);
     for (const c of [COVERAGE_NONE, COVERAGE_POOR, COVERAGE_LIMITED, COVERAGE_GOOD]) expect(seen.has(c), 'class ' + c).toBe(true);

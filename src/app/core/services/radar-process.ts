@@ -39,10 +39,9 @@ export function looksLikeRadar(rgba: Uint8ClampedArray | Uint8Array, w: number, 
       const r = rgba[o], g = rgba[o + 1], b = rgba[o + 2];
       for (let i = 0; i < palette.length; i++) {
         const c = palette[i].rgb;
-        if (Math.abs(r - c[0]) + Math.abs(g - c[1]) + Math.abs(b - c[2]) <= 9) {
-          seen[i]++;
-          break;
-        }
+        // within the entry's own tolerance: a gradient legend sampled every few rows of its bar has neighbours a few levels apart
+        // every entry the pixel is close to (near-identical neighbours of a gradient legend all count)
+        if (Math.abs(r - c[0]) + Math.abs(g - c[1]) + Math.abs(b - c[2]) <= Math.max(9, 2 * (palette[i].tol ?? 0))) seen[i]++;
       }
     }
   }

@@ -7,7 +7,6 @@ import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
 import { RadarProductKey } from '../../core/domain/models/radar.model';
 import { VerificationService } from '../../core/forecast/verification.service';
-import { SatelliteRainService } from '../../core/satellite/satellite-rain.service';
 
 interface ProductOption {
   key: RadarProductKey;
@@ -116,13 +115,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
           </div>
           <p class="aloft-note full-only">See-through faint echoes: the radars see them only from 2 km or more up, so that rain may not reach the ground.</p>
         </div>
-        @if (satRainAge(); as age) {
-          @if (satRainLearned()) {
-            <p class="aloft-note full-only">Outside Chennai and Karaikal's range: synthetic radar from Meteosat-9 ({{ age }} min old), learned from what Chennai and Karaikal saw under the same kinds of cloud, cooling and lightning. An estimate, not radar.</p>
-          } @else {
-            <p class="aloft-note full-only">Outside Chennai and Karaikal's range: synthetic radar from Meteosat-9 ({{ age }} min old): heavier rain where tops bloomed in the last hour (carried with the wind) and where the lightning crowds, light rain under the thick anvil near them. An estimate, not radar.</p>
-          }
-        }
         <app-lightning-key class="full-only" />
       </section>
     }
@@ -216,14 +208,6 @@ export class RadarPanelComponent {
 
   protected readonly radar = inject(RadarService);
   protected readonly storms = inject(StormTracksService);
-  private readonly satRain = inject(SatelliteRainService);
-  /** How old the satellite rain estimate is (minutes), shown while there is one. */
-  /** The synthetic radar is drawn by the model learned from the radars (rain-features.ts), not the hand-set rules. */
-  protected readonly satRainLearned = computed(() => this.satRain.latest()?.stats.learned === true);
-  protected readonly satRainAge = computed(() => {
-    const d = this.satRain.latest();
-    return d ? Math.max(1, Math.round((this.radar.liveClock() - d.timeMs) / 60_000)) : null;
-  });
   protected readonly frames = this.radar.history;
   protected readonly playing = this.radar.playing;
   protected readonly nowcast = inject(RadarNowcastService);
