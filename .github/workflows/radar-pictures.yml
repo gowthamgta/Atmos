@@ -4,6 +4,11 @@ name: radar-pictures
 # Used to measure a new station's layout (crop, range, colour legend, where the scan time is printed) before it goes into radar.model.ts.
 on:
   workflow_dispatch:
+    inputs:
+      skip:
+        description: "Station codes to leave out, space-separated"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -15,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Fetch
+        env:
+          SKIP: ${{ inputs.skip }}
         run: |
           mkdir -p out/pages out/gif
           UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -36,6 +43,8 @@ jobs:
           codes=$(cat out/pages/*.html 2>/dev/null | grep -oiE '(caz|ppi|ppz|sri|pac|maxz)_[a-z0-9]{3,12}\.gif' | sed -E 's/^[a-z]+_//I; s/\.gif$//I' | tr 'A-Z' 'a-z' | sort -u)
           known="agt bhj bhp cni dlh goa hyd jpr kkl koc kol lck mpt mum ngp ptl ptn pdp shr vsk tvm mlr plk srn jmu cpj mks kuf mur lns bnh vrv gop mbr sur jot ptm"
           codes=$(printf "%s\n" $codes $known | sort -u)
+          # codes already measured (their pictures are big: the push timed out with them)
+          for c in ${SKIP:-}; do codes=$(echo "$codes" | grep -vx "$c" || true); done
           echo "$codes" > out/codes.txt
           for c in $codes; do
             for k in caz ppi ppz sri pac; do
@@ -53,4 +62,5 @@ jobs:
           rm -rf out
           git add -A
           git commit -qm "IMD radar pictures, $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -f origin imd-radar-samples
+          git config http.postBuffer 524288000
+          for i in 1 2 3; do git push -f origin imd-radar-samples && break; sleep 10; done
