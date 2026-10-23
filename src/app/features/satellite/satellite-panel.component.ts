@@ -67,6 +67,10 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 <button type="button" [class.on]="sat.ownSatellite() === s.id" [attr.aria-pressed]="sat.ownSatellite() === s.id" (click)="sat.setOwnSatellite(s.id)">{{ s.name }}</button>
               }
             </div>
+            <div class="channel view3d" role="group" aria-label="Picture">
+              <button type="button" [class.on]="sat.source() === 'rgb'" [attr.aria-pressed]="sat.source() === 'rgb'" (click)="pick('rgb')" title="The visible picture in its own colours (by day)">RGB</button>
+              <button type="button" [class.on]="sat.source() === 'infrared'" [attr.aria-pressed]="sat.source() === 'infrared'" (click)="pick('infrared')" title="Cloud-top temperature in Windy's colours, day and night">Infrared</button>
+            </div>
             @if (sat.ownEmpty() === 'night') {
               <p class="hint3d">The RGB needs daylight: the infrared takes over at night.</p>
             } @else if (sat.ownEmpty() === 'none') {
@@ -87,7 +91,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 }
               </div>
             </div>
-            <p class="hint3d full-only">Built from Meteosat-9's live pictures (EUMETView). Tops from the cloud-top temperature, thickness from how bright the cloud is; the small billows are drawn, not measured. Tilt with right-drag or two fingers.</p>
+            <p class="hint3d full-only">Shaped by the satellite's own 1.25 km picture, tops from the measured cloud-top temperature, thickness from how bright the cloud is; only the finest billows are drawn. Tilt with right-drag or two fingers.</p>
           }
           <div class="scan">
             <span>{{ timeLabel() }}</span>

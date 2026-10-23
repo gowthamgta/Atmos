@@ -98,7 +98,7 @@ export class SatelliteService {
    * What is drawn: one of our own pictures (own-products.ts) from Meteosat-9 or Himawari-9, or, behind the 3D clouds only, EUMETView's
    * pictures (the clouds' shapes are built from them). Unless the viewer picks one, it follows the day: infrared at night, our RGB by day.
    */
-  readonly source = signal<SatelliteSource>(readFlag('atmosiq.satellite.3d', false) ? 'eumetview' : autoKind(readOwnSatellite(), isDayNow()));
+  readonly source = signal<SatelliteSource>(readFlag('atmosiq.satellite.3d', false) && !isDayNow() ? 'eumetview' : autoKind(readOwnSatellite(), isDayNow()));
   /** The kind the viewer picked (until the page is loaded again); null: follow the day. */
   private picked: OwnKind | null = null;
   /** The custom RGB's recipe (own-products.ts), remembered between visits. */
@@ -210,8 +210,8 @@ export class SatelliteService {
   setThreeD(on: boolean): void {
     this.threeD.set(on);
     writeFlag('atmosiq.satellite.3d', on);
-    // the 3D clouds are built from EUMETView's pictures of Meteosat; the flat view shows ours
-    this.setSource(on ? 'eumetview' : this.wantedKind());
+    // the 3D clouds are built from our RGB frames by day (their field has the measured tops), from EUMETView's infrared at night
+    this.setSource(on ? (isDayNow() ? 'rgb' : 'eumetview') : this.wantedKind());
   }
 
   setHeightScale(scale: number): void {

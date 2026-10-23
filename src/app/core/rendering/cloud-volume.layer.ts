@@ -89,6 +89,9 @@ uniform vec3 u_skyColor;
 uniform float u_exag;       // the height scale
 uniform float u_steps;
 uniform float u_shadow;     // how dark a cloud's shadow on the map is
+uniform sampler2D u_detA;   // the frame's own picture (Mercator, over the field's box): its visible brightness shapes the clouds
+uniform sampler2D u_detB;
+uniform float u_hasDet;
 in vec2 v_uv;
 out vec4 o;
 
@@ -98,6 +101,14 @@ const float TAU_MAX = ${FIELD_TAU_MAX.toFixed(1)};
 float sat(float v) { return clamp(v, 0.0, 1.0); }
 float remap(float v, float a, float b, float c, float d) { return c + (v - a) / max(b - a, 1e-4) * (d - c); }
 float hash12(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+
+// the picture's brightness at a place (0..1, the visible channel of the frame's own picture), moved as the column is
+float detailAt(vec2 uvA, vec2 uvB) {
+  float a = texture(u_detA, uvA).r;
+  return u_hasB == 1 ? mix(a, texture(u_detB, uvB).r, u_mixB) : a;
+}
+
+float g_det = 0.0;   // the picture's brightness where column() last looked
 
 // the cloud column at a map position (cover, top km, base km, optical thickness), moved along the loop's motion between two frames
 vec4 column(vec2 uv) {
@@ -111,6 +122,7 @@ vec4 column(vec2 uv) {
   }
   vec4 f = texture(u_a, uvA);
   if (u_hasB == 1) f = mix(f, texture(u_b, uvB), u_mixB);
+  g_det = u_hasDet > 0.5 ? detailAt(uvA, uvB) : 0.5;
   return vec4(f.r, f.g * KM, f.b * KM, f.a * f.a * TAU_MAX);
 }
 
@@ -126,12 +138,16 @@ vec2 cloudAt(vec3 p) {
   bool cirrus = c.b > 6.0 && c.a < 10.0;
   // flat base, rounded top for heaped cloud; a soft layer for thin high cloud
   float prof = cirrus ? smoothstep(-0.1, 0.3, h) * (1.0 - smoothstep(0.6, 1.05, h)) : smoothstep(-0.03, 0.1, h) * (1.0 - smoothstep(0.7, 1.02, h));
-  // the noise: billows several km across (finer than the march can step through would shimmer); cirrus stretched into strands
-  vec3 q = cirrus ? vec3(p.x * 0.008, p.y * 0.025, z * 0.12) : vec3(p.xy * 0.035, z * 0.07);
+  // the shape comes from the satellite's own picture (1.25 km): where it is bright there is cloud, its gaps are holes, its texture the
+  // billows; the noise only adds the small detail the picture cannot show, warped so it never repeats in a visible pattern
+  vec3 q = cirrus ? vec3(p.x * 0.008, p.y * 0.025, z * 0.12) : vec3(p.xy * 0.05, z * 0.09);
+  q.xy += (texture(u_noise, q * 0.31 + 0.17).gb - 0.5) * 0.35;
   vec4 n = texture(u_noise, q);
+  float pic = smoothstep(0.28, 0.78, g_det);
+  float shape = mix(n.r, pic * (0.75 + 0.25 * n.r), u_hasDet * 0.8);
   float coverage = c.r * prof;
-  float d = sat(remap(n.r, 1.0 - coverage, 1.0, 0.0, 1.0));
-  d = sat(remap(d, n.g * (cirrus ? 0.2 : 0.4), 1.0, 0.0, 1.0));
+  float d = sat(remap(shape, 1.0 - coverage, 1.0, 0.0, 1.0));
+  d = sat(remap(d, n.g * (cirrus ? 0.15 : 0.25), 1.0, 0.0, 1.0));
   float sigma = clamp(c.a / thick, 0.05, 60.0);
   return vec2(d, sigma);
 }
@@ -141,13 +157,13 @@ float phaseHG(float c, float g) { float g2 = g * g; return (1.0 - g2) / (12.566 
 // the optical depth from a point toward the light (the path stretched with the heights, as the clouds are)
 float sunTau(vec3 p, vec3 sunS) {
   float tau = 0.0;
-  float step = 0.4;
+  float step = 0.25;   // starts small: a cloud's own billows shade one another
   vec3 x = p;
   for (int i = 0; i < 4; i++) {
     x += sunS * step;
     vec2 c = cloudAt(vec3(x.xy, x.z / u_exag));
     tau += c.x * c.y * step;
-    step *= 2.0;
+    step *= 2.2;
   }
   return tau;
 }
@@ -192,6 +208,8 @@ void main() {
       float tau = sunTau(p, sunS);
       vec3 lum = u_sunColor * (exp(-tau) * ph0 + 0.5 * exp(-0.3 * tau) * ph1 + 0.25 * exp(-0.1 * tau) * ph2) * 0.6
         + u_skyColor * (0.35 + 0.65 * exp(-0.05 * tau)) * (0.6 + 0.4 * sat(p.z / (12.0 * u_exag)));
+      // the light and shade the satellite itself saw on these tops (its brightness here): the real texture of the cloud's surface
+      if (u_hasDet > 0.5) lum *= mix(0.45, 1.1, smoothstep(0.2, 0.9, g_det));
       float a = exp(-sigma * dt);
       L += T * lum * (1.0 - a);
       T *= a;
@@ -202,6 +220,7 @@ void main() {
   }
   float alpha = 1.0 - T;
   vec3 col = alpha > 1e-4 ? L / alpha : vec3(0.0);
+  col *= 0.85;
   col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);   // filmic tone map
   col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / 2.2));
   vec4 res = vec4(col * alpha, alpha);
@@ -236,6 +255,8 @@ export interface CloudVolumeFrame {
   key: string;
   field: CloudField | null;
   timeMs: number;
+  /** The frame's own picture (an image address; Mercator over the field's box), whose brightness shapes the clouds. */
+  picture?: string;
 }
 
 /** The noise texture's size (a cube); made a few slices a frame. */
@@ -277,7 +298,53 @@ export class CloudVolumeLayer implements CustomLayerInterface {
 
   setFrames(frames: readonly CloudVolumeFrame[]): void {
     this.frames = frames;
+    const keep = new Set(frames.map(f => f.picture).filter(Boolean));
+    for (const [url, t] of this.pictures) {
+      if (keep.has(url)) continue;
+      t.bitmap?.close();
+      if (t.texture && this.gl) this.gl.deleteTexture(t.texture);
+      this.pictures.delete(url);
+    }
+    for (const f of frames) if (f.picture && !this.pictures.has(f.picture)) void this.loadPicture(f.picture);
     this.map?.triggerRepaint();
+  }
+
+  private readonly pictures = new Map<string, { bitmap: ImageBitmap | null; texture: WebGLTexture | null }>();
+
+  private async loadPicture(url: string): Promise<void> {
+    const slot = { bitmap: null as ImageBitmap | null, texture: null as WebGLTexture | null };
+    this.pictures.set(url, slot);
+    try {
+      const blob = await (await fetch(url)).blob();
+      const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+      if (this.pictures.get(url) !== slot) return bitmap.close();
+      slot.bitmap = bitmap;
+      this.map?.triggerRepaint();
+    } catch {
+      this.pictures.delete(url);
+    }
+  }
+
+  /** The picture's texture (with mipmaps: seen from afar it is read averaged), uploaded on first use. */
+  private pictureTexture(gl: WebGL2RenderingContext, url: string | undefined): WebGLTexture | null {
+    const slot = url ? this.pictures.get(url) : undefined;
+    if (!slot) return null;
+    if (!slot.texture && slot.bitmap) {
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, slot.bitmap);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      slot.texture = tex;
+      slot.bitmap.close();
+      slot.bitmap = null;
+    }
+    return slot.texture;
   }
 
   setFlows(flows: readonly (FlowField | null)[]): void {
@@ -322,6 +389,11 @@ export class CloudVolumeLayer implements CustomLayerInterface {
   }
 
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
+    for (const t of this.pictures.values()) {
+      t.bitmap?.close();
+      if (t.texture) gl.deleteTexture(t.texture);
+    }
+    this.pictures.clear();
     for (const p of [this.noiseProg, this.marchProg, this.compProg]) if (p?.handle) gl.deleteProgram(p.handle);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
@@ -475,7 +547,7 @@ export class CloudVolumeLayer implements CustomLayerInterface {
     const night = sun[2] < Math.sin((3 * Math.PI) / 180);
     const light = night ? [0.25, -0.35, 0.9] : sun;
     const warm = night ? 0 : Math.min(1, Math.max(0, (sun[2] - 0.05) / 0.4)); // reddened near sunrise and sunset
-    const sunColor = night ? [0.42, 0.46, 0.58] : [2.6, 2.6 * (0.78 + 0.18 * warm), 2.6 * (0.55 + 0.37 * warm)];
+    const sunColor = night ? [0.42, 0.46, 0.58] : [1.55, 1.55 * (0.8 + 0.17 * warm), 1.55 * (0.6 + 0.35 * warm)];   // sunlit tops near white, shaded sides grey
     const sky = night ? [0.1, 0.12, 0.17] : [0.3, 0.38, 0.52];
 
     gl.useProgram(march);
@@ -494,6 +566,17 @@ export class CloudVolumeLayer implements CustomLayerInterface {
     gl.uniform1i(u('u_b'), 1);
     gl.uniform1i(u('u_noise'), 2);
     gl.uniform1i(u('u_flow'), 3);
+    // the frames' own pictures (both needed while fading from one to the next)
+    const detA = this.pictureTexture(gl, fa.picture);
+    const detB = fb ? this.pictureTexture(gl, fb.picture) : detA;
+    const hasDet = !!detA && !!detB;
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, hasDet ? detA : this.fieldTexture(gl, fa.field));
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, hasDet ? detB : this.fieldTexture(gl, fa.field));
+    gl.uniform1i(u('u_detA'), 4);
+    gl.uniform1i(u('u_detB'), 5);
+    gl.uniform1f(u('u_hasDet'), hasDet ? 1 : 0);
     gl.uniform1i(u('u_hasB'), fb ? 1 : 0);
     gl.uniform1i(u('u_hasFlow'), flow ? 1 : 0);
     gl.uniform1f(u('u_mixB'), fb ? frac : 0);

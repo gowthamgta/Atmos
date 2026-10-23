@@ -148,7 +148,7 @@ export class MapComponent implements OnInit, OnDestroy {
     // our own pictures (own-products.ts): the 3D clouds are built from EUMETView's frames only
     const own = frames[0]?.own;
     const shader = !!own && isShaderKind(own.kind);
-    const show3D = threeD && !own;
+    const show3D = threeD && (!own || own.kind === 'rgb');   // our RGB frames carry the 3D field (with measured tops)
     this.updateSatelliteOverlay(on && !shader, frames, position, show3D ? 0 : opacity);
     this.updateSatelliteData(on && shader, frames, position, opacity, custom);
     this.updateCloudVolume(on && show3D, frames, position, opacity, heightScale);
@@ -647,7 +647,7 @@ export class MapComponent implements OnInit, OnDestroy {
       this.tiltedFor3D = true;
       if (map.getPitch() < 30) map.easeTo({ pitch: 55, duration: 1200 });
     }
-    this.cloudVolume.setFrames(frames.map(f => ({ key: f.url, field: f.cloudField ?? null, timeMs: f.timeMs })));
+    this.cloudVolume.setFrames(frames.map(f => ({ key: f.url, field: f.cloudField ?? null, timeMs: f.timeMs, picture: f.url })));
     this.cloudVolume.setFlows(this.satellite.flows());
     this.cloudVolume.setHeightScale(heightScale);
     this.cloudVolume.setPosition(position, opacity);
