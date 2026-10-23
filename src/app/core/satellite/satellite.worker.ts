@@ -93,7 +93,14 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover);
     const grid = !bounds && bt ? await brightnessGrid(bt) : null;
     const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0, grid);
-    const png = encodePng(rawSrc ? toRawMercator(rawSrc, width, height, outHeight, box) : pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
+    let out = pixels;
+    if (rawSrc) {
+      // the satellite's own colours on the cloud, the ground and sea see-through (the map's own colours show): each pixel as opaque as the
+      // ground removal found it to be cloud
+      out = toRawMercator(rawSrc, width, height, outHeight, box);
+      for (let i = 3; i < out.length; i += 4) out[i] = Math.min(out[i], pixels[i]);
+    }
+    const png = encodePng(out, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)
     const motion = bounds ? undefined : motionGrid(pixels, width, outHeight);
     const transfer: Transferable[] = [];
