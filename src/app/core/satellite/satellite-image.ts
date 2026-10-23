@@ -776,3 +776,29 @@ export function windyInfraredTable(minK: number, spanK: number, steps = 256): Ui
   }
   return out;
 }
+
+/**
+ * A picture in its own colours, its rows re-spaced to Mercator (as toOverlayPixels does, linear between the two nearest rows): opaque where
+ * it has data, clear where it is black (no data). Our RGB from the raw data is drawn this way, as the satellite recipe made it.
+ */
+export function toRawMercator(src: Uint8ClampedArray, width: number, srcHeight: number, outHeight: number, b = SATELLITE_BOUNDS): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(width * outHeight * 4);
+  const rowMap = mercatorRowMap(srcHeight, outHeight, b);
+  for (let r = 0; r < outHeight; r++) {
+    const f = rowMap[r];
+    const y0 = Math.floor(f);
+    const y1 = Math.min(y0 + 1, srcHeight - 1);
+    const w = f - y0;
+    const a = y0 * width * 4;
+    const c = y1 * width * 4;
+    for (let x = 0, o = r * width * 4; x < width; x++, o += 4) {
+      const i = x * 4;
+      const R = src[a + i] * (1 - w) + src[c + i] * w;
+      const G = src[a + i + 1] * (1 - w) + src[c + i + 1] * w;
+      const B = src[a + i + 2] * (1 - w) + src[c + i + 2] * w;
+      out[o] = R; out[o + 1] = G; out[o + 2] = B;
+      out[o + 3] = R + G + B > 3 ? 255 : 0;
+    }
+  }
+  return out;
+}

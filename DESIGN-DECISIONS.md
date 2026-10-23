@@ -20,6 +20,9 @@ fingerprint only together with this file, on the owner's request.
   level scale read cold tops 10-20 C too cold; measured 22 Oct, r = 0.99). Also HRV, sandwich, convection, night micro, WV difference and a
   custom WMO-formula RGB; the hover readout is measured. EUMETView's pictures are no longer offered as a choice: they remain only behind the
   3D clouds. The agreed look below stays recorded (and fingerprinted) for that path.
+- **The day RGB is drawn in its own colours** (owner, 23 Oct: "why cant we apply our raw rgb"): EUMETSAT's HRV Cloud RGB from the raw
+  data (pipeline hrv_clouds_rgb: EUMETView's brightness curve, highlights rolled off above 190, sun normalisation capped at 70 degrees),
+  only re-spaced to Mercator (toRawMercator), not recoloured by the Windy ramps and not cleared of the ground.
 - **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.

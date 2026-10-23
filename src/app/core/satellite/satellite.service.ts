@@ -379,7 +379,7 @@ export class SatelliteService {
       if (!p) {
         p = fetch(url)
           .then(r => (r.ok ? r.blob() : null))
-          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true) : null))
+          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true, true) : null))
           .then(res => res && {
             timeMs: it.timeMs,
             product: SATELLITE_HRV,
@@ -645,6 +645,7 @@ export class SatelliteService {
     timeMs?: number,
     bounds?: GeoBounds,
     lossless = false,
+    raw = false,
   ): Promise<{ url: string; lumaGrid?: Uint8Array; motion?: MotionGrid; cloudField?: CloudField } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
@@ -653,7 +654,7 @@ export class SatelliteService {
     const btPending = bounds || timeMs === undefined ? Promise.resolve(undefined) : this.brightnessFor(timeMs);
     return btPending.then(bt => new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid, motion: r.motion, cloudField: r.cloudField } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless, bt } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless, bt, raw } satisfies SatelliteWorkerRequest);
     }));
   }
 

@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { buildLumaGrid, deblockJpeg, hrvBackground, mercatorHeight, toOverlayPixels } from './satellite-image';
+import { buildLumaGrid, deblockJpeg, hrvBackground, mercatorHeight, toOverlayPixels, toRawMercator } from './satellite-image';
 import { BrightnessGrid, CloudField, buildCloudField } from './cloud-field';
 import { enhancePicture } from './satellite-enhance';
 import { encodePng } from './png-encode';
@@ -19,6 +19,8 @@ export interface SatelliteWorkerRequest {
   bounds?: GeoBounds;
   /** The picture is a PNG (no JPEG blocks to smooth). */
   lossless?: boolean;
+  /** Draw the picture in its own colours (our RGB from the raw data), not recoloured: only re-spaced to Mercator. */
+  raw?: boolean;
   /** The frame's measured brightness temperatures (pipeline/satellite_bt.py), for the 3D clouds' heights. */
   bt?: { url: string; offsetK: number; stepK: number };
 }
@@ -59,7 +61,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     }
     return;
   }
-  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless, bt } = event.data;
+  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless, bt, raw } = event.data;
   const box = bounds ?? SATELLITE_BOUNDS;
   try {
     const bitmap = await createImageBitmap(jpeg);
@@ -82,6 +84,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     }
     // the infrared steps go (the hover readout above reads the picture as the service made it)
     const scale = pictureScale(box, width);
+    const rawSrc = raw ? src.slice() : null; // its own colours, before any smoothing
     enhancePicture(src, width, height, kind, scale);
     if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
@@ -90,7 +93,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover);
     const grid = !bounds && bt ? await brightnessGrid(bt) : null;
     const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0, grid);
-    const png = encodePng(pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
+    const png = encodePng(rawSrc ? toRawMercator(rawSrc, width, height, outHeight, box) : pixels, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)
     const motion = bounds ? undefined : motionGrid(pixels, width, outHeight);
     const transfer: Transferable[] = [];
