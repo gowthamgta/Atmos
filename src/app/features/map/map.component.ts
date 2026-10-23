@@ -118,6 +118,9 @@ export class MapComponent implements OnInit, OnDestroy {
     const unavailable = this.radarService.unavailableStations();
     const hidden = this.radarService.hiddenStations();
     this.radarService.stationTimings();
+    const product = this.radarService.activeProduct();
+    // no radar picture on the map at all (its newest scan too old to show): the estimate covers the radars' ground too, no hole
+    const radarDrawn = this.radarService.displayed() !== null;
     const opacity = this.radarService.radarOpacity();
     untracked(() => {
       this.satelliteRain.setInputs({ strikes: () => this.forecastMap.lightningNow(), radar: () => this.realRadarForEstimate() });
@@ -135,9 +138,10 @@ export class MapComponent implements OnInit, OnDestroy {
       this.map.addLayer(this.satelliteRainLayer, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
     }
     this.satelliteRainLayer.setField(data.dbz4, data.w, data.h, data.bounds);
-    // the radars that show something: not down, not turned off, a picture under 3 hours old
-    const working = this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline');
-    this.satelliteRainLayer.setRadars(working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.operationalRangeKm })));
+    // the radars that show something (not down, not turned off, a picture under 3 hours old), each as far as the product on the map
+    // reaches (a PPZ can reach 500 km, the CAZ 250): the estimate stays out of all of it, so the two never overlap
+    const working = radarDrawn ? this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline') : [];
+    this.satelliteRainLayer.setRadars(working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[product]?.rangeKm ?? st.operationalRangeKm })));
     this.satelliteRainLayer.setOpacity(opacity);
   });
 
@@ -155,7 +159,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const hidden = this.radarService.hiddenStations();
     const discs = this.radarService.stations
       .filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline')
-      .map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.operationalRangeKm }));
+      .map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[this.radarService.activeProduct()]?.rangeKm ?? st.operationalRangeKm }));
     const c = live.coordinates;
     return { field: live.field, width: live.width, height: live.height, box: { west: c[0][0], north: c[0][1], east: c[1][0], south: c[2][1] }, maxIntensity: RADAR_FIELD_MAX, discs };
   }

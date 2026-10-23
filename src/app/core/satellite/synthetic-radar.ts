@@ -22,7 +22,8 @@
  *    heavy core (47 to 58 dBZ, 5 km wide) where they crowd most, one within every 10 km; on cloud only.
  *    Under the thick anvil of an active storm, light rain (13 to 28 dBZ) within 50 km of its cores, as the radar shows.
  *    Rain reaching the ground spreads a little: a light rim (15 to 26 dBZ, about 5 km, frayed by the texture) around it, under cloud only.
- * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer fades the estimate out over the last 20 km of their range), and
+ * 4. Where Chennai or Karaikal see, the real radar is drawn (the layer leaves the estimate out of their whole range, as far as the product on
+ *    the map reaches, and fades it in over the first 20 km past it), and
  *    where both see rain the estimate is shifted by the median difference (a few dB at most) so it joins the radar without a step.
  *
  * The rain is drawn on a grid twice as fine as the data (about 1.5 km) so a 5 km core keeps its shape. Everything that can be tuned is in

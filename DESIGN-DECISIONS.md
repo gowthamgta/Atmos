@@ -59,7 +59,7 @@ fingerprint only together with this file, on the owner's request.
   Flat anvils far from storms, their rims, thin cirrus and yellow low cloud stay dry; the thick anvil within 50 km of active cores gets light
   rain (13 to 28 dBZ), as Karaikal showed on 23 Oct. **It looks like radar** (the owner, 23 Oct): a fixed fractal texture (25, 9 and 3.5 km,
   up to 10 dB) makes it patchy with frayed edges, never round blobs. Tuned on the owner's 92 marks (rain-marks page). It fades into the real
-  radar over the last 20 km of a working radar's range and is shifted to match it where both see rain. Thresholds in
+  radar: it is left out of a working radar's whole range (as far as the product on the map reaches) and fades in over the first 20 km past it, never overlapping it, and is shifted to match it where both see rain. Thresholds in
   `SYNTHETIC_RADAR_CONFIG`, tunable live with `atmosSyntheticRadar.set({...})` in the browser console.
 
 ## Forecast and the rest of the map

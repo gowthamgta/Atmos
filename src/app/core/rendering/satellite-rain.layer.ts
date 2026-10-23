@@ -6,7 +6,8 @@ import { PendingProgram } from './gl-program';
 
 /**
  * The synthetic radar (satellite/synthetic-radar.ts: satellite domes and new popups, the winds, the lightning), drawn in the radar's colours
- * under the radar echoes, faded out over the last 20 km of the range of every radar that works (the real radar is drawn there).
+ * under the radar echoes, left out of the whole range of every radar that works (the real radar is drawn there, as far as the product on
+ * the map reaches) and fading in over the first 20 km past it, so the two never overlap.
  */
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -24,7 +25,7 @@ precision highp float;
 uniform sampler2D u_field;    // reflectivity x 4 / 255
 uniform vec4 u_box;          // mercator x0, y0 (top), x1, y1 of the field
 uniform float u_opacity;
-uniform vec4 u_discs[${MAX_DISCS}];   // the working radars: mercator x, y, range, and where the fade starts (fraction of the range)
+uniform vec4 u_discs[${MAX_DISCS}];   // the working radars: mercator x, y, range, and where the fade ends (fraction of the range, past 1)
 uniform int u_discCount;
 in vec2 v_merc;
 out vec4 o;
@@ -35,12 +36,12 @@ ${bandGlsl()}
 void main() {
   vec2 uv = vec2((v_merc.x - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) discard;
-  // inside a working radar's range the radar is shown instead, fading in over the last 20 km
+  // inside a working radar's range the radar is shown instead; the estimate fades in over the first 20 km past it
   float outside = 1.0;
   for (int i = 0; i < ${MAX_DISCS}; i++) {
     if (i >= u_discCount) break;
     float d = distance(v_merc, u_discs[i].xy) / u_discs[i].z;
-    outside = min(outside, smoothstep(u_discs[i].w, 1.0, d));
+    outside = min(outside, smoothstep(1.0, u_discs[i].w, d));
   }
   if (outside <= 0.0) discard;
   float dbz = texture(u_field, uv).r * 255.0 / 4.0;
@@ -56,7 +57,7 @@ export interface RadarDisc {
   rangeKm: number;
 }
 
-/** The fade at the edge of a radar's range. */
+/** The fade-in past the edge of a radar's range. */
 const FEATHER_KM = 20;
 
 export class SatelliteRainLayer implements CustomLayerInterface {
@@ -98,7 +99,7 @@ export class SatelliteRainLayer implements CustomLayerInterface {
       const y = mercatorUnitY(r.lat);
       // the range in mercator units at the radar's latitude
       const range = (r.rangeKm / 40_075.017) / Math.cos((r.lat * Math.PI) / 180);
-      this.discs.set([x, y, range, Math.max(0, 1 - FEATHER_KM / r.rangeKm)], i * 4);
+      this.discs.set([x, y, range, 1 + FEATHER_KM / r.rangeKm], i * 4);
     });
     this.discCount = list.length;
     this.map?.triggerRepaint();
