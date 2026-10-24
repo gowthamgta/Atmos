@@ -1,0 +1,399 @@
+{
+  "generated_at": "2026-10-24T09:20:47.066228+00:00",
+  "elapsed_sec": 102.97,
+  "bounds": {
+    "south": 6.0,
+    "north": 37.5,
+    "west": 67.0,
+    "east": 98.0
+  },
+  "resolution_deg": 0.025,
+  "width": 1240,
+  "height": 1260,
+  "stations_total": 45,
+  "stations_online": 42,
+  "files": {
+    "composite_png": "india-composite.png",
+    "composite_gif": "india-composite.gif"
+  },
+  "stations": [
+    {
+      "id": "bhuj",
+      "code": "bhj",
+      "name": "Bhuj",
+      "lat": 23.2418,
+      "lng": 69.6458,
+      "time": "2026-10-24T14:11:00+00:00",
+      "rangeKm": 240
+    },
+    {
+      "id": "goa",
+      "code": "goa",
+      "name": "Goa",
+      "lat": 15.4909,
+      "lng": 73.8278,
+      "time": "2026-10-24T14:22:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "karaikal",
+      "code": "kkl",
+      "name": "Karaikal DWR",
+      "lat": 10.91294,
+      "lng": 79.84175,
+      "time": "2026-10-24T09:32:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "gopalpur",
+      "code": "gop",
+      "name": "Gopalpur",
+      "lat": 19.2624,
+      "lng": 84.898,
+      "time": "2026-10-24T14:16:00+00:00",
+      "rangeKm": 240
+    },
+    {
+      "id": "delhi-palam",
+      "code": "dlh",
+      "name": "Delhi Palam",
+      "lat": 28.5901,
+      "lng": 77.0888,
+      "time": "2026-10-24T09:19:06.150330+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "hyderabad",
+      "code": "hyd",
+      "name": "Hyderabad",
+      "lat": 17.385,
+      "lng": 78.4867,
+      "time": "2026-10-24T09:19:06.308003+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "jaipur",
+      "code": "jpr",
+      "name": "Jaipur",
+      "lat": 26.9124,
+      "lng": 75.7873,
+      "time": "2026-10-24T14:12:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "jorhat",
+      "code": "jrh",
+      "name": "Jorhat",
+      "lat": 26.71689,
+      "lng": 94.19397,
+      "time": "2026-10-24T09:19:06.804940+00:00",
+      "rangeKm": 150
+    },
+    {
+      "id": "belonia",
+      "code": "bln",
+      "name": "Belonia",
+      "lat": 23.2489,
+      "lng": 91.463,
+      "time": "2026-10-24T09:19:07.341289+00:00",
+      "rangeKm": 150
+    },
+    {
+      "id": "kolkata",
+      "code": "kol",
+      "name": "Kolkata",
+      "lat": 22.5726,
+      "lng": 88.3639,
+      "time": "2026-05-20T12:32:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "mangaluru",
+      "code": "mlr",
+      "name": "Mangaluru DWR",
+      "lat": 12.901,
+      "lng": 74.856,
+      "time": "2026-10-24T09:19:07.576924+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "jot",
+      "code": "jot",
+      "name": "Jot",
+      "lat": 32.48666,
+      "lng": 76.2673,
+      "time": "2026-10-24T14:10:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "sriharikota",
+      "code": "shr",
+      "name": "Sriharikota DWR",
+      "lat": 13.6646,
+      "lng": 80.2276,
+      "time": "2026-10-24T09:19:08.061045+00:00",
+      "rangeKm": 240
+    },
+    {
+      "id": "chennai",
+      "code": "cni",
+      "name": "Chennai DWR",
+      "lat": 13.0839,
+      "lng": 80.2901,
+      "time": "2026-10-24T02:10:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "lansdowne",
+      "code": "ldn",
+      "name": "Lansdowne",
+      "lat": 29.85,
+      "lng": 78.676666,
+      "time": "2026-10-24T14:10:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "jammu",
+      "code": "jmu",
+      "name": "Jammu",
+      "lat": 32.78166,
+      "lng": 74.83,
+      "time": "2026-10-15T12:50:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "lucknow",
+      "code": "lkn",
+      "name": "Lucknow",
+      "lat": 26.8467,
+      "lng": 80.9462,
+      "time": "2026-10-24T14:32:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "kufri",
+      "code": "kuf",
+      "name": "Kufri",
+      "lat": 31.0983333,
+      "lng": 77.265,
+      "time": "2026-10-24T14:00:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "delhi-ayanagar",
+      "code": "aya",
+      "name": "Delhi Ayanagar",
+      "lat": 28.483333,
+      "lng": 77.125,
+      "time": "2026-10-24T09:19:08.944341+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "leh",
+      "code": "leh",
+      "name": "Leh",
+      "lat": 34.28333333,
+      "lng": 77.2833333,
+      "time": "2026-06-04T10:40:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "mukteshwar",
+      "code": "mks",
+      "name": "Mukteshwar",
+      "lat": 29.46,
+      "lng": 79.66,
+      "time": "2026-10-24T12:10:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "mumbai-colaba",
+      "code": "mum",
+      "name": "Mumbai Colaba",
+      "lat": 18.9013,
+      "lng": 72.8075,
+      "time": "2026-10-24T14:18:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "paradip",
+      "code": "pdp",
+      "name": "Paradip",
+      "lat": 20.3166,
+      "lng": 86.6114,
+      "time": "2026-10-24T14:22:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "mohanbari",
+      "code": "mbr",
+      "name": "Mohanbari",
+      "lat": 27.4728,
+      "lng": 94.912,
+      "time": "2026-10-24T14:22:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "patiala",
+      "code": "ptl",
+      "name": "Patiala",
+      "lat": 30.3398,
+      "lng": 76.3869,
+      "time": "2026-10-24T09:19:09.703639+00:00",
+      "rangeKm": 300
+    },
+    {
+      "id": "patna",
+      "code": "ptn",
+      "name": "Patna",
+      "lat": 25.5941,
+      "lng": 85.1376,
+      "time": "2026-10-24T14:22:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "kochi",
+      "code": "koc",
+      "name": "Kochi DWR",
+      "lat": 9.9312,
+      "lng": 76.2673,
+      "time": "2026-10-24T09:19:10.023135+00:00",
+      "rangeKm": 255
+    },
+    {
+      "id": "murari-devi",
+      "code": "mur",
+      "name": "Murari Devi",
+      "lat": 31.505,
+      "lng": 76.81333,
+      "time": "2026-10-24T14:10:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "silkheda",
+      "code": "sil",
+      "name": "Silkheda",
+      "lat": 23.5716,
+      "lng": 77.2461,
+      "time": "2026-10-24T14:18:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "sambalpur",
+      "code": "sbp",
+      "name": "Sambalpur",
+      "lat": 21.5374,
+      "lng": 83.9809,
+      "time": "2026-10-24T09:19:10.802042+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "sohra",
+      "code": "cpj",
+      "name": "Sohra (Cherrapunji)",
+      "lat": 25.268,
+      "lng": 91.7332,
+      "time": "2026-10-22T22:21:00+00:00",
+      "rangeKm": 240
+    },
+    {
+      "id": "srinagar",
+      "code": "srn",
+      "name": "Srinagar",
+      "lat": 34.0516666,
+      "lng": 74.805,
+      "time": "2026-10-24T14:20:00+00:00",
+      "rangeKm": 100.5
+    },
+    {
+      "id": "tezpur",
+      "code": "tez",
+      "name": "Tezpur",
+      "lat": 26.63851,
+      "lng": 92.8146,
+      "time": "2026-10-24T09:19:12.494167+00:00",
+      "rangeKm": 150
+    },
+    {
+      "id": "agartala",
+      "code": "agt",
+      "name": "Agartala",
+      "lat": 23.8315,
+      "lng": 91.2868,
+      "time": "2026-10-24T14:22:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "visakhapatnam",
+      "code": "vsk",
+      "name": "Visakhapatnam",
+      "lat": 17.6868,
+      "lng": 83.2185,
+      "time": "2026-10-24T09:19:12.773940+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "surkanda-devi",
+      "code": "sur",
+      "name": "Surkanda Devi",
+      "lat": 30.41166,
+      "lng": 78.28833,
+      "time": "2026-10-24T09:19:12.975720+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "bhopal",
+      "code": "bhp",
+      "name": "Bhopal",
+      "lat": 23.2599,
+      "lng": 77.4126,
+      "time": "2026-10-24T14:12:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "banihal",
+      "code": "bnh",
+      "name": "Banihal",
+      "lat": 33.51,
+      "lng": 75.205,
+      "time": "2026-10-24T13:00:00+00:00",
+      "rangeKm": 100
+    },
+    {
+      "id": "raipur",
+      "code": "rpr",
+      "name": "Raipur",
+      "lat": 21.25,
+      "lng": 81.629997,
+      "time": "2026-10-24T14:10:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "thiruvananthapuram",
+      "code": "tvm",
+      "name": "Thiruvananthapuram DWR",
+      "lat": 8.5374,
+      "lng": 76.8657,
+      "time": "2026-10-24T14:07:00+00:00",
+      "rangeKm": 240
+    },
+    {
+      "id": "delhi-hq",
+      "code": "delhi",
+      "name": "Delhi HQ",
+      "lat": 28.5632,
+      "lng": 77.1912,
+      "time": "2026-10-24T14:22:00+00:00",
+      "rangeKm": 250
+    },
+    {
+      "id": "mumbai-veravali",
+      "code": "vrv",
+      "name": "Mumbai Veravali",
+      "lat": 19.1342,
+      "lng": 72.8762,
+      "time": "2026-10-24T14:08:00+00:00",
+      "rangeKm": 249
+    }
+  ]
+}
