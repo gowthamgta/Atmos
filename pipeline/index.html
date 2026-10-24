@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AtmosIQ — Data Service & API</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AtmosIQ operational forecast data server: ECMWF IFS, Cyclones, Ensemble Rain, and 90m Terrain.">
+  <meta http-equiv="refresh" content="2; url=https://atmosradar.netlify.app">
+  <link rel="canonical" href="https://atmosradar.netlify.app">
+  <style>
+    :root {
+      --bg: #0b111e;
+      --card: #151d2d;
+      --border: #223048;
+      --text: #e2e8f0;
+      --text-dim: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --green: #34d399;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .container {
+      max-width: 620px;
+      width: 100%;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(52, 211, 153, 0.12);
+      color: var(--green);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      margin-bottom: 1rem;
+    }
+    .badge .dot {
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #fff;
+    }
+    p {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+    .app-cta {
+      display: block;
+      background: var(--accent);
+      color: #041226;
+      font-weight: 600;
+      font-size: 1rem;
+      text-align: center;
+      text-decoration: none;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      transition: background 0.15s ease;
+      margin-bottom: 1.5rem;
+    }
+    .app-cta:hover {
+      background: var(--accent-hover);
+      color: #fff;
+    }
+    .section-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+    .endpoints {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .endpoints li {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.55rem 0.85rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+    .endpoints a {
+      color: var(--accent);
+      text-decoration: none;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.82rem;
+    }
+    .endpoints a:hover {
+      text-decoration: underline;
+    }
+    .endpoints .label {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    }
+    footer {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      text-align: center;
+      border-top: 1px solid var(--border);
+      padding-top: 1rem;
+    }
+    footer a {
+      color: var(--text-dim);
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="badge">
+      <span class="dot"></span>
+      Operational Data Server
+    </div>
+    <h1>AtmosIQ Weather Platform</h1>
+    <p>This GitHub Pages endpoint hosts operational open forecast data (ECMWF IFS, Cyclones, Ensemble Rain, 90m Terrain) consumed by the AtmosIQ web application.</p>
+    
+    <a class="app-cta" href="https://atmosradar.netlify.app">
+      Open AtmosIQ Web Application &rarr;
+    </a>
+
+    <div class="section-title">Static Data Endpoints</div>
+    <ul class="endpoints">
+      <li>
+        <span class="label">ECMWF IFS Run Status</span>
+        <a href="ecmwf_ifs/latest.json">/ecmwf_ifs/latest.json</a>
+      </li>
+      <li>
+        <span class="label">Cyclone Active Tracks</span>
+        <a href="cyclones/tracks.json">/cyclones/tracks.json</a>
+      </li>
+      <li>
+        <span class="label">ECMWF Ensemble Rain</span>
+        <a href="ens/latest.json">/ens/latest.json</a>
+      </li>
+      <li>
+        <span class="label">90m India Terrain Index</span>
+        <a href="terrain/index.json">/terrain/index.json</a>
+      </li>
+    </ul>
+
+    <footer>
+      Redirecting to <a href="https://atmosradar.netlify.app">atmosradar.netlify.app</a> in 2 seconds &bull; <a href="https://github.com/gowthamgta/Atmos">GitHub Repository</a>
+    </footer>
+  </div>
+</body>
+</html>
