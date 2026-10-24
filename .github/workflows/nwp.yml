@@ -17,7 +17,6 @@ on:
     branches: [main]
     paths:
       - "pipeline/data/**"
-      - "pipeline/index.html"
       - "pipeline/run.py"
       - "pipeline/fetch_ifs.py"
       - "pipeline/fetch_regular.py"
@@ -122,16 +121,13 @@ jobs:
           fi
           # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
           cp -r data/terrain site/terrain
-          # landing page for GitHub Pages root
-          cp index.html site/index.html
-          # deploy when a model was built, or when the terrain or index.html on the site differs from the repository's copy
+          # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
-          curl -sf -o live-index.html "$base/index.html" || true
           # GitHub Pages takes a site of at most 1 GB: say so plainly when it is over (the deploy may then be refused)
           size=$(du -sb site | cut -f1)
           echo "site size: $size bytes"
           if [ "$size" -gt 1000000000 ]; then echo "::warning::the site is $size bytes, over GitHub Pages' 1 GB: the deploy may be refused"; fi
-          if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json || ! cmp -s index.html live-index.html; then
+          if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
