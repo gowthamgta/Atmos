@@ -359,6 +359,108 @@ function keepCoresInRain(classes: Float32Array, w: number, h: number, all: reado
   }
 }
 
+/** A patch of one legend colour counts as map drawing when less than this share of what borders it is rain (see removeMapDrawings). */
+const MAP_RAIN_BORDER = 0.15;
+/** A patch no more than this many pixels from its edge anywhere is a line, a letter or a marker (a 4- or 5-pixel-wide line at most). */
+const MAP_LINE_DEPTH = 2;
+
+/**
+ * Some radars' maps are drawn in the legend's own colours (the owner, 24 Oct 2026: district boundaries on the map from the radars of
+ * Odisha and Andhra Pradesh): Visakhapatnam's state lines and coast in the red of 52 dBZ, Sambalpur's continental shelf in the cyan of
+ * 40 dBZ, city markers in red. Such drawing is one colour on the map; rain is never one colour on its own, it fades through the legend's
+ * weaker colours to its edge, so every colour of it but the weakest is bordered by other rain. A patch of one colour (8-connected) that
+ * less than MAP_RAIN_BORDER of its border is rain is taken off when it is thin (a line, a letter, a marker: MAP_LINE_DEPTH), or of 4
+ * pixels or more. The weakest third of the legend is never taken off (light echoes edge onto the map: Karaikal's PPI), nor is rain the
+ * map is drawn through (a line inside rain is bordered by rain).
+ */
+export function removeMapDrawings(classes: Float32Array, w: number, h: number, levels: readonly number[]): void {
+  if (levels.length < 4) return;
+  const sorted = [...new Set(levels)].sort((a, b) => a - b);
+  const weakTop = sorted[Math.floor((sorted.length - 1) / 3)];
+  // how far each pixel is from a pixel of another colour (chessboard distance, capped): the depth of its patch there
+  const cap = MAP_LINE_DEPTH + 1;
+  const depth = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const v = classes[i];
+      if (v <= 0) continue;
+      let d = cap;
+      if (x === 0 || y === 0) d = 1;
+      else {
+        if (classes[i - 1] === v) d = Math.min(d, depth[i - 1] + 1); else d = 1;
+        if (classes[i - w] === v) d = Math.min(d, depth[i - w] + 1); else d = 1;
+        if (classes[i - w - 1] === v) d = Math.min(d, depth[i - w - 1] + 1); else d = 1;
+        if (x + 1 < w) { if (classes[i - w + 1] === v) d = Math.min(d, depth[i - w + 1] + 1); else d = 1; }
+      }
+      depth[i] = d;
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
+      const v = classes[i];
+      if (v <= 0) continue;
+      let d = depth[i];
+      if (x === w - 1 || y === h - 1) d = 1;
+      else {
+        if (classes[i + 1] === v) d = Math.min(d, depth[i + 1] + 1); else d = 1;
+        if (classes[i + w] === v) d = Math.min(d, depth[i + w] + 1); else d = 1;
+        if (classes[i + w + 1] === v) d = Math.min(d, depth[i + w + 1] + 1); else d = 1;
+        if (x > 0) { if (classes[i + w - 1] === v) d = Math.min(d, depth[i + w - 1] + 1); else d = 1; }
+      }
+      depth[i] = d;
+    }
+  }
+  const seen = new Uint8Array(w * h);
+  const counted = new Int32Array(w * h).fill(-1);
+  const stack: number[] = [];
+  const members: number[] = [];
+  const drop: number[] = [];
+  let patch = 0;
+  for (let start = 0; start < w * h; start++) {
+    const v = classes[start];
+    if (v <= 0 || seen[start]) continue;
+    patch++;
+    members.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    let border = 0;
+    let rainBorder = 0;
+    let deepest = 0;
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      members.push(i);
+      if (depth[i] > deepest) deepest = depth[i];
+      const x = i % w;
+      const y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if ((dx === 0 && dy === 0) || nx < 0 || nx >= w) continue;
+          const n = ny * w + nx;
+          if (classes[n] === v) {
+            if (!seen[n]) {
+              seen[n] = 1;
+              stack.push(n);
+            }
+          } else if (counted[n] !== patch) {
+            counted[n] = patch;
+            border++;
+            if (classes[n] > 0) rainBorder++;
+          }
+        }
+      }
+    }
+    if (border === 0 || rainBorder / border >= MAP_RAIN_BORDER) continue;
+    if (v <= weakTop) continue;
+    if (deepest <= MAP_LINE_DEPTH || members.length >= 4) for (const i of members) drop.push(i);
+  }
+  for (const i of drop) classes[i] = 0;
+}
+
 /**
  * The picture's own intensity, one class per pixel of its map panel (0 where there is no echo): the legend's colours read as intensity.
  * `classes` is `crop.w` x `crop.h`, row 0 at the north edge.
@@ -460,6 +562,7 @@ export function classifyRadarPicture(rgba: Uint8ClampedArray | Uint8Array, w: nu
     }
   }
   if (needNeighbours.length > 0) keepCoresInRain(classes, cropW, cropH, needNeighbours);
+  if (palette && isTransparent) removeMapDrawings(classes, cropW, cropH, palette.filter(e => e.dbz >= 8).map(e => Math.max(0.3, (e.dbz - 12) / 9.6)));
   fillOverlayGaps(classes, cropW, cropH, Math.max(4, Math.round(cropW / 120)));
   return { classes, crop: { x: cropX, y: cropY, w: cropW, h: cropH } };
 }

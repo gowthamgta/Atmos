@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { IMD_RADAR_STATIONS, RadarProductKey } from '../domain/models/radar.model';
-import { RADAR_FIELD_SIZE, decodeLastGifFrame, fillOverlayGaps, layoutMatches, looksLikeRadar, processRadarPixels } from './radar-process';
+import { RADAR_FIELD_SIZE, decodeLastGifFrame, fillOverlayGaps, layoutMatches, looksLikeRadar, processRadarPixels, removeMapDrawings } from './radar-process';
 import { RadarProcessor } from './radar-processor';
 import { RadarService } from './radar.service';
 import { decodeRadarGif } from './radar-gif-decode';
@@ -18,7 +18,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['karaikal', 'caz', 'karaikal-caz.gif', '5fc8d15b'], // 23 Oct 2026: the map's lines and names over the rain filled in (fillOverlayGaps)
+  ['karaikal', 'caz', 'karaikal-caz.gif', 'ae44ae5a'], // 24 Oct 2026: six lone pixels of 34-35 dBZ with no rain around taken off (removeMapDrawings)
 ];
 
 function load(file: string): ArrayBuffer {
@@ -208,5 +208,58 @@ describe('the map drawn over the echoes', () => {
     const c = grid((x, y) => ((x % 4 === 0 && y % 5 === 0) ? 2 : 0));
     fillOverlayGaps(c, W, H, 4);
     expect(c[0 * W + 2]).toBe(0);
+  });
+});
+
+describe('removeMapDrawings (map drawn in the legend\'s colours)', () => {
+  // a legend of six levels: 1 and 2 are its weakest third
+  const LEVELS = [1, 2, 3, 4, 5, 6];
+  const W = 60;
+  const blank = () => new Float32Array(W * W);
+  const fill = (f: Float32Array, x0: number, y0: number, x1: number, y1: number, v: number) => {
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) f[y * W + x] = v;
+  };
+
+  it('takes off a line of a strong colour drawn on the map (a state boundary in red)', () => {
+    const f = blank();
+    fill(f, 2, 30, 57, 31, 5);
+    removeMapDrawings(f, W, W, LEVELS);
+    expect(f.some(v => v > 0)).toBe(false);
+  });
+
+  it('takes off a thick band of one strong colour with no rain around it (the continental shelf)', () => {
+    const f = blank();
+    fill(f, 5, 20, 50, 30, 4);
+    removeMapDrawings(f, W, W, LEVELS);
+    expect(f.some(v => v > 0)).toBe(false);
+  });
+
+  it('keeps a cell: its core and rings border rain, its weakest rim borders the map', () => {
+    const f = blank();
+    fill(f, 10, 10, 40, 40, 1);
+    fill(f, 14, 14, 36, 36, 2);
+    fill(f, 18, 18, 32, 32, 3);
+    fill(f, 22, 22, 28, 28, 5);
+    const before = f.slice();
+    removeMapDrawings(f, W, W, LEVELS);
+    expect(f).toEqual(before);
+  });
+
+  it('keeps light echoes of the weakest colours, however thin', () => {
+    const f = blank();
+    fill(f, 2, 30, 57, 31, 2);
+    fill(f, 5, 5, 6, 6, 1);
+    const before = f.slice();
+    removeMapDrawings(f, W, W, LEVELS);
+    expect(f).toEqual(before);
+  });
+
+  it('keeps a line of the map drawn through rain (it is bordered by rain)', () => {
+    const f = blank();
+    fill(f, 5, 5, 55, 55, 3);
+    fill(f, 5, 30, 55, 31, 5);
+    const before = f.slice();
+    removeMapDrawings(f, W, W, LEVELS);
+    expect(f).toEqual(before);
   });
 });

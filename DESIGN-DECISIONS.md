@@ -44,6 +44,11 @@ fingerprint only together with this file, on the owner's request.
   **The map printed over the echoes is filled in** (the owner, 23 Oct 2026: Chennai's district lines and names showed in the rain): a pixel
   of boundary, name, ring or grid line inside rain takes the rain around it (`fillOverlayGaps` in `core/services/radar-process.ts`); rain
   edges and scattered clutter stay as the picture has them.
+  **Map drawn in the legend's own colours is taken off** (the owner, 24 Oct 2026: district boundaries from the radars of Odisha and
+  Andhra Pradesh): a patch of one legend colour that is almost not bordered by rain (under 15%) and is thin or of 4+ pixels, in a colour
+  above the legend's weakest third (Visakhapatnam's state lines and coast in red, Sambalpur's continental shelf in cyan, city markers;
+  `removeMapDrawings` in `core/services/radar-process.ts`). Light echoes (the weakest third) and lines inside rain are never taken off.
+  Visakhapatnam's pictures are read with their own Selex legend.
 - **Faint echoes where the beams pass high are drawn see-through, never removed** ("rain aloft": may not reach the ground). Under
   25 dBZ where the lowest beam of every radar that reaches the place is 3.5 km or more up: 45% opacity; full from 30 dBZ or under a 2 km
   beam, with smooth steps between (`aloftOpacity` in `core/services/radar-beam.ts`). The hover says "Rain aloft" there.
