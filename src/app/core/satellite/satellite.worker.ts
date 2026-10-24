@@ -95,10 +95,8 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0, grid);
     let out = pixels;
     if (rawSrc) {
-      // the satellite's own colours on the cloud, the ground and sea see-through (the map's own colours show): each pixel as opaque as the
-      // ground removal found it to be cloud
+      // the satellite's own colours on cloud, land and sea (raw RGB from satellite sensors, re-spaced to Mercator)
       out = toRawMercator(rawSrc, width, height, outHeight, box);
-      for (let i = 3; i < out.length; i += 4) out[i] = Math.min(out[i], pixels[i]);
     }
     const png = encodePng(out, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
     // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)

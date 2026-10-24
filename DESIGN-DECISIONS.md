@@ -22,8 +22,7 @@ fingerprint only together with this file, on the owner's request.
   3D clouds. The agreed look below stays recorded (and fingerprinted) for that path.
 - **The day RGB is drawn in its own colours** (owner, 23 Oct: "why cant we apply our raw rgb"): EUMETSAT's HRV Cloud RGB from the raw
   data (pipeline hrv_clouds_rgb: EUMETView's brightness curve, highlights rolled off above 190, sun normalisation capped at 70 degrees),
-  only re-spaced to Mercator (toRawMercator), not recoloured by the Windy ramps; clear land and sea are see-through (the agreed ground
-  removal sets the opacity), so they show the map's colours (owner, 23 Oct: "make the land color to be map color").
+  only re-spaced to Mercator (toRawMercator), not recoloured by the Windy ramps; not cleared of the ground (owner, 24 Oct: "remove land and sea colors and give raw rgb").
 - **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.
