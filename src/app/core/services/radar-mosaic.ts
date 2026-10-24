@@ -25,11 +25,35 @@ export const OVERLAP_FADE_OLDEST_MIN = 30;
 /** Over this much of the newer radar's range (km, inward from its edge) the fade sets in, so its edge draws no line on the map. */
 export const OVERLAP_FADE_EDGE_KM = 10;
 
+/**
+ * Where a source is one ring of a station's stack (the All view, the owner, 24 Oct 2026): it is drawn only between `innerKm` and its own
+ * range from the radar, as a circle (a PPI too), so each station shows its PPI inside, its CAZ around it and its PPZ outside. Without it a
+ * source is the station's whole picture of the product on show.
+ */
+export interface MosaicRing {
+  product: RadarProductKey;
+  innerKm: number;
+  /** The outermost ring of its station: only its outer edge is feathered (an inner ring meets the next one without a seam). */
+  outermost: boolean;
+}
+
+/** The key of one ring's source in the mosaic: `stationId:product`. */
+export const ringKey = (stationId: string, product: RadarProductKey): string => `${stationId}:${product}`;
+
 /** One station's scan being composed: where it lies and its intensity field. */
 interface ActiveStation {
   station: RadarStationConfig;
+  /** This source's place in the list (a station of the stack has one per ring). */
   stationIndex: number;
+  /** The station's place in the network (the order the stations are drawn in). */
+  networkIndex: number;
   rangeKm: number;
+  /** Echo nearer the radar than this is left to the station's inner ring (0: none). */
+  innerKm: number;
+  /** A square picture whose corners are kept (the PPI shown on its own); every other picture is cut to its range circle. */
+  square: boolean;
+  /** Its picture's edge is feathered so the range boundary draws no seam. */
+  feather: boolean;
   res: ProcessedRadarResult;
   south: number;
   west: number;
@@ -125,8 +149,8 @@ function firstColumn(values: Int32Array, from: number, to: number, value: number
 }
 
 /**
- * One picture from every station's scan. Keys are station ids; every scan is of `defaultProduct`, whose range sets how far
- * each station's scan reaches.
+ * One picture from every station's scan. Keys are station ids, and every scan is of `defaultProduct`, whose range sets how far each
+ * station's scan reaches; or, for the stack, `stationId:product` with the ring each draws (`rings`, by key).
  */
 export function composeRadarMosaic(
   stations: readonly RadarStationConfig[],
@@ -136,6 +160,7 @@ export function composeRadarMosaic(
   defaultProduct: RadarProductKey = 'caz',
   /** When set, scans whose timestamp is more than MAX_SCAN_AGE_MIN before this time are left out (live view only). */
   nowMs?: number,
+  rings?: ReadonlyMap<string, MosaicRing>,
 ): ProcessedRadarResult | null {
 
   const activeStations: ActiveStation[] = [];
@@ -145,15 +170,21 @@ export function composeRadarMosaic(
   for (const [stId, res] of allResults) {
     if (res.isDisplayed === false || !res.fieldData) continue;
     if (nowMs != null && res.timing?.epochMs && nowMs - res.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000) continue;
-    const stationIndex = stations.findIndex(s => s.id === stId);
-    if (stationIndex < 0) continue;
-    const st = stations[stationIndex];
+    const ring = rings?.get(stId);
+    const networkIndex = stations.findIndex(s => s.id === (ring ? stId.slice(0, stId.lastIndexOf(':')) : stId));
+    if (networkIndex < 0) continue;
+    const st = stations[networkIndex];
+    const product = ring?.product ?? defaultProduct;
 
     const b = res.fieldData.bounds;
     activeStations.push({
       station: st,
-      stationIndex,
-      rangeKm: st.products[defaultProduct]?.rangeKm ?? st.operationalRangeKm,
+      stationIndex: 0,
+      networkIndex,
+      rangeKm: st.products[product]?.rangeKm ?? st.operationalRangeKm,
+      innerKm: ring?.innerKm ?? 0,
+      square: !ring && product === 'ppi',
+      feather: !ring || ring.outermost,
       res,
       south: b[0][0],
       west: b[0][1],
@@ -172,8 +203,9 @@ export function composeRadarMosaic(
   }
 
   if (activeStations.length === 0) return null;
-  // the stations one after another, so each pixel can settle one station before the next
-  activeStations.sort((a, b) => a.stationIndex - b.stationIndex);
+  // the stations one after another (a stack's rings inside out), so each pixel can settle one source before the next
+  activeStations.sort((a, b) => a.networkIndex - b.networkIndex || a.innerKm - b.innerKm);
+  activeStations.forEach((s, i) => (s.stationIndex = i));
 
   // 1. Calculate combined bounding box of all active stations
   let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
@@ -219,7 +251,7 @@ export function composeRadarMosaic(
   const peakStation = new Int16Array(outW * bandRows);
   const newestEchoTime = new Float64Array(outW * bandRows);
   const newestEchoVal = new Float32Array(outW * bandRows);
-  const timeOf = new Float64Array(stations.length).fill(NaN);
+  const timeOf = new Float64Array(activeStations.length).fill(NaN);
   for (const s of activeStations) timeOf[s.stationIndex] = s.timeMs;
   const commit = (i: number): void => {
     const v = stationVal[i];
@@ -268,7 +300,8 @@ export function composeRadarMosaic(
       const cx = s.cropW / 2;
       const cy = s.cropH / 2;
       const range = s.rangeKm;
-      const square = defaultProduct === 'ppi';
+      const inner = s.innerKm;
+      const square = s.square;
 
       for (let y = Math.max(yb, g.y0); y <= Math.min(ye - 1, g.y1); y++) {
         const lat = maxLat - (y / (outH - 1)) * latSpan;
@@ -306,10 +339,11 @@ export function composeRadarMosaic(
           const dLng = g.dLng[x];
           // the PPI is a square picture (its corners are kept), every other product a circle
           const distKm = square ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
-          if (distKm > range) continue;
+          if (distKm > range || (inner > 0 && distKm <= inner)) continue;
           const fx = g.fx[x];
           const cDist = square ? Math.max(Math.abs(fx - cx), Math.abs(fy - cy)) : Math.sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
-          if (cDist > cx - 2) continue;
+          // the picture's last pixels are its border; an inner ring of the stack reads to its range, where the next ring takes over
+          if (cDist > (s.feather ? cx - 2 : cx)) continue;
 
           // Bilinear sample from the station field
           const wx = g.wx[x];
@@ -317,7 +351,7 @@ export function composeRadarMosaic(
 
           // Smooth dish edge feathering so range boundaries never show seams
           const dishEdgeDist = (cx - 2) - cDist;
-          if (dishEdgeDist < 8) val *= Math.max(0, dishEdgeDist / 8);
+          if (s.feather && dishEdgeDist < 8) val *= Math.max(0, dishEdgeDist / 8);
 
           if (val > 0) {
             const i = rowOffset + x;
@@ -361,7 +395,8 @@ export function composeRadarMosaic(
         if (!(s.timeMs > peakTime + staleMs)) continue;
         const dLat = (lat - s.station.lat) * 111.32;
         const dLng = (lng - s.station.lng) * 111.32 * s.cosLat;
-        const dist = defaultProduct === 'ppi' ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
+        const dist = s.square ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
+        if (s.innerKm > 0 && dist <= s.innerKm) continue; // that place is its station's inner ring's
         const c = Math.min(1, (s.rangeKm - dist) / OVERLAP_FADE_EDGE_KM);
         if (c <= 0) continue;
         if (s.timeMs > coverTime) coverTime = s.timeMs;

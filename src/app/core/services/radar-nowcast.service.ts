@@ -45,6 +45,8 @@ export class RadarNowcastService {
   private lastKey = '';
 
   constructor() {
+    // the radars are fetched only while something needs them (RadarService.needed)
+    effect(() => this.radar.liveWanted.set(this.wanted()));
     effect(() => {
       const on = this.radarOn();
       const keep = this.wanted();

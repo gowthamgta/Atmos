@@ -57,14 +57,13 @@ export class RainEtaService {
 
   /** Whether a working radar's picture of the moment reaches the place. */
   private seenByARadar(lat: number, lon: number): boolean {
-    const product = this.radar.activeProduct();
     const now = this.radar.liveClock();
     for (const station of this.radar.stations) {
       const result = this.radar.allRadarResults().get(station.id);
       const at = result?.timing?.epochMs;
       if (!result || result.isDisplayed === false || at === undefined || now - at > MAX_SCAN_AGE_MIN * 60_000) continue;
       const km = Math.hypot((lat - station.lat) * 111.32, (lon - station.lng) * 111.32 * Math.cos((station.lat * Math.PI) / 180));
-      if (km <= (station.products[product]?.rangeKm ?? station.operationalRangeKm) - RANGE_MARGIN_KM) return true;
+      if (km <= this.radar.reachKm(station) - RANGE_MARGIN_KM) return true;
     }
     return false;
   }

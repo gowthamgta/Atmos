@@ -115,12 +115,13 @@ export class MapComponent implements OnInit, OnDestroy {
     const unavailable = this.radarService.unavailableStations();
     const hidden = this.radarService.hiddenStations();
     this.radarService.stationTimings();
-    const product = this.radarService.activeProduct();
+    this.radarService.activeView();
+    this.radarService.ringResults();
     // no radar picture on the map at all (every scan too old to show): all of it is grey
     const radarDrawn = this.radarService.displayed() !== null;
     if (!this.map || !this.isMapLoaded()) return;
     const working = on && radarDrawn ? this.radarService.stations.filter(st => !unavailable.has(st.id) && !hidden.has(st.id) && this.radarService.getStationFreshness(st.id) !== 'offline') : [];
-    const discs = working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: st.products[product]?.rangeKm ?? st.operationalRangeKm }));
+    const discs = working.map(st => ({ lat: st.lat, lng: st.lng, rangeKm: this.radarService.reachKm(st) }));
     const key = on ? JSON.stringify(discs) : '';
     if (key === this.reachKey && (!on || this.map.getLayer(REACH_LAYER_ID))) return;
     this.reachKey = key;

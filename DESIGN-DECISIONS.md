@@ -50,6 +50,14 @@ fingerprint only together with this file, on the owner's request.
 - 🔒 **Colours: the Windy-style radar palette with red and orange cores** (08c6184).
 - **Where radars overlap, the strongest echo is drawn** (783a81b); an echo from an older scan is drawn fainter (3a793df).
 - **PPI is shown as the whole square picture**, not cut to a circle (b7a758b, 4e951d8). **CAZ covers 250 km** for both radars (3ab5fa6).
+- **All (the stack) is the default view** (the owner, 24 Oct 2026: "first ppz for coverage, on top of that caz and on top of that ppi ...
+  circle inside circle"): each radar's PPI inside its range (a circle here), its CAZ around that out to the CAZ's range and its PPZ
+  outside out to the PPZ's (Karaikal: 150, 250 and 500 km), so every product of every radar is on the map at once. Each picture keeps
+  its own scan time and goes when it is too old, as always; a missing or old picture leaves its ground to the ring around it. The
+  stations' scan times and online state are their CAZ's; the one-hour loop is IMD's CAZ animations. CAZ, PPZ and PPI on their own
+  stay as before (`stackRings` in `core/services/radar.service.ts`).
+- **The radars are fetched only while the radar is on the map** (or the place card needs the rain nowcast): with 45 radars, fetching
+  and composing them every minute slowed the forecast maps down while the radar was not shown (the owner, 24 Oct 2026).
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
 - **Each radar can be turned off and on** in the panel, both off allowed; the map does not move when toggling (ef6d868, b6f48f9).
 - **Hovering shows the height of each radar's beam** over the place (28e1541).

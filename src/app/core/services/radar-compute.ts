@@ -1,5 +1,5 @@
 import { IMD_RADAR_STATIONS, type ProcessedRadarResult, type RadarProductKey } from '../domain/models/radar.model';
-import { composeRadarMosaic } from './radar-mosaic';
+import { composeRadarMosaic, type MosaicRing } from './radar-mosaic';
 import { lowestBeamHeights, withAloftFade } from './radar-beam';
 import { nowcastPicture, type FieldBox } from './radar-nowcast';
 import type { MotionField } from './radar-motion';
@@ -17,8 +17,11 @@ export interface ComposeRequest {
   sources: MosaicSource[];
   kmPerPx: number;
   maxPx: number;
+  /** The product on show; for the stack, the outermost one (its range is what the beams and the coverage are worked out to). */
   product: RadarProductKey;
   nowMs?: number;
+  /** The stack: the ring each source (`stationId:product`) draws. */
+  rings?: [string, MosaicRing][];
 }
 
 export interface NowcastRequest {
@@ -41,9 +44,10 @@ let beamCache: { key: string; heights: Float32Array } | null = null;
 
 /** The mosaic of the radars, with faint echoes seen only from a beam high up made see-through (never removed). */
 export function composeWithAloft(req: ComposeRequest): ProcessedRadarResult | null {
-  const res = composeRadarMosaic(IMD_RADAR_STATIONS, req.sources as [string, ProcessedRadarResult][], req.kmPerPx, req.maxPx, req.product, req.nowMs);
+  const rings = req.rings ? new Map(req.rings) : undefined;
+  const res = composeRadarMosaic(IMD_RADAR_STATIONS, req.sources as [string, ProcessedRadarResult][], req.kmPerPx, req.maxPx, req.product, req.nowMs, rings);
   if (!res?.fieldData || !res.displayField) return res;
-  const ids = req.sources.map(([id]) => id).sort();
+  const ids = [...new Set(req.sources.map(([id]) => (rings?.has(id) ? id.slice(0, id.lastIndexOf(':')) : id)))].sort();
   const { cropW: w, cropH: h } = res.fieldData;
   const key = [ids.join(','), req.product, w, h, ...res.coordinates.flat()].join('|');
   if (beamCache?.key !== key) {

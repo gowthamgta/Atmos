@@ -2,14 +2,13 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { IconComponent } from '../../shared/icon.component';
 import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
-import { RadarService } from '../../core/services/radar.service';
+import { RadarService, type RadarView } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
-import { RadarProductKey } from '../../core/domain/models/radar.model';
 import { VerificationService } from '../../core/forecast/verification.service';
 
 interface ProductOption {
-  key: RadarProductKey;
+  key: RadarView;
   name: string;
   hint: string;
   /** How the scan is named in the status line. */
@@ -19,6 +18,7 @@ interface ProductOption {
 
 /** Each product is its own picture and downloads only its own pictures (one per radar). */
 const PRODUCTS: readonly ProductOption[] = [
+  { key: 'all', name: 'All', hint: 'PPI·CAZ·PPZ', scan: 'stack (PPI, CAZ, PPZ)', title: 'Every radar\'s pictures in one: its PPI inside, its CAZ around it and its PPZ out to its longest range, each with its own scan time' },
   { key: 'caz', name: 'CAZ', hint: 'Column max', scan: 'column maximum (CAZ)', title: 'Column maximum reflectivity (CAZ): the strongest echo in each column of air, out to the range of each radar' },
   { key: 'ppz', name: 'PPZ', hint: 'Reflectivity', scan: 'reflectivity sweep (PPZ)', title: 'Plan Position Indicator reflectivity (PPZ): the radar sweep, out to its longer range (up to 500 km), shown on its own' },
   { key: 'ppi', name: 'PPI', hint: 'Base scan', scan: 'PPI sweep', title: 'Plan Position Indicator (lowest base reflectivity sweep), shown on its own' },
@@ -132,7 +132,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
-    .products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+    .products { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
     .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
     .prod:hover { background: var(--surface-4); color: var(--text-primary); }
     .prod.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
@@ -248,7 +248,7 @@ export class RadarPanelComponent {
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
   protected readonly products = PRODUCTS;
-  protected readonly product = this.radar.activeProduct;
+  protected readonly product = this.radar.activeView;
   protected readonly opacity = this.radar.radarOpacity;
   protected readonly stations = this.radar.stations;
   protected readonly activeId = this.radar.activeStationId;
@@ -316,7 +316,7 @@ export class RadarPanelComponent {
     return m >= 120 ? `${Math.round(m / 60)}h` : `${m}m`;
   }
 
-  protected setProduct(key: RadarProductKey): void {
+  protected setProduct(key: RadarView): void {
     this.radar.setProduct(key);
   }
 

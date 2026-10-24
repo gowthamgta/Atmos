@@ -21,10 +21,11 @@ import { readHiddenStations, writeHiddenStations } from './radar-station-prefs';
 import { IMD_WRITE_GAP_MS, LOOK_LEAD_MS, extractRadarIsoTimestamp, pictureNotDue, radarTimingFromDate, scanNotDue } from './radar-timing';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
-import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, type MosaicRing, ringKey } from './radar-mosaic';
 import { RadarCoverageService } from './radar-coverage.service';
 import { BOT_CAPTURE } from '../ui/bot-capture';
 import { MARSHALL_PALMER_A, RadarSamples, lastHourRain, sampleAll } from './radar-sample';
+import { MapLayerService } from './map-layer.service';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
 export interface RadarDisplayFrame {
@@ -48,6 +49,41 @@ export interface NowcastFrame extends RadarDisplayFrame {
 export interface RadarHistoryFrame extends RadarDisplayFrame {
   timeMs: number;
   track: Float32Array;
+}
+
+/** What the radar panel shows: one product on its own, or every station's stack (`all`). */
+export type RadarView = RadarProductKey | 'all';
+
+/**
+ * The stack (the owner, 24 Oct 2026: "first ppz for coverage, on top of that caz and on top of that ppi ... circle inside circle"): each
+ * station's PPI inside, its CAZ around that and its PPZ outside, each with its own scan time. Listed inside out.
+ */
+export const STACK_PRODUCTS: readonly RadarProductKey[] = ['ppi', 'caz', 'ppz'];
+/** A ring reaches this far inside the one within it, so the two meet without a gap (the inner picture's last pixels are its border). */
+const RING_OVERLAP_KM = 1.5;
+
+/**
+ * The rings of one station's stack from the products that have a picture to show (`has`): sorted by range (PPI, CAZ, PPZ where two reach
+ * as far), each drawn from the range of the one inside it; a product that reaches no further than the one inside it is left out.
+ */
+export function stackRings(station: RadarStationConfig, has: (p: RadarProductKey) => boolean): [RadarProductKey, MosaicRing][] {
+  const order = STACK_PRODUCTS.filter(p => has(p) && !station.products[p]?.unmeasured);
+  order.sort((a, b) => station.products[a].rangeKm - station.products[b].rangeKm);
+  const out: [RadarProductKey, MosaicRing][] = [];
+  let reach = 0;
+  for (const p of order) {
+    const km = station.products[p].rangeKm;
+    if (km <= reach) continue;
+    out.push([p, { product: p, innerKm: reach > 0 ? Math.max(0, reach - RING_OVERLAP_KM) : 0, outermost: false }]);
+    reach = km;
+  }
+  if (out.length > 0) out[out.length - 1][1].outermost = true;
+  return out;
+}
+
+/** The product whose picture stands for a station in the stack (its scan time and its online state): CAZ, else PPZ, else PPI. */
+export function stackPrimary(station: RadarStationConfig): RadarProductKey | null {
+  return (['caz', 'ppz', 'ppi'] as const).find(p => !station.products[p]?.unmeasured) ?? null;
 }
 
 const yieldToBrowser = () => new Promise<void>(r => setTimeout(r, 0));
@@ -75,7 +111,18 @@ export class RadarService implements OnDestroy {
    */
   readonly hiddenStations = signal<ReadonlySet<string>>(readHiddenStations());
 
-  readonly activeProduct = signal<RadarProductKey>('caz');
+  /** The view in the panel: every station's stack (the default), or one product on its own. */
+  readonly activeView = signal<RadarView>('all');
+  readonly stacked = computed(() => this.activeView() === 'all');
+  /** The product on show; for the stack, the CAZ (the loop's animations, the stations' scan times and their online state). */
+  readonly activeProduct = computed<RadarProductKey>(() => {
+    const v = this.activeView();
+    return v === 'all' ? 'caz' : v;
+  });
+  /** The product whose range the beams and the coverage are worked out to: the stack's outermost (PPZ) in the All view. */
+  readonly coverageProduct = computed<RadarProductKey>(() => (this.stacked() ? 'ppz' : this.activeProduct()));
+  /** The stack's pictures, by `stationId:product` (every product of the stack, the primary one too). */
+  readonly ringResults = signal<Map<string, ProcessedRadarResult>>(new Map());
   readonly transparentMode = signal<boolean>(true);
   readonly radarOpacity = signal<number>(1.0);
   /**
@@ -155,7 +202,7 @@ export class RadarService implements OnDestroy {
   });
   /** Fixed ~4 km grid over every radar's coverage, for storm tracking (the same for every loop frame). */
   readonly trackGrid = computed<TrackingGrid>(() => {
-    const product = this.activeProduct();
+    const product = this.coverageProduct();
     let s = 90, w = 180, n = -90, e = -180;
     for (const st of this.stations) {
       const [[bs, bw], [bn, be]] = st.products[product].bounds;
@@ -216,8 +263,21 @@ export class RadarService implements OnDestroy {
   /** Decodes the pictures and builds their intensity fields in web workers (see radar-processor.ts). */
   private readonly processor = new RadarProcessor();
 
+  /** Something off the radar layer needs the live picture (the place card's rain line, through RadarNowcastService.wanted). */
+  readonly liveWanted = signal(false);
+  private readonly layers = inject(MapLayerService);
+  /**
+   * Whether the radars are fetched at all: while the radar is on the map, or something else needs its live picture. With 45 radars (and
+   * three pictures each in the stack) fetching, decoding and composing them every minute slowed the forecast maps down while the radar
+   * was not even shown (the owner, 24 Oct 2026: "the numerical models are taking a lot of time to load").
+   */
+  readonly needed = computed(() => BOT_CAPTURE || this.liveWanted() || this.layers.layers().some(l => l.id === 'radar' && l.active));
+
   constructor() {
-    this.fetchAllRadarSweeps();
+    // the first fetch, and a fresh one whenever the radar is wanted again (its pictures may be old by then)
+    effect(() => {
+      if (this.needed()) untracked(() => void this.fetchAllRadarSweeps());
+    });
     this.startAutoRefresh();
     this.startLiveClock();
     // each new live picture pushes the one before it into the loop, so the last hour keeps up without downloading the animations again
@@ -279,11 +339,11 @@ export class RadarService implements OnDestroy {
     if (typeof window === 'undefined') return;
 
     this.autoRefreshTimer = setInterval(() => {
-      this.fetchAllRadarSweeps();
+      if (this.needed()) this.fetchAllRadarSweeps();
     }, 60000); // 1-minute auto sync
 
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && this.needed()) {
         this.fetchAllRadarSweeps();
       }
     });
@@ -395,13 +455,14 @@ export class RadarService implements OnDestroy {
     this.generateComposite();
   }
 
-  setProduct(product: RadarProductKey): void {
-    this.activeProduct.set(product);
+  setProduct(product: RadarView): void {
+    this.activeView.set(product);
     this.allRadarResults.set(new Map());
+    this.ringResults.set(new Map());
     this.forgetPictureTimes();
     this.compositeMosaic.set(null);
     this.clearHistory();
-    this.fetchAllRadarSweeps();
+    if (this.needed()) this.fetchAllRadarSweeps();
   }
 
   setOpacity(opacity: number): void {
@@ -418,7 +479,7 @@ export class RadarService implements OnDestroy {
    * often overlap at start-up).
    */
   fetchAllRadarSweeps(): Promise<void> {
-    const key = `${this.activeProduct()}|${this.transparentMode()}`;
+    const key = `${this.activeView()}|${this.transparentMode()}`;
     const running = this.inFlightSweeps;
     // a run that has hung (a request that never answers) is not joined: a new one starts instead
     if (running?.key === key && Date.now() - running.startedAt < RadarService.SWEEP_JOIN_MAX_MS) return running.done;
@@ -436,22 +497,39 @@ export class RadarService implements OnDestroy {
     const requestId = ++this.currentRequestId;
     this.isRefreshing.set(true);
 
-    const productKey = this.activeProduct();
     const isTransparent = this.transparentMode();
+    const stacked = this.stacked();
 
-    const queue = [...this.stations];
+    // one job per picture: the product on show, or every product of each station's stack (its primary one first, then the others)
+    type Job = { station: RadarStationConfig; productKey: RadarProductKey; primary: boolean };
+    const queue: Job[] = [];
+    if (!stacked) {
+      for (const station of this.stations) queue.push({ station, productKey: this.activeProduct(), primary: true });
+    } else {
+      const rest: Job[] = [];
+      for (const station of this.stations) {
+        const primary = stackPrimary(station);
+        if (!primary) continue;
+        queue.push({ station, productKey: primary, primary: true });
+        for (const p of STACK_PRODUCTS) if (p !== primary && !station.products[p].unmeasured) rest.push({ station, productKey: p, primary: false });
+      }
+      queue.push(...rest);
+    }
     const concurrency = 6;
 
     const worker = async () => {
       while (queue.length > 0) {
         if (requestId !== this.currentRequestId) break;
-        const station = queue.shift();
-        if (!station) break;
+        const job = queue.shift();
+        if (!job) break;
+        const { station, productKey, primary } = job;
         // IMD publishes a new scan about every 5 minutes: while the station's newest scan is younger than the next one is due,
         // downloading the same picture again only costs bandwidth, so the station waits until it is due
         if (this.notDueYet(station, productKey)) continue;
         try {
-          const res = await this.processStationSweep(station, productKey, isTransparent);
+          const res = await this.processStationSweep(station, productKey, isTransparent, primary);
+          if (stacked && requestId === this.currentRequestId) this.setRing(ringKey(station.id, productKey), res);
+          if (!primary) continue;
           if (res && requestId === this.currentRequestId) {
             // Unchanged image: same result object, nothing to redraw
             if (this.allRadarResults().get(station.id) === res) continue;
@@ -526,6 +604,17 @@ export class RadarService implements OnDestroy {
     return `${bytes.length}:${(hash >>> 0).toString(16)}`;
   }
 
+  /** Keeps (or drops, for null) one picture of the stack, and asks for the mosaic to be rebuilt when it changed. */
+  private setRing(key: string, res: ProcessedRadarResult | null): void {
+    const map = this.ringResults();
+    if ((map.get(key) ?? null) === res) return;
+    const next = new Map(map);
+    if (res) next.set(key, res);
+    else next.delete(key);
+    this.ringResults.set(next);
+    this.scheduleMosaic();
+  }
+
   /** The results were dropped (new product or transparency): every station is asked for again, whatever its write time said. */
   private forgetPictureTimes(): void {
     this.pictureWrittenAt.clear();
@@ -537,14 +626,17 @@ export class RadarService implements OnDestroy {
     const key = `${station.id}:${product}`;
     const written = this.pictureWrittenAt.get(key);
     // no write time from the server: fall back to the scan time read off the picture
-    if (written === undefined) return scanNotDue(this.allRadarResults().get(station.id)?.timing, Date.now(), IMD_WRITE_GAP_MS - LOOK_LEAD_MS);
+    const last = this.stacked() ? this.ringResults().get(key) : this.allRadarResults().get(station.id);
+    if (written === undefined) return scanNotDue(last?.timing, Date.now(), IMD_WRITE_GAP_MS - LOOK_LEAD_MS);
     return pictureNotDue(Date.now(), written, this.pictureFetchedAt.get(key) ?? 0);
   }
 
   async processStationSweep(
     station: RadarStationConfig,
     productKey: RadarProductKey,
-    isTransparent: boolean
+    isTransparent: boolean,
+    /** False for the stack's other pictures: they do not set the station's scan time nor its online state. */
+    primary = true
   ): Promise<ProcessedRadarResult | null> {
     const productConfig = station.products[productKey] || station.products.caz;
     // a product whose picture's layout was never measured is not drawn (it would put the echoes in the wrong place)
@@ -655,7 +747,7 @@ export class RadarService implements OnDestroy {
     if (timing) {
       timing.ageMinutes = ageMinutes;
       timing.freshness = freshness;
-      this.stationTimings.update(m => new Map(m).set(station.id, timing!));
+      if (primary) this.stationTimings.update(m => new Map(m).set(station.id, timing!));
     }
 
     // Skip decoding only if radar sweep is older than 24 hours (1440 mins) or unreadable
@@ -679,10 +771,10 @@ export class RadarService implements OnDestroy {
     still ??= await this.processor.still(rawArrayBuf, pixelOptions);
     let processed: ProcessedRadarResult | null;
     if (still.decoded) {
-      processed = still.w < 50 || still.h < 50 ? null : this.buildResult(station, productKey, productConfig, still.w, still.h, still.layoutOk, still.field, timing, isDisplayed, true);
+      processed = still.w < 50 || still.h < 50 ? null : this.buildResult(station, productKey, productConfig, still.w, still.h, still.layoutOk, still.field, timing, isDisplayed, primary);
     } else if (still.bytes) {
       // the GIF reader could not decode it: the browser's own decoder, on the main thread
-      processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, still.bytes, timing, isDisplayed);
+      processed = await this.decodeAndProcessSweep(station, productKey, productConfig, isTransparent, still.bytes, timing, isDisplayed, primary);
     } else {
       processed = null;
     }
@@ -789,12 +881,49 @@ export class RadarService implements OnDestroy {
   readonly compute = new RadarCompute();
 
   /** The mosaic of the radars that are on (with rain aloft see-through), made off the main thread. */
-  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number): Promise<ProcessedRadarResult | null> {
+  private composeMosaic(sources: Iterable<[string, ProcessedRadarResult]>, nowMs?: number, product = this.activeProduct()): Promise<ProcessedRadarResult | null> {
     const hidden = this.hiddenStations();
     const shown: MosaicSource[] = [...sources]
       .filter(([id]) => !hidden.has(id))
       .map(([id, r]) => [id, { fieldData: r.fieldData, timing: r.timing, isDisplayed: r.isDisplayed }]);
-    return this.compute.compose({ sources: shown, kmPerPx: MOSAIC_KM_PER_PX, maxPx: RadarService.MOSAIC_MAX_PX, product: this.activeProduct(), nowMs });
+    return this.compute.compose({ sources: shown, kmPerPx: MOSAIC_KM_PER_PX, maxPx: RadarService.MOSAIC_MAX_PX, product, nowMs });
+  }
+
+  /**
+   * The stack's mosaic: each station's pictures that are recent enough to draw, as rings inside one another. A picture that is missing or
+   * too old leaves its ground to the ring around it (the PPI's to the CAZ, say), so nothing within a station's reach goes blank for it.
+   */
+  private composeStack(nowMs: number): Promise<ProcessedRadarResult | null> {
+    const hidden = this.hiddenStations();
+    const results = this.ringResults();
+    const sources: MosaicSource[] = [];
+    const rings: [string, MosaicRing][] = [];
+    for (const station of this.stations) {
+      if (hidden.has(station.id)) continue;
+      const usable = (p: RadarProductKey) => {
+        const r = results.get(ringKey(station.id, p));
+        const t = r?.timing?.epochMs;
+        return !!r?.fieldData && r.isDisplayed !== false && !(t && nowMs - t > MAX_SCAN_AGE_MIN * 60_000);
+      };
+      for (const [p, ring] of stackRings(station, usable)) {
+        const key = ringKey(station.id, p);
+        const r = results.get(key)!;
+        sources.push([key, { fieldData: r.fieldData, timing: r.timing, isDisplayed: r.isDisplayed }]);
+        rings.push([key, ring]);
+      }
+    }
+    return this.compute.compose({ sources, kmPerPx: MOSAIC_KM_PER_PX, maxPx: RadarService.MOSAIC_MAX_PX, product: 'ppz', nowMs, rings });
+  }
+
+  /**
+   * How far a station's picture on the map reaches (km): its range for the product on show, or in the stack its outermost ring with a
+   * picture (its CAZ's range while it has none yet).
+   */
+  reachKm(station: RadarStationConfig): number {
+    if (!this.stacked()) return station.products[this.activeProduct()]?.rangeKm ?? station.operationalRangeKm;
+    const results = this.ringResults();
+    const rings = stackRings(station, p => results.has(ringKey(station.id, p)));
+    return rings.length > 0 ? station.products[rings[rings.length - 1][0]].rangeKm : station.products.caz?.rangeKm ?? station.operationalRangeKm;
   }
 
   private composeToken = 0;
@@ -802,7 +931,7 @@ export class RadarService implements OnDestroy {
   /** Rebuilds the live composite from the latest still of every radar (a newer rebuild started meanwhile wins). */
   private async generateComposite(): Promise<void> {
     const my = ++this.composeToken;
-    const res = await this.composeMosaic([...this.allRadarResults()], Date.now());
+    const res = this.stacked() ? await this.composeStack(Date.now()) : await this.composeMosaic([...this.allRadarResults()], Date.now());
     if (my !== this.composeToken) return;
     this.compositeMosaic.set(res);
   }
@@ -1061,7 +1190,7 @@ export class RadarService implements OnDestroy {
       hidden: this.hiddenStations(),
       // a radar that is down or whose newest picture is over 3 hours old (not drawn on the map either) is left out of the beam list too
       unavailable: new Set([...this.unavailableStations(), ...this.stations.filter(st => this.getStationFreshness(st.id) === 'offline').map(st => st.id)]),
-      product: this.activeProduct(),
+      product: this.coverageProduct(),
     };
     this.hoverInfo.set(inspectRadar(input, lat, lng, screenPoint));
   }

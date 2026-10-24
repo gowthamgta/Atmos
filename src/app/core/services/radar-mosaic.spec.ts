@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult, RadarProductKey } from '../domain/models/radar.model';
-import { MAX_SCAN_AGE_MIN, OVERLAP_FADE_OLDEST, OVERLAP_FADE_ONE_SCAN, composeRadarMosaic, overlapFade } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, OVERLAP_FADE_OLDEST, OVERLAP_FADE_ONE_SCAN, composeRadarMosaic, overlapFade, ringKey } from './radar-mosaic';
+import { stackPrimary, stackRings } from './radar.service';
 import { dequantizeRadar } from './radar-field';
 
 const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
@@ -39,6 +40,48 @@ const eastOf = (station: (typeof IMD_RADAR_STATIONS)[number], km: number): [numb
   station.lat,
   station.lng + km / (111.32 * Math.cos((station.lat * Math.PI) / 180)),
 ];
+
+describe('the stack (All): PPI inside, CAZ around it, PPZ outside', () => {
+  const stack = (values: Partial<Record<RadarProductKey, number>>, minutes: Partial<Record<RadarProductKey, number>> = {}) => {
+    const have = (p: RadarProductKey) => values[p] !== undefined;
+    const rings = stackRings(karaikal, have).map(([p, r]) => [ringKey('karaikal', p), r] as const);
+    const sources = stackRings(karaikal, have).map(([p]) => [ringKey('karaikal', p), scan(karaikal, p, values[p]!, minutes[p] ?? 0)] as [string, ProcessedRadarResult]);
+    return composeRadarMosaic(IMD_RADAR_STATIONS, sources, 0.5, 2800, 'ppz', undefined, new Map(rings))!;
+  };
+
+  it('rings Karaikal inside out by range: PPI to 150 km, CAZ to 250 km, PPZ to 500 km', () => {
+    const rings = stackRings(karaikal, () => true);
+    expect(rings.map(([p]) => p)).toEqual(['ppi', 'caz', 'ppz']);
+    expect(rings.map(([, r]) => Math.round(r.innerKm))).toEqual([0, 149, 249]);
+    expect(rings.map(([, r]) => r.outermost)).toEqual([false, false, true]);
+    expect(stackPrimary(karaikal)).toBe('caz');
+  });
+
+  it('draws each picture only in its own ring, each circle inside the next', () => {
+    const res = stack({ ppi: 1, caz: 2, ppz: 3 });
+    expect(valueAt(res, ...eastOf(karaikal, 60))).toBeCloseTo(1, 1);
+    expect(valueAt(res, ...eastOf(karaikal, 200))).toBeCloseTo(2, 1);
+    expect(valueAt(res, ...eastOf(karaikal, 400))).toBeCloseTo(3, 1);
+    // the PPI is a circle here: 170 km out on the diagonal is the CAZ's, not the PPI picture's corner
+    expect(valueAt(res, karaikal.lat + 120 / 111.32, eastOf(karaikal, 120)[1])).toBeCloseTo(2, 1);
+  });
+
+  it('leaves no gap where two rings meet', () => {
+    const res = stack({ ppi: 2, caz: 2, ppz: 2 });
+    for (const km of [146, 148, 149.5, 150, 151, 246, 249, 250, 252]) expect([km, valueAt(res, ...eastOf(karaikal, km))]).toEqual([km, 2]);
+  });
+
+  it('gives a missing picture\'s ground to the ring around it', () => {
+    const res = stack({ caz: 2, ppz: 3 });
+    expect(valueAt(res, ...eastOf(karaikal, 60))).toBeCloseTo(2, 1);
+    expect(valueAt(res, ...eastOf(karaikal, 400))).toBeCloseTo(3, 1);
+  });
+
+  it('keeps each picture\'s own scan time: the newest of them is the stack\'s', () => {
+    const res = stack({ ppi: 1, caz: 2, ppz: 3 }, { ppi: 4, caz: 0, ppz: -6 });
+    expect(res.timing?.epochMs).toBe(T0 + 4 * 60_000);
+  });
+});
 
 describe('composeRadarMosaic', () => {
   it('gives each product its own range: PPZ reaches further than CAZ', () => {
