@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { KARAIKAL_DWR_CONFIG, IMD_RADAR_STATIONS, rainRateToDbz } from '../domain/models/radar.model';
 import { MEASURED_STATIONS } from '../domain/models/imd-radar-network';
 import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scanNotDue, pictureNotDue } from './radar.service';
+import { isObservationEligible, MAX_SCAN_AGE_MIN } from './radar-mosaic';
 
 describe('Radar Domain & Config', () => {
   it('should have valid Karaikal S-Band DWR configuration', () => {
@@ -434,5 +435,29 @@ describe('Radar refresh: which stations wait for their next scan', () => {
 
   it('does not wait on a write time in the future', () => {
     expect(pictureNotDue(T, T + 10 * 60_000, T)).toBe(false);
+  });
+});
+
+describe('RadarService: 45-minute freshness limit and observation gating', () => {
+  const T = Date.UTC(2026, 9, 25, 12, 0, 0);
+
+  it('enforces 45-minute limit: 44m/45m eligible, 46m expired', () => {
+    expect(MAX_SCAN_AGE_MIN).toBe(45);
+    expect(isObservationEligible({ epochMs: T - 44 * 60_000, source: 'radar_metadata' }, T)).toBe(true);
+    expect(isObservationEligible({ epochMs: T - 45 * 60_000, source: 'radar_metadata' }, T)).toBe(true);
+    expect(isObservationEligible({ epochMs: T - 46 * 60_000, source: 'radar_metadata' }, T)).toBe(false);
+    expect(isObservationEligible({ epochMs: T - 180 * 60_000, source: 'radar_metadata' }, T)).toBe(false);
+  });
+
+  it('rejects observations with missing or invalid timestamps', () => {
+    expect(isObservationEligible(null, T)).toBe(false);
+    expect(isObservationEligible(undefined, T)).toBe(false);
+    expect(isObservationEligible({ source: 'radar_metadata' } as any, T)).toBe(false);
+    expect(isObservationEligible({ epochMs: NaN, source: 'radar_metadata' }, T)).toBe(false);
+  });
+
+  it('rejects implausible future observations beyond clock skew tolerance', () => {
+    expect(isObservationEligible({ epochMs: T + 2 * 60_000, source: 'radar_metadata' }, T)).toBe(true);
+    expect(isObservationEligible({ epochMs: T + 15 * 60_000, source: 'radar_metadata' }, T)).toBe(false);
   });
 });

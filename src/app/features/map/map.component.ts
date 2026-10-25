@@ -490,39 +490,43 @@ export class MapComponent implements OnInit, OnDestroy {
       this.forecastMap.attach(map, this.overlayAnchorId());
     });
 
-    // Clicking the radar shows the dBZ and rain rate at that point (forecast layers have their own inspector)
+    // Clicking the radar shows the dBZ and rain rate at that point; clicking again anywhere hides it
     map.on('click', (e) => {
       if (this.isRadarActive) {
-        this.radarService.inspectLocation(e.lngLat.lat, e.lngLat.lng, {
-          x: e.point.x,
-          y: e.point.y
-        });
+        if (this.radarService.hoverInfo()) {
+          this.radarService.clearHover();
+        } else {
+          this.radarService.inspectLocation(e.lngLat.lat, e.lngLat.lng, {
+            x: e.point.x,
+            y: e.point.y
+          });
+        }
       }
       if (this.layerService.layers().some(l => l.id === 'satellite' && l.active)) {
         this.satellite.inspectAt(e.lngLat.lat, e.lngLat.lng);
       }
     });
 
-    // Real-time IMD Radar dBZ and Satellite Cloud-Top hover inspector
+    // Real-time Satellite Cloud-Top hover inspector (radar tooltip is click-only)
     map.on('mousemove', (e) => {
       if (this.layerService.layers().some(l => l.id === 'satellite' && l.active)) {
         this.satellite.inspectAt(e.lngLat.lat, e.lngLat.lng);
       } else {
         this.satellite.clearHover();
       }
-      if (!this.isRadarActive) {
-        this.radarService.clearHover();
-        return;
-      }
-      this.radarService.inspectLocation(e.lngLat.lat, e.lngLat.lng, {
-        x: e.point.x,
-        y: e.point.y
-      });
     });
 
     map.on('mouseout', () => {
-      this.radarService.clearHover();
       this.satellite.clearHover();
+    });
+
+    // Keep active radar tooltip anchored to its geographic coordinate while panning/zooming
+    map.on('move', () => {
+      const info = this.radarService.hoverInfo();
+      if (info && this.map) {
+        const p = this.map.project([info.lng, info.lat]);
+        this.radarService.updateHoverPosition(p.x, p.y);
+      }
     });
 
     // The satellite detail window follows the map's position and size
@@ -951,6 +955,9 @@ export class MapComponent implements OnInit, OnDestroy {
     const radarLayer = layers.find(l => l.id === 'radar');
     const wasRadarActive = this.isRadarActive;
     this.isRadarActive = radarLayer?.active ?? true;
+    if (!this.isRadarActive && wasRadarActive) {
+      this.radarService.clearHover();
+    }
 
     // Show or hide the radar mosaic (its opacity is owned by radarOpacityEffect)
     untracked(() => this.updateRadarMosaicOverlay(this.radarService.displayed()));

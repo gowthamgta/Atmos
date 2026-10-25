@@ -63,8 +63,8 @@ fingerprint only together with this file, on the owner's request.
 - **The radars are fetched only while the radar is on the map** (or the place card needs the rain nowcast): with 45 radars, fetching
   and composing them every minute slowed the forecast maps down while the radar was not shown (the owner, 24 Oct 2026).
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
-- **Each radar can be turned off and on** in the panel, both off allowed; the map does not move when toggling (ef6d868, b6f48f9).
-- **Hovering shows the height of each radar's beam** over the place (28e1541).
+- **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the unified all-India composite served directly, station chips and product mode buttons are no longer displayed in the radar menu.
+- **Clicking shows the radar tooltip** (the owner, 25 Oct 2026: "The radar tooltip only enable when users click on the location or else no need to show and if user clicked again somewhere no need to show the tooltip"): the dBZ, rain rate and beam heights are shown on click, and hidden when clicking again anywhere; no longer triggered by mouse hover.
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
 - **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45
   radars (Sriharikota removed on owner request, 25 Oct 2026), Karaikal and Chennai first. Pallikaranai, Kochi, Thiruvananthapuram and Mangaluru as measured before; every other

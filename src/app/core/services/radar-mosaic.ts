@@ -10,6 +10,29 @@ import { quantizeRadarField } from './radar-field';
 /** A live scan older than this many minutes is not drawn (the radar is stale or stuck, the picture would mislead). */
 export const MAX_SCAN_AGE_MIN = 45;
 
+/**
+ * Evaluates whether a product observation is eligible for inclusion in the composite.
+ * Enforces the strict 45-minute freshness limit:
+ * - Age <= 45 minutes: eligible, provided image is valid.
+ * - Age > 45 minutes: expired and excluded.
+ * - Missing or unreliable timestamp (null, undefined, NaN, <= 0): ineligible.
+ * - Implausible future timestamp (> 10 minutes ahead): ineligible.
+ */
+export function isObservationEligible(
+  timing: { epochMs?: number | null; [key: string]: any } | null | undefined,
+  nowMs: number,
+  maxAgeMin = MAX_SCAN_AGE_MIN
+): boolean {
+  if (!timing || typeof timing.epochMs !== 'number' || isNaN(timing.epochMs) || timing.epochMs <= 0) {
+    return false;
+  }
+  const ageMs = nowMs - timing.epochMs;
+  if (ageMs < -10 * 60_000 || ageMs > maxAgeMin * 60_000) {
+    return false;
+  }
+  return true;
+}
+
 /** Resolution of the composite: 0.5 km per pixel. */
 export const MOSAIC_KM_PER_PX = 0.5;
 
@@ -169,7 +192,7 @@ export function composeRadarMosaic(
 
   for (const [stId, res] of allResults) {
     if (res.isDisplayed === false || !res.fieldData) continue;
-    if (nowMs != null && res.timing?.epochMs && nowMs - res.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000) continue;
+    if (nowMs != null && !isObservationEligible(res.timing, nowMs)) continue;
     const ring = rings?.get(stId);
     const networkIndex = stations.findIndex(s => s.id === (ring ? stId.slice(0, stId.lastIndexOf(':')) : stId));
     if (networkIndex < 0) continue;

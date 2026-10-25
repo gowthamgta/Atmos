@@ -34,6 +34,7 @@ import {
   ringKey,
   MOSAIC_KM_PER_PX,
   MAX_SCAN_AGE_MIN,
+  isObservationEligible,
   type MosaicRing,
 } from '../src/app/core/services/radar-mosaic';
 import {
@@ -139,17 +140,17 @@ async function processSweep(
 
   const now = Date.now();
   let ageMinutes: number | undefined;
-  let isDisplayed = true;
+  let isDisplayed = false;
 
   if (timing?.epochMs && !isNaN(timing.epochMs)) {
     ageMinutes = Math.max(0, Math.floor((now - timing.epochMs) / 60000));
-    isDisplayed = ageMinutes <= 180;
+    isDisplayed = isObservationEligible(timing, now);
     timing.ageMinutes = ageMinutes;
-    timing.freshness = ageMinutes <= 60 ? 'fresh' : ageMinutes <= 120 ? 'recent' : ageMinutes <= 180 ? 'stale' : 'offline';
+    timing.freshness = isDisplayed ? (ageMinutes <= 20 ? 'fresh' : 'recent') : 'offline';
   }
 
-  if (ageMinutes !== undefined && ageMinutes > 1440) {
-    return null; // older than 24h
+  if (!isDisplayed || ageMinutes === undefined || ageMinutes > MAX_SCAN_AGE_MIN) {
+    return null; // expired (> 45 min) or missing/future timestamp
   }
 
   const layoutOk = layoutMatches(productConfig.crop, w, h) && looksLikeRadar(rgba, w, h, productConfig.palette);
@@ -307,8 +308,7 @@ async function main() {
   for (const station of IMD_RADAR_STATIONS) {
     const usable = (p: RadarProductKey) => {
       const r = ringResults.get(ringKey(station.id, p));
-      const t = r?.timing?.epochMs;
-      return !!r?.fieldData && r.isDisplayed !== false && !(t && nowMs - t > MAX_SCAN_AGE_MIN * 60_000);
+      return !!r?.fieldData && r.isDisplayed !== false && isObservationEligible(r.timing, nowMs);
     };
     for (const [p, ring] of stackRings(station, usable)) {
       const key = ringKey(station.id, p);
@@ -369,7 +369,11 @@ async function main() {
 
   // 3. Export manifest.json
   const stationsSummary = activeConfigs.map(s => {
-    const primaryRes = ringResults.get(ringKey(s.id, 'caz')) || ringResults.get(ringKey(s.id, 'ppz')) || ringResults.get(ringKey(s.id, 'ppi'));
+    const cazRes = ringResults.get(ringKey(s.id, 'caz'));
+    const ppzRes = ringResults.get(ringKey(s.id, 'ppz'));
+    const ppiRes = ringResults.get(ringKey(s.id, 'ppi'));
+    const primaryRes = cazRes || ppzRes || ppiRes;
+    const hasEligibleProduct = [cazRes, ppzRes, ppiRes].some(r => r && isObservationEligible(r.timing, nowMs));
     return {
       id: s.id,
       name: s.name,
@@ -377,7 +381,7 @@ async function main() {
       lng: s.lng,
       band: s.band,
       timing: primaryRes?.timing || null,
-      isDisplayed: primaryRes?.isDisplayed ?? false,
+      isDisplayed: hasEligibleProduct,
     };
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult, RadarProductKey } from '../domain/models/radar.model';
-import { MAX_SCAN_AGE_MIN, OVERLAP_FADE_OLDEST, OVERLAP_FADE_ONE_SCAN, composeRadarMosaic, overlapFade, ringKey } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, OVERLAP_FADE_OLDEST, OVERLAP_FADE_ONE_SCAN, composeRadarMosaic, isObservationEligible, overlapFade, ringKey } from './radar-mosaic';
 import { stackPrimary, stackRings } from './radar.service';
 import { dequantizeRadar } from './radar-field';
 
@@ -140,6 +140,133 @@ describe('composeRadarMosaic', () => {
     const { cropW, cropH } = result.fieldData;
     const centre = Math.floor(cropH / 2) * cropW + Math.floor(cropW / 2);
     expect(dequantizeRadar(result.displayField![centre])).toBeCloseTo(3, 1); // the 8-bit picture matches the intensity
+  });
+});
+
+describe('45-minute freshness limit and timestamp eligibility', () => {
+  const now = T0 + 60 * 60_000;
+
+  it('isObservationEligible: accepts observations up to 45 minutes old and rejects older, invalid, or future ones', () => {
+    // 0 minutes old
+    expect(isObservationEligible({ epochMs: now } as any, now)).toBe(true);
+    // 20 minutes old (fresh)
+    expect(isObservationEligible({ epochMs: now - 20 * 60_000 } as any, now)).toBe(true);
+    // 44 minutes old (recent / eligible)
+    expect(isObservationEligible({ epochMs: now - 44 * 60_000 } as any, now)).toBe(true);
+    // exactly 45 minutes old (eligible threshold)
+    expect(isObservationEligible({ epochMs: now - 45 * 60_000 } as any, now)).toBe(true);
+    // 45.1 minutes old (expired)
+    expect(isObservationEligible({ epochMs: now - 45.1 * 60_000 } as any, now)).toBe(false);
+    // 46 minutes old (expired)
+    expect(isObservationEligible({ epochMs: now - 46 * 60_000 } as any, now)).toBe(false);
+    // 60 minutes old (expired)
+    expect(isObservationEligible({ epochMs: now - 60 * 60_000 } as any, now)).toBe(false);
+    // 180 minutes old (expired)
+    expect(isObservationEligible({ epochMs: now - 180 * 60_000 } as any, now)).toBe(false);
+
+    // Missing or invalid timestamps
+    expect(isObservationEligible(null, now)).toBe(false);
+    expect(isObservationEligible(undefined, now)).toBe(false);
+    expect(isObservationEligible({} as any, now)).toBe(false);
+    expect(isObservationEligible({ epochMs: NaN } as any, now)).toBe(false);
+    expect(isObservationEligible({ epochMs: 0 } as any, now)).toBe(false);
+    expect(isObservationEligible({ epochMs: -1 } as any, now)).toBe(false);
+
+    // Plausible slight clock skew (up to +10 min ahead)
+    expect(isObservationEligible({ epochMs: now + 5 * 60_000 } as any, now)).toBe(true);
+    // Implausible future timestamp (> 10 min ahead)
+    expect(isObservationEligible({ epochMs: now + 15 * 60_000 } as any, now)).toBe(false);
+    expect(isObservationEligible({ epochMs: now + 24 * 3600_000 } as any, now)).toBe(false);
+  });
+
+  it('evaluates mixed product ages in stackRings (44m, 45m, 46m)', () => {
+    // Helper that checks eligibility at `now`
+    const eligibleWithAges = (ages: Partial<Record<RadarProductKey, number>>) => {
+      return (p: RadarProductKey) => {
+        const age = ages[p];
+        if (age === undefined) return false;
+        return isObservationEligible({ epochMs: now - age * 60_000 } as any, now);
+      };
+    };
+
+    // Case 1: PPI is 44m (fresh), CAZ is 46m (expired), PPZ is 30m (fresh)
+    // CAZ drops out; PPI provides inner 0-150 km, PPZ seamlessly covers 148.5-500 km
+    const rings1 = stackRings(karaikal, eligibleWithAges({ ppi: 44, caz: 46, ppz: 30 }));
+    expect(rings1.map(([p]) => p)).toEqual(['ppi', 'ppz']);
+    expect(Math.round(rings1[0][1].innerKm)).toBe(0);
+    expect(Math.round(rings1[1][1].innerKm)).toBe(149);
+    expect(rings1[1][1].outermost).toBe(true);
+
+    // Case 2: PPI is 46m (expired), CAZ is 44m (fresh), PPZ is 45m (fresh)
+    // PPI drops out; CAZ expands inward to cover 0-250 km, PPZ covers 248.5-500 km
+    const rings2 = stackRings(karaikal, eligibleWithAges({ ppi: 46, caz: 44, ppz: 45 }));
+    expect(rings2.map(([p]) => p)).toEqual(['caz', 'ppz']);
+    expect(Math.round(rings2[0][1].innerKm)).toBe(0);
+    expect(Math.round(rings2[1][1].innerKm)).toBe(249);
+
+    // Case 3: PPI is 46m (expired), CAZ is 46m (expired), PPZ is 25m (fresh)
+    // PPZ expands inward to cover the entire station range from 0 to 500 km
+    const rings3 = stackRings(karaikal, eligibleWithAges({ ppi: 46, caz: 46, ppz: 25 }));
+    expect(rings3.map(([p]) => p)).toEqual(['ppz']);
+    expect(Math.round(rings3[0][1].innerKm)).toBe(0);
+    expect(rings3[0][1].outermost).toBe(true);
+
+    // Case 4: PPI is 44m (fresh), CAZ is 45m (fresh), PPZ is 46m (expired)
+    // PPZ drops out; outer range beyond 250 km is omitted; PPI & CAZ remain
+    const rings4 = stackRings(karaikal, eligibleWithAges({ ppi: 44, caz: 45, ppz: 46 }));
+    expect(rings4.map(([p]) => p)).toEqual(['ppi', 'caz']);
+    expect(Math.round(rings4[0][1].innerKm)).toBe(0);
+    expect(Math.round(rings4[1][1].innerKm)).toBe(149);
+    expect(rings4[1][1].outermost).toBe(true);
+
+    // Case 5: All products are 46m (all expired)
+    // Zero rings returned -> station overlay removed from active radar layer
+    const rings5 = stackRings(karaikal, eligibleWithAges({ ppi: 46, caz: 46, ppz: 46 }));
+    expect(rings5).toEqual([]);
+
+    // Case 6: Product with missing timestamp
+    const rings6 = stackRings(karaikal, (p: RadarProductKey) => {
+      if (p === 'caz') return isObservationEligible(null, now);
+      if (p === 'ppz') return isObservationEligible({ epochMs: now - 15 * 60_000 } as any, now);
+      return false;
+    });
+    expect(rings6.map(([p]) => p)).toEqual(['ppz']);
+    expect(Math.round(rings6[0][1].innerKm)).toBe(0);
+  });
+
+  it('composeRadarMosaic strictly enforces 45-minute limit and excludes missing timestamps when nowMs is given', () => {
+    const atAge = (minutes: number) => ({ ist: '', utc: '', date: '', epochMs: now - minutes * 60_000 });
+    const scanWithAge = (station: any, prod: RadarProductKey, val: number, ageMin: number) => ({
+      ...scan(station, prod, val, 0),
+      timing: atAge(ageMin)
+    });
+
+    // Scan at 45 minutes: included
+    const scan45 = scanWithAge(karaikal, 'caz', 3.0, 45);
+    const m45 = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan45]], 0.5, 2800, 'caz', now);
+    expect(m45).not.toBeNull();
+
+    // Scan at 46 minutes: excluded (returns null when all stations expired)
+    const scan46 = scanWithAge(karaikal, 'caz', 3.0, 46);
+    const m46 = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan46]], 0.5, 2800, 'caz', now);
+    expect(m46).toBeNull();
+
+    // Scan with missing timestamp: excluded when nowMs is passed
+    const scanNoTime = { ...scan(karaikal, 'caz', 3.0, 0), timing: null };
+    const mNoTime = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scanNoTime]], 0.5, 2800, 'caz', now);
+    expect(mNoTime).toBeNull();
+
+    // Scan with NaN timestamp: excluded when nowMs is passed
+    const scanNaNTime = { ...scan(karaikal, 'caz', 3.0, 0), timing: { epochMs: NaN } as any };
+    const mNaN = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scanNaNTime]], 0.5, 2800, 'caz', now);
+    expect(mNaN).toBeNull();
+
+    // One fresh station (30m) and one expired station (46m): expired station excluded, fresh retained
+    const freshStation = scanWithAge(cni, 'caz', 3.0, 30);
+    const mCombined = composeRadarMosaic(IMD_RADAR_STATIONS, [['karaikal', scan46], ['chennai', freshStation]], 0.5, 2800, 'caz', now)!;
+    expect(mCombined).not.toBeNull();
+    // Only Chennai's bounds present, Karaikal dropped
+    expect(mCombined.fieldData.bounds[0][0]).toBeGreaterThan(karaikal.lat - 1);
   });
 });
 

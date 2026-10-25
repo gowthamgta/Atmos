@@ -21,7 +21,7 @@ import { readHiddenStations, writeHiddenStations } from './radar-station-prefs';
 import { IMD_WRITE_GAP_MS, LOOK_LEAD_MS, extractRadarIsoTimestamp, pictureNotDue, radarTimingFromDate, scanNotDue } from './radar-timing';
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
-import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, type MosaicRing, ringKey } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, isObservationEligible, type MosaicRing, ringKey } from './radar-mosaic';
 import { RadarCoverageService } from './radar-coverage.service';
 import { BOT_CAPTURE } from '../ui/bot-capture';
 import { MARSHALL_PALMER_A, RadarSamples, lastHourRain, sampleAll } from './radar-sample';
@@ -178,8 +178,8 @@ export class RadarService implements OnDestroy {
   readonly liveFrame = computed<RadarDisplayFrame | null>(() => {
     const live = this.compositeMosaic();
     // the whole picture goes when even its newest scan is older than MAX_SCAN_AGE_MIN (the clock ticks between refreshes)
-    const stale = !!live?.timing?.epochMs && this.liveClock() - live.timing.epochMs > MAX_SCAN_AGE_MIN * 60_000;
-    return live && live.displayField && live.isDisplayed !== false && !stale
+    const eligible = isObservationEligible(live?.timing, this.liveClock());
+    return live && live.displayField && live.isDisplayed !== false && eligible
       ? {
           field: live.displayField,
           fade: live.displayFade,
@@ -229,9 +229,8 @@ export class RadarService implements OnDestroy {
     if (this.unavailableStations().has(this.activeStationId())) return 'offline';
     const age = this.activeStationAgeMinutes();
     if (age === null) return 'syncing';
-    if (age <= 60) return 'fresh';
-    if (age <= 120) return 'recent';
-    if (age <= 180) return 'stale';
+    if (age <= 20) return 'fresh';
+    if (age <= 45) return 'recent';
     return 'offline';
   });
 
@@ -367,13 +366,13 @@ export class RadarService implements OnDestroy {
       for (const [stId, timing] of next) {
         if (timing.epochMs) {
           const newAge = Math.max(0, Math.floor((now - timing.epochMs) / 60000));
-          if (newAge !== timing.ageMinutes) {
-            let freshness: 'fresh' | 'recent' | 'stale' | 'offline' = 'offline';
-            if (newAge <= 60) freshness = 'fresh';
-            else if (newAge <= 120) freshness = 'recent';
-            else if (newAge <= 180) freshness = 'stale';
-            else freshness = 'offline';
+          const eligible = isObservationEligible(timing, now);
+          let freshness: 'fresh' | 'recent' | 'stale' | 'offline' = 'offline';
+          if (eligible) {
+            freshness = newAge <= 20 ? 'fresh' : 'recent';
+          }
 
+          if (newAge !== timing.ageMinutes || freshness !== timing.freshness) {
             next.set(stId, {
               ...timing,
               ageMinutes: newAge,
@@ -386,28 +385,42 @@ export class RadarService implements OnDestroy {
       return changed ? next : map;
     });
 
-    // 2. Map display gating per radar station (Display if <= 180m / 3h operational window)
+    // 2. Map display gating per radar station and ring (strict 45-minute limit)
     let displayGatingChanged = false;
     this.allRadarResults.update(map => {
       let changed = false;
       const next = new Map(map);
       for (const [stId, res] of next) {
-        if (res.timing?.epochMs) {
-          const age = (now - res.timing.epochMs) / 60000;
-          const shouldDisplay = age <= 180;
-          if (res.isDisplayed !== shouldDisplay) {
-            next.set(stId, {
-              ...res,
-              isDisplayed: shouldDisplay
-            });
-            changed = true;
-            displayGatingChanged = true;
-            if (!shouldDisplay) {
-              console.warn(
-                `[RadarService] Station "${stId}" observation is older than 180 mins (${Math.round(age)}m). Hiding layer from map.`
-              );
-            }
+        const shouldDisplay = isObservationEligible(res.timing, now);
+        if (res.isDisplayed !== shouldDisplay) {
+          next.set(stId, {
+            ...res,
+            isDisplayed: shouldDisplay
+          });
+          changed = true;
+          displayGatingChanged = true;
+          if (!shouldDisplay) {
+            console.warn(
+              `[RadarService] Station "${stId}" observation expired or missing timestamp. Hiding layer from map.`
+            );
           }
+        }
+      }
+      return changed ? next : map;
+    });
+
+    this.ringResults.update(map => {
+      let changed = false;
+      const next = new Map(map);
+      for (const [key, res] of next) {
+        const shouldDisplay = isObservationEligible(res.timing, now);
+        if (res.isDisplayed !== shouldDisplay) {
+          next.set(key, {
+            ...res,
+            isDisplayed: shouldDisplay
+          });
+          changed = true;
+          displayGatingChanged = true;
         }
       }
       return changed ? next : map;
@@ -513,7 +526,7 @@ export class RadarService implements OnDestroy {
         const manifest = await manifestRes.json();
         if (!manifest || !manifest.width || !manifest.height || !manifest.coordinates) continue;
 
-        if (manifest.updatedAtEpochMs && Date.now() - manifest.updatedAtEpochMs > MAX_SCAN_AGE_MIN * 60_000) {
+        if (!manifest.updatedAtEpochMs || !isObservationEligible(radarTimingFromDate(new Date(manifest.updatedAtEpochMs), 'radar_metadata', false), Date.now())) {
           continue;
         }
 
@@ -564,6 +577,10 @@ export class RadarService implements OnDestroy {
             const next = new Map(m);
             for (const s of manifest.stations) {
               if (s.id && s.timing) {
+                const age = Math.max(0, Math.floor((Date.now() - s.timing.epochMs) / 60000));
+                const eligible = isObservationEligible(s.timing, Date.now());
+                s.timing.ageMinutes = age;
+                s.timing.freshness = eligible ? (age <= 20 ? 'fresh' : 'recent') : 'offline';
                 next.set(s.id, s.timing);
               }
             }
@@ -584,26 +601,26 @@ export class RadarService implements OnDestroy {
     const requestId = ++this.currentRequestId;
     this.isRefreshing.set(true);
 
+    // Fetch the preprocessed all-India composite published by the background workflow
+    try {
+      const loaded = await this.tryFetchPreprocessedComposite(requestId);
+      if (loaded) {
+        if (requestId === this.currentRequestId) {
+          this.isRefreshing.set(false);
+          this.lastSyncTime.set(
+            new Date().toLocaleTimeString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' })
+          );
+        }
+        return;
+      }
+    } catch {
+      // Fallback
+    }
+
+    // We no longer need to call the radar APIs in the application directly (preprocessed composite is used instead)
+    /*
     const isTransparent = this.transparentMode();
     const stacked = this.stacked();
-
-    // In stacked ('all') mode with all default stations, attempt to fetch the preprocessed composite first
-    if (stacked && this.hiddenStations().size === 0) {
-      try {
-        const loaded = await this.tryFetchPreprocessedComposite(requestId);
-        if (loaded) {
-          if (requestId === this.currentRequestId) {
-            this.isRefreshing.set(false);
-            this.lastSyncTime.set(
-              new Date().toLocaleTimeString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' })
-            );
-          }
-          return;
-        }
-      } catch {
-        // Fall back to client-side sweep fetching
-      }
-    }
 
     // one job per picture: the product on show, or every product of each station's stack (its primary one first, then the others)
     type Job = { station: RadarStationConfig; productKey: RadarProductKey; primary: boolean };
@@ -662,9 +679,9 @@ export class RadarService implements OnDestroy {
     };
 
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    */
 
     if (requestId === this.currentRequestId) {
-      this.flushMosaic();
       this.isRefreshing.set(false);
       this.lastSyncTime.set(
         new Date().toLocaleTimeString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' })
@@ -836,17 +853,14 @@ export class RadarService implements OnDestroy {
     const now = Date.now();
     let ageMinutes: number | undefined;
     let freshness: 'fresh' | 'recent' | 'stale' | 'offline' = 'offline';
-    let isDisplayed = true;
+    let isDisplayed = false;
 
     if (timing?.epochMs && !isNaN(timing.epochMs)) {
       ageMinutes = Math.max(0, Math.floor((now - timing.epochMs) / 60000));
-      if (ageMinutes <= 60) freshness = 'fresh';
-      else if (ageMinutes <= 120) freshness = 'recent';
-      else if (ageMinutes <= 180) freshness = 'stale';
-      else freshness = 'offline';
-
-      // Radar is displayed on the map if observation is within the operational window (<= 180 mins / 3 hours)
-      isDisplayed = ageMinutes <= 180;
+      isDisplayed = isObservationEligible(timing, now);
+      if (isDisplayed) {
+        freshness = ageMinutes <= 20 ? 'fresh' : 'recent';
+      }
     }
 
     if (timing) {
@@ -855,10 +869,10 @@ export class RadarService implements OnDestroy {
       if (primary) this.stationTimings.update(m => new Map(m).set(station.id, timing!));
     }
 
-    // Skip decoding only if radar sweep is older than 24 hours (1440 mins) or unreadable
-    if (ageMinutes !== undefined && ageMinutes > 1440) {
+    // Skip decoding if observation is expired (> 45 min) or missing valid timestamp
+    if (!isDisplayed || ageMinutes === undefined || ageMinutes > MAX_SCAN_AGE_MIN) {
       console.warn(
-        `[RadarService] Skipping station "${station.name}": Sweep is ${Math.round(ageMinutes)} mins old (> 24 hours). Offline.`
+        `[RadarService] Skipping station "${station.name}": Sweep is ${ageMinutes != null ? Math.round(ageMinutes) + ' mins old' : 'missing timestamp'}. Offline.`
       );
       return null;
     }
@@ -1007,8 +1021,7 @@ export class RadarService implements OnDestroy {
       if (hidden.has(station.id)) continue;
       const usable = (p: RadarProductKey) => {
         const r = results.get(ringKey(station.id, p));
-        const t = r?.timing?.epochMs;
-        return !!r?.fieldData && r.isDisplayed !== false && !(t && nowMs - t > MAX_SCAN_AGE_MIN * 60_000);
+        return !!r?.fieldData && r.isDisplayed !== false && isObservationEligible(r.timing, nowMs);
       };
       for (const [p, ring] of stackRings(station, usable)) {
         const key = ringKey(station.id, p);
@@ -1027,7 +1040,11 @@ export class RadarService implements OnDestroy {
   reachKm(station: RadarStationConfig): number {
     if (!this.stacked()) return station.products[this.activeProduct()]?.rangeKm ?? station.operationalRangeKm;
     const results = this.ringResults();
-    const rings = stackRings(station, p => results.has(ringKey(station.id, p)));
+    const now = this.liveClock();
+    const rings = stackRings(station, p => {
+      const r = results.get(ringKey(station.id, p));
+      return !!r?.fieldData && r.isDisplayed !== false && isObservationEligible(r.timing, now);
+    });
     return rings.length > 0 ? station.products[rings[rings.length - 1][0]].rangeKm : station.products.caz?.rangeKm ?? station.operationalRangeKm;
   }
 
@@ -1298,6 +1315,10 @@ export class RadarService implements OnDestroy {
       product: this.coverageProduct(),
     };
     this.hoverInfo.set(inspectRadar(input, lat, lng, screenPoint));
+  }
+
+  updateHoverPosition(x: number, y: number): void {
+    this.hoverInfo.update(info => (info ? { ...info, x, y } : null));
   }
 
   clearHover(): void {

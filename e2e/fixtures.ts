@@ -62,8 +62,7 @@ export async function openRadar(page: Page, view = '11.8,79.6,6.6'): Promise<voi
   // phones start with the compact panel: open it
   const more = panel.getByRole('button', { name: 'Show more' });
   if (await more.isVisible()) await more.click();
-  // the saved pictures are Karaikal's and Chennai's: every other radar is answered 404 (offline)
-  await expect(panel.getByText(/Radars online: 2 of \d+/)).toBeVisible({ timeout: 30_000 });
+  await expect(panel.locator('.legend')).toBeVisible({ timeout: 30_000 });
 }
 
 /** The map's centre and zoom as written in the address (c=lat,lng,zoom). */

@@ -56,7 +56,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
         </header>
 
         <div class="scan full-only">
-          <span>{{ allOff() ? 'All radars are off: tap one below to turn it on' : scanLabel() }}</span>
+          <span>{{ scanLabel() }}</span>
           @if (allOff()) {
           } @else if (age() !== null) {
             <span class="age" [attr.data-state]="freshness()">{{ age() }} min ago · {{ freshnessLabel() }}</span>
@@ -83,24 +83,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
         @if (nowcastLine(); as line) {
           <p class="nowcast full-only" role="status">{{ line }}</p>
         }
-
-        <div class="stations full-only">
-          <div class="label">Radars online: {{ online() }} of {{ stations.length }} · tap to turn on or off</div>
-          <div class="chips">
-            @for (st of stations; track st.id) {
-              <button type="button" class="chip" [class.active]="activeId() === st.id" [class.off]="!shown(st.id)" [attr.aria-pressed]="shown(st.id)"
-                [title]="st.fullName + ' · ' + (shown(st.id) ? stationStateLabel(st.id) + ' · tap to turn off' : 'off · tap to turn on')" (click)="toggle(st.id)">
-                <span class="switch" aria-hidden="true"></span>
-                <span class="dot" [attr.data-state]="stationState(st.id)"></span>
-                {{ shortName(st.name) }}
-                <span class="chip-age">{{ shown(st.id) ? stationAge(st.id) : 'off' }}</span>
-              </button>
-            }
-          </div>
-          @if (scanGap(); as gap) {
-            <div class="gap-note" role="status">The radars scanned {{ gap }} min apart: where they overlap, cells can sit in different places.</div>
-          }
-        </div>
 
         <label class="opacity full-only">
           <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
@@ -243,7 +225,7 @@ export class RadarPanelComponent {
     const age = this.age();
     if (this.allOff()) return 'All radars off';
     if (age === null) return 'Syncing…';
-    return `${age} min · ${FRESHNESS_LABEL[this.freshness()] ?? ''} · ${this.online()}/${this.stations.length} on`;
+    return `${age} min · ${FRESHNESS_LABEL[this.freshness()] ?? ''}`;
   });
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
