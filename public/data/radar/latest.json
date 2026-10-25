@@ -1,0 +1,534 @@
+{
+  "generated_at": "2026-10-25T14:03:04.164264+00:00",
+  "elapsed_sec": 58.51,
+  "bounds": {
+    "south": 6.0,
+    "north": 37.5,
+    "west": 67.0,
+    "east": 98.0
+  },
+  "maplibre_coordinates": [
+    [
+      67.0,
+      37.5
+    ],
+    [
+      98.0,
+      37.5
+    ],
+    [
+      98.0,
+      6.0
+    ],
+    [
+      67.0,
+      6.0
+    ]
+  ],
+  "resolution_deg": 0.025,
+  "width": 1240,
+  "height": 1260,
+  "stations_total": 45,
+  "stations_online": 35,
+  "files": {
+    "composite_png": "india-composite.png",
+    "composite_gif": "india-composite.gif"
+  },
+  "stations": {
+    "karaikal": {
+      "name": "Karaikal DWR",
+      "code": "kkl",
+      "lat": 10.9129,
+      "lng": 79.8418,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "chennai": {
+      "name": "Chennai DWR",
+      "code": "cni",
+      "lat": 13.0839,
+      "lng": 80.2901,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "pallikaranai": {
+      "name": "Pallikaranai X-DWR",
+      "code": "plk",
+      "lat": 12.9451,
+      "lng": 80.2115,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "sriharikota": {
+      "name": "Sriharikota DWR",
+      "code": "shr",
+      "lat": 13.6646,
+      "lng": 80.2276,
+      "status": "online",
+      "time": "2026-10-25T14:03:02.426880+00:00",
+      "rangeKm": 240,
+      "has_rain": true,
+      "imageUrl": "stations/sriharikota.png"
+    },
+    "kochi": {
+      "name": "Kochi DWR",
+      "code": "koc",
+      "lat": 9.9312,
+      "lng": 76.2673,
+      "status": "online",
+      "time": "2026-10-25T14:02:07.102533+00:00",
+      "rangeKm": 255,
+      "has_rain": true,
+      "imageUrl": "stations/kochi.png"
+    },
+    "thiruvananthapuram": {
+      "name": "Thiruvananthapuram DWR",
+      "code": "tvm",
+      "lat": 8.5374,
+      "lng": 76.8657,
+      "status": "online",
+      "time": "2026-10-25T17:59:00+00:00",
+      "rangeKm": 240,
+      "has_rain": true,
+      "imageUrl": "stations/thiruvananthapuram.png"
+    },
+    "mangaluru": {
+      "name": "Mangaluru DWR",
+      "code": "mlr",
+      "lat": 12.901,
+      "lng": 74.856,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "agartala": {
+      "name": "Agartala",
+      "code": "agt",
+      "lat": 23.8315,
+      "lng": 91.2868,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/agartala.png"
+    },
+    "banihal": {
+      "name": "Banihal",
+      "code": "bnh",
+      "lat": 33.51,
+      "lng": 75.205,
+      "status": "online",
+      "time": "2026-10-25T14:40:00+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/banihal.png"
+    },
+    "belonia": {
+      "name": "Belonia",
+      "code": "bln",
+      "lat": 23.2489,
+      "lng": 91.463,
+      "status": "online",
+      "time": "2026-10-25T14:02:09.731569+00:00",
+      "rangeKm": 150,
+      "has_rain": false,
+      "imageUrl": "stations/belonia.png"
+    },
+    "bhopal": {
+      "name": "Bhopal",
+      "code": "bhp",
+      "lat": 23.2599,
+      "lng": 77.4126,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/bhopal.png"
+    },
+    "bhuj": {
+      "name": "Bhuj",
+      "code": "bhj",
+      "lat": 23.2418,
+      "lng": 69.6458,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "delhi-ayanagar": {
+      "name": "Delhi Ayanagar",
+      "code": "aya",
+      "lat": 28.483333,
+      "lng": 77.125,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "delhi-hq": {
+      "name": "Delhi HQ",
+      "code": "delhi",
+      "lat": 28.5632,
+      "lng": 77.1912,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "delhi-palam": {
+      "name": "Delhi Palam",
+      "code": "dlh",
+      "lat": 28.5901,
+      "lng": 77.0888,
+      "status": "offline",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "dimapur": {
+      "name": "Dimapur",
+      "code": "dmu",
+      "lat": 25.90278,
+      "lng": 93.70306,
+      "status": "online",
+      "time": "2026-10-25T14:02:08.441396+00:00",
+      "rangeKm": 150,
+      "has_rain": false,
+      "imageUrl": "stations/dimapur.png"
+    },
+    "goa": {
+      "name": "Goa",
+      "code": "goa",
+      "lat": 15.4909,
+      "lng": 73.8278,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/goa.png"
+    },
+    "gopalpur": {
+      "name": "Gopalpur",
+      "code": "gop",
+      "lat": 19.2624,
+      "lng": 84.898,
+      "status": "online",
+      "time": "2026-10-25T19:16:00+00:00",
+      "rangeKm": 240,
+      "has_rain": true,
+      "imageUrl": "stations/gopalpur.png"
+    },
+    "hyderabad": {
+      "name": "Hyderabad",
+      "code": "hyd",
+      "lat": 17.385,
+      "lng": 78.4867,
+      "status": "online",
+      "time": "2026-10-25T14:02:09.417469+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/hyderabad.png"
+    },
+    "jaipur": {
+      "name": "Jaipur",
+      "code": "jpr",
+      "lat": 26.9124,
+      "lng": 75.7873,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/jaipur.png"
+    },
+    "jammu": {
+      "name": "Jammu",
+      "code": "jmu",
+      "lat": 32.78166,
+      "lng": 74.83,
+      "status": "online",
+      "time": "2026-10-15T12:50:00+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/jammu.png"
+    },
+    "jorhat": {
+      "name": "Jorhat",
+      "code": "jrh",
+      "lat": 26.71689,
+      "lng": 94.19397,
+      "status": "online",
+      "time": "2026-10-25T14:02:09.807067+00:00",
+      "rangeKm": 150,
+      "has_rain": false,
+      "imageUrl": "stations/jorhat.png"
+    },
+    "jot": {
+      "name": "Jot",
+      "code": "jot",
+      "lat": 32.48666,
+      "lng": 76.2673,
+      "status": "online",
+      "time": "2026-10-25T18:40:00+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/jot.png"
+    },
+    "kolkata": {
+      "name": "Kolkata",
+      "code": "kol",
+      "lat": 22.5726,
+      "lng": 88.3639,
+      "status": "online",
+      "time": "2026-05-20T12:32:00+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/kolkata.png"
+    },
+    "kufri": {
+      "name": "Kufri",
+      "code": "kuf",
+      "lat": 31.0983333,
+      "lng": 77.265,
+      "status": "online",
+      "time": "2026-10-25T19:00:00+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/kufri.png"
+    },
+    "lansdowne": {
+      "name": "Lansdowne",
+      "code": "ldn",
+      "lat": 29.85,
+      "lng": 78.676666,
+      "status": "online",
+      "time": "2026-10-25T18:40:00+00:00",
+      "rangeKm": 100,
+      "has_rain": false,
+      "imageUrl": "stations/lansdowne.png"
+    },
+    "leh": {
+      "name": "Leh",
+      "code": "leh",
+      "lat": 34.28333333,
+      "lng": 77.2833333,
+      "status": "online",
+      "time": "2026-06-04T10:40:00+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/leh.png"
+    },
+    "lucknow": {
+      "name": "Lucknow",
+      "code": "lkn",
+      "lat": 26.8467,
+      "lng": 80.9462,
+      "status": "online",
+      "time": "2026-10-25T19:22:00+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/lucknow.png"
+    },
+    "mohanbari": {
+      "name": "Mohanbari",
+      "code": "mbr",
+      "lat": 27.4728,
+      "lng": 94.912,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/mohanbari.png"
+    },
+    "mukteshwar": {
+      "name": "Mukteshwar",
+      "code": "mks",
+      "lat": 29.46,
+      "lng": 79.66,
+      "status": "online",
+      "time": "2026-10-25T19:00:00+00:00",
+      "rangeKm": 100,
+      "has_rain": false,
+      "imageUrl": "stations/mukteshwar.png"
+    },
+    "mumbai-colaba": {
+      "name": "Mumbai Colaba",
+      "code": "mum",
+      "lat": 18.9013,
+      "lng": 72.8075,
+      "status": "online",
+      "time": "2026-10-25T19:14:00+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/mumbai-colaba.png"
+    },
+    "mumbai-veravali": {
+      "name": "Mumbai Veravali",
+      "code": "vrv",
+      "lat": 19.1342,
+      "lng": 72.8762,
+      "status": "error",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    },
+    "murari-devi": {
+      "name": "Murari Devi",
+      "code": "mur",
+      "lat": 31.505,
+      "lng": 76.81333,
+      "status": "online",
+      "time": "2026-10-25T19:10:00+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/murari-devi.png"
+    },
+    "nagpur": {
+      "name": "Nagpur",
+      "code": "ngp",
+      "lat": 21.1458,
+      "lng": 79.0882,
+      "status": "online",
+      "time": "2026-10-25T14:02:13.657356+00:00",
+      "rangeKm": 150,
+      "has_rain": false,
+      "imageUrl": "stations/nagpur.png"
+    },
+    "paradip": {
+      "name": "Paradip",
+      "code": "pdp",
+      "lat": 20.3166,
+      "lng": 86.6114,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/paradip.png"
+    },
+    "patiala": {
+      "name": "Patiala",
+      "code": "ptl",
+      "lat": 30.3398,
+      "lng": 76.3869,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 300,
+      "has_rain": false,
+      "imageUrl": "stations/patiala.png"
+    },
+    "patna": {
+      "name": "Patna",
+      "code": "ptn",
+      "lat": 25.5941,
+      "lng": 85.1376,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/patna.png"
+    },
+    "raipur": {
+      "name": "Raipur",
+      "code": "rpr",
+      "lat": 21.25,
+      "lng": 81.629997,
+      "status": "online",
+      "time": "2026-10-25T19:00:00+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/raipur.png"
+    },
+    "sambalpur": {
+      "name": "Sambalpur",
+      "code": "sbp",
+      "lat": 21.5374,
+      "lng": 83.9809,
+      "status": "online",
+      "time": "2026-10-25T14:02:18.203016+00:00",
+      "rangeKm": 250,
+      "has_rain": true,
+      "imageUrl": "stations/sambalpur.png"
+    },
+    "silkheda": {
+      "name": "Silkheda",
+      "code": "sil",
+      "lat": 23.5716,
+      "lng": 77.2461,
+      "status": "online",
+      "time": "2026-10-25T19:12:00+00:00",
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": "stations/silkheda.png"
+    },
+    "sohra": {
+      "name": "Sohra (Cherrapunji)",
+      "code": "cpj",
+      "lat": 25.268,
+      "lng": 91.7332,
+      "status": "online",
+      "time": "2026-10-22T22:21:00+00:00",
+      "rangeKm": 240,
+      "has_rain": false,
+      "imageUrl": "stations/sohra.png"
+    },
+    "srinagar": {
+      "name": "Srinagar",
+      "code": "srn",
+      "lat": 34.0516666,
+      "lng": 74.805,
+      "status": "online",
+      "time": "2026-10-25T18:30:00+00:00",
+      "rangeKm": 100.5,
+      "has_rain": false,
+      "imageUrl": "stations/srinagar.png"
+    },
+    "surkanda-devi": {
+      "name": "Surkanda Devi",
+      "code": "sur",
+      "lat": 30.41166,
+      "lng": 78.28833,
+      "status": "online",
+      "time": "2026-10-25T14:02:19.271472+00:00",
+      "rangeKm": 100,
+      "has_rain": true,
+      "imageUrl": "stations/surkanda-devi.png"
+    },
+    "tezpur": {
+      "name": "Tezpur",
+      "code": "tez",
+      "lat": 26.63851,
+      "lng": 92.8146,
+      "status": "online",
+      "time": "2026-10-25T14:02:15.216898+00:00",
+      "rangeKm": 150,
+      "has_rain": false,
+      "imageUrl": "stations/tezpur.png"
+    },
+    "visakhapatnam": {
+      "name": "Visakhapatnam",
+      "code": "vsk",
+      "lat": 17.6868,
+      "lng": 83.2185,
+      "status": "error",
+      "time": null,
+      "rangeKm": 250,
+      "has_rain": false,
+      "imageUrl": null
+    }
+  }
+}

@@ -312,25 +312,38 @@ def classify_station_sweep(img: Image.Image, crop: dict, palette: list | None, r
         pal_context = np.array([1 if len(p) > 5 and p[5] == 1 else 0 for p in palette], dtype=np.int32)
 
         flat_pixels = arr.reshape(-1, 3)
-        diff = flat_pixels[:, np.newaxis, :] - pal_rgb[np.newaxis, :, :]
-        dist = np.sqrt(np.sum(diff**2, axis=2))
-
-        nearest_idx = np.argmin(dist, axis=1)
-        nearest_dist = np.min(dist, axis=1)
-
-        matched = (nearest_dist <= pal_tol[nearest_idx])
-        matched_dbz = pal_dbz[nearest_idx]
-        is_context = pal_context[nearest_idx] == 1
-
-        # Reject echoes below 8 dBZ (clear air return / ground clutter)
-        valid_echo = matched & (matched_dbz >= 8.0)
-
+        flat_bg = bg_mask.reshape(-1)
         grid_flat = intensity.reshape(-1)
-        grid_flat[valid_echo] = [dbz_to_v(d) for d in matched_dbz[valid_echo]]
-        intensity = grid_flat.reshape(ch, cw)
+        context_cand_flat = np.zeros(ch * cw, dtype=bool)
 
-        # Context-dependent candidate mask (white cores, pale yellow, pale blue)
-        context_candidates = (is_context.reshape(ch, cw)) & (intensity > 0.0)
+        cand_indices = np.where(~flat_bg)[0]
+        if len(cand_indices) > 0:
+            cand_pixels = flat_pixels[cand_indices]
+            chunk_size = 50000
+            for start in range(0, len(cand_indices), chunk_size):
+                end = min(start + chunk_size, len(cand_indices))
+                batch_px = cand_pixels[start:end]
+                batch_idx = cand_indices[start:end]
+
+                diff = batch_px[:, np.newaxis, :] - pal_rgb[np.newaxis, :, :]
+                dist = np.sqrt(np.sum(diff**2, axis=2))
+
+                nearest_idx = np.argmin(dist, axis=1)
+                nearest_dist = np.min(dist, axis=1)
+
+                matched = (nearest_dist <= pal_tol[nearest_idx])
+                matched_dbz = pal_dbz[nearest_idx]
+                is_context = (pal_context[nearest_idx] == 1)
+
+                valid_echo = matched & (matched_dbz >= 8.0)
+                sub_matched_dbz = matched_dbz[valid_echo]
+                v_vals = np.maximum(0.3, (sub_matched_dbz - 12.0) / 9.6)
+
+                grid_flat[batch_idx[valid_echo]] = v_vals
+                context_cand_flat[batch_idx[valid_echo & is_context]] = True
+
+        intensity = grid_flat.reshape(ch, cw)
+        context_candidates = context_cand_flat.reshape(ch, cw)
 
         # Remove known background cartography
         intensity[bg_mask] = 0.0
