@@ -1,0 +1,67 @@
+name: radar
+
+# Scheduled & dispatched workflow for All-India Preprocessed Radar Imagery.
+# Can be run in gowthamgta/atmos-radar (dedicated asset repository) or via cron-job.org.
+# Publishes preprocessed transparent composite radar imagery to GitHub Pages at:
+# https://gowthamgta.github.io/atmos-radar/
+#
+# Free hosting, zero git history bloat, global CDN caching, CORS enabled.
+# Triggered every 5 minutes by cron-job.org via workflow_dispatch:
+# POST https://api.github.com/repos/gowthamgta/atmos-radar/actions/workflows/radar.yml/dispatches
+# Body: {"ref":"main"}
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force rebuild"
+        type: boolean
+        default: false
+
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  radar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure Atmos pipeline is present
+        run: |
+          if [ ! -f "pipeline/radar_india.py" ]; then
+            echo "Fetching pipeline from gowthamgta/Atmos..."
+            git clone --depth 1 https://github.com/gowthamgta/Atmos.git _atmos
+            cp -r _atmos/pipeline .
+            rm -rf _atmos
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install numpy pillow scipy
+
+      - name: Process radars into single composite image
+        run: python pipeline/radar_india.py --out site
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
