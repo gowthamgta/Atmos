@@ -493,12 +493,117 @@ export class RadarService implements OnDestroy {
   private inFlightSweeps: { key: string; done: Promise<void>; startedAt: number } | null = null;
   private static readonly SWEEP_JOIN_MAX_MS = 90_000;
 
+  private static readonly PREPROCESSED_SOURCES = [
+    'https://gowthamgta.github.io/atmos-radar/',
+    '/data/radar/',
+  ];
+
+  /**
+   * Fetches the preprocessed All-India composite published by the background workflow (gowthamgta/atmos-radar).
+   * Returns true when the manifest and binary intensity field were loaded and displayed.
+   */
+  private async tryFetchPreprocessedComposite(requestId: number): Promise<boolean> {
+    const cacheBuster = Math.floor(Date.now() / 60_000);
+
+    for (const base of RadarService.PREPROCESSED_SOURCES) {
+      try {
+        const manifestRes = await fetch(`${base}manifest.json?_t=${cacheBuster}`);
+        if (!manifestRes.ok) continue;
+
+        const manifest = await manifestRes.json();
+        if (!manifest || !manifest.width || !manifest.height || !manifest.coordinates) continue;
+
+        if (manifest.updatedAtEpochMs && Date.now() - manifest.updatedAtEpochMs > MAX_SCAN_AGE_MIN * 60_000) {
+          continue;
+        }
+
+        const binRes = await fetch(`${base}field.bin?_t=${cacheBuster}`);
+        if (!binRes.ok) continue;
+
+        const binBuf = await binRes.arrayBuffer();
+        const totalPx = manifest.width * manifest.height;
+        if (binBuf.byteLength < totalPx) continue;
+
+        if (requestId !== this.currentRequestId) return false;
+
+        const displayField = new Uint8Array(binBuf, 0, totalPx);
+        const displayFade = binBuf.byteLength >= totalPx * 2 ? new Uint8Array(binBuf, totalPx, totalPx) : undefined;
+
+        // Reconstruct continuous Float32Array intensity field (0..6.0) for liveTrack and nowcast rain-sampling
+        const field = new Float32Array(totalPx);
+        for (let i = 0; i < totalPx; i++) {
+          field[i] = (displayField[i] / 255) * 6.0;
+        }
+
+        const result: ProcessedRadarResult = {
+          stationId: 'composite-mosaic',
+          dataUrl: '',
+          displayField,
+          displayFade,
+          coordinates: manifest.coordinates,
+          fieldData: {
+            field,
+            cropW: manifest.width,
+            cropH: manifest.height,
+            cx: manifest.width / 2,
+            cy: manifest.height / 2,
+            radius: Math.hypot(manifest.width, manifest.height) / 2,
+            bounds: manifest.bounds,
+          },
+          timing: manifest.updatedAtEpochMs
+            ? radarTimingFromDate(new Date(manifest.updatedAtEpochMs), 'radar_metadata', false)
+            : null,
+          isDisplayed: true,
+        };
+
+        this.compositeMosaic.set(result);
+
+        // Update station timings from manifest so all station cards in UI reflect real IMD scan times & freshness
+        if (Array.isArray(manifest.stations)) {
+          this.stationTimings.update(m => {
+            const next = new Map(m);
+            for (const s of manifest.stations) {
+              if (s.id && s.timing) {
+                next.set(s.id, s.timing);
+              }
+            }
+            return next;
+          });
+        }
+
+        return true;
+      } catch {
+        // Fall back to next source
+      }
+    }
+
+    return false;
+  }
+
   private async runSweepFetch(): Promise<void> {
     const requestId = ++this.currentRequestId;
     this.isRefreshing.set(true);
 
     const isTransparent = this.transparentMode();
     const stacked = this.stacked();
+
+    // In stacked ('all') mode with all default stations, attempt to fetch the preprocessed composite first
+    if (stacked && this.hiddenStations().size === 0) {
+      try {
+        const loaded = await this.tryFetchPreprocessedComposite(requestId);
+        if (loaded) {
+          if (requestId === this.currentRequestId) {
+            this.isRefreshing.set(false);
+            this.lastSyncTime.set(
+              new Date().toLocaleTimeString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' })
+            );
+          }
+          return;
+        }
+      } catch {
+        // Fall back to client-side sweep fetching
+      }
+    }
 
     // one job per picture: the product on show, or every product of each station's stack (its primary one first, then the others)
     type Job = { station: RadarStationConfig; productKey: RadarProductKey; primary: boolean };
