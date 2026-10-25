@@ -2,7 +2,7 @@
  "version": 1,
  "south": 5.8,
  "north": 16.4,
- "west": 72,
+ "west": 72.0,
  "east": 83.1,
  "step": 0.02,
  "nx": 556,
@@ -16,18 +16,18 @@
  "assumptions": {
   "lowestSweepDeg": 0.5,
   "beamWidthDeg": {
-   "S-Band": 1,
-   "C-Band": 1,
+   "S-Band": 1.0,
+   "C-Band": 1.0,
    "X-Band": 1.5
   },
-  "antennaM": 30,
+  "antennaM": 30.0,
   "effectiveEarthRadiusFactor": 1.3333333333333333,
   "good": {
-   "beamAboveGroundKm": 2,
+   "beamAboveGroundKm": 2.0,
    "blocked": 0.1
   },
   "limited": {
-   "beamAboveGroundKm": 4,
+   "beamAboveGroundKm": 4.0,
    "blocked": 0.5
   },
   "terrain": "Copernicus GLO-30, 270 m"
