@@ -1,23 +1,42 @@
-import os
 import json
+import os
+import pathlib
+import sys
 import numpy as np
 import pytest
 from PIL import Image
 
-from pipeline.radar_india import (
-    GRID_BOUNDS,
-    GRID_RES,
-    GRID_W,
-    GRID_H,
-    RADAR_COLOR_STOPS,
-    dbz_to_v,
-    sample_radar_ramp,
-    remove_background_cartography,
-    keep_cores_in_rain,
-    remove_map_drawings,
-    fill_overlay_gaps,
-    classify_station_sweep,
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+try:
+    from radar_india import (
+        GRID_BOUNDS,
+        GRID_RES,
+        GRID_W,
+        GRID_H,
+        RADAR_COLOR_STOPS,
+        dbz_to_v,
+        sample_radar_ramp,
+        remove_background_cartography,
+        keep_cores_in_rain,
+        remove_map_drawings,
+        fill_overlay_gaps,
+        classify_station_sweep,
+    )
+except ImportError:
+    from pipeline.radar_india import (
+        GRID_BOUNDS,
+        GRID_RES,
+        GRID_W,
+        GRID_H,
+        RADAR_COLOR_STOPS,
+        dbz_to_v,
+        sample_radar_ramp,
+        remove_background_cartography,
+        keep_cores_in_rain,
+        remove_map_drawings,
+        fill_overlay_gaps,
+        classify_station_sweep,
+    )
 
 def test_grid_bounds_and_resolution():
     assert GRID_BOUNDS['south'] == 6.0
