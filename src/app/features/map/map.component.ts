@@ -31,7 +31,6 @@ import type { MapView } from '../../core/satellite/satellite-window';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
 import { TerrainService } from '../../core/forecast/terrain.service';
 import { syncCoverageLayer } from './radar-coverage-overlay';
-import { syncRadarCompositeLayer } from './radar-composite-overlay';
 import { REACH_LAYER_ID, drawReach, syncReachLayer } from './radar-reach-overlay';
 
 /** Where the map opens and where "recenter" goes: Kallakurichi, at the zoom that shows the forecast area (about 16 degrees across). */
@@ -154,21 +153,6 @@ export class MapComponent implements OnInit, OnDestroy {
     const visible = this.coverage.visible();
     if (!this.map || !this.isMapLoaded()) return;
     syncCoverageLayer(this.map, overlay, visible, this.map.getLayer('radar-field-layer') ? 'radar-field-layer' : this.observationAnchorId());
-  });
-
-  // Reactive Effect: Preprocessed All-India Radar Composite Overlay
-  private radarCompositeEffect = effect(() => {
-    const on = this.layerService.layers().some(l => l.id === 'radar' && l.active);
-    const overlay = this.radarService.compositeOverlay();
-    const opacity = this.radarService.radarOpacity();
-    if (!this.map || !this.isMapLoaded()) return;
-    syncRadarCompositeLayer(
-      this.map,
-      overlay,
-      on,
-      opacity,
-      this.observationAnchorId()
-    );
   });
 
   // Reactive Effect: Meteosat satellite pictures (which are loaded, where the loop is, whether the layer is on, opacity)

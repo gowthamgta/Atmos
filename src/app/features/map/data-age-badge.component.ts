@@ -72,7 +72,7 @@ export class DataAgeBadgeComponent {
   protected readonly message = computed(() => {
     const on = (id: string) => this.layers.layers().some(l => l.id === id && l.active);
     const live = this.radar.compositeMosaic();
-    const radarMs = this.radar.preprocessedTiming()?.epochMs ?? live?.timing?.epochMs;
+    const radarMs = live?.timing?.epochMs;
     const shownIds = this.radar.stations.filter(s => !this.radar.hiddenStations().has(s.id));
     const frames = this.satellite.frames();
     return dataAgeMessage({

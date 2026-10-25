@@ -148,8 +148,6 @@ export class RadarService implements OnDestroy {
   readonly isRefreshing = signal<boolean>(false);
   readonly allRadarResults = signal<Map<string, ProcessedRadarResult>>(new Map());
   readonly compositeMosaic = signal<ProcessedRadarResult | null>(null);
-  readonly compositeOverlay = signal<{ url: string; coordinates: [[number, number], [number, number], [number, number], [number, number]] } | null>(null);
-  readonly preprocessedTiming = signal<RadarObservationTiming | null>(null);
   readonly hoverInfo = signal<RadarHoverInfo | null>(null);
 
   // ── One-hour loop (from IMD's animated GIFs) ──
@@ -480,60 +478,16 @@ export class RadarService implements OnDestroy {
    * running joins that one instead of downloading every picture again (the constructor, the layer switch and the 1-minute timer
    * often overlap at start-up).
    */
-  async fetchAllRadarSweeps(): Promise<void> {
-    this.isRefreshing.set(true);
-    const sources = [
-      'https://gowthamgta.github.io/atmos-radar/',
-      '/data/radar/'
-    ];
-    const buster = Date.now();
-    for (const base of sources) {
-      try {
-        const manifestUrl = `${base.replace(/\/+$/, '')}/latest.json?_t=${buster}`;
-        const res = await fetch(manifestUrl);
-        if (!res.ok) continue;
-        const data = await res.json();
-        if (!data || !data.generated_at) continue;
-
-        const coords: [[number, number], [number, number], [number, number], [number, number]] = data.maplibre_coordinates || [
-          [67.0, 37.5],
-          [98.0, 37.5],
-          [98.0, 6.0],
-          [67.0, 6.0]
-        ];
-        const pngFile = data.files?.composite_png || 'india-composite.png';
-        const imgUrl = `${base.replace(/\/+$/, '')}/${pngFile}?_t=${buster}`;
-
-        this.compositeOverlay.set({
-          url: imgUrl,
-          coordinates: coords
-        });
-
-        const epochMs = new Date(data.generated_at).getTime();
-        if (!isNaN(epochMs)) {
-          this.lastSyncTime.set(new Date(epochMs).toLocaleTimeString('en-IN', { hour12: true, timeZone: 'Asia/Kolkata' }));
-          const timing = radarTimingFromDate(new Date(epochMs), 'preprocessed', false);
-          this.preprocessedTiming.set(timing);
-          this.stationTimings.update(m => {
-            const next = new Map(m);
-            if (data.stations) {
-              for (const [stId, info] of Object.entries(data.stations as Record<string, { time?: string; status?: string }>)) {
-                if (info.time) {
-                  const t = radarTimingFromDate(new Date(info.time), 'preprocessed', false);
-                  next.set(stId, t);
-                }
-              }
-            }
-            return next;
-          });
-        }
-        this.isRefreshing.set(false);
-        return;
-      } catch {
-        // fallback to next source
-      }
-    }
-    this.isRefreshing.set(false);
+  fetchAllRadarSweeps(): Promise<void> {
+    const key = `${this.activeView()}|${this.transparentMode()}`;
+    const running = this.inFlightSweeps;
+    // a run that has hung (a request that never answers) is not joined: a new one starts instead
+    if (running?.key === key && Date.now() - running.startedAt < RadarService.SWEEP_JOIN_MAX_MS) return running.done;
+    const done = this.runSweepFetch().finally(() => {
+      if (this.inFlightSweeps?.done === done) this.inFlightSweeps = null;
+    });
+    this.inFlightSweeps = { key, done, startedAt: Date.now() };
+    return done;
   }
 
   private inFlightSweeps: { key: string; done: Promise<void>; startedAt: number } | null = null;
