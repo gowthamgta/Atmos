@@ -41,7 +41,7 @@ STATIONS = [
     ("karaikal", 10.9129, 79.8418, "S-Band", 250),
     ("chennai", 13.0839, 80.2901, "S-Band", 250),
     ("pallikaranai", 12.9451, 80.2115, "X-Band", 87),
-    ("sriharikota", 13.6646, 80.2276, "S-Band", 240),
+
     ("kochi", 9.9312, 76.2673, "S-Band", 255),
     ("thiruvananthapuram", 8.5374, 76.8657, "C-Band", 240),
     ("mangaluru", 12.901, 74.856, "C-Band", 250),

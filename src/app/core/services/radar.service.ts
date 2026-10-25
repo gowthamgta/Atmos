@@ -971,7 +971,7 @@ export class RadarService implements OnDestroy {
             if (this.unavailableStations().has(station.id) || this.hiddenStations().has(station.id)) return null;
             // only the radars that name an animation download one (a few MB each); the others join the loop with their live pictures
             const file = station.animationFile ? animationFile(station.code, product) : null;
-            // The Pallikaranai X-band and Sriharikota animations are over 20 MB each, so the loop leaves them out (their live
+            // The Pallikaranai X-band animations are over 20 MB each, so the loop leaves them out (their live
             // stills are still used).
             const bytes = file && station.band !== 'X-Band' && !station.skipAnimation ? await this.fetchRadarFile(file) : null;
             if (token !== this.historyToken) return null;

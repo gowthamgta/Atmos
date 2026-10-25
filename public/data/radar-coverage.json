@@ -2,7 +2,7 @@
  "version": 1,
  "south": 5.8,
  "north": 16.4,
- "west": 72.0,
+ "west": 72,
  "east": 83.1,
  "step": 0.02,
  "nx": 556,
@@ -16,18 +16,18 @@
  "assumptions": {
   "lowestSweepDeg": 0.5,
   "beamWidthDeg": {
-   "S-Band": 1.0,
-   "C-Band": 1.0,
+   "S-Band": 1,
+   "C-Band": 1,
    "X-Band": 1.5
   },
-  "antennaM": 30.0,
+  "antennaM": 30,
   "effectiveEarthRadiusFactor": 1.3333333333333333,
   "good": {
-   "beamAboveGroundKm": 2.0,
+   "beamAboveGroundKm": 2,
    "blocked": 0.1
   },
   "limited": {
-   "beamAboveGroundKm": 4.0,
+   "beamAboveGroundKm": 4,
    "blocked": 0.5
   },
   "terrain": "Copernicus GLO-30, 270 m"
@@ -53,13 +53,6 @@
    "lng": 80.2115,
    "band": "X-Band",
    "rangeKm": 87
-  },
-  {
-   "id": "sriharikota",
-   "lat": 13.6646,
-   "lng": 80.2276,
-   "band": "S-Band",
-   "rangeKm": 240
   },
   {
    "id": "kochi",

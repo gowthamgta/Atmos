@@ -67,7 +67,7 @@ fingerprint only together with this file, on the owner's request.
 - **Hovering shows the height of each radar's beam** over the place (28e1541).
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
 - **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45
-  radars, Karaikal and Chennai first. Pallikaranai, Sriharikota, Kochi, Thiruvananthapuram and Mangaluru as measured before; every other
+  radars (Sriharikota removed on owner request, 25 Oct 2026), Karaikal and Chennai first. Pallikaranai, Kochi, Thiruvananthapuram and Mangaluru as measured before; every other
   one from its own pictures of 23 Oct (`core/domain/models/imd-radar-network.ts`, copies kept by the radar-pictures workflow on the
   imd-radar-samples branch): the map square, the range printed on the picture, the legend's colours with their values. A product whose
   picture could not be measured (the radar down, no range printed) is never fetched. Machilipatnam is left out (shut down, nothing to
