@@ -28,6 +28,7 @@ on:
       - ".github/workflows/nwp.yml"
       - "pipeline/cyclones.py"
       - "pipeline/ens.py"
+      - "pipeline/tests/**"
   workflow_dispatch:
     inputs:
       force:
