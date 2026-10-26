@@ -506,6 +506,11 @@ export class RadarService implements OnDestroy {
   private inFlightSweeps: { key: string; done: Promise<void>; startedAt: number } | null = null;
   private static readonly SWEEP_JOIN_MAX_MS = 90_000;
 
+  /** The workflow run whose composite is on the map (its manifest's updatedAtEpochMs): the 15.7 MB field is downloaded only for a new one. */
+  private compositeRun = 0;
+  /** That composite as put on the map (the app's own composite, built when the workflow's is missing, replaces it). */
+  private workflowComposite: ProcessedRadarResult | null = null;
+
   private static readonly PREPROCESSED_SOURCES = [
     'https://gowthamgta.github.io/atmos-radar/',
     '/data/radar/',
@@ -526,9 +531,17 @@ export class RadarService implements OnDestroy {
         const manifest = await manifestRes.json();
         if (!manifest || !manifest.width || !manifest.height || !manifest.coordinates) continue;
 
-        if (!manifest.updatedAtEpochMs || !isObservationEligible(radarTimingFromDate(new Date(manifest.updatedAtEpochMs), 'radar_metadata', false), Date.now())) {
+        // the composite is as old as its newest scan, not as the workflow run that made it (a run every 5 minutes can still be
+        // composing scans IMD took 40 minutes ago)
+        const scanMs = Array.isArray(manifest.stations)
+          ? Math.max(0, ...manifest.stations.map((st: { timing?: { epochMs?: number } }) => st.timing?.epochMs ?? 0))
+          : 0;
+        const timeMs = scanMs || manifest.updatedAtEpochMs;
+        if (!timeMs || !isObservationEligible(radarTimingFromDate(new Date(timeMs), 'radar_metadata', false), Date.now())) {
           continue;
         }
+        // the same run as the one on the map (the app checks every minute, the workflow runs every 5): nothing new to download
+        if (manifest.updatedAtEpochMs === this.compositeRun && this.workflowComposite && this.compositeMosaic() === this.workflowComposite) return true;
 
         const binRes = await fetch(`${base}field.bin?_t=${cacheBuster}`);
         if (!binRes.ok) continue;
@@ -563,13 +576,13 @@ export class RadarService implements OnDestroy {
             radius: Math.hypot(manifest.width, manifest.height) / 2,
             bounds: manifest.bounds,
           },
-          timing: manifest.updatedAtEpochMs
-            ? radarTimingFromDate(new Date(manifest.updatedAtEpochMs), 'radar_metadata', false)
-            : null,
+          timing: radarTimingFromDate(new Date(timeMs), 'radar_metadata', false),
           isDisplayed: true,
         };
 
         this.compositeMosaic.set(result);
+        this.compositeRun = manifest.updatedAtEpochMs;
+        this.workflowComposite = result;
 
         // Update station timings from manifest so all station cards in UI reflect real IMD scan times & freshness
         if (Array.isArray(manifest.stations)) {
@@ -603,7 +616,8 @@ export class RadarService implements OnDestroy {
 
     // Fetch the preprocessed all-India composite published by the background workflow
     try {
-      const loaded = await this.tryFetchPreprocessedComposite(requestId);
+      // the workflow publishes the All view only (each radar's PPI inside, CAZ around, PPZ outside): a single product is read here
+      const loaded = this.stacked() && (await this.tryFetchPreprocessedComposite(requestId));
       if (loaded) {
         if (requestId === this.currentRequestId) {
           this.isRefreshing.set(false);
@@ -617,8 +631,8 @@ export class RadarService implements OnDestroy {
       // Fallback
     }
 
-    // We no longer need to call the radar APIs in the application directly (preprocessed composite is used instead)
-    /*
+    // Fallback: no fresh composite from the radar workflow (the workflow stopped, GitHub Pages down, or its newest scans too old), so the
+    // app reads IMD's pictures itself as it did before the workflow existed
     const isTransparent = this.transparentMode();
     const stacked = this.stacked();
 
@@ -679,7 +693,6 @@ export class RadarService implements OnDestroy {
     };
 
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
-    */
 
     if (requestId === this.currentRequestId) {
       this.isRefreshing.set(false);

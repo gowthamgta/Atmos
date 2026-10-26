@@ -261,6 +261,7 @@ async function main() {
   }
 
   console.log(`[RadarPipeline] Queueing ${jobs.length} sweep fetch jobs...`);
+  const total = jobs.length;
   let completed = 0;
   let succeeded = 0;
 
@@ -285,8 +286,8 @@ async function main() {
         // Continue to next station
       } finally {
         completed++;
-        if (completed % 15 === 0 || completed === jobs.length) {
-          console.log(`[RadarPipeline] Progress: ${completed}/${completed + jobs.length} sweeps checked (${succeeded} active)`);
+        if (completed % 15 === 0 || completed === total) {
+          console.log(`[RadarPipeline] Progress: ${completed}/${total} sweeps checked (${succeeded} active)`);
         }
       }
     }
