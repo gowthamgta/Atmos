@@ -44,6 +44,12 @@ const VIEW = { lat: 10.9, lon: 78.6, zoom: 6.35 };
 const WAIT_MS = 150_000;
 
 const log = (...a) => console.log(`[nowcast ${new Date().toISOString()}]`, ...a);
+/** A failure the run is marked failed for: logged, and as a GitHub error note too (readable on the run without signing in). */
+const fail = (title, message) => {
+  log(`${title}: ${message}`);
+  if (process.env.GITHUB_ACTIONS) console.log(`::error title=${title}::${String(message).replace(/\r?\n/g, ' ')}`);
+  process.exitCode = 1;
+};
 
 async function readJson(file, fallback) {
   try {
@@ -153,8 +159,7 @@ async function main() {
       log(`posted to Telegram ${TELEGRAM_CHAT_ID} (message ${id})`);
       posted = true;
     } catch (e) {
-      log(`Telegram post to ${TELEGRAM_CHAT_ID} failed: ${e.message}`);
-      process.exitCode = 1;
+      fail(`Telegram post to ${TELEGRAM_CHAT_ID} failed`, e.message);
     }
   }
   if (haveDiscord) {
@@ -163,8 +168,7 @@ async function main() {
       log(`posted to Discord (message ${id})`);
       posted = true;
     } catch (e) {
-      log(`Discord post failed: ${e.message}`);
-      process.exitCode = 1;
+      fail('Discord post failed', e.message);
     }
   }
   if (haveX) {
@@ -173,8 +177,8 @@ async function main() {
       log(`posted https://x.com/i/web/status/${id}`);
       posted = true;
     } catch (e) {
-      log('X refused the post:', e.message);
-      process.exitCode = 1;
+      // X's own reason (its code and body) as well: a spent allowance and a revoked key read the same in e.message alone
+      fail('X refused the post', `${e.message}${e.code ? ` (${e.code})` : ''}${e.data ? ` ${JSON.stringify(e.data).slice(0, 300)}` : ''}`);
     }
   }
   // remembered once anything went out, so the storm is not posted again ten minutes later
@@ -204,8 +208,7 @@ async function alertPlaces(placeSamples, snapshot, png, state, now) {
       sent[place.name] = now;
       changed = true;
     } catch (e) {
-      log(`place alert for ${place.name} failed: ${e.message}`);
-      process.exitCode = 1;
+      fail(`Place alert for ${place.name} failed`, e.message);
     }
   }
   if (changed) {
@@ -217,5 +220,5 @@ async function alertPlaces(placeSamples, snapshot, png, state, now) {
 
 main().catch(e => {
   console.error(e);
-  process.exitCode = 1;
+  fail('Nowcast failed', e?.message ?? String(e));
 });
