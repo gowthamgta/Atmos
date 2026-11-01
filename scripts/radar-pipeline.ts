@@ -14,6 +14,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { buildCloudMap, productClearShare, productLooksWrong, removeClearPatches, type CloudMap } from '../src/app/core/services/radar-qc';
 import {
   IMD_RADAR_STATIONS,
   type ProcessedRadarResult,
@@ -57,22 +59,51 @@ import {
 } from '../src/app/core/services/radar-field';
 
 const STACK_PRODUCTS: readonly RadarProductKey[] = ['ppi', 'caz', 'ppz'];
+/** Where this workflow publishes (the last run's manifest is read from it) and our satellite (the cloud map). */
+const RADAR_SITE = 'https://gowthamgta.github.io/atmos-radar/';
+const SATELLITE_SITE = 'https://gowthamgta.github.io/atmos-satellite/rgb-msg/';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 interface ParsedArgs {
   outDir: string;
   concurrency: number;
+  /** Keep every picture fetched in this folder (with its Last-Modified), to run the same pictures again (--replay). */
+  saveDir: string;
+  /** Read the pictures from a --save folder instead of IMD (to compare a change on the same pictures). */
+  replayDir: string;
 }
 
 function parseArgs(): ParsedArgs {
   const args = process.argv.slice(2);
   let outDir = 'public/data/radar';
   let concurrency = 10;
+  let saveDir = '';
+  let replayDir = '';
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--out' && args[i + 1]) outDir = args[++i];
     if (args[i] === '--concurrency' && args[i + 1]) concurrency = parseInt(args[++i], 10);
+    if (args[i] === '--save' && args[i + 1]) saveDir = args[++i];
+    if (args[i] === '--replay' && args[i + 1]) replayDir = args[++i];
   }
-  return { outDir, concurrency };
+  return { outDir, concurrency, saveDir, replayDir };
+}
+
+/** A picture by its URL, from IMD or a --replay folder, kept in a --save folder. */
+async function getRadarGif(url: string, args: ParsedArgs): Promise<{ buffer: Buffer; lastModified: Date | null; isWriteTime: boolean } | null> {
+  const name = url.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (args.replayDir) {
+    const file = path.join(args.replayDir, name);
+    if (!fs.existsSync(file)) return null;
+    const meta = JSON.parse(fs.readFileSync(file + '.json', 'utf8')) as { lastModified: string | null };
+    return { buffer: fs.readFileSync(file), lastModified: meta.lastModified ? new Date(meta.lastModified) : null, isWriteTime: !!meta.lastModified };
+  }
+  const got = await fetchRadarGif(url);
+  if (got && args.saveDir) {
+    fs.mkdirSync(args.saveDir, { recursive: true });
+    fs.writeFileSync(path.join(args.saveDir, name), got.buffer);
+    fs.writeFileSync(path.join(args.saveDir, name + '.json'), JSON.stringify({ lastModified: got.lastModified?.toISOString() ?? null }));
+  }
+  return got;
 }
 
 /** Fetch a single radar GIF from IMD */
@@ -119,7 +150,7 @@ async function processSweep(
   const { rgba, w, h } = decoded;
 
   // Extract observation timing
-  let timing: RadarObservationTiming | null = extractRadarIsoTimestamp(rawBytes);
+  let timing: RadarObservationTiming | null = extractRadarIsoTimestamp(rawBytes.slice().buffer);
 
   if (!timing && productConfig.stampBox) {
     const stamp = readStampTime(rgba, w, h, productConfig.stampBox);
@@ -162,6 +193,8 @@ async function processSweep(
     isTransparent: true,
     isXBand: station.band === 'X-Band',
     square: productKey === 'ppi',
+    // RADAR_KEEP_SPIKES=1 leaves the interference spikes in (to compare the filter on the same pictures: --replay)
+    rangeKm: process.env.RADAR_KEEP_SPIKES === '1' ? undefined : productConfig.rangeKm,
   });
 
   if (!field) return null;
@@ -185,6 +218,95 @@ async function processSweep(
     coordinates: productConfig.maplibreCoordinates,
     isDisplayed,
   };
+}
+
+interface PictureSeen {
+  hash: string;
+  firstSeenMs: number;
+}
+
+/** The fingerprints of the last run's pictures (its published manifest; RADAR_PREVIOUS_MANIFEST a file or URL instead; none in a --replay). */
+async function loadPreviousPictures(args: ParsedArgs): Promise<Record<string, PictureSeen>> {
+  const src = process.env.RADAR_PREVIOUS_MANIFEST ?? (args.replayDir ? '' : `${RADAR_SITE}manifest.json`);
+  if (!src) return {};
+  try {
+    const text = /^https?:/.test(src) ? await (await fetch(src, { signal: AbortSignal.timeout(20_000) })).text() : fs.readFileSync(src, 'utf8');
+    return (JSON.parse(text) as { pictures?: Record<string, PictureSeen> }).pictures ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Our newest two Meteosat frames as a cloud map (radar-qc.ts), or null when there is none within the hour before `nowMs` (the checks are
+ * then skipped: no satellite, no removal).
+ */
+async function loadCloudMap(nowMs: number): Promise<{ map: CloudMap; time: string } | null> {
+  try {
+    const index = (await (await fetch(`${SATELLITE_SITE}index.json`, { signal: AbortSignal.timeout(20_000) })).json()) as {
+      bounds: { west: number; east: number; south: number; north: number };
+      data: { minK: number; spanK: number };
+      frames: { time: string; files: { data?: string } }[];
+    };
+    const frames = index.frames.filter(f => f.files.data && nowMs - Date.parse(f.time) <= 60 * 60_000).slice(-2);
+    if (!frames.length) return null;
+    const temps: Float32Array[] = [];
+    let nx = 0, ny = 0;
+    for (const f of frames) {
+      const png = Buffer.from(await (await fetch(SATELLITE_SITE + f.files.data, { signal: AbortSignal.timeout(30_000) })).arrayBuffer());
+      const { w, h, rgb } = decodePng(png);
+      nx = w;
+      ny = h;
+      const t = new Float32Array(w * h);
+      for (let i = 0; i < t.length; i++) t[i] = rgb[i * 3] === 0 ? 0 : index.data.minK + (rgb[i * 3] / 255) * index.data.spanK;
+      temps.push(t);
+    }
+    const midLat = (index.bounds.south + index.bounds.north) / 2;
+    const kmPerPx = ((index.bounds.east - index.bounds.west) * 111.32 * Math.cos((midLat * Math.PI) / 180)) / nx;
+    return { map: buildCloudMap(temps, nx, ny, index.bounds, kmPerPx), time: frames[frames.length - 1].time };
+  } catch (e) {
+    console.log(`[RadarPipeline] Satellite frame not read: ${String(e)}`);
+    return null;
+  }
+}
+
+/** A PNG's pixels as RGB (8-bit truecolour, with or without alpha, not interlaced: our satellite data packs). */
+function decodePng(buf: Buffer): { w: number; h: number; rgb: Uint8Array } {
+  let w = 0, h = 0, type = 0;
+  const idat: Buffer[] = [];
+  for (let o = 8; o < buf.length; ) {
+    const len = buf.readUInt32BE(o), kind = buf.toString('ascii', o + 4, o + 8), data = buf.subarray(o + 8, o + 8 + len);
+    if (kind === 'IHDR') {
+      w = data.readUInt32BE(0);
+      h = data.readUInt32BE(4);
+      if (data[8] !== 8 || data[12] !== 0) throw new Error('PNG not 8-bit non-interlaced');
+      type = data[9];
+    } else if (kind === 'IDAT') idat.push(data);
+    else if (kind === 'IEND') break;
+    o += 12 + len;
+  }
+  const bpp = type === 6 ? 4 : type === 2 ? 3 : 0;
+  if (!bpp) throw new Error(`PNG colour type ${type} not handled`);
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const stride = w * bpp, out = new Uint8Array(w * h * 3);
+  let prev = new Uint8Array(stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)];
+    const line = new Uint8Array(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+    for (let i = 0; i < stride; i++) {
+      const a = i >= bpp ? line[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+      if (f === 1) line[i] = (line[i] + a) & 255;
+      else if (f === 2) line[i] = (line[i] + b) & 255;
+      else if (f === 3) line[i] = (line[i] + ((a + b) >> 1)) & 255;
+      else if (f === 4) {
+        const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+        line[i] = (line[i] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255;
+      }
+    }
+    for (let x = 0; x < w; x++) for (let k = 0; k < 3; k++) out[(y * w + x) * 3 + k] = line[x * bpp + k];
+    prev = line;
+  }
+  return { w, h, rgb: out };
 }
 
 /** Encodes RGBA pixel array into a compressed PNG using Node zlib */
@@ -239,7 +361,8 @@ function crc32(buf: Buffer): number {
 }
 
 async function main() {
-  const { outDir, concurrency } = parseArgs();
+  const args = parseArgs();
+  const { outDir, concurrency } = args;
   console.log(`[RadarPipeline] Starting AtmosIQ Radar Pipeline...`);
   console.log(`[RadarPipeline] Stations configured: ${IMD_RADAR_STATIONS.length}`);
   console.log(`[RadarPipeline] Output directory: ${outDir}`);
@@ -248,6 +371,10 @@ async function main() {
 
   const nowMs = Date.now();
   const ringResults = new Map<string, ProcessedRadarResult>();
+  // each picture's fingerprint and when it was first seen with it (the last run's, from its manifest: for the stale check)
+  const previousPictures = await loadPreviousPictures(args);
+  const pictures: Record<string, PictureSeen> = {};
+  const qc = { satelliteTime: null as string | null, frozen: [] as string[], leftOut: [] as { key: string; echoPx: number; clearShare: number }[], clearPatchPx: 0 };
 
   type FetchJob = { station: RadarStationConfig; productKey: RadarProductKey };
   const jobs: FetchJob[] = [];
@@ -274,8 +401,18 @@ async function main() {
       const url = productConfig.url;
 
       try {
-        const fetchRes = await fetchRadarGif(url);
+        const fetchRes = await getRadarGif(url, args);
         if (fetchRes) {
+          // a picture whose content has not changed for longer than a scan stays valid is stale, whatever its file's time says
+          const key = ringKey(station.id, productKey);
+          const hash = createHash('sha1').update(fetchRes.buffer).digest('hex');
+          const before = previousPictures[key];
+          const firstSeenMs = before && before.hash === hash ? before.firstSeenMs : nowMs;
+          pictures[key] = { hash, firstSeenMs };
+          if (nowMs - firstSeenMs > MAX_SCAN_AGE_MIN * 60_000) {
+            qc.frozen.push(key);
+            continue;
+          }
           const res = await processSweep(station, productKey, fetchRes);
           if (res && res.fieldData) {
             ringResults.set(ringKey(station.id, productKey), res);
@@ -299,6 +436,24 @@ async function main() {
   if (ringResults.size === 0) {
     console.error(`[RadarPipeline] Error: No radar sweeps could be retrieved.`);
     process.exit(1);
+  }
+  if (qc.frozen.length) console.log(`[RadarPipeline] Stale (the same picture for over ${MAX_SCAN_AGE_MIN} min): ${qc.frozen.join(', ')}`);
+
+  // Against our own satellite (radar-qc.ts): a product whose echo is mostly under a clear sky is misread or stale, and left out
+  const cloud = await loadCloudMap(nowMs);
+  if (cloud) {
+    qc.satelliteTime = cloud.time;
+    for (const [key, r] of [...ringResults]) {
+      const b = r.fieldData.bounds;
+      const share = productClearShare(r.fieldData.field, { width: r.fieldData.cropW, height: r.fieldData.cropH, south: b[0][0], west: b[0][1], north: b[1][0], east: b[1][1] }, cloud.map);
+      if (productLooksWrong(share)) {
+        ringResults.delete(key);
+        qc.leftOut.push({ key, echoPx: share.echo, clearShare: +(share.clear / share.echo).toFixed(2) });
+      }
+    }
+    if (qc.leftOut.length) console.log(`[RadarPipeline] Left out (echo mostly under a clear sky): ${qc.leftOut.map(p => `${p.key} ${Math.round(p.clearShare * 100)}%`).join(', ')}`);
+  } else {
+    console.log('[RadarPipeline] No satellite frame within the hour: the clear-sky checks are skipped');
   }
 
   // Compose concentric stacked mosaic (PPI inside, CAZ around, PPZ outside)
@@ -325,6 +480,13 @@ async function main() {
   if (!composed || !composed.fieldData || !composed.displayField) {
     console.error(`[RadarPipeline] Error: Mosaic composition produced no output.`);
     process.exit(1);
+  }
+
+  // patches of echo entirely under a clear sky (clutter, clear-air echo, specks) go; a patch that touches cloud anywhere stays whole
+  if (cloud) {
+    const b = composed.fieldData.bounds;
+    qc.clearPatchPx = removeClearPatches([composed.fieldData.field, composed.displayField], { width: composed.fieldData.cropW, height: composed.fieldData.cropH, south: b[0][0], west: b[0][1], north: b[1][0], east: b[1][1] }, cloud.map);
+    console.log(`[RadarPipeline] Echo under a clear sky removed: ${qc.clearPatchPx} px`);
   }
 
   // Beam height calculation & aloft attenuation
@@ -398,6 +560,9 @@ async function main() {
     activeStationCount: activeConfigs.length,
     totalStationCount: IMD_RADAR_STATIONS.length,
     stations: stationsSummary,
+    // what the quality control left out (radar-qc.ts), and each picture's fingerprint for the next run's stale check
+    qc,
+    pictures,
   };
 
   fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
@@ -436,7 +601,7 @@ async function main() {
     ${manifest.stations.map(s => `
       <div class="st-card ${s.timing?.freshness || 'offline'}">
         <strong>${s.name}</strong><br/>
-        Scan: ${s.timing?.timeFormatted || 'N/A'}<br/>
+        Scan: ${s.timing?.ist || 'N/A'}<br/>
         Age: ${s.timing?.ageMinutes !== undefined ? s.timing.ageMinutes + 'm ago' : 'Offline'}
       </div>
     `).join('')}

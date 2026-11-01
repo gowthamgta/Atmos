@@ -18,6 +18,8 @@ export interface RadarPixelOptions {
   isXBand: boolean;
   /** Keep the whole square of the picture (the PPI is shown as the square it is), not only the circle of the dish. */
   square?: boolean;
+  /** The picture's range (km, centre to the edge of the field): with it, radial interference spikes are cleared (removeRadialSpikes). */
+  rangeKm?: number;
 }
 
 /** Whether the picture still has the layout the station's crop was measured on (IMD swaps in a "maintenance" photo). */
@@ -57,6 +59,144 @@ export function looksLikeRadar(rgba: Uint8ClampedArray | Uint8Array, w: number, 
 const RADAR_BLUR_SIGMA_PX = 2.6;
 /** Picture pixels at or above this intensity (31 dBZ) keep their own value when the picture is stretched to the working grid. */
 const STRONG_PIXEL_MIN = 2.0;
+
+// ── Radial interference spikes ──
+// Radio interference (wireless links on the radar's frequency, the sun at sunrise and sunset) paints a thin line along one ray: echo that
+// runs a long way out from the radar while being only a ray or two wide across it, often over clear sky (seen on 1 Nov 2026 from Raipur,
+// Lucknow, Delhi, Bhopal and over cloud from Agartala). Rain is never like that: a band pointing at the radar is still a few kilometres
+// wide, so it covers more and more degrees the nearer it is. Each echo pixel is looked at in the radar's own geometry (direction and
+// distance): it is a spike when its run along the ray is long and its run across the rays at the same distance is narrow both in degrees
+// and in kilometres. Where a spike crosses rain, the rain there is wide across the rays and stays.
+const SPIKE_AZIMUTH_BINS = 1440; // 0.25 degree
+const SPIKE_MIN_RUN_KM = 25;
+const SPIKE_MAX_WIDTH_DEG = 4;
+const SPIKE_MAX_WIDTH_KM = 8;
+const SPIKE_ALWAYS_NARROW_KM = 3;
+const SPIKE_MIN_DISTANCE_KM = 15;
+const SPIKE_MAX_GAP_KM = 12;
+const SPIKE_MIN_FILL = 0.3;
+/** A chain with an echo this strong is taken for rain and kept (the spikes seen were all weak; a squall line pointing at the radar is not). */
+const SPIKE_MAX_INTENSITY = (35 - 12) / 9.6;
+
+/** For each pixel of a square field centred on the radar: its direction bin and its distance (pixels), -1 outside the dish. */
+const spikeGeometryCache = new Map<number, { az: Int16Array; rad: Int16Array }>();
+function getSpikeGeometry(size: number): { az: Int16Array; rad: Int16Array } {
+  let g = spikeGeometryCache.get(size);
+  if (g) return g;
+  const half = size / 2, maxR = Math.floor(half - 1);
+  const az = new Int16Array(size * size).fill(-1), rad = new Int16Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x + 0.5 - half, dy = y + 0.5 - half;
+      const r = Math.round(Math.hypot(dx, dy));
+      if (r > maxR) continue;
+      let a = Math.atan2(dy, dx);
+      if (a < 0) a += 2 * Math.PI;
+      az[y * size + x] = Math.floor((a / (2 * Math.PI)) * SPIKE_AZIMUTH_BINS) % SPIKE_AZIMUTH_BINS;
+      rad[y * size + x] = r;
+    }
+  }
+  g = { az, rad };
+  spikeGeometryCache.set(size, g);
+  return g;
+}
+
+/**
+ * Clears radial interference spikes from a square field centred on the radar whose edge is `rangeKm` from it (see above). Returns the number
+ * of pixels cleared.
+ */
+export function removeRadialSpikes(grid: Float32Array, size: number, rangeKm: number): number {
+  const { az, rad } = getSpikeGeometry(size);
+  const maxR = Math.floor(size / 2 - 1);
+  const kmPerPx = rangeKm / (size / 2);
+  // the field in the radar's geometry: is there echo at (direction, distance)?
+  const R = maxR + 1, A = SPIKE_AZIMUTH_BINS;
+  // each (direction, distance) cell reads the grid pixel at its place (near the radar several cells read one pixel, so no cell is empty)
+  const polar = new Uint8Array(A * R);
+  const peak = new Float32Array(A * R);
+  const half = size / 2;
+  for (let a = 0; a < A; a++) {
+    const t = ((a + 0.5) / A) * 2 * Math.PI, c = Math.cos(t), s = Math.sin(t);
+    for (let r = 0; r < R; r++) {
+      const x = Math.floor(half + r * c), y = Math.floor(half + r * s);
+      if (x < 0 || y < 0 || x >= size || y >= size) continue;
+      const v = grid[y * size + x];
+      if (v > 0) {
+        polar[a * R + r] = 1;
+        peak[a * R + r] = v;
+      }
+    }
+  }
+  // 1. narrow across: echo whose run across the rays at its distance is at most SPIKE_MAX_WIDTH_DEG and SPIKE_MAX_WIDTH_KM wide
+  const narrow = new Uint8Array(A * R);
+  const minR = SPIKE_MIN_DISTANCE_KM / kmPerPx;
+  for (let r = Math.ceil(minR); r < R; r++) {
+    const kmPerBin = ((2 * Math.PI) / A) * r * kmPerPx;
+    // narrow: at most SPIKE_MAX_WIDTH_DEG (but always up to SPIKE_ALWAYS_NARROW_KM: near the radar a line spans many degrees) and SPIKE_MAX_WIDTH_KM
+    const maxBins = Math.min(Math.max(SPIKE_MAX_WIDTH_DEG / (360 / A), SPIKE_ALWAYS_NARROW_KM / kmPerBin), SPIKE_MAX_WIDTH_KM / kmPerBin);
+    const start = (() => { for (let k = 0; k < A; k++) if (!polar[k * R + r]) return k; return -1; })();
+    if (start < 0) continue; // a full ring of echo: rain all round
+    for (let n = 0; n < A; ) {
+      if (!polar[((start + n) % A) * R + r]) { n++; continue; }
+      let len = 0;
+      while (n + len < A && polar[((start + n + len) % A) * R + r]) len++;
+      if (len <= maxBins) for (let k = 0; k < len; k++) narrow[((start + n + k) % A) * R + r] = 1;
+      n += len;
+    }
+  }
+  // 2. long along the ray: narrow echo that runs SPIKE_MIN_RUN_KM out along one ray, gaps of up to SPIKE_MAX_GAP_KM bridged (a spike is often
+  // a dotted chain), at least SPIKE_MIN_FILL of the run being echo; a wider rain cell on the way ends the chain
+  const spike = new Uint8Array(A * R);
+  let any = false;
+  const minRun = SPIKE_MIN_RUN_KM / kmPerPx, maxGap = SPIKE_MAX_GAP_KM / kmPerPx;
+  for (let a = 0; a < A; a++) {
+    let r = Math.ceil(minR);
+    while (r < R) {
+      if (!narrow[a * R + r]) { r++; continue; }
+      let end = r, filled = 0, gap = 0, strongest = 0;
+      for (let k = r; k < R; k++) {
+        if (narrow[a * R + k]) { end = k; filled++; gap = 0; strongest = Math.max(strongest, peak[a * R + k]); }
+        else if (polar[a * R + k] || ++gap > maxGap) break;
+      }
+      const span = end - r + 1;
+      if (span >= minRun && filled >= SPIKE_MIN_FILL * span && strongest < SPIKE_MAX_INTENSITY) {
+        for (let k = r; k <= end; k++) if (narrow[a * R + k]) spike[a * R + k] = 1;
+        any = true;
+      }
+      r = end + 1;
+    }
+  }
+  if (!any) return 0;
+  // 3. the whole narrow run across the rays where part of it is a spike (near the radar a line spans more degrees than further out, so its
+  // edge bins carry echo only for a short way and their own run along the ray is short)
+  for (let r = Math.ceil(minR); r < R; r++) {
+    const start = (() => { for (let k = 0; k < A; k++) if (!narrow[k * R + r]) return k; return -1; })();
+    if (start < 0) continue;
+    for (let n = 0; n < A; ) {
+      if (!narrow[((start + n) % A) * R + r]) { n++; continue; }
+      let len = 0, hit = false;
+      while (n + len < A && narrow[((start + n + len) % A) * R + r]) {
+        if (spike[((start + n + len) % A) * R + r]) hit = true;
+        len++;
+      }
+      if (hit) for (let k = 0; k < len; k++) spike[((start + n + k) % A) * R + r] = 1;
+      n += len;
+    }
+  }
+  // a pixel goes when a spike cell lies in it: near the radar a pixel spans several direction bins
+  let removed = 0;
+  for (let i = 0; i < grid.length; i++) {
+    if (!(grid[i] > 0) || az[i] < 0) continue;
+    const r = rad[i], span = Math.ceil(A / (2 * Math.PI * Math.max(r, 1)) / 2);
+    let hit = false;
+    for (let k = -span; k <= span && !hit; k++) if (spike[((az[i] + k + A) % A) * R + r]) hit = true;
+    if (hit) {
+      grid[i] = 0;
+      removed++;
+    }
+  }
+  return removed;
+}
 
 // ── Radial interference (spoke) removal ──
 // Sun strikes and RF interference paint long, thin wedges that point straight at the radar and run all the way out.
@@ -459,6 +599,81 @@ export function removeMapDrawings(classes: Float32Array, w: number, h: number, l
     if (deepest <= MAP_LINE_DEPTH || members.length >= 4) for (const i of members) drop.push(i);
   }
   for (const i of drop) classes[i] = 0;
+  removeStrongLines(classes, w, h, weakTop);
+}
+
+/**
+ * The same for a line drawn in several of the legend's strong colours side by side (Visakhapatnam's red state and district lines are
+ * anti-aliased: 53, 56, 58 and 60 dBZ reds next to each other, so each colour's patch is bordered by the others and passes as rain above;
+ * seen 1 Nov 2026 as "storm cores" along the borders and wedges in the composite). The colours above the weakest third are taken together:
+ * a patch of them (8-connected) that is thin everywhere (MAP_LINE_DEPTH) and that weaker rain borders for less than MAP_RAIN_BORDER of its
+ * border is a line, not rain (rain fades through weaker colours to its edge, so its strong part is bordered by weaker rain).
+ */
+function removeStrongLines(classes: Float32Array, w: number, h: number, weakTop: number): void {
+  const strong = (i: number) => classes[i] > weakTop;
+  // depth on the strong mask (chessboard distance to a non-strong pixel, capped)
+  const cap = MAP_LINE_DEPTH + 1;
+  const depth = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!strong(i)) continue;
+      let d = cap;
+      if (x === 0 || y === 0 || x === w - 1) d = 1;
+      else d = Math.min(d, depth[i - 1] + 1, depth[i - w] + 1, depth[i - w - 1] + 1, depth[i - w + 1] + 1);
+      depth[i] = d;
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
+      if (!strong(i)) continue;
+      let d = depth[i];
+      if (x === w - 1 || y === h - 1 || x === 0) d = 1;
+      else d = Math.min(d, depth[i + 1] + 1, depth[i + w] + 1, depth[i + w + 1] + 1, depth[i + w - 1] + 1);
+      depth[i] = d;
+    }
+  }
+  const seen = new Uint8Array(w * h);
+  const counted = new Int32Array(w * h).fill(-1);
+  const stack: number[] = [];
+  const members: number[] = [];
+  let patch = 0;
+  for (let start = 0; start < w * h; start++) {
+    if (!strong(start) || seen[start]) continue;
+    patch++;
+    members.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    let border = 0, weakerRain = 0, deepest = 0;
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      members.push(i);
+      if (depth[i] > deepest) deepest = depth[i];
+      const x = i % w, y = (i - x) / w;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if ((dx === 0 && dy === 0) || nx < 0 || nx >= w) continue;
+          const n = ny * w + nx;
+          if (strong(n)) {
+            if (!seen[n]) {
+              seen[n] = 1;
+              stack.push(n);
+            }
+          } else if (counted[n] !== patch) {
+            counted[n] = patch;
+            border++;
+            if (classes[n] > 0) weakerRain++;
+          }
+        }
+      }
+    }
+    if (deepest > MAP_LINE_DEPTH || members.length < 4) continue; // thick (a core) or a speck
+    if (border > 0 && weakerRain / border < MAP_RAIN_BORDER) for (const i of members) classes[i] = 0;
+  }
 }
 
 /**
@@ -670,7 +885,8 @@ export function processRadarPixels(rgba: Uint8ClampedArray | Uint8Array, w: numb
       }
     }
 
-    // Nothing is filtered out any more: every echo the radar shows is kept (removeRadialInterference is still exported but not applied).
+    // Every echo the radar shows is kept, small ones included, except radial interference spikes (not rain: see removeRadialSpikes).
+    if (opts.rangeKm) removeRadialSpikes(rawGrid, outSize, opts.rangeKm); // the field's half-width is the range (a square PPI too)
 
     // Re-evaluate hasAnyEcho after clutter filtering
     hasAnyEcho = false;

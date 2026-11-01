@@ -63,12 +63,14 @@ export const STACK_PRODUCTS: readonly RadarProductKey[] = ['ppi', 'caz', 'ppz'];
 const RING_OVERLAP_KM = 1.5;
 
 /**
- * The rings of one station's stack from the products that have a picture to show (`has`): sorted by range (PPI, CAZ, PPZ where two reach
- * as far), each drawn from the range of the one inside it; a product that reaches no further than the one inside it is left out.
+ * The rings of one station's stack from the products that have a picture to show (`has`): PPI, then CAZ, then PPZ, each drawn from the
+ * range of the one inside it; a product that reaches no further than the one inside it is left out.
  */
 export function stackRings(station: RadarStationConfig, has: (p: RadarProductKey) => boolean): [RadarProductKey, MosaicRing][] {
+  // the owner's order (1 Nov 2026): PPI innermost, CAZ around it, PPZ outside; a product that is missing (or too old: `has` is false) leaves
+  // its ring to the next one out, and each product covers only beyond what one before it reaches (Hyderabad's PPZ reaches 150 km, less
+  // than its CAZ: its CAZ is kept, not covered by the PPZ)
   const order = STACK_PRODUCTS.filter(p => has(p) && !station.products[p]?.unmeasured);
-  order.sort((a, b) => station.products[a].rangeKm - station.products[b].rangeKm);
   const out: [RadarProductKey, MosaicRing][] = [];
   let reach = 0;
   for (const p of order) {
@@ -840,7 +842,7 @@ export class RadarService implements OnDestroy {
     // No timestamp in the GIF: some pictures print the scan time in their side panel. The server's "last modified" only says
     // when the file was copied, so the printed time wins where there is one (decoded once per new picture).
     const hash = this.hashBytes(new Uint8Array(rawArrayBuf));
-    const pixelOptions = { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi' };
+    const pixelOptions = { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi', rangeKm: productConfig.rangeKm };
     let still: StillResult | null = null;
     if (!timing && productConfig.stampBox) {
       const stampId = `${station.id}:${productKey}`;
@@ -949,7 +951,7 @@ export class RadarService implements OnDestroy {
   ): ProcessedRadarResult | null {
     const layoutOk = layoutMatches(productConfig.crop, w, h) && looksLikeRadar(rgba, w, h, productConfig.palette);
     const field = layoutOk
-      ? processRadarPixels(rgba, w, h, { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi' })
+      ? processRadarPixels(rgba, w, h, { crop: productConfig.crop, palette: productConfig.palette, isTransparent, isXBand: station.band === 'X-Band', square: productKey === 'ppi', rangeKm: productConfig.rangeKm })
       : null;
     return this.buildResult(station, productKey, productConfig, w, h, layoutOk, field, timing, isDisplayed, live);
   }

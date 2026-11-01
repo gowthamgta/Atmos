@@ -18,7 +18,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['karaikal', 'caz', 'karaikal-caz.gif', 'ae44ae5a'], // 24 Oct 2026: six lone pixels of 34-35 dBZ with no rain around taken off (removeMapDrawings)
+  ['karaikal', 'caz', 'karaikal-caz.gif', '69266908'], // 24 Oct 2026: six lone pixels of 34-35 dBZ with no rain around taken off (removeMapDrawings); 1 Nov: a weak (21 dBZ) narrow piece of a dotted line along a ray, west of the radar (removeRadialSpikes)
 ];
 
 function load(file: string): ArrayBuffer {
@@ -30,7 +30,7 @@ describe('radar picture processing (the same code runs in the worker and on the 
   for (const [id, product, file, expected] of CASES) {
     const station = IMD_RADAR_STATIONS.find(s => s.id === id)!;
     const config = station.products[product];
-    const options = { crop: config.crop, palette: config.palette, isTransparent: true, isXBand: station.band === 'X-Band' };
+    const options = { crop: config.crop, palette: config.palette, isTransparent: true, isXBand: station.band === 'X-Band', rangeKm: config.rangeKm };
 
     it(`${id} ${product}: the intensity field is unchanged`, () => {
       const img = decodeLastGifFrame(new Uint8Array(load(file)))!;
