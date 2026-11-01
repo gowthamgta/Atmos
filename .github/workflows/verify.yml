@@ -3,7 +3,7 @@ name: verify
 # Daily at 07:00 IST (01:30 UTC), when yesterday's last reports are in:
 #   1. verify.py scores yesterday's forecasts of ten models and the Blend against the South Indian airports' reports;
 #   2. verify_gauges.py scores their rain against the Tamil Nadu rain gauges (the rain day that ended at 08:30 IST yesterday);
-#   3. verify_radar.py sets each radar's rain rate from the gauges and scores the radar nowcast (from the samples the nowcast bot keeps);
+#   3. verify_radar.py sets each radar's rain rate from the gauges and scores the radar nowcast (from the samples the radar sampler keeps);
 #   4. learn_bias.py learns each model's usual error, rain thresholds and the Blend weights from the last four weeks, checked on held-back days.
 # Then it commits the scores and corrections the app reads (public/data/verification), the days learned from (pipeline/data/verification)
 # and the map's ECMWF IFS correction (pipeline/data/bias/table.json, used by the next nwp run). It can also be run by hand for a given day.
@@ -64,7 +64,7 @@ jobs:
         working-directory: pipeline
         continue-on-error: true
         run: python verify_gauges.py --out ../public/data/verification/scores.json
-      # the radar over the gauge cells, kept by the nowcast bot every ten minutes (its newest store)
+      # the radar over the gauge cells, kept by the radar sampler (nowcast.yml) (its newest store)
       - uses: actions/cache/restore@v6
         with:
           path: bot/samples

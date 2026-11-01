@@ -63,12 +63,12 @@ write** only, and one cron job per workflow, each a **POST** with the same four 
 
 | Workflow | URL (`https://api.github.com/repos/gowthamgta/Atmos/actions/workflows/…/dispatches`) | Request body | Schedule (Asia/Kolkata) |
 |---|---|---|---|
-| nowcast bot | `nowcast.yml` | `{"ref":"main","inputs":{"as_schedule":"true"}}` | every 10 minutes |
+| radar samples (for the verification) | `nowcast.yml` | `{"ref":"main","inputs":{"as_schedule":"true"}}` | every hour (or 10 minutes) |
 | forecast | `nwp.yml` | `{"ref":"main"}` | 05:00, 10:00, 13:30, 17:30, 21:00, 00:00 |
 | verification | `verify.yml` | `{"ref":"main"}` | 07:00 (again 11:00 and 16:00 if you like) |
 
-The nowcast needs `as_schedule`: without it a run started from outside is a dry run, as a run started by hand is, and never posts. With
-it, it posts exactly as a scheduled run does (once the keys are set and `NOWCAST_LIVE` is `true`). Test each job once: **204 No Content**,
+`nowcast.yml` now only keeps the radar samples for the verification (bot/README.md: the nowcast bot that posted to Telegram, Discord and
+X was removed, 1 Nov 2026); `as_schedule` is still accepted so the cron job needs no change. Test each job once: **204 No Content**,
 and a run "Manually run by …" under Actions.
 
 ## Models published

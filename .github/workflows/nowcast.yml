@@ -1,33 +1,24 @@
 name: nowcast
 
-# The nowcast bot (bot/README.md): every ten minutes it opens the live radar of the app in a headless browser, and when there are storms
-# over Tamil Nadu or Puducherry posts the radar picture with a short alert to the Telegram channel, the Discord server and X (each once its keys are set
-# as repository secrets). Until then, and until the variable NOWCAST_LIVE is "true", it only dry-runs: each run's picture and the post it
-# would make are kept as the run's artifact, to look at first.
-# Started every 10 minutes by cron-job.org (pipeline/README.md), with as_schedule; GitHub's own schedule is not used (it ran late or not at all).
+# The radar sampler (bot/README.md): opens the live radar of the app in a headless browser and keeps the radar and its 30 and 60 minute
+# nowcast over the Tamil Nadu gauge cells, for the daily verification (verify workflow). It posts nothing: the nowcast bot that posted storms
+# to Telegram, Discord and X was removed (the owner, 1 Nov 2026). The file keeps its name, so cron-job.org starts it as before
+# (pipeline/README.md); GitHub's own schedule is not used (it ran late or not at all).
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: "Decide and keep the picture and the post as the run's artifact, but do not post"
-        type: boolean
-        default: true
-      force:
-        description: "Post (or dry-run) even with no storm, or a recent post: to try the whole chain"
-        type: boolean
-        default: false
+      # cron-job.org still sends it; GitHub refuses a start with an input the workflow does not declare
       as_schedule:
-        description: "Run as the schedule does (posts when NOWCAST_LIVE is true): for an outside scheduler such as cron-job.org"
+        description: "Started by an outside scheduler such as cron-job.org (no effect now)"
         type: boolean
         default: false
 
-# one run at a time, and a run that starts while another is still going waits rather than both posting
 concurrency:
   group: nowcast
   cancel-in-progress: false
 
 jobs:
-  nowcast:
+  samples:
     runs-on: ubuntu-24.04
     timeout-minutes: 9
     defaults:
@@ -44,56 +35,22 @@ jobs:
       - name: Browser
         run: npx playwright install --with-deps chromium
       - run: npm test
-      # what the last post was (so a storm is not posted again every ten minutes): kept between runs in the cache, the newest entry
-      - uses: actions/cache/restore@v6
-        with:
-          path: bot/state
-          key: nowcast-state-latest
-          restore-keys: nowcast-state-
       # the radar over the gauge cells, kept for the daily verification (verify workflow); the newest store, saved once an hour below
       - uses: actions/cache/restore@v6
         with:
           path: bot/samples
           key: radar-samples-latest
           restore-keys: radar-samples-
-      - name: Nowcast
-        env:
-          ALERT_PLACES: ${{ vars.ALERT_PLACES }}
-          TELEGRAM_ALERT_CHAT_ID: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID || '@tnweatheralerts' }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          # a scheduled run (or one started by an outside scheduler with as_schedule) posts once the keys are set and NOWCAST_LIVE is
-          # "true", a switch to stop it without removing them; a run started by hand posts only when asked
-          DRY_RUN: ${{ (((github.event_name == 'schedule' || inputs.as_schedule) && vars.NOWCAST_LIVE == 'true') || (github.event_name == 'workflow_dispatch' && !inputs.as_schedule && inputs.dry_run == false)) && '0' || '1' }}
-          FORCE: ${{ inputs.force && '1' || '0' }}
-          INCLUDE_LINK: ${{ vars.NOWCAST_INCLUDE_LINK == 'true' && '1' || '0' }}
-        run: node nowcast.mjs
-      # saved only when it changed (after a post): the key is its content, so a quiet run saves nothing
-      - uses: actions/cache/save@v6
-        if: always() && hashFiles('bot/state/state.json') != ''
-        with:
-          path: bot/state
-          key: nowcast-state-${{ hashFiles('bot/state/state.json') }}
+      - name: Radar samples
+        run: node sample.mjs
       - name: Hour of the samples
         id: hour
         if: always()
         run: echo "key=radar-samples-$(date -u +%Y%m%d%H)" >> "$GITHUB_OUTPUT"
-      # once an hour: a key already taken this hour is refused, harmlessly (at most ten minutes of samples wait for the next hour)
+      # once an hour: a key already taken this hour is refused, harmlessly
       - uses: actions/cache/save@v6
         if: always() && hashFiles('bot/samples/radar-samples.json') != ''
         continue-on-error: true
         with:
           path: bot/samples
           key: ${{ steps.hour.outputs.key }}
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: nowcast-${{ github.run_id }}
-          path: bot/out
-          retention-days: 3
-          if-no-files-found: ignore

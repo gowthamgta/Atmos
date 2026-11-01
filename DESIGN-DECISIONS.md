@@ -106,7 +106,8 @@ fingerprint only together with this file, on the owner's request.
 - **The rain rate in the radar readout uses each radar's Z-R relation fitted to the Tamil Nadu gauges** (verify_radar.py, daily, kept
   only when it beats Marshall-Palmer on held-back days; until then Z = 200 R^1.6). With the loop in, it also gives the last hour's radar rain.
 - **The radar nowcast is scored daily** against the pictures that followed, beside a picture that does not move (radar panel).
-- **The owner's own rain alerts** go to their Telegram chat only (ALERT_PLACES, TELEGRAM_ALERT_CHAT_ID), at most once a place in 3 h.
+- **No nowcast bot** (the owner, 1 Nov 2026): the bot that posted storms to Telegram, Discord and X, and the owner's own rain alerts, were
+  removed; `nowcast.yml` only keeps the radar over the gauge cells for the daily verification (bot/README.md).
 - **On phones the radar animations are not downloaded in the background** (about 8 MB): storm motion from the wind until live pictures
   or Play give the radar's own (measured with e2e/perf.mjs).
 - **The satellite loop moves the clouds between pictures** (motion from block matching) instead of cross-fading; the pictures' own

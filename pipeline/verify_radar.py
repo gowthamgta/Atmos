@@ -2,7 +2,7 @@
 
   python verify_radar.py --samples ../bot/samples/radar-samples.json            # yesterday's rain day and yesterday's nowcasts
 
-The nowcast bot keeps, every ten minutes, the radar over each 0.5 degree gauge cell (bot/samples.mjs): `zp`, the mean of Z^(1/1.6) over the
+The radar sampler (bot/sample.mjs) keeps, every run, the radar over each 0.5 degree gauge cell (bot/samples.mjs): `zp`, the mean of Z^(1/1.6) over the
 cell, from which the mean rain rate for any a of Z = a R^1.6 is zp / a^(1/1.6); the strongest dBZ; the share of the cell at 25 dBZ or more;
 and the same for the nowcast's pictures 30 and 60 minutes ahead.
 
@@ -195,7 +195,7 @@ def load_days(days_dir: str) -> list[dict]:
 def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--samples", required=True, help="the nowcast bot's store of radar samples")
+    ap.add_argument("--samples", required=True, help="the radar sampler's store of samples")
     ap.add_argument("--scores", default=os.path.join(here, "..", "public", "data", "verification", "scores.json"))
     ap.add_argument("--gauge-days-dir", default=os.path.join(here, "data", "verification", "gauges"))
     ap.add_argument("--days-dir", default=os.path.join(here, "data", "verification", "radar"))
@@ -203,7 +203,7 @@ def main() -> int:
     args = ap.parse_args()
     store = read_json(args.samples)
     if not store or not store.get("records"):
-        print("no radar samples kept yet (the nowcast bot keeps them): nothing to do", file=sys.stderr)
+        print("no radar samples kept yet (the radar sampler keeps them): nothing to do", file=sys.stderr)
         return 0
     now = datetime.now(timezone.utc)
     today_ist = (now + timedelta(hours=5, minutes=30)).date()

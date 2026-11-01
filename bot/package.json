@@ -1,14 +1,13 @@
 {
-  "name": "atmos-nowcast-bot",
+  "name": "atmos-radar-samples",
   "private": true,
   "type": "module",
-  "description": "Posts the AtmosIQ radar to X when there are storms over Tamil Nadu (see README.md)",
+  "description": "Keeps the AtmosIQ radar over the Tamil Nadu gauge cells for the daily verification (see README.md)",
   "scripts": {
-    "start": "node nowcast.mjs",
+    "start": "node sample.mjs",
     "test": "node --test"
   },
   "dependencies": {
-    "playwright": "1.56.1",
-    "twitter-api-v2": "1.29.1"
+    "playwright": "1.56.1"
   }
 }
