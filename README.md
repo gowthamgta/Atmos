@@ -1,4 +1,21 @@
-# WeatherPlatform
+# Kralveth Weather
+
+Weather maps for South India: IMD radar, Meteosat satellite and forecast models (Angular 21 with MapLibre).
+
+## Hosting: Cloudflare Pages
+
+Connected to this repository (Cloudflare dashboard, Workers & Pages, Create, Pages, Connect to Git, `gowthamgta/Atmos`, branch `main`):
+
+- Build command: `npm run build`
+- Build output directory: `dist/weather-platform/browser`
+- Root directory: empty (the repository's root); Node 22 comes from `.node-version`.
+
+`wrangler.toml` gives the output directory and turns on `nodejs_compat`; `functions/` serves `/api/ildn`, `/api/imd-lightning`,
+`/api/radar` and `/imd-radar/*` (the Netlify functions in `netlify/functions/`, run through `netlify/cloudflare.js`), `public/_headers`
+the headers. Every push to `main` deploys. Netlify still works from `netlify.toml`. To try the Cloudflare build locally:
+`npx ng build && npx wrangler pages dev`.
+
+The Android app (`android-app/`, built by `.github/workflows/android.yml`) opens the site full-screen.
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.3.
 

@@ -795,8 +795,8 @@ export class RadarService implements OnDestroy {
     const cacheBuster = Math.floor(Date.now() / 60_000);
 
     const proxies = [
-      `/imd-radar/${productConfig.file}`, // Netlify CDN edge proxy (production) & Vite dev proxy (local)
-      `/.netlify/functions/radar?file=${productConfig.file}`, // Netlify serverless function fallback
+      `/imd-radar/${productConfig.file}`, // our proxy to IMD (Cloudflare Pages function or Netlify rewrite; the dev proxy locally)
+      `/api/radar?file=${productConfig.file}`, // the same through the radar function
       productConfig.url // Direct fallback
     ];
 

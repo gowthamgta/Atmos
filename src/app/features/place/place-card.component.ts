@@ -109,7 +109,7 @@ export function firstNumber(text: string | undefined): number | null {
                   </li>
                 }
               </ul>
-              @if (outlook.source() === 'blend') { <div class="days-source">Next days: AtmosIQ Blend, the models corrected and weighted by how right each has been lately</div> }
+              @if (outlook.source() === 'blend') { <div class="days-source">Next days: Kralveth Blend, the models corrected and weighted by how right each has been lately</div> }
             } @else if (outlook.busy()) {
               <div class="note">Loading the next days…</div>
             }
@@ -359,7 +359,7 @@ export class PlaceCardComponent {
   }
 
   /**
-   * The AtmosIQ Blend at the place and the time on the bar: its temperature and its chance of rain over the next three hours (the map's
+   * The Kralveth Blend at the place and the time on the bar: its temperature and its chance of rain over the next three hours (the map's
    * own value above stays the shown model's, so it matches the colours).
    */
   protected readonly blendLine = computed(() => {
@@ -374,7 +374,7 @@ export class PlaceCardComponent {
     const chances = (data.rainChance ?? []).slice(i, i + 3).filter((c): c is number => c !== null);
     const chance = chances.length ? Math.round(Math.max(...chances) * 100) : null;
     return {
-      text: `AtmosIQ Blend ${this.temp(temp)}${chance !== null ? ` · ${chance}% chance of rain in the next 3 h` : ''}`,
+      text: `Kralveth Blend ${this.temp(temp)}${chance !== null ? ` · ${chance}% chance of rain in the next 3 h` : ''}`,
       title: 'The models corrected for their usual error at the nearest airports and weighted by how right each has been lately (Menu, Models)',
     };
   });

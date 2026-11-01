@@ -25,7 +25,7 @@ import { IconComponent } from '../../shared/icon.component';
         @if (state.activeLayerId() === 'extreme') {
           <div class="prob-source" role="group" aria-label="Probability of rain from">
             <button type="button" [class.on]="state.probabilitySource() === 'ensemble'" [attr.aria-pressed]="state.probabilitySource() === 'ensemble'" (click)="state.setProbabilitySource('ensemble')" title="The share of the ECMWF ensemble's 51 members that bring rain (the models' agreement after its five days)">ECMWF ensemble</button>
-            <button type="button" [class.on]="state.probabilitySource() === 'blend'" [attr.aria-pressed]="state.probabilitySource() === 'blend'" (click)="state.setProbabilitySource('blend')" title="Our AtmosIQ Blend: the models weighted by their recent rain skill against the airports, each counted from its own rain threshold">Atmos Blend</button>
+            <button type="button" [class.on]="state.probabilitySource() === 'blend'" [attr.aria-pressed]="state.probabilitySource() === 'blend'" (click)="state.setProbabilitySource('blend')" title="Our Kralveth Blend: the models weighted by their recent rain skill against the airports, each counted from its own rain threshold">Atmos Blend</button>
           </div>
         }
         @if (comparing().length) {

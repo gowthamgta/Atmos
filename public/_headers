@@ -1,0 +1,5 @@
+# Cloudflare Pages headers (the same security headers as netlify.toml's; Cloudflare's own caching revalidates the files)
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer-when-downgrade

@@ -15,7 +15,7 @@ const COPIED_AT = new Date('2026-10-18T16:24:00Z').toUTCString();
 
 /** Serves the saved radar pictures, answers 404 for the other radar files, and keeps live outside feeds (satellite, lightning) out. */
 async function routeData(page: Page): Promise<void> {
-  await page.route(/\/(imd-radar\/|\.netlify\/functions\/radar|Radar\/)/, async route => {
+  await page.route(/\/(imd-radar\/|api\/radar|\.netlify\/functions\/radar|Radar\/)/, async route => {
     const url = new URL(route.request().url());
     const file = (url.searchParams.get('file') ?? url.pathname.split('/').pop() ?? '').replace(/^.*\//, '');
     const saved = RADAR_PICTURES[file];
@@ -26,7 +26,7 @@ async function routeData(page: Page): Promise<void> {
       headers: { 'content-type': 'image/gif', 'last-modified': COPIED_AT, 'access-control-allow-origin': '*' },
     });
   });
-  await page.route(/view\.eumetsat\.int|ildn|\.netlify\/functions\/lightning/, route => route.abort());
+  await page.route(/view\.eumetsat\.int|ildn|imd-lightning|\.netlify\/functions\/lightning/, route => route.abort());
 }
 
 export const test = base.extend<{ errors: string[]; savedData: void }>({

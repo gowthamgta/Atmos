@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AtmosIQ</string>
-    <string name="title_activity_main">AtmosIQ</string>
+    <string name="app_name">Kralveth Weather</string>
+    <string name="title_activity_main">Kralveth Weather</string>
     <string name="package_name">app.atmosiq.radar</string>
     <string name="custom_url_scheme">app.atmosiq.radar</string>
 </resources>

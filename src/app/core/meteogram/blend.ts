@@ -1,7 +1,7 @@
 import { ModelSeries, PointSeries, SERIES_KEYS, Series } from './point-series';
 
 /**
- * The corrections learned at the airports and the AtmosIQ Blend, as pipeline/blend.py has them (the same file and the same rules, so the
+ * The corrections learned at the airports and the Kralveth Blend, as pipeline/blend.py has them (the same file and the same rules, so the
  * Blend in the meteogram is the one that is scored every day): public/data/verification/corrections.json, written by learn_bias.py.
  *
  * A correction is a model's usual error at an airport by hour of the day (UTC) for temperature and humidity, kept only where it lowered the

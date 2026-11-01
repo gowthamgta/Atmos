@@ -68,7 +68,7 @@ const server = http.createServer((req, res) => {
   }
 
   // 2. Our Netlify functions (lightning: ILDN, IMD), run here as Netlify runs them
-  const fn = /^\/\.netlify\/functions\/([a-z-]+)$/.exec(pathname);
+  const fn = /^\/(?:api|\.netlify\/functions)\/([a-z-]+)$/.exec(pathname); // /api/ as on Cloudflare Pages
   if (fn && ['ildn', 'imd-lightning'].includes(fn[1])) {
     const { handler } = require(path.resolve(__dirname, '../netlify/functions', fn[1] + '.js'));
     Promise.resolve(handler({ rawQuery: parsedUrl.search.slice(1), queryStringParameters: Object.fromEntries(parsedUrl.searchParams) }))

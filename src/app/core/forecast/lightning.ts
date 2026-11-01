@@ -4,12 +4,12 @@
  *
  * The page's own map reads a small binary file: 32 bytes a stroke (time as a 64-bit float, then latitude, longitude and age in seconds as
  * 32-bit floats, then an id). ILDN has no push stream (its own map and app poll over HTTP), so live here is a quick poll: every five
- * seconds through our own address (the function /.netlify/functions/ildn; in development proxy.conf.json), which keeps the answer for five seconds, so ILDN is asked at most every
+ * seconds through our own address (the function /api/ildn: netlify/functions/ildn.js, on Cloudflare Pages through functions/; in development proxy.conf.json), which keeps the answer for five seconds, so ILDN is asked at most every
  * five seconds in all however many people look. ILDN publishes a batch about every 30-45 s, its strokes then 45-100 s old (measured
  * 22 Oct), so a new batch is on screen within about 5 s of ILDN having it. Between polls the strokes are aged locally, and a stroke flashes
  * when it first arrives (by its age it never would: none is younger than about 45 s when it comes).
  */
-export const LIGHTNING_URL = '/.netlify/functions/ildn?ut=latest&span=15';
+export const LIGHTNING_URL = '/api/ildn?ut=latest&span=15';
 /** Only strokes this recent are shown (seconds). */
 export const LIGHTNING_WINDOW_S = 900;
 
@@ -117,7 +117,7 @@ export function markArrivals(fresh: readonly Stroke[], known: readonly Stroke[],
 }
 
 /** IMD's lightning (netlify/functions/imd-lightning.js: the stars of its "last 10 min" map, about 8 km apart at best). */
-export const IMD_LIGHTNING_URL = '/.netlify/functions/imd-lightning';
+export const IMD_LIGHTNING_URL = '/api/imd-lightning';
 /** IMD's map comes 10 to 20 minutes after its strokes: they are kept this long, as past strokes. */
 export const IMD_WINDOW_S = 1800;
 /** An IMD stroke this close to one of ILDN's is the same storm, already shown by ILDN: not drawn again. */

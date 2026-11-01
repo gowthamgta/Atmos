@@ -70,3 +70,6 @@ pipeline/data/rain_history/
 /e2e/perf-report.json
 
 /public/data/radar/
+
+# Cloudflare wrangler (local pages dev)
+/.wrangler

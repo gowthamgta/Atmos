@@ -37,7 +37,7 @@ export class OutlookService {
   private readonly verification = inject(VerificationService);
 
   readonly days = signal<DayOutlook[]>([]);
-  /** Whose days are shown: the AtmosIQ Blend when its backtest beats every single model (blend.ts), else the model on the map. */
+  /** Whose days are shown: the Kralveth Blend when its backtest beats every single model (blend.ts), else the model on the map. */
   readonly source = signal<'blend' | 'model'>('model');
   readonly busy = signal(false);
 

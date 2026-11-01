@@ -75,10 +75,10 @@ export interface PointModelDef {
 }
 
 /**
- * The AtmosIQ Blend: the corrected models weighted by how right each has been lately (core/meteogram/blend.ts). It is not a map model, only a
+ * The Kralveth Blend: the corrected models weighted by how right each has been lately (core/meteogram/blend.ts). It is not a map model, only a
  * line and a row in the meteogram's comparison.
  */
-export const BLEND_MODEL: PointModelDef = { id: 'blend', label: 'AtmosIQ Blend', short: 'Blend', ai: false };
+export const BLEND_MODEL: PointModelDef = { id: 'blend', label: 'Kralveth Blend', short: 'Blend', ai: false };
 
 /** Models compared in the meteogram that are not on the map, with Open-Meteo's names (none at the moment: DWD ICON is on the map now). */
 export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [];

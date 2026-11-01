@@ -1,5 +1,5 @@
 /**
- * AtmosIQ Radar Pipeline (Node.js Runner)
+ * Kralveth Weather Radar Pipeline (Node.js Runner)
  *
  * Directly executes the exact same TypeScript radar processing pipeline as the frontend application:
  * 1. Parallel fetch of 44 IMD station sweeps (CAZ, PPI, PPZ).
@@ -380,7 +380,7 @@ function crc32(buf: Buffer): number {
 async function main() {
   const args = parseArgs();
   const { outDir, concurrency } = args;
-  console.log(`[RadarPipeline] Starting AtmosIQ Radar Pipeline...`);
+  console.log(`[RadarPipeline] Starting Kralveth Weather Radar Pipeline...`);
   console.log(`[RadarPipeline] Stations configured: ${IMD_RADAR_STATIONS.length}`);
   console.log(`[RadarPipeline] Output directory: ${outDir}`);
 
@@ -610,7 +610,7 @@ async function main() {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AtmosIQ Preprocessed All-India Radar</title>
+  <title>Kralveth Weather Preprocessed All-India Radar</title>
   <style>
     body { margin: 0; background: #0f1318; color: #e2e8f0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 24px; }
     h1 { margin: 0 0 8px 0; font-size: 22px; color: #38bdf8; }
@@ -625,7 +625,7 @@ async function main() {
   </style>
 </head>
 <body>
-  <h1>AtmosIQ Doppler Weather Radar Composite</h1>
+  <h1>Kralveth Weather Doppler Weather Radar Composite</h1>
   <div class="meta">
     Updated: <strong>${manifest.updatedAtIst}</strong>
     <span class="badge">${manifest.activeStationCount} / ${manifest.totalStationCount} Radars Active</span>

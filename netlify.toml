@@ -12,6 +12,13 @@
   status = 200
   force = true
 
+# Our functions under the host-neutral /api/ (Cloudflare Pages serves the same from functions/)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
 # Single Page Application (SPA) routing fallback
 [[redirects]]
   from = "/*"

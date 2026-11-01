@@ -1,7 +1,7 @@
 {
-  "name": "atmosiq-android",
+  "name": "kralveth-weather-android",
   "private": true,
-  "description": "AtmosIQ for Android: the live site (atmosradar.netlify.app) in a full-screen app. Built by .github/workflows/android.yml.",
+  "description": "Kralveth Weather for Android: the live site (atmosradar.netlify.app) in a full-screen app. Built by .github/workflows/android.yml.",
   "scripts": {
     "sync": "cap sync android"
   },

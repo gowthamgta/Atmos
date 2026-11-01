@@ -1,4 +1,4 @@
-# Working on AtmosIQ
+# Working on Kralveth Weather
 
 Read `DESIGN-DECISIONS.md` first. It lists the looks and behaviours the owner has agreed (satellite colours, radar drawing, wind particles,
 the workflow schedule) and the ones they turned down. Do not change any of them unless the owner asks for that change explicitly; when a

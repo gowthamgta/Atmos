@@ -38,7 +38,7 @@ interface Published {
  * ensemble covers the time (the first five days); beyond that, or if it is not published, it is the agreement of the models on the
  * next 24 h of rain (`rain24`), on the India grid.
  */
-/** Where the probability of rain comes from: the ECMWF ensemble (with the models' agreement after its five days), or the AtmosIQ Blend. */
+/** Where the probability of rain comes from: the ECMWF ensemble (with the models' agreement after its five days), or the Kralveth Blend. */
 export type ProbabilitySource = 'ensemble' | 'blend';
 
 @Injectable({ providedIn: 'root' })
@@ -74,7 +74,7 @@ export class ConsensusService {
   }
 
   /**
-   * The AtmosIQ Blend's chance of rain: the map's models' next-24-hour rain, weighted by the Blend's rain weights (learn_bias.py: each
+   * The Kralveth Blend's chance of rain: the map's models' next-24-hour rain, weighted by the Blend's rain weights (learn_bias.py: each
    * model's recent rain skill against the airports; its temperature weights when it has none for the map's models) and each counted from
    * its own rain threshold (see blendRainProbability).
    */
@@ -98,7 +98,7 @@ export class ConsensusService {
       return null;
     }
     const values = blendRainProbability(used.map(u => ({ values: u.values, weight: weights[u.model.id], thresholdMm: corr.models[u.model.id]?.rain_threshold_mm ?? 1 })), INDIA_GRID);
-    const label = `AtmosIQ Blend (${used.map(u => u.model.short).join(', ')})`;
+    const label = `Kralveth Blend (${used.map(u => u.model.short).join(', ')})`;
     this.models.set([label]);
     this.last = { values, models: [label] };
     return this.last;

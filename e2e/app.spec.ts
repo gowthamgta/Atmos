@@ -20,7 +20,7 @@ test.describe('the app', () => {
 
   test('is installable: manifest and icon are served', async ({ request }) => {
     const manifest = await (await request.get('/manifest.webmanifest')).json();
-    expect(manifest.name).toBe('AtmosIQ');
+    expect(manifest.name).toBe('Kralveth Weather');
     expect((await request.get('/icon.svg')).ok()).toBe(true);
   });
 });

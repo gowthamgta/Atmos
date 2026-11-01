@@ -1,0 +1,7 @@
+# Cloudflare Pages (the site since 1 Nov 2026; Netlify still works from netlify.toml). Build: npm run build; output below; the functions/
+# directory gives /api/ildn, /api/imd-lightning, /api/radar and /imd-radar/*, written for Netlify and run here through netlify/cloudflare.js.
+name = "kralveth-weather"
+pages_build_output_dir = "dist/weather-platform/browser"
+compatibility_date = "2026-10-01"
+# the functions use Node's Buffer and zlib (the lightning map's PNG)
+compatibility_flags = ["nodejs_compat"]

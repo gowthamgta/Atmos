@@ -1,6 +1,6 @@
 {
-  "appId": "app.atmosiq.radar",
-  "appName": "AtmosIQ",
+  "appId": "app.kralveth.weather",
+  "appName": "Kralveth Weather",
   "webDir": "www",
   "server": {
     "url": "https://atmosradar.netlify.app/",

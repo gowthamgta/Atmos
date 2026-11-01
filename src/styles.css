@@ -1,5 +1,5 @@
 /* ============================================================
-   AtmosIQ design system, after windy.com (dark) and meteoblue.com (light).
+   Kralveth Weather design system, after windy.com (dark) and meteoblue.com (light).
 
    Interface colours are tokens on :root and :root[data-theme='light']; the colours of the weather itself are NOT here: they live with the
    layers (core/forecast/forecast-layers.ts, windy-palettes.ts), so the theme never changes what a colour on the map means.

@@ -1,4 +1,4 @@
-// The radar sampler: opens the live radar of AtmosIQ in a headless browser and keeps the radar (and its 30 and 60 minute nowcast) over the
+// The radar sampler: opens the live radar of Kralveth Weather in a headless browser and keeps the radar (and its 30 and 60 minute nowcast) over the
 // Tamil Nadu gauge cells, for the daily verification (pipeline/verify_radar.py). It posts nothing anywhere: the nowcast bot that posted
 // storms to Telegram, Discord and X was removed (the owner, 1 Nov 2026). Run by .github/workflows/nowcast.yml; see README.md in this folder.
 //

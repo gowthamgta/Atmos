@@ -4,7 +4,7 @@ android {
     namespace = "app.atmosiq.radar"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.atmosiq.radar"
+        applicationId "app.kralveth.weather"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // each build of .github/workflows/android.yml is a newer version (so it installs over the last one)

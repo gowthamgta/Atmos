@@ -1,6 +1,6 @@
 {
-  "name": "AtmosIQ",
-  "short_name": "AtmosIQ",
+  "name": "Kralveth Weather",
+  "short_name": "Kralveth",
   "description": "Weather maps for South India: IMD radar, Meteosat satellite and forecast models",
   "start_url": "/",
   "scope": "/",

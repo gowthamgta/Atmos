@@ -30,9 +30,9 @@ const CREDITS: readonly Credit[] = [
   template: `
     @if (open()) {
       <div class="backdrop" (click)="panels.close('about')" aria-hidden="true"></div>
-      <section class="card" role="dialog" aria-label="About AtmosIQ">
+      <section class="card" role="dialog" aria-label="About Kralveth Weather">
         <header>
-          <strong>About AtmosIQ</strong>
+          <strong>About Kralveth Weather</strong>
           <button type="button" class="btn-icon" (click)="panels.close('about')" aria-label="Close" title="Close (Esc)"><app-icon name="close" [size]="16" /></button>
         </header>
         <div class="scroll">

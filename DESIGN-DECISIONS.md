@@ -1,6 +1,6 @@
 # Design decisions
 
-What the owner of AtmosIQ has agreed, and what they have tried and turned down. Several AI assistants work on this repository; this file is
+What the owner of Kralveth Weather has agreed, and what they have tried and turned down. Several AI assistants work on this repository; this file is
 how they stay in line. **Do not change anything listed here unless the owner asks for that change in so many words.** When they want a look
 changed, ask for a screenshot of what they are aiming at (usually Windy) before touching colours or filters. When a decision changes, update
 this file in the same commit.
@@ -108,7 +108,7 @@ fingerprint only together with this file, on the owner's request.
   not used (its charts are not open data).
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.
 - **UK Met Office is not drawn on the map** (owner, 23 Oct: "lets compramise UK MET"): the published site was 1.077 GB, over GitHub Pages' 1 GB, and UKMO's
-  folder was about 205 MB; without it the site is about 0.87 GB. The place forecast and the AtmosIQ Blend still read UKMO from Open-Meteo.
+  folder was about 205 MB; without it the site is about 0.87 GB. The place forecast and the Kralveth Blend still read UKMO from Open-Meteo.
 - The Clouds layer was left out on purpose (6cddf45).
 - **Clouds in 3D** (public/clouds/, linked from Settings > Map): the owner asked for a realistic 3D presentation of the cloud types. It is
   a standalone WebGL 2 page outside the Angular bundle (the service worker leaves /clouds alone). Heights are the WMO Cloud Atlas tropical
@@ -136,6 +136,14 @@ fingerprint only together with this file, on the owner's request.
 - **The satellite loop moves the clouds between pictures** (motion from block matching) instead of cross-fading; the pictures' own
   colours are unchanged.
 
+## Name and hosting
+
+- **The project is Kralveth Weather** (the owner, 1 Nov 2026: "change the project name to kralveth weather"; AtmosIQ before): the page title,
+  the installed app's name (Kralveth on the home screen), the About card and the Kralveth Blend. Stored settings keep their atmosiq.* keys and
+  the GitHub repositories their names, so nothing saved is lost.
+- **Cloudflare Pages hosts the site** (the owner, 1 Nov 2026), Netlify still works: README.md has the setup. Our functions are at /api/ on
+  both hosts.
+
 ## Pipeline
 
 - **The map's ECMWF IFS rain factor is learned daily from the Tamil Nadu gauges** (learn_bias.py; 0.57 on 22 Oct, replacing the fixed
@@ -151,7 +159,7 @@ fingerprint only together with this file, on the owner's request.
 - **Corrections are learned daily** (learn_bias.py): each model's usual temperature and humidity error by airport and hour, kept only where
   it lowers the error on held-back days. They correct the meteogram and the comparison table for every model, and the ECMWF IFS map
   near the airports (the other map models are not corrected).
-- **The AtmosIQ Blend**: the corrected models weighted by recent error (rain by the square of the threat score), only in the meteogram's
+- **The Kralveth Blend**: the corrected models weighted by recent error (rain by the square of the threat score), only in the meteogram's
   comparison and the place card (its next days while its backtest beats every model), not a map layer.
 - **DWD ICON is a map model again** (22 Oct): 00Z and 12Z to +120 h on the 0.25 degree grid (the site must stay under Pages' 1 GB).
 - Commits go straight to `main`; if a push is rejected, `git pull --rebase origin main` first (the Actions bot commits data to `main`).

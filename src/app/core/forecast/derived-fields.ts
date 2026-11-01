@@ -188,7 +188,7 @@ export function encodeFieldBitmap(values: Float32Array, grid: ForecastGrid, min:
 }
 
 /**
- * The AtmosIQ Blend's chance of rain over the next 24 hours on the grid (0..100 %): as the Blend works it out at a place
+ * The Kralveth Blend's chance of rain over the next 24 hours on the grid (0..100 %): as the Blend works it out at a place
  * (core/meteogram/blend.ts), the weighted share of the models that bring rain, each weighted by its recent rain skill and each counted from
  * its own threshold (the amount at which it forecasts rain as often as the airports report it). A model's rain is read from the most it
  * brings close by (as the models' agreement does), and its "yes" is soft around its threshold (half to twice it), so the share does not

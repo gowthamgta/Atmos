@@ -18,7 +18,7 @@ const MODELS: readonly ApiModel[] = [...FORECAST_MODELS, ...POINT_ONLY_MODELS].m
 const CORRECTIONS_WAIT_MS = 2500;
 
 /**
- * The series as the meteogram shows it: each model corrected at the place, and the AtmosIQ Blend of them added (see blend.ts). The models only
+ * The series as the meteogram shows it: each model corrected at the place, and the Kralveth Blend of them added (see blend.ts). The models only
  * the Blend needs stay in the series but are not drawn.
  */
 export function withBlend(series: PointSeries, corr: CorrectionsFile | null): PointSeries {

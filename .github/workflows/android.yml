@@ -65,18 +65,18 @@ jobs:
           chmod +x gradlew
           if [ -n "$ANDROID_KEYSTORE_FILE" ]; then
             ./gradlew --no-daemon assembleRelease
-            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/AtmosIQ.apk"
+            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/Kralveth Weather.apk"
           else
             ./gradlew --no-daemon assembleDebug
-            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/AtmosIQ.apk"
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/Kralveth Weather.apk"
           fi
-          ls -la "$RUNNER_TEMP/AtmosIQ.apk"
+          ls -la "$RUNNER_TEMP/Kralveth Weather.apk"
 
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="AtmosIQ for Android, build ${GITHUB_RUN_NUMBER} ($(git rev-parse --short HEAD)). One APK for every phone (Android 7 and newer): download AtmosIQ.apk and open it to install. It opens https://atmosradar.netlify.app/ full-screen and stays up to date with the site."
-          gh release view android >/dev/null 2>&1 || gh release create android --title "AtmosIQ for Android" --notes "$notes" --latest=false
+          notes="Kralveth Weather for Android, build ${GITHUB_RUN_NUMBER} ($(git rev-parse --short HEAD)). One APK for every phone (Android 7 and newer): download Kralveth Weather.apk and open it to install. It opens https://atmosradar.netlify.app/ full-screen and stays up to date with the site."
+          gh release view android >/dev/null 2>&1 || gh release create android --title "Kralveth Weather for Android" --notes "$notes" --latest=false
           gh release edit android --notes "$notes"
-          gh release upload android "$RUNNER_TEMP/AtmosIQ.apk" --clobber
+          gh release upload android "$RUNNER_TEMP/Kralveth Weather.apk" --clobber
