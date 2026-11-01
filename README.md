@@ -11,7 +11,7 @@ A Worker with static assets, connected to this repository (Cloudflare dashboard,
 - Deploy command: `npx wrangler deploy`
 - Root directory: empty (the repository's root); Node 22 comes from `.node-version`.
 
-`wrangler.toml` names the Worker (`kralveth-weather`: the name given in the dashboard must be the same), serves the built site
+`wrangler.toml` names the Worker (`weather`, the name in the dashboard: https://weather.kralveth.workers.dev), serves the built site
 (`dist/weather-platform/browser`, an unknown path gets the app) and runs `worker/index.js` first for `/api/ildn`, `/api/imd-lightning`,
 `/api/radar` and `/imd-radar/*` (the Netlify functions in `netlify/functions/`, through `netlify/cloudflare.js`); `public/_headers` gives
 the headers. Every push to `main` deploys. Netlify still works from `netlify.toml`. Locally: `npx ng build && npx wrangler dev`.

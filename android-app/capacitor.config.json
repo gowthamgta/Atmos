@@ -3,7 +3,7 @@
   "appName": "Kralveth Weather",
   "webDir": "www",
   "server": {
-    "url": "https://atmosradar.netlify.app/",
+    "url": "https://weather.kralveth.workers.dev/",
     "androidScheme": "https",
     "errorPath": "offline.html"
   },

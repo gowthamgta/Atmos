@@ -1,7 +1,7 @@
 # Cloudflare (the site since 1 Nov 2026; Netlify still works from netlify.toml): a Worker with static assets, deployed by Cloudflare's build
 # with `npm run build` then `npx wrangler deploy`. The built site is served from the assets; worker/index.js runs first only for our functions
 # (/api/*, /imd-radar/*), the Netlify functions of netlify/functions/ run through netlify/cloudflare.js.
-name = "kralveth-weather"
+name = "weather" # the Worker's name in the dashboard: https://weather.kralveth.workers.dev
 main = "worker/index.js"
 compatibility_date = "2026-10-01"
 # the functions use Node's Buffer and zlib (the lightning map's PNG)

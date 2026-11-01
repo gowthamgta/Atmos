@@ -15,7 +15,7 @@ exports.handler = async function (event) {
   try {
     const response = await fetch(target, {
       headers: {
-        'User-Agent': 'KralvethWeather-personal (non-commercial; lightning of the last minutes; see atmosradar.netlify.app)',
+        'User-Agent': 'KralvethWeather-personal (non-commercial; lightning of the last minutes; see weather.kralveth.workers.dev)',
         Accept: '*/*'
       }
     });

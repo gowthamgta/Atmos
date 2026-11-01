@@ -1,7 +1,7 @@
 # Radar sampler
 
 Each run (`.github/workflows/nowcast.yml`, started by cron-job.org) opens the live radar of the app
-(`https://atmosradar.netlify.app/#l=radar&…&bot=1`) in a headless browser, waits for the radar and its last-hour loop, and
+(`https://weather.kralveth.workers.dev/#l=radar&…&bot=1`) in a headless browser, waits for the radar and its last-hour loop, and
 keeps the radar over the Tamil Nadu and Puducherry gauge cells (0.5 degree, 8-14 N, 76-80.5 E): the live picture and the
 nowcast's 30 and 60 minute guesses (`samples.mjs`). The store (four days) is kept between runs in the workflow's cache.
 
