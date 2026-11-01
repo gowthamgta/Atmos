@@ -86,7 +86,7 @@ fingerprint only together with this file, on the owner's request.
 - **Clicking shows the radar tooltip** (the owner, 25 Oct 2026: "The radar tooltip only enable when users click on the location or else no need to show and if user clicked again somewhere no need to show the tooltip"): the dBZ, rain rate and beam heights are shown on click, and hidden when clicking again anywhere; no longer triggered by mouse hover.
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
 - **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45
-  radars (Sriharikota removed on owner request, 25 Oct 2026), Karaikal and Chennai first. Pallikaranai, Kochi, Thiruvananthapuram and Mangaluru as measured before; every other
+  radars (Sriharikota removed on owner request, 25 Oct 2026; Pallikaranai, 1 Nov 2026: "remove the pallikaranai radar"), Karaikal and Chennai first. Kochi, Thiruvananthapuram and Mangaluru as measured before; every other
   one from its own pictures of 23 Oct (`core/domain/models/imd-radar-network.ts`, copies kept by the radar-pictures workflow on the
   imd-radar-samples branch): the map square, the range printed on the picture, the legend's colours with their values. A product whose
   picture could not be measured (the radar down, no range printed) is never fetched. Machilipatnam is left out (shut down, nothing to

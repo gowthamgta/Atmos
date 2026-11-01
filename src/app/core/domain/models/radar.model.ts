@@ -370,7 +370,7 @@ function measuredStation(m: (typeof MEASURED_STATIONS)[number]): RadarStationCon
 }
 
 // 📡 The IMD Doppler Weather Radar network: Karaikal and Chennai first (measured by hand on their pictures), the southern radars measured
-// before (Pallikaranai, Sriharikota, Kochi, Thiruvananthapuram, Mangaluru), and every other IMD radar (imd-radar-network.ts)
+// before (Kochi, Thiruvananthapuram, Mangaluru; Pallikaranai and Sriharikota since removed), and every other IMD radar (imd-radar-network.ts)
 export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
   createImdStation({
     id: 'karaikal',
@@ -436,32 +436,6 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
       ppz: { x: 0, y: 0, w: 800, h: 800 }
     },
     palettes: { caz: CNI_CAZ_PALETTE }
-  }),
-  createImdStation({
-    id: 'pallikaranai',
-    name: 'Pallikaranai X-DWR',
-    fullName: 'NIOT Pallikaranai High-Resolution X-Band DWR (85km)',
-    code: 'plk',
-    lat: 12.9451,
-    lng: 80.2115,
-    state: 'Tamil Nadu',
-    band: 'X-Band',
-    rangeKm: 85,
-    animationFile: 'animation/Converted/CNI_MAXZ.gif',
-    productRanges: {
-      caz: 87,
-      ppi: 87,
-      sri: 87,
-      pac: 87,
-      ppz: 87
-    },
-    crops: {
-      caz: { x: 29, y: 628, w: 1800, h: 1800 },
-      ppi: { x: 28, y: 0, w: 2430, h: 2490 },
-      sri: { x: 28, y: 0, w: 2430, h: 2485 },
-      pac: { x: 28, y: 0, w: 2430, h: 2485 },
-      ppz: { x: 28, y: 0, w: 2430, h: 2485 }
-    }
   }),
   createImdStation({
     id: 'kochi',

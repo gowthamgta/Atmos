@@ -48,13 +48,6 @@
    "rangeKm": 250
   },
   {
-   "id": "pallikaranai",
-   "lat": 12.9451,
-   "lng": 80.2115,
-   "band": "X-Band",
-   "rangeKm": 87
-  },
-  {
    "id": "kochi",
    "lat": 9.9312,
    "lng": 76.2673,

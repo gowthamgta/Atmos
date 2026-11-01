@@ -133,8 +133,8 @@ describe('the baked file', () => {
   it('has the site of every radar seen well, and nothing at the corners of the box', () => {
     const grid: CoverageGrid = { meta: meta!, classes: decodeGrayPng(readFileSync('public/data/radar-coverage.png'), meta!.nx, meta!.ny) };
     // (a radar north of the box, Hyderabad say, reaches into it from outside)
-    const inside = meta!.stations.filter(s => s.lat > meta!.south && s.lat < meta!.north && s.lng > meta!.west && s.lng < meta!.east);
-    expect(inside.length).toBeGreaterThanOrEqual(7);
+    const inside = meta!.stations.filter(s => s.lat > meta!.south && s.lat < meta!.north && s.lng > meta!.west && s.lng < meta!.east); // Pallikaranai removed, 1 Nov 2026
+    expect(inside.length).toBeGreaterThanOrEqual(6);
     for (const s of inside) expect(coverageAt(grid, s.lat, s.lng), s.id).toBe(COVERAGE_GOOD);
     expect(coverageAt(grid, meta!.south, meta!.west)).toBe(COVERAGE_NONE);   // the open Arabian Sea
     // the north-east corner is now within Visakhapatnam's range: some coverage there, none at the far south-east sea
