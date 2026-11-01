@@ -117,6 +117,8 @@ export class MapComponent implements OnInit, OnDestroy {
     this.radarService.stationTimings();
     this.radarService.activeView();
     this.radarService.ringResults();
+    this.radarService.workflowReach();
+    this.radarService.compositeMosaic();
     // no radar picture on the map at all (every scan too old to show): all of it is grey
     const radarDrawn = this.radarService.displayed() !== null;
     if (!this.map || !this.isMapLoaded()) return;
@@ -249,7 +251,7 @@ export class MapComponent implements OnInit, OnDestroy {
       }, before);
       map.addLayer({
         id: 'plain-roads', type: 'line', source: 'base-vector', 'source-layer': 'transportation', minzoom: 6,
-        filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary', 'tertiary'], true, false],
+        filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary'], true, false], // national and state highways only
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': 'rgba(255, 255, 255, 0.4)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 9, 0.9, 13, 1.8] }
       }, before);
@@ -387,33 +389,8 @@ export class MapComponent implements OnInit, OnDestroy {
               'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 1.2, 12, 2.4]
             }
           },
-          // Roads: motorways, trunks, primary, secondary, and minor streets from OpenFreeMap
-          {
-            id: 'base-road-minor',
-            type: 'line',
-            source: 'base-vector',
-            'source-layer': 'transportation',
-            minzoom: 11,
-            filter: ['match', ['get', 'class'], ['minor', 'service'], true, false],
-            layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: {
-              'line-color': 'rgba(148, 163, 184, 0.14)',
-              'line-width': ['interpolate', ['linear'], ['zoom'], 11, 0.4, 14, 0.9]
-            }
-          },
-          {
-            id: 'base-road-secondary',
-            type: 'line',
-            source: 'base-vector',
-            'source-layer': 'transportation',
-            minzoom: 8,
-            filter: ['match', ['get', 'class'], ['secondary', 'tertiary'], true, false],
-            layout: { 'line-cap': 'round', 'line-join': 'round' },
-            paint: {
-              'line-color': 'rgba(203, 213, 225, 0.18)',
-              'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.4, 11, 0.9, 14, 1.6]
-            }
-          },
+          // Roads: only the national highways (OSM's motorway and trunk in India) and the state highways (mostly primary), from OpenFreeMap
+          // (the owner, 1 Nov 2026: "only show national and state highways in default map")
           {
             id: 'base-road-primary',
             type: 'line',
@@ -881,7 +858,7 @@ export class MapComponent implements OnInit, OnDestroy {
   }
   private syncBasemap(type: string = 'dark'): void {
     if (!this.map || !this.isMapLoaded()) return;
-    for (const id of ['base-water', 'base-waterway', 'base-border', 'base-road-motorway', 'base-road-primary', 'base-road-secondary', 'base-road-minor']) {
+    for (const id of ['base-water', 'base-waterway', 'base-border', 'base-road-motorway', 'base-road-primary']) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
     this.setHillshadeVisible(this.forecastState.relief() && !this.satelliteOn());

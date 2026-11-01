@@ -31,7 +31,7 @@ void main() {
   outColor = vec4(vec3(1.0) * v_alpha, v_alpha);   // premultiplied white
 }`;
 
-const TAIL_SECONDS = 0.45;
+const TAIL_SECONDS = 0.25; // the streak's length in seconds of travel (0.45 at the slower speed: the same length on screen, a little longer)
 const LINE_WIDTH_CSS_PX = 1.4;
 const MIN_COUNT = 2500;
 
@@ -129,7 +129,9 @@ export class WindParticlesLayer implements CustomLayerInterface {
     if (!map || !this.program || !this.visible || !this.wind) return;
 
     const now = performance.now();
-    const dt = this.lastTime ? Math.min((now - this.lastTime) / 1000, 0.05) : 0;
+    // the real time between frames (up to a tenth of a second: a slower device's flow keeps its speed instead of crawling; a longer gap is a
+    // hidden tab or a pause)
+    const dt = this.lastTime ? Math.min((now - this.lastTime) / 1000, 0.1) : 0;
     this.lastTime = now;
     const next = this.budget.update(now, dt * 1000, this.system.count);
     if (next !== null) this.system.setCount(next);

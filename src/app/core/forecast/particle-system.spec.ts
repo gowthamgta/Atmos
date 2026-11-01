@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bestMs, loadScaledBudget } from '../testing/bench';
 import { ForecastGrid, mercatorUnitY } from './forecast.model';
 import {
-  AdaptiveCount, INSTANCE_FLOATS, MAX_LIFE_S, MIN_LIFE_S, PX_PER_MS, ParticleSystem, SPEED_KNEE_MS, ViewState, WindFrame, screenSpeed, spawnRegion,
+  AdaptiveCount, INSTANCE_FLOATS, MAX_LIFE_S, MIN_LIFE_S, PX_PER_MS, ParticleSystem, ZOOMED_OUT_SPEED, SPEED_KNEE_MS, ViewState, WindFrame, screenSpeed, spawnRegion,
 } from './particle-system';
 
 const GRID: ForecastGrid = { latMax: 22, latMin: 4, lonMin: 68, lonMax: 90, step: 0.1, nx: 221, ny: 181 };
@@ -202,7 +202,7 @@ describe('how the wind looks', () => {
   });
 
   it('draws the flow a little slower zoomed out over all India, full speed from zoom 6', () => {
-    expect(screenSpeed(10, 4)).toBeCloseTo(0.8 * screenSpeed(10, 6), 6);
+    expect(screenSpeed(10, 4)).toBeCloseTo(ZOOMED_OUT_SPEED * screenSpeed(10, 6), 6);
     expect(screenSpeed(10, 3)).toBeCloseTo(screenSpeed(10, 4), 6);
     expect(screenSpeed(10, 9)).toBeCloseTo(screenSpeed(10, 6), 6);
   });

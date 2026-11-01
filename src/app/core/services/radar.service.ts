@@ -215,6 +215,15 @@ export class RadarService implements OnDestroy {
   private historyToken = 0;
   private playTimer: ReturnType<typeof setInterval> | null = null;
 
+  /** When the radar on the map was made: the workflow run's time (its manifest), else, with the app's own pictures, the newest scan's. */
+  readonly updatedAtMs = signal<number | null>(null);
+  /** Minutes since then (null: nothing yet). */
+  readonly updatedAgoMinutes = computed<number | null>(() => {
+    const live = this.compositeMosaic();
+    const at = live && live === this.workflowComposite ? this.updatedAtMs() : live?.timing?.epochMs ?? null;
+    return at ? Math.max(0, Math.floor((this.liveClock() - at) / 60_000)) : null;
+  });
+
   // Active Station Timing & Freshness (Independent per-station tracking)
   readonly activeStationTiming = computed<RadarObservationTiming | null>(() => {
     const id = this.activeStationId();
@@ -510,6 +519,8 @@ export class RadarService implements OnDestroy {
 
   /** The workflow run whose composite is on the map (its manifest's updatedAtEpochMs): the 15.7 MB field is downloaded only for a new one. */
   private compositeRun = 0;
+  /** Each station's reach in the workflow's stack (its outermost ring, km), from the manifest. */
+  readonly workflowReach = signal<ReadonlyMap<string, number>>(new Map());
   /** That composite as put on the map (the app's own composite, built when the workflow's is missing, replaces it). */
   private workflowComposite: ProcessedRadarResult | null = null;
 
@@ -584,10 +595,12 @@ export class RadarService implements OnDestroy {
 
         this.compositeMosaic.set(result);
         this.compositeRun = manifest.updatedAtEpochMs;
+        this.updatedAtMs.set(manifest.updatedAtEpochMs);
         this.workflowComposite = result;
 
         // Update station timings from manifest so all station cards in UI reflect real IMD scan times & freshness
         if (Array.isArray(manifest.stations)) {
+          this.workflowReach.set(new Map(manifest.stations.filter((s: { reachKm?: number }) => (s.reachKm ?? 0) > 0).map((s: { id: string; reachKm: number }) => [s.id, s.reachKm])));
           this.stationTimings.update(m => {
             const next = new Map(m);
             for (const s of manifest.stations) {
@@ -1054,6 +1067,9 @@ export class RadarService implements OnDestroy {
    */
   reachKm(station: RadarStationConfig): number {
     if (!this.stacked()) return station.products[this.activeProduct()]?.rangeKm ?? station.operationalRangeKm;
+    // the workflow's composite on the map: its stack's reach for the station (the app has no pictures of its own then)
+    const fromWorkflow = this.compositeMosaic() === this.workflowComposite ? this.workflowReach().get(station.id) : undefined;
+    if (fromWorkflow) return fromWorkflow;
     const results = this.ringResults();
     const now = this.liveClock();
     const rings = stackRings(station, p => {

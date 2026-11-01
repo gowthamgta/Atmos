@@ -1,0 +1,14 @@
+{
+  "appId": "app.atmosiq.radar",
+  "appName": "AtmosIQ",
+  "webDir": "www",
+  "server": {
+    "url": "https://atmosradar.netlify.app/",
+    "androidScheme": "https",
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "backgroundColor": "#303236",
+    "allowMixedContent": false
+  }
+}

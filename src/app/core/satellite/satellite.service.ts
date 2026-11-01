@@ -115,6 +115,13 @@ export class SatelliteService {
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
   /** Minutes between the shown picture and now. */
+  /** When the pictures were last published by our satellite workflow (null: not known, e.g. EUMETView's pictures). */
+  readonly updatedAtMs = signal<number | null>(null);
+  /** Minutes since then. */
+  readonly updatedAgoMinutes = computed(() => {
+    const at = this.updatedAtMs();
+    return at !== null && this.current()?.own ? Math.max(0, Math.round((this.now() - at) / 60_000)) : null;
+  });
   readonly ageMinutes = computed(() => {
     const f = this.current();
     return f ? Math.max(0, Math.round((this.now() - f.timeMs) / 60_000)) : null;
@@ -130,6 +137,7 @@ export class SatelliteService {
   /** Overlay pictures being built or built, by "channel|timeMs". */
   private readonly built = new Map<string, Promise<SatelliteFrame | null>>();
   private checkTimer: ReturnType<typeof setInterval> | null = null;
+  private clockTimer: ReturnType<typeof setInterval> | null = null;
   private raf = 0;
   private loadToken = 0;
   /**
@@ -235,6 +243,8 @@ export class SatelliteService {
   activate(): void {
     this.active.set(true);
     if (this.checkTimer === null) this.checkTimer = setInterval(() => void this.load(), CHECK_MS);
+    if (this.clockTimer === null) this.clockTimer = setInterval(() => this.now.set(Date.now()), 30_000); // the "updated N min ago" counts on
+    this.now.set(Date.now());
     void this.load();
   }
 
@@ -244,6 +254,8 @@ export class SatelliteService {
     this.clearHover();
     if (this.checkTimer !== null) clearInterval(this.checkTimer);
     this.checkTimer = null;
+    if (this.clockTimer !== null) clearInterval(this.clockTimer);
+    this.clockTimer = null;
     if (this.retryTimer !== null) clearTimeout(this.retryTimer);
     this.retryTimer = null;
     this.loadToken++; // abandon a load in progress
@@ -326,6 +338,9 @@ export class SatelliteService {
       if (token !== this.loadToken) return;
       if (!res.ok) throw new Error(String(res.status));
       const index = (await res.json()) as OwnIndex;
+      // when the satellite workflow last published (GitHub Pages gives its deploy time as the index's Last-Modified)
+      const published = Date.parse(res.headers.get('last-modified') ?? '');
+      if (Number.isFinite(published)) this.updatedAtMs.set(published);
       if (token !== this.loadToken || this.source() !== kind || this.ownSatellite() !== satellite) return;
       const following = this.position() >= this.frames().length - 1;
       // the RGB until its first frames are made: the colour picture the satellite has (natural or true colour), else the infrared

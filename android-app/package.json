@@ -1,0 +1,15 @@
+{
+  "name": "atmosiq-android",
+  "private": true,
+  "description": "AtmosIQ for Android: the live site (atmosradar.netlify.app) in a full-screen app. Built by .github/workflows/android.yml.",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

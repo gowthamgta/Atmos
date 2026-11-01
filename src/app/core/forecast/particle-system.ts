@@ -19,8 +19,11 @@ export interface ViewState {
   zoom: number;
 }
 
-/** Screen speed of a particle: this many pixels per second for each m/s of wind, up to SPEED_KNEE_MS (see screenSpeed). */
-export const PX_PER_MS = 4.5;
+/**
+ * Screen speed of a particle: this many pixels per second for each m/s of wind, up to SPEED_KNEE_MS (see screenSpeed). 4.5 until 1 Nov 2026,
+ * when the owner found the flow "dead slow".
+ */
+export const PX_PER_MS = 10;
 /**
  * Up to this wind (m/s) a particle's screen speed grows in proportion; beyond it, with the square root of the excess ratio. A strong wind
  * still looks clearly faster, but a 30 m/s jet no longer races across the screen at five times the speed of a breeze, which looks
@@ -28,7 +31,7 @@ export const PX_PER_MS = 4.5;
  */
 export const SPEED_KNEE_MS = 6;
 /** Zoomed out over all India (zoom 4 and less) the flow is drawn this much slower, rising to full speed at zoom 6. */
-export const ZOOMED_OUT_SPEED = 0.8;
+export const ZOOMED_OUT_SPEED = 0.9;
 /** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha. */
 export const INSTANCE_FLOATS = 5;
 

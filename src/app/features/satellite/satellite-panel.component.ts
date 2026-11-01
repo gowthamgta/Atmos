@@ -95,7 +95,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
-            <span class="age">@if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
+            <span class="age">@if (sat.updatedAgoMinutes() !== null) { Updated {{ sat.updatedAgoMinutes()! < 1 ? 'just now' : sat.updatedAgoMinutes() + ' min ago' }} } @else if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
           </div>
           <input type="range" class="frames" min="0" [max]="Math.max(count() - 1, 0)" step="0.01" [value]="sat.position()" [disabled]="noLoop()" (input)="onFrame($event)" aria-label="Satellite time" />
           <div class="ends full-only"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>

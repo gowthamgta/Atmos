@@ -99,7 +99,11 @@ fingerprint only together with this file, on the owner's request.
 
 ## Forecast and the rest of the map
 
-- **Wind particles as tuned on 19 Oct** (27c7414): the owner chose to keep them.
+- **Only national and state highways on the map** (the owner, 1 Nov 2026): OSM's motorway and trunk (India's national highways) and
+  primary (mostly state highways); secondary, tertiary and minor roads are not drawn.
+- **Wind particles as tuned on 19 Oct** (27c7414), **faster since 1 Nov 2026** (the owner: "the wind particle animation is dead slow"):
+  10 px/s per m/s instead of 4.5 (`PX_PER_MS`), shorter tails in time so the streaks stay about as long, and a slow device's frames no
+  longer slow the flow down (time step up to 0.1 s).
 - **Rain probability: the ECMWF ensemble** (share of members with rain), models' agreement only as the fallback (5b7da55). Meteologix was
   not used (its charts are not open data).
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.

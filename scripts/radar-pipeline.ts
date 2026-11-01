@@ -492,17 +492,21 @@ async function main() {
   const sources: [string, ProcessedRadarResult][] = [];
   const rings: [string, MosaicRing][] = [];
 
+  const reachKm = new Map<string, number>();
   for (const station of IMD_RADAR_STATIONS) {
     const usable = (p: RadarProductKey) => {
       const r = ringResults.get(ringKey(station.id, p));
       return !!r?.fieldData && r.isDisplayed !== false && isObservationEligible(r.timing, nowMs);
     };
-    for (const [p, ring] of stackRings(station, usable)) {
+    const stack = stackRings(station, usable);
+    for (const [p, ring] of stack) {
       const key = ringKey(station.id, p);
       const r = ringResults.get(key)!;
       sources.push([key, r]);
       rings.push([key, ring]);
     }
+    // how far the station's echo reaches on the map (its outermost ring): the app's coverage grey
+    if (stack.length) reachKm.set(station.id, station.products[stack[stack.length - 1][0]].rangeKm);
   }
 
   const ringsMap = new Map<string, MosaicRing>(rings);
@@ -575,6 +579,7 @@ async function main() {
       lng: s.lng,
       band: s.band,
       timing: primaryRes?.timing || null,
+      reachKm: reachKm.get(s.id) ?? 0,
       isDisplayed: hasEligibleProduct,
     };
   });

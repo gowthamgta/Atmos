@@ -39,10 +39,11 @@ const FRESHNESS_LABEL: Record<string, string> = {
         </header>
 
         <div class="scan full-only">
-          <span>{{ scanLabel() }}</span>
           @if (allOff()) {
+            <span>All radars off</span>
           } @else if (age() !== null) {
-            <span class="age" [attr.data-state]="freshness()">{{ age() }} min ago · {{ freshnessLabel() }}</span>
+            <span>Updated {{ agoText() }}</span>
+            <span class="age" [attr.data-state]="freshness()">{{ freshnessLabel() }}</span>
           } @else {
             <span class="age" data-state="syncing">Syncing…</span>
           }
@@ -182,24 +183,26 @@ export class RadarPanelComponent {
     const age = this.age();
     if (this.allOff()) return 'All radars off';
     if (age === null) return 'Syncing…';
-    return `${age} min · ${FRESHNESS_LABEL[this.freshness()] ?? ''}`;
+    return `Updated ${this.agoText()}`;
   });
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
   protected readonly stations = this.radar.stations;
   protected readonly activeId = this.radar.activeStationId;
   protected readonly refreshing = this.radar.isRefreshing;
-  protected readonly age = this.radar.activeStationAgeMinutes;
-  protected readonly freshness = this.radar.activeStationFreshness;
+  /** Minutes since the radar on the map was made (the workflow's run, every 5 minutes), and how fresh that is. */
+  protected readonly age = this.radar.updatedAgoMinutes;
+  protected readonly freshness = computed(() => {
+    const age = this.age();
+    return age === null ? 'syncing' : age <= 10 ? 'fresh' : age <= 30 ? 'recent' : 'stale';
+  });
+  protected readonly agoText = computed(() => {
+    const age = this.age() ?? 0;
+    return age < 1 ? 'just now' : age < 120 ? `${age} min ago` : `${Math.round(age / 60)} h ago`;
+  });
   protected readonly online = this.radar.displayedStationsCount;
 
   protected readonly freshnessLabel = computed(() => FRESHNESS_LABEL[this.freshness()] ?? '');
-  protected readonly scanLabel = computed(() => {
-    const mode = 'stack (PPI, CAZ, PPZ)';
-    const st = this.shortName(this.radar.activeStation().name);
-    const t = this.radar.observationTiming();
-    return t?.ist ? `${st} ${mode} ${t.ist}` : `${st} ${mode}`;
-  });
 
   protected readonly legendTitle = computed(() => 'Reflectivity (dBZ)');
   protected readonly legendTicks = computed(() => ['17', '28', '39', '50', '60+']);
@@ -221,10 +224,6 @@ export class RadarPanelComponent {
       if (this.active() && this.frames().length > 0 && !this.playing()) void this.radar.loadHistory();
     }, 60 * 60_000);
     inject(DestroyRef).onDestroy(() => clearInterval(timer));
-  }
-
-  protected shortName(name: string): string {
-    return name.replace(' X-DWR', '').replace(' DWR', '');
   }
 
   protected stationState(id: string): string {

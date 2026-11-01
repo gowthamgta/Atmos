@@ -1,0 +1,82 @@
+name: android
+
+# The Android app (android-app/): the live site in a full-screen Capacitor app, one universal APK (no native code, so every phone).
+# Published as the release "android" (https://github.com/gowthamgta/Atmos/releases/tag/android). The app loads the site, so a change to the
+# site needs no new APK; only a change to android-app/ builds one.
+# Signed with the release key from the secrets ANDROID_KEYSTORE_B64 (the PKCS12 file, base64) and ANDROID_KEYSTORE_PASSWORD, so each APK
+# installs over the last. Without them it is signed with this run's debug key (installs, but an update needs the old one removed first).
+on:
+  push:
+    branches: [main]
+    paths: ['android-app/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: android
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: android-app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install and copy the shell into the Android project
+        run: |
+          npm ci
+          npx cap sync android
+
+      - name: Release key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_B64 secret: building a debug-signed APK"
+          fi
+
+      - name: Build the APK
+        working-directory: android-app/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: atmosiq
+        run: |
+          chmod +x gradlew
+          if [ -n "$ANDROID_KEYSTORE_FILE" ]; then
+            ./gradlew --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/AtmosIQ.apk"
+          else
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/AtmosIQ.apk"
+          fi
+          ls -la "$RUNNER_TEMP/AtmosIQ.apk"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="AtmosIQ for Android, build ${GITHUB_RUN_NUMBER} ($(git rev-parse --short HEAD)). One APK for every phone (Android 7 and newer): download AtmosIQ.apk and open it to install. It opens https://atmosradar.netlify.app/ full-screen and stays up to date with the site."
+          gh release view android >/dev/null 2>&1 || gh release create android --title "AtmosIQ for Android" --notes "$notes" --latest=false
+          gh release edit android --notes "$notes"
+          gh release upload android "$RUNNER_TEMP/AtmosIQ.apk" --clobber
