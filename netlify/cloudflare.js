@@ -1,4 +1,4 @@
-// Runs one of our Netlify functions (netlify/functions/*.js) as a Cloudflare Pages Function, so both hosts serve the same code: the request
+// Runs one of our Netlify functions (netlify/functions/*.js) on Cloudflare (worker/index.js), so both hosts serve the same code: the request
 // becomes Netlify's event, the answer a Response. Netlify's CDN cache time (Netlify-CDN-Cache-Control: s-maxage) is kept with Cloudflare's
 // cache, so ILDN and IMD are asked no more often than on Netlify (5 s and 5 min, however many people look).
 

@@ -2,18 +2,19 @@
 
 Weather maps for South India: IMD radar, Meteosat satellite and forecast models (Angular 21 with MapLibre).
 
-## Hosting: Cloudflare Pages
+## Hosting: Cloudflare
 
-Connected to this repository (Cloudflare dashboard, Workers & Pages, Create, Pages, Connect to Git, `gowthamgta/Atmos`, branch `main`):
+A Worker with static assets, connected to this repository (Cloudflare dashboard, Workers & Pages, Create, Import a repository,
+`gowthamgta/Atmos`, branch `main`):
 
 - Build command: `npm run build`
-- Build output directory: `dist/weather-platform/browser`
+- Deploy command: `npx wrangler deploy`
 - Root directory: empty (the repository's root); Node 22 comes from `.node-version`.
 
-`wrangler.toml` gives the output directory and turns on `nodejs_compat`; `functions/` serves `/api/ildn`, `/api/imd-lightning`,
-`/api/radar` and `/imd-radar/*` (the Netlify functions in `netlify/functions/`, run through `netlify/cloudflare.js`), `public/_headers`
-the headers. Every push to `main` deploys. Netlify still works from `netlify.toml`. To try the Cloudflare build locally:
-`npx ng build && npx wrangler pages dev`.
+`wrangler.toml` names the Worker (`kralveth-weather`: the name given in the dashboard must be the same), serves the built site
+(`dist/weather-platform/browser`, an unknown path gets the app) and runs `worker/index.js` first for `/api/ildn`, `/api/imd-lightning`,
+`/api/radar` and `/imd-radar/*` (the Netlify functions in `netlify/functions/`, through `netlify/cloudflare.js`); `public/_headers` gives
+the headers. Every push to `main` deploys. Netlify still works from `netlify.toml`. Locally: `npx ng build && npx wrangler dev`.
 
 The Android app (`android-app/`, built by `.github/workflows/android.yml`) opens the site full-screen.
 
