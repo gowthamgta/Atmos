@@ -16,6 +16,7 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { buildCloudMap, productClearShare, productLooksWrong, removeClearPatches, type CloudMap } from '../src/app/core/services/radar-qc';
+import { PERSIST_MAX_AGE_MS, clearCells, decodePersist, encodePersist, newPersistState, persistLevels, persistentCells, updatePersist, type PersistState } from '../src/app/core/services/radar-persist';
 import {
   IMD_RADAR_STATIONS,
   type ProcessedRadarResult,
@@ -227,7 +228,7 @@ interface PictureSeen {
 
 /** The fingerprints of the last run's pictures (its published manifest; RADAR_PREVIOUS_MANIFEST a file or URL instead; none in a --replay). */
 async function loadPreviousPictures(args: ParsedArgs): Promise<Record<string, PictureSeen>> {
-  const src = process.env.RADAR_PREVIOUS_MANIFEST ?? (args.replayDir ? '' : `${RADAR_SITE}manifest.json`);
+  const src = process.env.RADAR_PREVIOUS_MANIFEST ?? (args.replayDir ? '' : `${RADAR_SITE}manifest.json?t=${Date.now()}`); // past Pages' 10-minute cache
   if (!src) return {};
   try {
     const text = /^https?:/.test(src) ? await (await fetch(src, { signal: AbortSignal.timeout(20_000) })).text() : fs.readFileSync(src, 'utf8');
@@ -236,6 +237,22 @@ async function loadPreviousPictures(args: ParsedArgs): Promise<Record<string, Pi
     return {};
   }
 }
+
+/**
+ * The last run's steady-echo memory (radar-persist.ts), published beside the manifest; none in a replay (the same pictures again would look
+ * steady) unless RADAR_PERSIST_FILE names one. Empty when there is none: the memory starts again and removes nothing for its first hours.
+ */
+async function loadPersist(args: ParsedArgs): Promise<Map<string, PersistState>> {
+  const src = process.env.RADAR_PERSIST_FILE ?? (args.replayDir ? '' : `${RADAR_SITE}${PERSIST_FILE}?t=${Date.now()}`);
+  if (!src) return new Map();
+  try {
+    const gz = /^https?:/.test(src) ? await fetch(src, { signal: AbortSignal.timeout(30_000) }).then(r => (r.ok ? r.arrayBuffer() : Promise.reject())) : fs.readFileSync(src);
+    return decodePersist(new Uint8Array(zlib.gunzipSync(Buffer.from(gz))));
+  } catch {
+    return new Map();
+  }
+}
+const PERSIST_FILE = 'persist.bin.gz';
 
 /**
  * Our newest two Meteosat frames as a cloud map (radar-qc.ts), or null when there is none within the hour before `nowMs` (the checks are
@@ -374,7 +391,11 @@ async function main() {
   // each picture's fingerprint and when it was first seen with it (the last run's, from its manifest: for the stale check)
   const previousPictures = await loadPreviousPictures(args);
   const pictures: Record<string, PictureSeen> = {};
-  const qc = { satelliteTime: null as string | null, frozen: [] as string[], leftOut: [] as { key: string; echoPx: number; clearShare: number }[], clearPatchPx: 0 };
+  const qc = { satelliteTime: null as string | null, frozen: [] as string[], leftOut: [] as { key: string; echoPx: number; clearShare: number }[], clearPatchPx: 0, steady: {} as Record<string, number> };
+  // how long each cell of each product has shown the same echo (radar-persist.ts): echo that stays put is clutter
+  const persist = await loadPersist(args);
+  for (const [key, st] of persist) if (nowMs - st.scanMs > PERSIST_MAX_AGE_MS) persist.delete(key);
+  console.log(`[RadarPipeline] Steady-echo memory: ${persist.size} products`);
 
   type FetchJob = { station: RadarStationConfig; productKey: RadarProductKey };
   const jobs: FetchJob[] = [];
@@ -415,6 +436,14 @@ async function main() {
           }
           const res = await processSweep(station, productKey, fetchRes);
           if (res && res.fieldData) {
+            // a new scan joins the memory; then the echo that has stayed put for hours is taken off (before any other check uses the field)
+            const levels = persistLevels(res.fieldData.field);
+            let st = persist.get(key);
+            if (!st) persist.set(key, (st = newPersistState()));
+            const scanMs = res.timing?.epochMs ?? 0;
+            if (scanMs > st.scanMs) updatePersist(st, levels, scanMs);
+            const steadyPx = clearCells(res.fieldData.field, persistentCells(st, levels));
+            if (steadyPx > 0) qc.steady[key] = steadyPx;
             ringResults.set(ringKey(station.id, productKey), res);
             succeeded++;
           }
@@ -437,6 +466,8 @@ async function main() {
     console.error(`[RadarPipeline] Error: No radar sweeps could be retrieved.`);
     process.exit(1);
   }
+  if (Object.keys(qc.steady).length) console.log(`[RadarPipeline] Steady echo removed (px): ${Object.entries(qc.steady).map(([k, n]) => `${k} ${n}`).join(', ')}`);
+  fs.writeFileSync(path.join(outDir, PERSIST_FILE), zlib.gzipSync(encodePersist(persist), { level: 6 }));
   if (qc.frozen.length) console.log(`[RadarPipeline] Stale (the same picture for over ${MAX_SCAN_AGE_MIN} min): ${qc.frozen.join(', ')}`);
 
   // Against our own satellite (radar-qc.ts): a product whose echo is mostly under a clear sky is misread or stale, and left out

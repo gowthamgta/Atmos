@@ -71,6 +71,12 @@ fingerprint only together with this file, on the owner's request.
   85%+ under a clear sky by our Meteosat cloud tops is left out; in the composite a patch is removed only when all of it is under a clear
   sky; a picture unchanged for 45+ minutes is stale; weak (under 35 dBZ) thin spikes along one ray are removed; anti-aliased map lines
   in the legend's strong colours are removed. Rain touching cloud anywhere is always kept.
+- **Echo that stays put is clutter** (the owner, 1 Nov 2026: "look for the non changing ones, keep the changing ones"; `radar-persist.ts`):
+  the radar workflow remembers, from run to run (`persist.bin.gz` beside the manifest), how many scans each cell of each product has shown
+  echo of the same strength (within 3 dBZ). After 18 such scans (about 3 hours; another strength takes 3 off, no echo 1) the cell's echo
+  is removed, cloud or no cloud; in a patch only when steady cells are at least half of it (the whole patch from 80%), so moving rain with a
+  steady spot in it stays. Checked on IMD's 3-hour loops of Karaikal and Chennai: only the clutter at Chennai's radar and on the hills west
+  of Karaikal is that steady; no rain band came near.
 - **The radars are fetched only while the radar is on the map** (or the place card needs the rain nowcast): with 45 radars, fetching
   and composing them every minute slowed the forecast maps down while the radar was not shown (the owner, 24 Oct 2026).
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
