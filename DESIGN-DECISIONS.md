@@ -27,6 +27,9 @@ fingerprint only together with this file, on the owner's request.
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.
 - **The HD 1.25 km window loads by default** on desktop and phone (b4afa62), and the **newest frame is shown first** (2b73678).
+- **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
+  (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to
+  oldest, each batch joining the loop as it is built (`FIRST_FRAMES`, `loopFrames` in `core/satellite/satellite.service.ts`).
 - **Never ask EUMETView for pixels finer than about 1.25 km**: the HRV is built from 1.2 to 1.5 km pixels and a finer request is padded
   into streaks and rectangles.
 - 🔒 **Infrared (night, and the Visible/Infrared switch): Windy's cloud-top colours**, greys to -44 °C, then blue, cyan, green, yellow,
@@ -60,10 +63,20 @@ fingerprint only together with this file, on the owner's request.
   its own scan time and goes when it is too old, as always; a missing or old picture leaves its ground to the ring around it. The
   stations' scan times and online state are their CAZ's; the one-hour loop is IMD's CAZ animations. CAZ, PPZ and PPI on their own
   stay as before (`stackRings` in `core/services/radar.service.ts`).
+- **The stack's order, exactly** (the owner, 1 Nov 2026): PPZ everywhere it reaches, CAZ inside the PPZ, PPI inside the CAZ; a missing or
+  too old PPI leaves its ground to the CAZ, a missing CAZ to the PPZ; when every product is older than the limit (45 min), nothing.
+  By the products' order, not their ranges (Hyderabad's PPZ reaches only 150 km and keeps its CAZ out to 250 km).
+- **Radar quality control** (the owner, 1 Nov 2026: "make sure we are not missing any original rain band likewise not displaying a radar
+  glitch"; `core/services/radar-qc.ts`, `removeRadialSpikes` in `radar-process.ts`, run by the radar workflow): a product whose echo is
+  85%+ under a clear sky by our Meteosat cloud tops is left out; in the composite a patch is removed only when all of it is under a clear
+  sky; a picture unchanged for 45+ minutes is stale; weak (under 35 dBZ) thin spikes along one ray are removed; anti-aliased map lines
+  in the legend's strong colours are removed. Rain touching cloud anywhere is always kept.
 - **The radars are fetched only while the radar is on the map** (or the place card needs the rain nowcast): with 45 radars, fetching
   and composing them every minute slowed the forecast maps down while the radar was not shown (the owner, 24 Oct 2026).
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
-- **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the unified all-India composite served directly, station chips and product mode buttons are no longer displayed in the radar menu.
+- **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the unified all-India composite served directly, station chips and product mode buttons are no longer displayed in the radar menu. The All/CAZ/PPZ/PPI buttons were back; removed again with the radar's
+  opacity slider (the owner, 1 Nov 2026: "no need the radar menus as we are by default merging all those, and remove the opacity"): the
+  radar is always the merged stack at full opacity.
 - **Clicking shows the radar tooltip** (the owner, 25 Oct 2026: "The radar tooltip only enable when users click on the location or else no need to show and if user clicked again somewhere no need to show the tooltip"): the dBZ, rain rate and beam heights are shown on click, and hidden when clicking again anywhere; no longer triggered by mouse hover.
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
 - **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45

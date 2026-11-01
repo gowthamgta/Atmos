@@ -2,27 +2,10 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { IconComponent } from '../../shared/icon.component';
 import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
-import { RadarService, type RadarView } from '../../core/services/radar.service';
+import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
 import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
 import { VerificationService } from '../../core/forecast/verification.service';
-
-interface ProductOption {
-  key: RadarView;
-  name: string;
-  hint: string;
-  /** How the scan is named in the status line. */
-  scan: string;
-  title: string;
-}
-
-/** Each product is its own picture and downloads only its own pictures (one per radar). */
-const PRODUCTS: readonly ProductOption[] = [
-  { key: 'all', name: 'All', hint: 'PPI·CAZ·PPZ', scan: 'stack (PPI, CAZ, PPZ)', title: 'Every radar\'s pictures in one: its PPI inside, its CAZ around it and its PPZ out to its longest range, each with its own scan time' },
-  { key: 'caz', name: 'CAZ', hint: 'Column max', scan: 'column maximum (CAZ)', title: 'Column maximum reflectivity (CAZ): the strongest echo in each column of air, out to the range of each radar' },
-  { key: 'ppz', name: 'PPZ', hint: 'Reflectivity', scan: 'reflectivity sweep (PPZ)', title: 'Plan Position Indicator reflectivity (PPZ): the radar sweep, out to its longer range (up to 500 km), shown on its own' },
-  { key: 'ppi', name: 'PPI', hint: 'Base scan', scan: 'PPI sweep', title: 'Plan Position Indicator (lowest base reflectivity sweep), shown on its own' },
-];
 
 const FRESHNESS_LABEL: Record<string, string> = {
   fresh: 'Fresh',
@@ -32,7 +15,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
   syncing: 'Syncing',
 };
 
-/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs the picture's freshness, the last-hour loop and opacity. */
+/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs the picture's freshness and the last-hour loop: every radar's PPI, CAZ and PPZ are always merged (the owner, 1 Nov 2026: no product buttons, no opacity). */
 @Component({
   selector: 'app-radar-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -65,15 +48,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
-        <div class="products" role="group" aria-label="Radar scan mode">
-          @for (p of products; track p.key) {
-            <button type="button" class="prod" [class.active]="product() === p.key" [attr.aria-pressed]="product() === p.key" [title]="p.title" (click)="setProduct(p.key)">
-              <span class="pname">{{ p.name }}</span>
-              <span class="phint">{{ p.hint }}</span>
-            </button>
-          }
-        </div>
-
         <button type="button" class="storm-toggle full-only" [class.active]="storms.enabled()" [attr.aria-pressed]="storms.enabled()" (click)="storms.toggle()"
           title="Storm cells with the area they are expected to cross in the next hour">
           <span class="cone" aria-hidden="true"></span>
@@ -83,11 +57,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
         @if (nowcastLine(); as line) {
           <p class="nowcast full-only" role="status">{{ line }}</p>
         }
-
-        <label class="opacity full-only">
-          <span class="label">Opacity <span class="value">{{ opacityPercent() }}%</span></span>
-          <input type="range" min="0.2" max="1" step="0.05" [value]="opacity()" (input)="setOpacity($event)" aria-label="Radar opacity" />
-        </label>
 
         <div class="legend" role="img" [attr.aria-label]="legendTitle()">
           <div class="label full-only">{{ legendTitle() }}</div>
@@ -114,12 +83,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
-    .products { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
-    .prod { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 42px; padding: 5px 4px; border-radius: 10px; border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s; }
-    .prod:hover { background: var(--surface-4); color: var(--text-primary); }
-    .prod.active { background: var(--accent-soft); border-color: var(--accent-line); color: var(--neon-cyan); }
-    .pname { font-weight: 700; font-size: 13px; }
-    .phint { font-size: var(--fs-xs); opacity: 0.8; }
     .nowcast { margin: 8px 2px 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-secondary); }
     .storm-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 6px 10px; min-height: 36px; border-radius: 10px;
       border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; text-align: left; }
@@ -136,7 +99,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .sub[data-state='recent'] { color: var(--warn); }
     .sub[data-state='stale'] { color: var(--warn); }
     .sub[data-state='offline'] { color: var(--danger); }
-    /* compact: one header line, the product buttons, the loop and a thin colour bar */
+    /* compact: one header line, the loop and a thin colour bar */
     .panel.compact { padding: 8px 10px; }
     .panel.compact .full-only { display: none; }
     .panel.compact .compact-only { display: block; }
@@ -144,13 +107,9 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .panel.compact .heading strong { font-size: 13px; }
     .panel.compact .compact-only { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .panel.compact .icon-btn { width: 32px; height: 32px; font-size: 16px; }
-    .panel.compact .products { margin-top: 8px; gap: 4px; }
-    .panel.compact .prod { min-height: 32px; padding: 3px 2px; flex-direction: row; justify-content: center; gap: 4px; }
-    .panel.compact .pname { font-size: 12px; }
-    .panel.compact .phint { display: none; }
     .panel.compact .legend { margin-top: 8px; }
     .panel.compact .bar { height: 5px; }
-    button:focus-visible, input:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
+    button:focus-visible { outline: 2px solid var(--neon-cyan); outline-offset: 2px; }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 8px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
     .age[data-state='fresh'] { color: var(--ok); }
@@ -176,8 +135,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .dot[data-state='recent'] { background: var(--warn); }
     .dot[data-state='stale'] { background: var(--danger); }
     .dot[data-state='offline'] { background: var(--text-muted); }
-    .opacity { display: block; margin-top: 10px; }
-    input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .legend { margin-top: 10px; }
     .aloft-note { margin: 6px 0 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-muted); }
     .bar { height: 7px; border-radius: 4px; background: linear-gradient(to right, #241898 0%, #0e609a 14%, #02998f 28%, #3ecd7d 42%, #afd42c 55%, #ebcf16 64%, #f19f21 76%, #cd5846 88%, #91126a 100%); }
@@ -229,9 +186,6 @@ export class RadarPanelComponent {
   });
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
-  protected readonly products = PRODUCTS;
-  protected readonly product = this.radar.activeView;
-  protected readonly opacity = this.radar.radarOpacity;
   protected readonly stations = this.radar.stations;
   protected readonly activeId = this.radar.activeStationId;
   protected readonly refreshing = this.radar.isRefreshing;
@@ -239,10 +193,9 @@ export class RadarPanelComponent {
   protected readonly freshness = this.radar.activeStationFreshness;
   protected readonly online = this.radar.displayedStationsCount;
 
-  protected readonly opacityPercent = computed(() => Math.round(this.opacity() * 100));
   protected readonly freshnessLabel = computed(() => FRESHNESS_LABEL[this.freshness()] ?? '');
   protected readonly scanLabel = computed(() => {
-    const mode = PRODUCTS.find(o => o.key === this.product())?.scan ?? '';
+    const mode = 'stack (PPI, CAZ, PPZ)';
     const st = this.shortName(this.radar.activeStation().name);
     const t = this.radar.observationTiming();
     return t?.ist ? `${st} ${mode} ${t.ist}` : `${st} ${mode}`;
@@ -257,14 +210,12 @@ export class RadarPanelComponent {
     // the animations are several megabytes), and rebuilt every hour while the radar stays on (each new live picture joins it in between).
     effect(() => {
       const on = this.active();
-      const product = this.product();
       // the live stills are part of the loop, so wait until every radar's has been fetched
       const liveReady = this.radar.compositeMosaic() !== null && !this.radar.isRefreshing();
       untracked(() => {
         if (on && liveReady && typeof window !== 'undefined' && window.innerWidth > 700 && this.frames().length === 0) void this.radar.loadHistory();
         if (!on) this.radar.pause();
       });
-      void product;
     });
     const timer = setInterval(() => {
       if (this.active() && this.frames().length > 0 && !this.playing()) void this.radar.loadHistory();
@@ -298,10 +249,6 @@ export class RadarPanelComponent {
     return m >= 120 ? `${Math.round(m / 60)}h` : `${m}m`;
   }
 
-  protected setProduct(key: RadarView): void {
-    this.radar.setProduct(key);
-  }
-
   protected shown(id: string): boolean {
     return this.radar.isStationShown(id);
   }
@@ -316,11 +263,5 @@ export class RadarPanelComponent {
 
   protected refresh(): void {
     this.radar.fetchRadarSweep();
-  }
-
-  protected setOpacity(event: Event): void {
-    const value = parseFloat((event.target as HTMLInputElement).value);
-    this.radar.setOpacity(value);
-    this.layers.setLayerOpacity('radar', value);
   }
 }

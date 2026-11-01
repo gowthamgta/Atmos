@@ -245,15 +245,15 @@ export class SatellitePanelComponent {
     if (f?.own) return f.own.kind === 'infrared';
     return !!f && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
   });
-  /** Nothing to play or step through: the hour is loaded and has fewer than two pictures. (Until the loop is asked for, only the newest is loaded.) */
   /** Night over India: the visible picture is the infrared too, so there is nothing to choose between. */
   protected readonly night = computed(() => {
     const f = this.sat.current();
     return productForTime(f ? f.timeMs : Date.now()).id === 'ir'; // before a picture is there, the clock says
   });
   protected readonly nightHint = 'At night the visible picture is the infrared as well';
+  /** Nothing to play or step through: the loop is loaded and has fewer than two pictures. (Until Play, only the newest three are loaded.) */
   protected readonly noLoop = computed(() => this.count() < 2 && this.sat.historyRequested());
-  protected readonly historyHint = computed(() => this.count() === 1 && !this.sat.historyRequested());
+  protected readonly historyHint = computed(() => this.count() > 0 && !this.sat.historyRequested());
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
     if (!f) return 'loading';

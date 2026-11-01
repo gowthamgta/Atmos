@@ -88,7 +88,7 @@ export class SatelliteService {
   readonly failed = signal(false);
   readonly opacity = signal(1);
   readonly hoverReading = signal<SatelliteHoverReading | null>(null);
-  /** The older pictures of the hour are only downloaded once the loop is wanted (play, step back, the slider): first only the newest. */
+  /** The rest of the 4 hours is only downloaded once Play is pressed: first the newest picture, then the two before it (for the slider). */
   readonly historyRequested = signal(false);
   /** The satellite layer is on (the pictures are being kept fresh). */
   readonly active = signal(false);
@@ -352,9 +352,8 @@ export class SatelliteService {
           own: { kind: shown, satellite, bounds: index.bounds, dataUrl: base + data, minK: index.data.minK, spanK: index.data.spanK },
         });
       }
-      this.frames.set(list);
+      this.setLoop(list, following);
       this.flows.set([]);
-      if (following || this.position() > list.length - 1) this.position.set(Math.max(0, list.length - 1));
       this.ownEmpty.set(list.length === 0 ? (isDayKind(kind) && index.frames.length > 0 ? 'night' : 'none') : null);
     } catch {
       if (token === this.loadToken) this.failed.set(this.frames().length === 0);
@@ -413,18 +412,17 @@ export class SatelliteService {
     const publish = async (): Promise<void> => {
       const built = (await Promise.all(items.map(it => (this.ownRgb.has(base + it.file) ? build(it) : Promise.resolve(null))))).filter((f): f is SatelliteFrame => !!f);
       if (token !== this.loadToken || this.source() !== 'rgb' || this.ownSatellite() !== satellite) return;
-      this.frames.set(built);
-      if (following || this.position() > built.length - 1) this.position.set(Math.max(0, built.length - 1));
+      this.setLoop(built, following);
       void this.updateFlows(built);
     };
-    // the newest at once, then (once the loop is wanted) the rest of the 4 hours, newest first
+    // the newest at once, then the two before it, then (once Play is pressed) the rest of the 4 hours, newest first, each batch shown as it is built
     await build(items[items.length - 1]);
     await publish();
     for (let i = items.length - 2; i >= 0; i -= 3) {
       await Promise.all(items.slice(Math.max(0, i - 2), i + 1).map(build));
       if (token !== this.loadToken) return;
+      await publish();
     }
-    await publish();
     // pictures that have left the hour are released
     const keep = new Set(items.map(it => base + it.file));
     for (const [url, p] of this.ownRgb) {
@@ -496,8 +494,8 @@ export class SatelliteService {
       if (newest !== startAt) void this.load();
     });
     const rawKeys = plan.map(p => p.rawKey);
-    // first only the newest picture; the rest of the hour once the loop is wanted
-    const wanted = this.historyRequested() ? plan : plan.slice(-1);
+    // first the newest picture and the two before it; the rest once Play is pressed
+    const wanted = this.historyRequested() ? plan : plan.slice(-FIRST_FRAMES);
     const wantedKeys = wanted.map(p => p.rawKey);
     void this.showCached(plan[plan.length - 1].product, token);
 
@@ -576,7 +574,7 @@ export class SatelliteService {
     }
   }
 
-  /** Download the rest of the hour (play, step back and the slider need it); the newest picture is already there. */
+  /** Download the rest of the 4 hours (Play), newest first; the newest three pictures are already there. */
   requestHistory(): void {
     if (this.historyRequested()) return;
     this.historyRequested.set(true);
@@ -633,6 +631,24 @@ export class SatelliteService {
   }
 
   /** List the overlay pictures of every downloaded frame, oldest first. */
+  /**
+   * Shows a new list of frames. Watching the newest: it stays on the newest. Otherwise it stays on the same picture: older pictures joining
+   * at the front (loaded in the background while playing or after a drag) move its place along by as many.
+   */
+  private setLoop(list: SatelliteFrame[], following: boolean): void {
+    const old = this.frames();
+    const shift = old.length > 0 && list.length > 0 ? list.filter(f => f.timeMs < old[0].timeMs).length - old.filter(f => f.timeMs < list[0].timeMs).length : 0;
+    // whether the newest is watched is read now: the viewer may have dragged back while a batch was being built
+    const onNewest = old.length > 0 ? this.position() >= old.length - 1 : following;
+    this.frames.set(list);
+    const top = Math.max(0, list.length - 1);
+    this.position.update(p => (onNewest ? top : Math.min(Math.max(p + shift, 0), top)));
+    if (this.playWhenReady && list.length >= 2) {
+      this.playWhenReady = false;
+      this.play();
+    }
+  }
+
   private async publish(plan: readonly PlanItem[], token: number, following: boolean): Promise<void> {
     const seq = ++this.publishSeq;
     const built = await Promise.all(plan.filter(p => this.raws.has(p.rawKey)).map(p => this.frameFor(p.rawKey)));
@@ -641,14 +657,13 @@ export class SatelliteService {
     this.publishApplied = seq;
     const list = built.filter((f): f is SatelliteFrame => f !== null);
     if (list.length === 0 && this.preview) return; // keep the small first picture until a full one is built
-    this.frames.set(list);
+    this.setLoop(list, following);
     void this.updateFlows(list);
     if (this.preview) {
       const old = this.preview;
       this.preview = null;
       setTimeout(() => URL.revokeObjectURL(old.url), 5000);
     }
-    this.position.update(p => (following ? list.length - 1 : Math.min(Math.round(p), list.length - 1)));
     if (this.lastHoverCoords) this.inspectAt(this.lastHoverCoords.lat, this.lastHoverCoords.lon);
   }
 
@@ -757,7 +772,6 @@ export class SatelliteService {
 
   /** Jump to a whole frame (the slider). */
   setFrame(i: number): void {
-    if (i < this.frames().length - 1) this.requestHistory();
     const n = this.frames().length;
     if (n > 0) this.position.set(Math.min(Math.max(Math.round(i), 0), n - 1));
   }
@@ -765,7 +779,6 @@ export class SatelliteService {
   /** Step forward or back by delta frames (delta: -1 or +1), pausing the loop. */
   step(delta: number): void {
     this.pause();
-    this.requestHistory();
     const n = this.frames().length;
     if (n === 0) return;
     const cur = Math.round(this.position());
@@ -780,12 +793,10 @@ export class SatelliteService {
   /** Play the hour as a loop: each picture fades into the next, the newest holds a moment, then it starts again. */
   play(): void {
     if (this.playing()) return;
+    // the older pictures load in the background, newest first, and join the loop as they come
+    this.requestHistory();
     if (this.frames().length < 2) {
-      // only the newest picture is loaded so far: fetch the hour, and start the loop when it is all there
-      if (!this.historyRequested()) {
-        this.playWhenReady = true;
-        this.requestHistory();
-      }
+      this.playWhenReady = true; // started once there are two
       return;
     }
     if (typeof requestAnimationFrame !== 'function') return;
@@ -860,14 +871,16 @@ function readOwnSatellite(): OwnSatellite {
 const FULL_DETAIL_MS = 60 * 60_000;
 /** How far back the loop of our own frames goes (the workflow keeps a little more). */
 const LOOP_MS = 4 * 3_600_000;
+/** Frames loaded before Play: the newest and the two before it (the slider can be dragged over them). */
+const FIRST_FRAMES = 3;
 
 /**
- * The frames of our own loop: the newest only until the loop is wanted (play, step, the slider), then the last 4 hours. On a phone, past the
+ * The frames of our own loop: the newest three until Play is pressed, then the last 4 hours. On a phone, past the
  * newest hour, one frame every 30 minutes (each frame is a picture in the phone's memory).
  */
 function loopFrames<T extends { time: string }>(frames: readonly T[], history: boolean): T[] {
   if (frames.length === 0) return [];
-  if (!history) return [frames[frames.length - 1]];
+  if (!history) return frames.slice(-FIRST_FRAMES);
   const newest = Date.parse(frames[frames.length - 1].time);
   let lastKept = Infinity;
   const out: T[] = [];
