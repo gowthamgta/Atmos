@@ -6,6 +6,13 @@
 // is kept at the edge for five seconds, so ILDN is asked at most every five seconds in all, however many people look (it publishes a new
 // batch of strokes about every 30-45 seconds).
 
+/** Bytes as base64 with web APIs only (the function runs on Netlify, Cloudflare Pages and Workers alike: no Node Buffer). */
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 exports.handler = async function (event) {
   const params = new URLSearchParams(event.rawQuery || '');
   // only the one file the page's own map reads, and only a short window
@@ -22,7 +29,7 @@ exports.handler = async function (event) {
     if (!response.ok) {
       return { statusCode: 502, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify({ error: `ILDN answered ${response.status}` }) };
     }
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const bytes = new Uint8Array(await response.arrayBuffer());
     return {
       statusCode: 200,
       isBase64Encoded: true,
@@ -32,7 +39,7 @@ exports.handler = async function (event) {
         'Cache-Control': 'public, max-age=2',
         'Netlify-CDN-Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10'
       },
-      body: bytes.toString('base64')
+      body: toBase64(bytes)
     };
   } catch (e) {
     return { statusCode: 502, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify({ error: String(e) }) };

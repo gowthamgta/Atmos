@@ -1,6 +1,13 @@
 // Netlify Serverless Function: IMD Doppler Weather Radar Proxy
 // Eliminates CORS restrictions and geo-blocking by fetching server-side with browser headers
 
+/** Bytes as base64 with web APIs only (the function runs on Netlify, Cloudflare Pages and Workers alike: no Node Buffer). */
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 exports.handler = async function (event, context) {
   // Extract requested radar file (e.g. caz_kkl.gif, caz_plk.gif)
   const file =
@@ -56,7 +63,7 @@ exports.handler = async function (event, context) {
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const base64 = toBase64(new Uint8Array(arrayBuffer));
 
     return {
       statusCode: 200,

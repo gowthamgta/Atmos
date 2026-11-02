@@ -2,19 +2,22 @@
 
 Weather maps for South India: IMD radar, Meteosat satellite and forecast models (Angular 21 with MapLibre).
 
-## Hosting: Cloudflare
+## Hosting: Cloudflare (Pages or Workers)
 
-A Worker with static assets, connected to this repository (Cloudflare dashboard, Workers & Pages, Create, Import a repository,
-`gowthamgta/Atmos`, branch `main`):
+**Pages** (dashboard: Workers & Pages, Create, Pages, Connect to Git, `gowthamgta/Atmos`, branch `main`):
 
-- Build command: `npm run build`
-- Deploy command: `npx wrangler deploy`
-- Root directory: empty (the repository's root); Node 22 comes from `.node-version`.
+- Framework preset: None. Build command: `npm run build`. Build output directory: `dist/weather-platform/browser`.
+- Root directory: empty. Node 22 comes from `.node-version`. No compatibility flags or variables are needed.
 
-`wrangler.toml` names the Worker (`weather`, the name in the dashboard: https://weather.kralveth.workers.dev), serves the built site
-(`dist/weather-platform/browser`, an unknown path gets the app) and runs `worker/index.js` first for `/api/ildn`, `/api/imd-lightning`,
-`/api/radar` and `/imd-radar/*` (the Netlify functions in `netlify/functions/`, through `netlify/cloudflare.js`); `public/_headers` gives
-the headers. Every push to `main` deploys. Netlify still works from `netlify.toml`. Locally: `npx ng build && npx wrangler dev`.
+`functions/` serves `/api/ildn`, `/api/imd-lightning`, `/api/radar` and `/imd-radar/*`; an unknown path gets the app; `public/_headers`
+gives the headers. Pages skips `wrangler.toml` (it has no `pages_build_output_dir`). Locally: `npx ng build && npx wrangler pages dev
+dist/weather-platform/browser` (with `wrangler.toml` set aside).
+
+**Workers** (https://weather.kralveth.workers.dev): build command `npm run build`, deploy command `npx wrangler deploy`; `wrangler.toml`
+names the Worker `weather` and runs `worker/index.js` first for the same routes. Locally: `npx ng build && npx wrangler dev`.
+
+Both run the Netlify functions of `netlify/functions/` unchanged (web APIs only, through `netlify/cloudflare.js`), and Netlify still works
+from `netlify.toml`. Every push to `main` deploys.
 
 The Android app (`android-app/`, built by `.github/workflows/android.yml`) opens the site full-screen.
 

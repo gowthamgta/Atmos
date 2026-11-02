@@ -6,8 +6,6 @@
 //
 // Answer: { time: ISO time of the map's strokes (their newest), windowMin: 10, points: [[lat, lon], ...] }, kept at the edge for 5 minutes.
 
-const zlib = require('zlib');
-
 const SOURCE = 'https://internal.imd.gov.in/section/satmet/lightning/Last10_BT.png';
 // the picture's plot area (pixels) and what it covers
 const FRAME = { x0: 161, x1: 637, y0: 97, y1: 586, west: 65, east: 99, north: 40, south: 5 };
@@ -16,18 +14,22 @@ const LEGEND = { x0: 455, x1: 625, y0: 108, y1: 150 };
 // IMD's map shows the strokes up to about this long before it is saved
 const LAG_MS = 9 * 60_000;
 
-/** A PNG's pixels as RGB (8-bit truecolour or truecolour with alpha, not interlaced: what IMD's maps are). */
-function decodePng(buf) {
-  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
+/**
+ * A PNG's pixels as RGB (8-bit truecolour or truecolour with alpha, not interlaced: what IMD's maps are), with web APIs only (the zlib
+ * stream through DecompressionStream), so the function runs on Netlify, Cloudflare Pages and Workers alike.
+ */
+async function decodePng(buf) {
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  if (view.getUint32(0) !== 0x89504e47) throw new Error('not a PNG');
   let w = 0, h = 0, type = 0, depth = 0, interlace = 0;
   const idat = [];
   for (let o = 8; o < buf.length; ) {
-    const len = buf.readUInt32BE(o);
-    const kind = buf.toString('ascii', o + 4, o + 8);
+    const len = view.getUint32(o);
+    const kind = String.fromCharCode(buf[o + 4], buf[o + 5], buf[o + 6], buf[o + 7]);
     const data = buf.subarray(o + 8, o + 8 + len);
     if (kind === 'IHDR') {
-      w = data.readUInt32BE(0);
-      h = data.readUInt32BE(4);
+      w = view.getUint32(o + 8);
+      h = view.getUint32(o + 12);
       depth = data[8];
       type = data[9];
       interlace = data[12];
@@ -37,13 +39,13 @@ function decodePng(buf) {
   }
   if (depth !== 8 || (type !== 2 && type !== 6) || interlace) throw new Error(`PNG type ${type}/${depth}/${interlace} not handled`);
   const bpp = type === 6 ? 4 : 3;
-  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const raw = new Uint8Array(await new Response(new Blob(idat).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
   const stride = w * bpp;
-  const out = Buffer.alloc(w * h * 3);
-  let prev = Buffer.alloc(stride);
+  const out = new Uint8Array(w * h * 3);
+  let prev = new Uint8Array(stride);
   for (let y = 0; y < h; y++) {
     const f = raw[y * (stride + 1)];
-    const line = Buffer.from(raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)));
+    const line = raw.slice(y * (stride + 1) + 1, (y + 1) * (stride + 1));
     for (let i = 0; i < stride; i++) {
       const a = i >= bpp ? line[i - bpp] : 0, b = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
       if (f === 1) line[i] = (line[i] + a) & 255;
@@ -107,7 +109,7 @@ exports.handler = async function () {
       return { statusCode: 502, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify({ error: `IMD answered ${response.status}` }) };
     }
     const saved = Date.parse(response.headers.get('last-modified') || '') || Date.now();
-    const points = stars(decodePng(Buffer.from(await response.arrayBuffer())));
+    const points = stars(await decodePng(new Uint8Array(await response.arrayBuffer())));
     return {
       statusCode: 200,
       headers: {
