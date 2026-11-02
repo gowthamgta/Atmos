@@ -4,7 +4,7 @@ Weather maps for South India: IMD radar, Meteosat satellite and forecast models 
 
 ## Hosting: Cloudflare (Pages or Workers)
 
-**Pages** (dashboard: Workers & Pages, Create, Pages, Connect to Git, `gowthamgta/Atmos`, branch `main`):
+**Pages** (https://kralveth-weather.pages.dev, the address the Android app opens; dashboard: Workers & Pages, Create, Pages, Connect to Git, `gowthamgta/Atmos`, branch `main`):
 
 - Framework preset: None. Build command: `npm run build`. Build output directory: `dist/weather-platform/browser`.
 - Root directory: empty. Node 22 comes from `.node-version`. No compatibility flags or variables are needed.

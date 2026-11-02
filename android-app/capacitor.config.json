@@ -3,7 +3,7 @@
   "appName": "Kralveth Weather",
   "webDir": "www",
   "server": {
-    "url": "https://weather.kralveth.workers.dev/",
+    "url": "https://kralveth-weather.pages.dev/",
     "androidScheme": "https",
     "errorPath": "offline.html"
   },

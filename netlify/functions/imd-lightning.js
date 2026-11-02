@@ -103,7 +103,7 @@ exports.stars = stars;
 exports.handler = async function () {
   try {
     const response = await fetch(SOURCE, {
-      headers: { 'User-Agent': 'KralvethWeather-personal (non-commercial; lightning of the last minutes; see weather.kralveth.workers.dev)', Accept: 'image/png' },
+      headers: { 'User-Agent': 'KralvethWeather-personal (non-commercial; lightning of the last minutes; see kralveth-weather.pages.dev)', Accept: 'image/png' },
     });
     if (!response.ok) {
       return { statusCode: 502, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }, body: JSON.stringify({ error: `IMD answered ${response.status}` }) };

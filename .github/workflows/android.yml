@@ -76,7 +76,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="Kralveth Weather for Android, build ${GITHUB_RUN_NUMBER} ($(git rev-parse --short HEAD)). One APK for every phone (Android 7 and newer): download KralvethWeather.apk and open it to install. It opens https://weather.kralveth.workers.dev/ full-screen and stays up to date with the site."
+          notes="Kralveth Weather for Android, build ${GITHUB_RUN_NUMBER} ($(git rev-parse --short HEAD)). One APK for every phone (Android 7 and newer): download KralvethWeather.apk and open it to install. It opens https://kralveth-weather.pages.dev/ full-screen and stays up to date with the site."
           gh release view android >/dev/null 2>&1 || gh release create android --title "Kralveth Weather for Android" --notes "$notes" --latest=false
           gh release edit android --notes "$notes"
           gh release upload android "$RUNNER_TEMP/KralvethWeather.apk" --clobber

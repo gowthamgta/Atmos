@@ -3,7 +3,7 @@
 // storms to Telegram, Discord and X was removed (the owner, 1 Nov 2026). Run by .github/workflows/nowcast.yml; see README.md in this folder.
 //
 // Environment:
-//   SITE_URL       the app (default https://weather.kralveth.workers.dev)
+//   SITE_URL       the app (default https://kralveth-weather.pages.dev)
 //   SAMPLES_FILE   where the samples are kept (default bot/samples/radar-samples.json; kept between runs by the workflow's cache)
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -12,7 +12,7 @@ import { chromium } from 'playwright';
 import { CELL_HALF_DEG, GAUGE_POINTS, appendSamples } from './samples.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SITE = (process.env.SITE_URL || 'https://weather.kralveth.workers.dev').replace(/\/$/, '');
+const SITE = (process.env.SITE_URL || 'https://kralveth-weather.pages.dev').replace(/\/$/, '');
 const SAMPLES_FILE = process.env.SAMPLES_FILE || join(HERE, 'samples', 'radar-samples.json');
 /** Tamil Nadu and Puducherry fill the picture at this view. */
 const VIEW = { lat: 10.9, lon: 78.6, zoom: 6.35 };

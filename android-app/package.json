@@ -1,7 +1,7 @@
 {
   "name": "kralveth-weather-android",
   "private": true,
-  "description": "Kralveth Weather for Android: the live site (weather.kralveth.workers.dev) in a full-screen app. Built by .github/workflows/android.yml.",
+  "description": "Kralveth Weather for Android: the live site (kralveth-weather.pages.dev) in a full-screen app. Built by .github/workflows/android.yml.",
   "scripts": {
     "sync": "cap sync android"
   },

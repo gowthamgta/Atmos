@@ -149,8 +149,8 @@ fingerprint only together with this file, on the owner's request.
 - **The project is Kralveth Weather** (the owner, 1 Nov 2026: "change the project name to kralveth weather"; AtmosIQ before): the page title,
   the installed app's name (Kralveth on the home screen), the About card and the Kralveth Blend. Stored settings keep their atmosiq.* keys and
   the GitHub repositories their names, so nothing saved is lost.
-- **Cloudflare hosts the site** (the owner, 1-2 Nov 2026): on Pages (functions/) or as a Worker with static assets at
-  https://weather.kralveth.workers.dev (worker/index.js, wrangler.toml); Netlify still works. README.md has the setup. Our functions are
+- **Cloudflare hosts the site** (the owner, 1-2 Nov 2026): on Pages at https://kralveth-weather.pages.dev (functions/), the address the
+  Android app opens; also as a Worker at https://weather.kralveth.workers.dev (worker/index.js, wrangler.toml); Netlify still works. README.md has the setup. Our functions are
   at /api/ on every host, written with web APIs only so no host needs Node compatibility.
 
 ## Pipeline

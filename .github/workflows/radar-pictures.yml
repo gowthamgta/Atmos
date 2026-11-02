@@ -28,7 +28,7 @@ jobs:
           get() { # url file: IMD directly, else through the app's proxy
             curl -sSL -m 60 -A "$UA" -e https://mausam.imd.gov.in/ -o "$2" "$1" && [ -s "$2" ] && ! grep -qi "<html" "$2" 2>/dev/null && return 0
             f=$(basename "$1")
-            curl -sSL -m 60 -o "$2" "https://weather.kralveth.workers.dev/imd-radar/$f" && ! grep -qi "<html" "$2" 2>/dev/null || rm -f "$2"
+            curl -sSL -m 60 -o "$2" "https://kralveth-weather.pages.dev/imd-radar/$f" && ! grep -qi "<html" "$2" 2>/dev/null || rm -f "$2"
             [ -s "$2" ]
           }
           for p in responsive/radar.php imd_latest/contents/index_radar.php responsive/radar_new.php Radar/; do
