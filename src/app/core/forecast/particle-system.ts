@@ -21,9 +21,9 @@ export interface ViewState {
 
 /**
  * Screen speed of a particle: this many pixels per second for each m/s of wind, up to SPEED_KNEE_MS (see screenSpeed). 4.5 until 1 Nov 2026,
- * when the owner found the flow "dead slow".
+ * when the owner found the flow "dead slow"; 10 on 1 Nov, 7 since 2 Nov ("make the wind particles little slow").
  */
-export const PX_PER_MS = 10;
+export const PX_PER_MS = 7;
 /**
  * Up to this wind (m/s) a particle's screen speed grows in proportion; beyond it, with the square root of the excess ratio. A strong wind
  * still looks clearly faster, but a 30 m/s jet no longer races across the screen at five times the speed of a breeze, which looks
@@ -32,8 +32,13 @@ export const PX_PER_MS = 10;
 export const SPEED_KNEE_MS = 6;
 /** Zoomed out over all India (zoom 4 and less) the flow is drawn this much slower, rising to full speed at zoom 6. */
 export const ZOOMED_OUT_SPEED = 0.9;
-/** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha. */
-export const INSTANCE_FLOATS = 5;
+/** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha, earlier screen velocity x, y (px/s). */
+export const INSTANCE_FLOATS = 7;
+/**
+ * The earlier velocity a particle's tail bends towards: its velocity smoothed over this long (s), so the tail follows the path it has come
+ * along through a turn instead of sticking out straight (the owner, 2 Nov 2026: "smooth edges while curving or turning").
+ */
+export const TRAIL_MEMORY_S = 0.2;
 
 /**
  * How long a particle lives (s). Long enough that the eye follows each one along the flow: short lives (1.6-3.6 s before) made the whole
@@ -86,6 +91,9 @@ export class ParticleSystem {
   /** Screen velocity in px/s (x to the right, y down) from the last step. */
   readonly vx: Float32Array;
   readonly vy: Float32Array;
+  /** The velocity a little earlier (smoothed over TRAIL_MEMORY_S): where the tail bends to. */
+  readonly pvx: Float32Array;
+  readonly pvy: Float32Array;
   /** Wind speed (m/s) at the particle from the last step. */
   readonly speed: Float32Array;
   count: number;
@@ -102,6 +110,8 @@ export class ParticleSystem {
     this.life = new Float32Array(maxCount);
     this.vx = new Float32Array(maxCount);
     this.vy = new Float32Array(maxCount);
+    this.pvx = new Float32Array(maxCount);
+    this.pvy = new Float32Array(maxCount);
     this.speed = new Float32Array(maxCount);
     this.count = Math.min(count, maxCount);
   }
@@ -166,6 +176,8 @@ export class ParticleSystem {
         this.age[i] = this.life[i]; // no data here: respawn next step
         this.vx[i] = 0;
         this.vy[i] = 0;
+        this.pvx[i] = 0;
+        this.pvy[i] = 0;
         this.speed[i] = 0;
         continue;
       }
@@ -175,6 +187,10 @@ export class ParticleSystem {
       this.speed[i] = ms;
       this.vx[i] = u * k;
       this.vy[i] = -v * k;
+      // the earlier velocity follows the current one with a short lag (a new particle starts straight)
+      const follow = this.age[i] <= dt ? 1 : Math.min(1, dt / TRAIL_MEMORY_S);
+      this.pvx[i] += (this.vx[i] - this.pvx[i]) * follow;
+      this.pvy[i] += (this.vy[i] - this.pvy[i]) * follow;
       const t = Math.min(Math.max((lat - lat0) * invStep, 0), lastLut);
       const j = t | 0;
       const cosLat = cos[j] + (cos[j + 1] - cos[j]) * (t - j);
@@ -206,6 +222,8 @@ export class ParticleSystem {
       out[o + 2] = this.vx[i];
       out[o + 3] = this.vy[i];
       out[o + 4] = Math.max(fadeIn * fadeOut, 0) * (0.3 + 0.7 * Math.min(speed / 12, 1));
+      out[o + 5] = this.pvx[i];
+      out[o + 6] = this.pvy[i];
       n++;
     }
     return n;

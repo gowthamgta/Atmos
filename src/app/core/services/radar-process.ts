@@ -60,20 +60,28 @@ const RADAR_BLUR_SIGMA_PX = 2.6;
 /** Picture pixels at or above this intensity (31 dBZ) keep their own value when the picture is stretched to the working grid. */
 const STRONG_PIXEL_MIN = 2.0;
 
+/** The weakest echo read from any picture (dBZ): the floor of most IMD legends (see matchPalette). */
+export const ECHO_FLOOR_DBZ = 15;
+
 // ── Radial interference spikes ──
 // Radio interference (wireless links on the radar's frequency, the sun at sunrise and sunset) paints a thin line along one ray: echo that
 // runs a long way out from the radar while being only a ray or two wide across it, often over clear sky (seen on 1 Nov 2026 from Raipur,
 // Lucknow, Delhi, Bhopal and over cloud from Agartala). Rain is never like that: a band pointing at the radar is still a few kilometres
 // wide, so it covers more and more degrees the nearer it is. Each echo pixel is looked at in the radar's own geometry (direction and
-// distance): it is a spike when its run along the ray is long and its run across the rays at the same distance is narrow both in degrees
-// and in kilometres. Where a spike crosses rain, the rain there is wide across the rays and stays.
+// distance): it is a spike when its run across the rays at its distance is narrow in degrees and its run along the ray is long, and many
+// times longer than it is wide (far out a spike of a few degrees is 20 km across, as wide as a rain cell, but 100 km and more long: seen on
+// 2 Nov 2026 from Agartala, Kolkata, Raipur and others). Where a spike crosses rain, the rain there is wide across the rays and stays.
 const SPIKE_AZIMUTH_BINS = 1440; // 0.25 degree
 const SPIKE_MIN_RUN_KM = 25;
 const SPIKE_MAX_WIDTH_DEG = 4;
-const SPIKE_MAX_WIDTH_KM = 8;
+/** Far out a spike may be wider: Visakhapatnam's interference wedges and Paradip's bars (2 Nov 2026) are 6-7 degrees, 300-500 km out. */
+const SPIKE_FAR_WIDTH_DEG = 8;
+const SPIKE_FAR_KM = 200;
 const SPIKE_ALWAYS_NARROW_KM = 3;
+/** A chain must be at least this many times longer than its widest point (a rain cell 20 km wide and 30 long is not a spike). */
+const SPIKE_MIN_ELONGATION = 5;
 const SPIKE_MIN_DISTANCE_KM = 15;
-const SPIKE_MAX_GAP_KM = 12;
+const SPIKE_MAX_GAP_KM = 25; // Patna's spikes are blocks with gaps of 15-20 km
 const SPIKE_MIN_FILL = 0.3;
 /** A chain with an echo this strong is taken for rain and kept (the spikes seen were all weak; a squall line pointing at the radar is not). */
 const SPIKE_MAX_INTENSITY = (35 - 12) / 9.6;
@@ -127,20 +135,28 @@ export function removeRadialSpikes(grid: Float32Array, size: number, rangeKm: nu
       }
     }
   }
-  // 1. narrow across: echo whose run across the rays at its distance is at most SPIKE_MAX_WIDTH_DEG and SPIKE_MAX_WIDTH_KM wide
+  // 1. narrow across: echo whose run across the rays at its distance is at most SPIKE_MAX_WIDTH_DEG wide (with its width in km)
   const narrow = new Uint8Array(A * R);
+  const widthKm = new Float32Array(A * R);
   const minR = SPIKE_MIN_DISTANCE_KM / kmPerPx;
   for (let r = Math.ceil(minR); r < R; r++) {
     const kmPerBin = ((2 * Math.PI) / A) * r * kmPerPx;
-    // narrow: at most SPIKE_MAX_WIDTH_DEG (but always up to SPIKE_ALWAYS_NARROW_KM: near the radar a line spans many degrees) and SPIKE_MAX_WIDTH_KM
-    const maxBins = Math.min(Math.max(SPIKE_MAX_WIDTH_DEG / (360 / A), SPIKE_ALWAYS_NARROW_KM / kmPerBin), SPIKE_MAX_WIDTH_KM / kmPerBin);
+    // narrow: at most SPIKE_MAX_WIDTH_DEG, SPIKE_FAR_WIDTH_DEG from SPIKE_FAR_KM out (but always up to SPIKE_ALWAYS_NARROW_KM: near the radar
+    // a line spans many degrees)
+    const maxDeg = r * kmPerPx >= SPIKE_FAR_KM ? SPIKE_FAR_WIDTH_DEG : SPIKE_MAX_WIDTH_DEG;
+    const maxBins = Math.max(maxDeg / (360 / A), SPIKE_ALWAYS_NARROW_KM / kmPerBin);
     const start = (() => { for (let k = 0; k < A; k++) if (!polar[k * R + r]) return k; return -1; })();
     if (start < 0) continue; // a full ring of echo: rain all round
     for (let n = 0; n < A; ) {
       if (!polar[((start + n) % A) * R + r]) { n++; continue; }
       let len = 0;
       while (n + len < A && polar[((start + n + len) % A) * R + r]) len++;
-      if (len <= maxBins) for (let k = 0; k < len; k++) narrow[((start + n + k) % A) * R + r] = 1;
+      if (len <= maxBins) {
+        for (let k = 0; k < len; k++) {
+          narrow[((start + n + k) % A) * R + r] = 1;
+          widthKm[((start + n + k) % A) * R + r] = len * kmPerBin;
+        }
+      }
       n += len;
     }
   }
@@ -153,13 +169,14 @@ export function removeRadialSpikes(grid: Float32Array, size: number, rangeKm: nu
     let r = Math.ceil(minR);
     while (r < R) {
       if (!narrow[a * R + r]) { r++; continue; }
-      let end = r, filled = 0, gap = 0, strongest = 0;
+      let end = r, filled = 0, gap = 0, strongest = 0, widest = 0;
       for (let k = r; k < R; k++) {
-        if (narrow[a * R + k]) { end = k; filled++; gap = 0; strongest = Math.max(strongest, peak[a * R + k]); }
+        if (narrow[a * R + k]) { end = k; filled++; gap = 0; strongest = Math.max(strongest, peak[a * R + k]); widest = Math.max(widest, widthKm[a * R + k]); }
         else if (polar[a * R + k] || ++gap > maxGap) break;
       }
       const span = end - r + 1;
-      if (span >= minRun && filled >= SPIKE_MIN_FILL * span && strongest < SPIKE_MAX_INTENSITY) {
+      const spanKm = span * kmPerPx;
+      if (spanKm >= Math.max(SPIKE_MIN_RUN_KM, SPIKE_MIN_ELONGATION * widest) && filled >= SPIKE_MIN_FILL * span && strongest < SPIKE_MAX_INTENSITY) {
         for (let k = r; k <= end; k++) if (narrow[a * R + k]) spike[a * R + k] = 1;
         any = true;
       }
@@ -385,8 +402,9 @@ function matchPalette(r: number, g: number, b: number, palette: RadarPaletteEntr
       best = entry;
     }
   }
-  // Echoes below ~8 dBZ are clear-air returns / noise rather than precipitation
-  if (!best || best.dbz < 8) return null;
+  // Echoes below ECHO_FLOOR_DBZ are clear-air returns and noise rather than rain: most IMD legends start at 20 dBZ, some go down to 5 or 7
+  // (Agartala's PPI, a disc of speckle all round the radar on 2 Nov 2026), so every radar is read from the same floor
+  if (!best || best.dbz < ECHO_FLOOR_DBZ) return null;
   return { value: Math.max(0.3, (best.dbz - 12) / 9.6), context: !!best.context };
 }
 

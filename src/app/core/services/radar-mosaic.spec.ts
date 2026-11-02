@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult, RadarProductKey } from '../domain/models/radar.model';
-import { MAX_SCAN_AGE_MIN, OVERLAP_FADE_OLDEST, OVERLAP_FADE_ONE_SCAN, composeRadarMosaic, isObservationEligible, overlapFade, ringKey } from './radar-mosaic';
+import { MAX_SCAN_AGE_MIN, RING_BLEND_KM, composeRadarMosaic, isObservationEligible, ringKey, ringShare } from './radar-mosaic';
 import { stackPrimary, stackRings } from './radar.service';
 import { dequantizeRadar } from './radar-field';
 
@@ -52,7 +52,7 @@ describe('the stack (All): PPI inside, CAZ around it, PPZ outside', () => {
   it('rings Karaikal inside out by range: PPI to 150 km, CAZ to 250 km, PPZ to 500 km', () => {
     const rings = stackRings(karaikal, () => true);
     expect(rings.map(([p]) => p)).toEqual(['ppi', 'caz', 'ppz']);
-    expect(rings.map(([, r]) => Math.round(r.innerKm))).toEqual([0, 149, 249]);
+    expect(rings.map(([, r]) => Math.round(r.innerKm))).toEqual([0, 150, 250]);
     expect(rings.map(([, r]) => r.outermost)).toEqual([false, false, true]);
     expect(stackPrimary(karaikal)).toBe('caz');
   });
@@ -64,6 +64,22 @@ describe('the stack (All): PPI inside, CAZ around it, PPZ outside', () => {
     expect(valueAt(res, ...eastOf(karaikal, 400))).toBeCloseTo(3, 1);
     // the PPI is a circle here: 170 km out on the diagonal is the CAZ's, not the PPI picture's corner
     expect(valueAt(res, karaikal.lat + 120 / 111.32, eastOf(karaikal, 120)[1])).toBeCloseTo(2, 1);
+  });
+
+  it('blends two rings where they meet, so the CAZ passes into the PPZ without a line', () => {
+    const res = stack({ caz: 2, ppz: 4 });
+    // well inside the CAZ and well out in the PPZ: each its own
+    expect(valueAt(res, ...eastOf(karaikal, 250 - RING_BLEND_KM - 10))).toBeCloseTo(2, 1);
+    expect(valueAt(res, ...eastOf(karaikal, 260))).toBeCloseTo(4, 1);
+    // across the band the value climbs from one to the other step by step, never jumping
+    let last = 2;
+    for (let km = 250 - RING_BLEND_KM; km <= 250; km += 2.5) {
+      const v = valueAt(res, ...eastOf(karaikal, km));
+      expect(v).toBeGreaterThanOrEqual(last - 0.05);
+      expect(v - last).toBeLessThan(0.5);
+      last = v;
+    }
+    expect(ringShare(0.3) + ringShare(0.7)).toBeCloseTo(1, 6);
   });
 
   it('leaves no gap where two rings meet', () => {
@@ -194,7 +210,7 @@ describe('45-minute freshness limit and timestamp eligibility', () => {
     const rings1 = stackRings(karaikal, eligibleWithAges({ ppi: 44, caz: 46, ppz: 30 }));
     expect(rings1.map(([p]) => p)).toEqual(['ppi', 'ppz']);
     expect(Math.round(rings1[0][1].innerKm)).toBe(0);
-    expect(Math.round(rings1[1][1].innerKm)).toBe(149);
+    expect(Math.round(rings1[1][1].innerKm)).toBe(150);
     expect(rings1[1][1].outermost).toBe(true);
 
     // Case 2: PPI is 46m (expired), CAZ is 44m (fresh), PPZ is 45m (fresh)
@@ -202,7 +218,7 @@ describe('45-minute freshness limit and timestamp eligibility', () => {
     const rings2 = stackRings(karaikal, eligibleWithAges({ ppi: 46, caz: 44, ppz: 45 }));
     expect(rings2.map(([p]) => p)).toEqual(['caz', 'ppz']);
     expect(Math.round(rings2[0][1].innerKm)).toBe(0);
-    expect(Math.round(rings2[1][1].innerKm)).toBe(249);
+    expect(Math.round(rings2[1][1].innerKm)).toBe(250);
 
     // Case 3: PPI is 46m (expired), CAZ is 46m (expired), PPZ is 25m (fresh)
     // PPZ expands inward to cover the entire station range from 0 to 500 km
@@ -216,7 +232,7 @@ describe('45-minute freshness limit and timestamp eligibility', () => {
     const rings4 = stackRings(karaikal, eligibleWithAges({ ppi: 44, caz: 45, ppz: 46 }));
     expect(rings4.map(([p]) => p)).toEqual(['ppi', 'caz']);
     expect(Math.round(rings4[0][1].innerKm)).toBe(0);
-    expect(Math.round(rings4[1][1].innerKm)).toBe(149);
+    expect(Math.round(rings4[1][1].innerKm)).toBe(150);
     expect(rings4[1][1].outermost).toBe(true);
 
     // Case 5: All products are 46m (all expired)
@@ -284,61 +300,13 @@ describe('live scans', () => {
   });
 });
 
-/** How fully the composite is drawn at a place (0..1; 1 when it has no fade at all). */
-function fadeAt(result: ProcessedRadarResult, lat: number, lng: number): number {
-  if (!result.displayFade) return 1;
-  const { cropW, cropH, bounds } = result.fieldData;
-  const [[south, west], [north, east]] = bounds;
-  const x = Math.round(((lng - west) / (east - west)) * (cropW - 1));
-  const y = Math.round(((north - lat) / (north - south)) * (cropH - 1));
-  return result.displayFade[y * cropW + x] / 255;
-}
-
-describe('older echoes where radars overlap', () => {
-  const MIN = 60_000;
-
-  it('overlapFade: in full within one scan, fainter one scan behind, faintest half an hour behind; less where the newer radar sees rain too', () => {
-    expect(overlapFade(4, 0, 5 * MIN, 0, 1)).toBe(1);
-    expect(overlapFade(4, 0, 10 * MIN, 0, 1)).toBeCloseTo(OVERLAP_FADE_ONE_SCAN, 5);
-    expect(overlapFade(4, 0, 30 * MIN, 0, 1)).toBeCloseTo(OVERLAP_FADE_OLDEST, 5);
-    expect(overlapFade(4, 0, 60 * MIN, 0, 1)).toBeCloseTo(OVERLAP_FADE_OLDEST, 5);
-    expect(overlapFade(4, 0, 10 * MIN, 4, 1)).toBe(1); // the newer radar sees it as strong: it is still there
-    expect(overlapFade(4, 0, 10 * MIN, 2, 1)).toBeGreaterThan(OVERLAP_FADE_ONE_SCAN);
-    expect(overlapFade(4, 0, 10 * MIN, 0, 0)).toBe(1); // outside the newer radar's reach
-    expect(overlapFade(4, 0, 10 * MIN, 0, 0.5)).toBeCloseTo(1 - (1 - OVERLAP_FADE_ONE_SCAN) / 2, 5); // eased in at its edge
-  });
-
-  it('draws everything in full when the radars scanned together', () => {
-    const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
-      ['karaikal', scan(karaikal, 'caz', 4.0, 0)],
-      ['chennai', scan(cni, 'caz', 0, 3)],
-    ])!;
-    expect(mosaic.displayFade).toBeUndefined();
-  });
-
-  it('fades the echo of a radar that scanned before another one that covers the same place and sees it dry', () => {
+describe('where radars overlap', () => {
+  it('draws the stronger echo in full whatever the age of its scan (no fading)', () => {
     const mosaic = composeRadarMosaic(IMD_RADAR_STATIONS, [
       ['karaikal', scan(karaikal, 'caz', 4.0, -20)],
       ['chennai', scan(cni, 'caz', 0, 0)],
     ])!;
-    const overlap = between(0.5);
-    expect(valueAt(mosaic, ...overlap)).toBeCloseTo(4.0, 1); // the echo is still drawn, as strong as it was
-    expect(fadeAt(mosaic, ...overlap)).toBeLessThan(OVERLAP_FADE_ONE_SCAN + 0.01);
-    expect(fadeAt(mosaic, ...overlap)).toBeGreaterThan(OVERLAP_FADE_OLDEST - 0.01);
-    // beyond Chennai's reach only Karaikal sees the place: drawn in full
-    expect(fadeAt(mosaic, ...eastOf(karaikal, -150))).toBe(1);
-  });
-
-  it('keeps the echo of the newer radar in full, and of the older one too where the newer radar sees the same rain', () => {
-    const newerKaraikal = composeRadarMosaic(IMD_RADAR_STATIONS, [
-      ['karaikal', scan(karaikal, 'caz', 4.0, 0)],
-      ['chennai', scan(cni, 'caz', 0, -20)],
-    ])!;
-    expect(fadeAt(newerKaraikal, ...between(0.5))).toBe(1);
-    const bothSeeIt = composeRadarMosaic(IMD_RADAR_STATIONS, [
-      ['karaikal', scan(karaikal, 'caz', 4.0, -20)],
-      ['chennai', scan(cni, 'caz', 4.0, 0)],
-    ])!;
-    expect(fadeAt(bothSeeIt, ...between(0.5))).toBe(1);
+    expect(valueAt(mosaic, ...between(0.5))).toBeCloseTo(4.0, 1);
+    expect(mosaic.displayFade).toBeUndefined();
   });
 });

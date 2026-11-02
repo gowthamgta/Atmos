@@ -55,7 +55,10 @@ fingerprint only together with this file, on the owner's request.
   25 dBZ where the lowest beam of every radar that reaches the place is 3.5 km or more up: 45% opacity; full from 30 dBZ or under a 2 km
   beam, with smooth steps between (`aloftOpacity` in `core/services/radar-beam.ts`). The hover says "Rain aloft" there.
 - 🔒 **Colours: the Windy-style radar palette with red and orange cores** (08c6184).
-- **Where radars overlap, the strongest echo is drawn** (783a81b); an echo from an older scan is drawn fainter (3a793df).
+- **Where radars overlap, the strongest echo is drawn** (783a81b), in full whatever its scan's age (the fading of older scans, 3a793df,
+  removed on 2 Nov 2026: "remove the merge opacity from radar").
+- **A station's PPI, CAZ and PPZ are blended where they meet** (the owner, 2 Nov 2026: "merge the caz, ppz or ppi boundaries"): over
+  the last 25 km of the inner product's range the two are mixed with weights adding up to one (`RING_BLEND_KM`, radar-mosaic.ts).
 - **PPI is shown as the whole square picture**, not cut to a circle (b7a758b, 4e951d8). **CAZ covers 250 km** for both radars (3ab5fa6).
 - **All (the stack) is the default view** (the owner, 24 Oct 2026: "first ppz for coverage, on top of that caz and on top of that ppi ...
   circle inside circle"): each radar's PPI inside its range (a circle here), its CAZ around that out to the CAZ's range and its PPZ
@@ -71,6 +74,9 @@ fingerprint only together with this file, on the owner's request.
   85%+ under a clear sky by our Meteosat cloud tops is left out; in the composite a patch is removed only when all of it is under a clear
   sky; a picture unchanged for 45+ minutes is stale; weak (under 35 dBZ) thin spikes along one ray are removed; anti-aliased map lines
   in the legend's strong colours are removed. Rain touching cloud anywhere is always kept.
+  Since 2 Nov: every radar is read from 15 dBZ up (most legends start at 20; Agartala's PPI went to 7, a disc of speckle round the radar;
+  Karaikal's 17 dBZ light rain stays); spikes up to 4 degrees wide, 8 from 200 km out (Visakhapatnam's wedges, Paradip's bars), with gaps
+  up to 25 km (Patna's blocks), are caught, but only when the chain is at least five times longer than wide; 35 dBZ+ is always kept.
 - **Echo that stays put is clutter** (the owner, 1 Nov 2026: "look for the non changing ones, keep the changing ones"; `radar-persist.ts`):
   the radar workflow remembers, from run to run (`persist.bin.gz` beside the manifest), how many scans each cell of each product has shown
   echo of the same strength (within 3 dBZ). After 18 such scans (about 3 hours; another strength takes 3 off, no echo 1) the cell's echo
@@ -103,7 +109,9 @@ fingerprint only together with this file, on the owner's request.
   primary (mostly state highways); secondary, tertiary and minor roads are not drawn.
 - **Wind particles as tuned on 19 Oct** (27c7414), **faster since 1 Nov 2026** (the owner: "the wind particle animation is dead slow"):
   10 px/s per m/s instead of 4.5 (`PX_PER_MS`), shorter tails in time so the streaks stay about as long, and a slow device's frames no
-  longer slow the flow down (time step up to 0.1 s).
+  longer slow the flow down (time step up to 0.1 s). **A little slower again, curved and soft since 2 Nov** (the owner: "make the wind
+  particles little slow and smooth edges while curving or turning"): 7 px/s per m/s; each tail follows the particle's recent path (its
+  velocity a moment ago, TRAIL_MEMORY_S) as a smooth curve of six pieces, its sides softened over a pixel.
 - **Rain probability: the ECMWF ensemble** (share of members with rain), models' agreement only as the fallback (5b7da55). Meteologix was
   not used (its charts are not open data).
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.

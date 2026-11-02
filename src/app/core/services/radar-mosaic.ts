@@ -37,16 +37,12 @@ export function isObservationEligible(
 export const MOSAIC_KM_PER_PX = 0.5;
 
 /**
- * Where radars overlap and one scanned later than another, the older radar's echo is drawn fainter: the rain has moved on since. Scans
- * less than this many minutes apart are the same moment (the radars scan every 10 minutes, a little out of step with each other).
+ * A station's rings are blended over this width (km) where they meet (the owner, 2 Nov 2026: "merge the caz, ppz or ppi boundaries since we
+ * can see it clearly"): the inner product fades out over the last RING_BLEND_KM of its range while the outer one fades in, with weights that
+ * add up to one, so the CAZ (the column's maximum) passes smoothly into the PPZ (the lowest sweep) instead of changing at a line. Where
+ * radars overlap the stronger echo is drawn in full, whatever its scan's age (no fading: the owner, 2 Nov 2026).
  */
-export const OVERLAP_STALE_MIN = 8;
-/** How faint an older echo is drawn (its opacity, 0..1): one scan behind, and this much older or more. */
-export const OVERLAP_FADE_ONE_SCAN = 0.6;
-export const OVERLAP_FADE_OLDEST = 0.35;
-export const OVERLAP_FADE_OLDEST_MIN = 30;
-/** Over this much of the newer radar's range (km, inward from its edge) the fade sets in, so its edge draws no line on the map. */
-export const OVERLAP_FADE_EDGE_KM = 10;
+export const RING_BLEND_KM = 25;
 
 /**
  * Where a source is one ring of a station's stack (the All view, the owner, 24 Oct 2026): it is drawn only between `innerKm` and its own
@@ -56,7 +52,7 @@ export const OVERLAP_FADE_EDGE_KM = 10;
 export interface MosaicRing {
   product: RadarProductKey;
   innerKm: number;
-  /** The outermost ring of its station: only its outer edge is feathered (an inner ring meets the next one without a seam). */
+  /** The outermost ring of its station: only its outer edge is feathered (an inner ring is blended into the next one, RING_BLEND_KM). */
   outermost: boolean;
 }
 
@@ -71,8 +67,10 @@ interface ActiveStation {
   /** The station's place in the network (the order the stations are drawn in). */
   networkIndex: number;
   rangeKm: number;
-  /** Echo nearer the radar than this is left to the station's inner ring (0: none). */
+  /** Echo nearer the radar than this is left to the station's inner ring (0: none); over RING_BLEND_KM inside it the two are blended. */
   innerKm: number;
+  /** A ring with another ring outside it: it fades out over the last RING_BLEND_KM of its range. */
+  blendOut: boolean;
   /** A square picture whose corners are kept (the PPI shown on its own); every other picture is cut to its range circle. */
   square: boolean;
   /** Its picture's edge is feathered so the range boundary draws no seam. */
@@ -206,6 +204,7 @@ export function composeRadarMosaic(
       networkIndex,
       rangeKm: st.products[product]?.rangeKm ?? st.operationalRangeKm,
       innerKm: ring?.innerKm ?? 0,
+      blendOut: !!ring && !ring.outermost,
       square: !ring && product === 'ppi',
       feather: !ring || ring.outermost,
       res,
@@ -295,11 +294,6 @@ export function composeRadarMosaic(
     weightTotal[i] += stationWeight[i];
     radarCount[i]++;
   };
-  // the fade of every pixel (255: drawn in full); only made when some echo is older than a radar that covers it
-  let fade: Uint8Array | null = null;
-  const timed = activeStations.filter(s => !Number.isNaN(s.timeMs));
-  const newestScan = timed.reduce((m, s) => Math.max(m, s.timeMs), -Infinity);
-  const staleMs = OVERLAP_STALE_MIN * 60_000;
 
   for (let yb = 0; yb < outH; yb += bandRows) {
     const ye = Math.min(outH, yb + bandRows);
@@ -324,6 +318,8 @@ export function composeRadarMosaic(
       const cy = s.cropH / 2;
       const range = s.rangeKm;
       const inner = s.innerKm;
+      const innerBlend = inner > 0 ? Math.max(0, inner - RING_BLEND_KM) : 0; // the outer ring reads inward this far, fading in
+      const blendOut = s.blendOut;
       const square = s.square;
 
       for (let y = Math.max(yb, g.y0); y <= Math.min(ye - 1, g.y1); y++) {
@@ -362,7 +358,7 @@ export function composeRadarMosaic(
           const dLng = g.dLng[x];
           // the PPI is a square picture (its corners are kept), every other product a circle
           const distKm = square ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
-          if (distKm > range || (inner > 0 && distKm <= inner)) continue;
+          if (distKm > range || (inner > 0 && distKm <= innerBlend)) continue;
           const fx = g.fx[x];
           const cDist = square ? Math.max(Math.abs(fx - cx), Math.abs(fy - cy)) : Math.sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
           // the picture's last pixels are its border; an inner ring of the stack reads to its range, where the next ring takes over
@@ -375,10 +371,21 @@ export function composeRadarMosaic(
           // Smooth dish edge feathering so range boundaries never show seams
           const dishEdgeDist = (cx - 2) - cDist;
           if (s.feather && dishEdgeDist < 8) val *= Math.max(0, dishEdgeDist / 8);
+          // where two rings of the station meet, each takes its share (smoothstep weights that add up to one)
+          if (inner > 0 && distKm < inner) val *= ringShare((distKm - innerBlend) / (inner - innerBlend));
+          if (blendOut && distKm > range - RING_BLEND_KM) val *= ringShare((range - distKm) / RING_BLEND_KM);
 
           if (val > 0) {
             const i = rowOffset + x;
-            if (stationOf[i] !== s.stationIndex) {
+            const prev = stationOf[i];
+            if (prev >= 0 && prev !== s.stationIndex && activeStations[prev].networkIndex === s.networkIndex) {
+              // the next ring of the same station, in the band where the two are blended: the shares add up
+              stationOf[i] = s.stationIndex;
+              stationVal[i] += val;
+              touched = true;
+              continue;
+            }
+            if (prev !== s.stationIndex) {
               commit(i); // the previous station is finished at this pixel
               stationOf[i] = s.stationIndex;
               stationVal[i] = 0;
@@ -404,32 +411,6 @@ export function composeRadarMosaic(
       // Where radars overlap, the strongest echo of any of them (this is a maximum-reflectivity picture: the column maximum of the
       // combined volume is the larger of the two), never a blend, so no cell is weaker than on either radar's own picture
       compositeField[base + i] = peak[i];
-
-      // an echo from a scan older than another radar's that covers this place is drawn fainter (see OVERLAP_STALE_MIN)
-      const peakTime = peakStation[i] >= 0 ? timeOf[peakStation[i]] : NaN;
-      if (!(peakTime < newestScan - staleMs)) continue; // the newest there is, or its time is not known
-      const x = i % outW;
-      const y = yb + Math.floor(i / outW);
-      const lat = maxLat - (y / (outH - 1)) * latSpan;
-      const lng = minLng + (x / (outW - 1)) * lngSpan;
-      let coverTime = -Infinity;
-      let cover = 0;
-      for (const s of timed) {
-        if (!(s.timeMs > peakTime + staleMs)) continue;
-        const dLat = (lat - s.station.lat) * 111.32;
-        const dLng = (lng - s.station.lng) * 111.32 * s.cosLat;
-        const dist = s.square ? Math.max(Math.abs(dLat), Math.abs(dLng)) : Math.sqrt(dLat * dLat + dLng * dLng);
-        if (s.innerKm > 0 && dist <= s.innerKm) continue; // that place is its station's inner ring's
-        const c = Math.min(1, (s.rangeKm - dist) / OVERLAP_FADE_EDGE_KM);
-        if (c <= 0) continue;
-        if (s.timeMs > coverTime) coverTime = s.timeMs;
-        if (c > cover) cover = c;
-      }
-      if (cover <= 0) continue;
-      const f = overlapFade(peak[i], peakTime, coverTime, newestEchoTime[i] >= coverTime - staleMs ? newestEchoVal[i] : 0, cover);
-      if (f >= 1) continue;
-      if (!fade) fade = new Uint8Array(total).fill(255);
-      fade[base + i] = Math.round(f * 255);
     }
   }
 
@@ -437,7 +418,6 @@ export function composeRadarMosaic(
     stationId: 'composite-mosaic',
     dataUrl: '',
     displayField: quantizeRadarField(compositeField),
-    ...(fade ? { displayFade: fade } : {}),
     coordinates: [
       [minLng, maxLat], // NW
       [maxLng, maxLat], // NE
@@ -460,17 +440,8 @@ export function composeRadarMosaic(
   return result;
 }
 
-/**
- * The opacity (0..1) of an echo of strength `peak` from a scan at `peakTime`, where a radar that scanned at `coverTime` (later) covers the
- * place and saw `fresh` there (0: dry). One scan behind it is OVERLAP_FADE_ONE_SCAN, fading on to OVERLAP_FADE_OLDEST at
- * OVERLAP_FADE_OLDEST_MIN older; where the newer radar sees rain too the echo fades less (it is still there). `cover` (0..1) eases the
- * fade in from the edge of the newer radar's range.
- */
-export function overlapFade(peak: number, peakTime: number, coverTime: number, fresh: number, cover: number): number {
-  const olderMin = (coverTime - peakTime) / 60_000;
-  if (!(olderMin > OVERLAP_STALE_MIN) || peak <= 0) return 1;
-  const k = Math.min(1, Math.max(0, (olderMin - 10) / (OVERLAP_FADE_OLDEST_MIN - 10)));
-  const floor = OVERLAP_FADE_ONE_SCAN + (OVERLAP_FADE_OLDEST - OVERLAP_FADE_ONE_SCAN) * k;
-  const target = floor + (1 - floor) * Math.min(1, fresh / peak);
-  return 1 + (target - 1) * Math.min(1, Math.max(0, cover));
+/** A ring's share across the band where it meets the next (t: 0 at the band's far side, 1 at its own side), smoothstep: t and 1 - t add to one. */
+export function ringShare(t: number): number {
+  const c = Math.min(1, Math.max(0, t));
+  return c * c * (3 - 2 * c);
 }

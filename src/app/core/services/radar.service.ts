@@ -59,12 +59,10 @@ export type RadarView = RadarProductKey | 'all';
  * station's PPI inside, its CAZ around that and its PPZ outside, each with its own scan time. Listed inside out.
  */
 export const STACK_PRODUCTS: readonly RadarProductKey[] = ['ppi', 'caz', 'ppz'];
-/** A ring reaches this far inside the one within it, so the two meet without a gap (the inner picture's last pixels are its border). */
-const RING_OVERLAP_KM = 1.5;
-
 /**
  * The rings of one station's stack from the products that have a picture to show (`has`): PPI, then CAZ, then PPZ, each drawn from the
- * range of the one inside it; a product that reaches no further than the one inside it is left out.
+ * range of the one inside it (blended with it over RING_BLEND_KM, radar-mosaic.ts); a product that reaches no further than the one inside
+ * it is left out.
  */
 export function stackRings(station: RadarStationConfig, has: (p: RadarProductKey) => boolean): [RadarProductKey, MosaicRing][] {
   // the owner's order (1 Nov 2026): PPI innermost, CAZ around it, PPZ outside; a product that is missing (or too old: `has` is false) leaves
@@ -76,7 +74,7 @@ export function stackRings(station: RadarStationConfig, has: (p: RadarProductKey
   for (const p of order) {
     const km = station.products[p].rangeKm;
     if (km <= reach) continue;
-    out.push([p, { product: p, innerKm: reach > 0 ? Math.max(0, reach - RING_OVERLAP_KM) : 0, outermost: false }]);
+    out.push([p, { product: p, innerKm: reach, outermost: false }]);
     reach = km;
   }
   if (out.length > 0) out[out.length - 1][1].outermost = true;

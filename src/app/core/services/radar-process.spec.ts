@@ -18,7 +18,7 @@ function hash(f: Float32Array): string {
 
 // real IMD pictures (saved from mausam.imd.gov.in on 7 Oct 2026) and the hash of the field each must give
 const CASES: [string, RadarProductKey, string, string][] = [
-  ['karaikal', 'caz', 'karaikal-caz.gif', '69266908'], // 24 Oct 2026: six lone pixels of 34-35 dBZ with no rain around taken off (removeMapDrawings); 1 Nov: a weak (21 dBZ) narrow piece of a dotted line along a ray, west of the radar (removeRadialSpikes)
+  ['karaikal', 'caz', 'karaikal-caz.gif', 'd1057dc9'], // 24 Oct 2026: six lone pixels of 34-35 dBZ with no rain around taken off (removeMapDrawings); 1 Nov: a weak (21 dBZ) narrow piece of a dotted line along a ray, west of the radar (removeRadialSpikes); 2 Nov: the rest of that line, across its gaps (1020 px in all, at most 22 dBZ: wider and gappier spikes caught)
 ];
 
 function load(file: string): ArrayBuffer {

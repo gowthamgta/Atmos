@@ -1,37 +1,57 @@
 import type { CustomLayerInterface, CustomRenderMethodInput, Map as MapLibreMap } from 'maplibre-gl';
 import { AdaptiveCount, INSTANCE_FLOATS, ParticleSystem, ViewState, WindFrame } from '../forecast/particle-system';
 
-/** Each particle is an instanced quad: its head at the particle, a tail trailing against the wind. */
+/**
+ * Each particle is an instanced ribbon of TAIL_SEGMENTS pieces: its head at the particle, its tail trailing back along the way it came. The
+ * velocity is taken to change evenly from the earlier one (at the tail) to the current one (at the head), so the tail is the path that gives:
+ * straight in a steady wind, a smooth curve through a turn. Its sides are softened over a pixel (no jagged edges).
+ */
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
 uniform vec2 u_css;       // map size in CSS pixels
 uniform float u_tail;     // tail length in seconds of travel
-uniform float u_half;     // half line width in CSS pixels
-in vec2 a_corner;         // x: 0 head, 1 tail; y: -1 / +1 side
+uniform float u_half;     // half line width in CSS pixels, with the softened edge
+in vec2 a_corner;         // x: 0 head .. 1 tail; y: -1 / +1 side
 in vec2 a_pos;            // mercator position of the head (per instance)
 in vec2 a_vel;            // screen velocity in px/s, y down (per instance)
 in float a_alpha;         // (per instance)
+in vec2 a_prev;           // the earlier screen velocity (per instance)
 out float v_alpha;
+out float v_side;         // distance from the middle of the line, in CSS pixels
 void main() {
   vec4 clip = u_matrix * vec4(a_pos, 0.0, 1.0);
-  float speed = length(a_vel);
-  vec2 dir = speed > 0.001 ? a_vel / speed : vec2(1.0, 0.0);
+  float t = a_corner.x;
+  // back along the path: the integral of a velocity going from a_vel (now) to a_prev (u_tail ago)
+  vec2 along = -u_tail * (a_vel * t + (a_prev - a_vel) * (0.5 * t * t));
+  vec2 d = mix(a_vel, a_prev, t);
+  float speed = length(d);
+  vec2 dir = speed > 0.001 ? d / speed : vec2(1.0, 0.0);
   vec2 perp = vec2(-dir.y, dir.x);
-  vec2 offsetPx = -a_vel * u_tail * a_corner.x + perp * u_half * a_corner.y;
+  vec2 offsetPx = along + perp * u_half * a_corner.y;
   vec2 ndc = vec2(offsetPx.x / (u_css.x * 0.5), -offsetPx.y / (u_css.y * 0.5));
   gl_Position = clip + vec4(ndc * clip.w, 0.0, 0.0);
-  v_alpha = a_alpha * (1.0 - a_corner.x);   // opaque head fading to a transparent tail
+  v_alpha = a_alpha * (1.0 - t);   // opaque head fading to a transparent tail
+  v_side = u_half * a_corner.y;
 }`;
 
 const FRAGMENT = `#version 300 es
 precision mediump float;
+uniform highp float u_half;   // the same precision as in the vertex shader (shared uniforms must match)
 in float v_alpha;
+in float v_side;
 out vec4 outColor;
 void main() {
-  outColor = vec4(vec3(1.0) * v_alpha, v_alpha);   // premultiplied white
+  float edge = 1.0 - smoothstep(u_half - 1.2, u_half, abs(v_side));   // a soft edge a pixel wide
+  float a = v_alpha * edge;
+  outColor = vec4(vec3(1.0) * a, a);   // premultiplied white
 }`;
 
-const TAIL_SECONDS = 0.25; // the streak's length in seconds of travel (0.45 at the slower speed: the same length on screen, a little longer)
+/** Pieces of each tail (enough for a smooth curve). */
+const TAIL_SEGMENTS = 6;
+/** The ribbon's corners: (t, side) from the head (t = 0) to the tail (t = 1), as a triangle strip. */
+const RIBBON = new Float32Array(Array.from({ length: TAIL_SEGMENTS + 1 }, (_, k) => [k / TAIL_SEGMENTS, -1, k / TAIL_SEGMENTS, 1]).flat());
+
+const TAIL_SECONDS = 0.32; // the streak's length in seconds of travel (about 2.2 px per m/s of wind on screen)
 const LINE_WIDTH_CSS_PX = 1.4;
 const MIN_COUNT = 2500;
 
@@ -96,7 +116,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
 
     this.cornerBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.cornerBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, -1, 0, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, RIBBON, gl.STATIC_DRAW);
     const corner = gl.getAttribLocation(this.program, 'a_corner');
     gl.enableVertexAttribArray(corner);
     gl.vertexAttribPointer(corner, 2, gl.FLOAT, false, 0, 0);
@@ -105,7 +125,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuf);
     gl.bufferData(gl.ARRAY_BUFFER, this.instances.byteLength, gl.DYNAMIC_DRAW);
     const stride = INSTANCE_FLOATS * 4;
-    const layout: [string, number, number][] = [['a_pos', 2, 0], ['a_vel', 2, 8], ['a_alpha', 1, 16]];
+    const layout: [string, number, number][] = [['a_pos', 2, 0], ['a_vel', 2, 8], ['a_alpha', 1, 16], ['a_prev', 2, 20]];
     for (const [name, size, offset] of layout) {
       const loc = gl.getAttribLocation(this.program, name);
       gl.enableVertexAttribArray(loc);
@@ -157,8 +177,8 @@ export class WindParticlesLayer implements CustomLayerInterface {
     gl.uniformMatrix4fv(this.uniforms['u_matrix'], false, options.defaultProjectionData.mainMatrix as unknown as Float32List);
     gl.uniform2f(this.uniforms['u_css'], canvas.clientWidth, canvas.clientHeight);
     gl.uniform1f(this.uniforms['u_tail'], TAIL_SECONDS);
-    gl.uniform1f(this.uniforms['u_half'], LINE_WIDTH_CSS_PX / 2);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+    gl.uniform1f(this.uniforms['u_half'], LINE_WIDTH_CSS_PX / 2 + 0.6); // the soft edge lies outside the line's own width
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, RIBBON.length / 2, n);
     gl.bindVertexArray(null);
 
     map.triggerRepaint(); // keep animating
