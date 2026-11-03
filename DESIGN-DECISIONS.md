@@ -41,6 +41,11 @@ fingerprint only together with this file, on the owner's request.
 
 ## Radar (IMD Karaikal and Chennai)
 
+- **Only Karaikal and Chennai** (the owner, 3 Nov 2026: "remove radar related code for other stations except chennai and karaikal"): the
+  other IMD radars (the measured network of imd-radar-network.ts, Kochi, Thiruvananthapuram, Mangaluru and their legends) are gone from
+  the app, the radar workflow and the coverage map (baked again for the two). Entries below that name other radars record how the
+  generic filters were found.
+
 - **The echoes are drawn as IMD's own pictures have them**: no filtering of echoes at all (789e9a3; the spoke remover and the far-range
   filter were removed), intense cores always kept (166aade), intensity the same as the picture.
   **The map printed over the echoes is filled in** (the owner, 23 Oct 2026: Chennai's district lines and names showed in the rain): a pixel

@@ -40,13 +40,6 @@ MAX_M = 4000.0
 STATIONS = [
     ("karaikal", 10.9129, 79.8418, "S-Band", 250),
     ("chennai", 13.0839, 80.2901, "S-Band", 250),
-
-    ("kochi", 9.9312, 76.2673, "S-Band", 255),
-    ("thiruvananthapuram", 8.5374, 76.8657, "C-Band", 240),
-    ("mangaluru", 12.901, 74.856, "C-Band", 250),
-    ("goa", 15.4909, 73.8278, "S-Band", 250),
-    ("hyderabad", 17.385, 78.4867, "S-Band", 250),
-    ("visakhapatnam", 17.6868, 83.2185, "S-Band", 250),
 ]
 
 SOUTH, NORTH, WEST, EAST, STEP = 5.8, 16.4, 72.0, 83.1, 0.02

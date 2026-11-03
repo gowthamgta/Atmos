@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { KARAIKAL_DWR_CONFIG, IMD_RADAR_STATIONS, rainRateToDbz } from '../domain/models/radar.model';
-import { MEASURED_STATIONS } from '../domain/models/imd-radar-network';
+import { KARAIKAL_DWR_CONFIG, IMD_RADAR_STATIONS } from '../domain/models/radar.model';
 import { RADAR_COLOR_STOPS, sampleRadarColorRamp, removeRadialInterference, scanNotDue, pictureNotDue } from './radar.service';
 import { isObservationEligible, MAX_SCAN_AGE_MIN } from './radar-mosaic';
 
@@ -23,9 +22,8 @@ describe('Radar Domain & Config', () => {
     expect(caz.maplibreCoordinates[2][1]).toBeCloseTo(8.67, 1);
   });
 
-  it('has every IMD radar, Karaikal and Chennai first, each product a file of its own code', () => {
-    expect(IMD_RADAR_STATIONS.length).toBeGreaterThanOrEqual(40);
-    expect(IMD_RADAR_STATIONS.slice(0, 2).map(s => s.id)).toEqual(['karaikal', 'chennai']);
+  it('has Karaikal and Chennai only (the owner, 3 Nov 2026), each product a file of its own code', () => {
+    expect(IMD_RADAR_STATIONS.map(s => s.id)).toEqual(['karaikal', 'chennai']);
     expect(new Set(IMD_RADAR_STATIONS.map(s => s.id)).size).toBe(IMD_RADAR_STATIONS.length);
     for (const st of IMD_RADAR_STATIONS) {
       expect(st.lat).toBeGreaterThan(6);
@@ -35,8 +33,6 @@ describe('Radar Domain & Config', () => {
       for (const product of Object.values(st.products)) {
         expect(product.file).toContain(`_${st.code}.gif`);
         if (product.unmeasured) continue;
-        // the measured network (imd-radar-network.ts): a map square, spanning its range to each side
-        if (MEASURED_STATIONS.some(m => m.id === st.id)) expect(Math.abs(product.crop!.w - product.crop!.h)).toBeLessThanOrEqual(3);
         expect(product.rangeKm).toBeGreaterThan(50);
         expect(product.rangeKm).toBeLessThanOrEqual(600);
       }
@@ -324,12 +320,6 @@ describe('Radar Overlap Color Merging & Color Ramp', () => {
 });
 
 describe('Radar legend palettes', () => {
-  it('converts rain rates to reflectivity with the Marshall-Palmer relation', () => {
-    expect(rainRateToDbz(1)).toBeCloseTo(23.0, 1);
-    expect(rainRateToDbz(10)).toBeCloseTo(39.0, 1);
-    expect(rainRateToDbz(100)).toBeCloseTo(55.0, 1);
-  });
-
   it('orders every palette from strongest to weakest echo', () => {
     for (const st of IMD_RADAR_STATIONS) {
       for (const product of Object.values(st.products)) {

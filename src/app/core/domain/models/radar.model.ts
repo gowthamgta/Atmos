@@ -1,4 +1,3 @@
-import { MEASURED_STATIONS, MeasuredColour, MeasuredProduct } from './imd-radar-network';
 
 export type RadarProductKey = 'caz' | 'ppi' | 'sri' | 'pac' | 'ppz';
 export type RadarBand = 'S-Band' | 'C-Band' | 'X-Band';
@@ -159,57 +158,6 @@ export function computeRadarBounds(
   };
 }
 
-/** Marshall-Palmer Z-R relation (Z = 200·R^1.6): converts a rain rate in mm/h to dBZ. */
-export function rainRateToDbz(mmPerHour: number): number {
-  return 10 * Math.log10(200 * Math.pow(Math.max(0.01, mmPerHour), 1.6));
-}
-
-/**
- * Builds a legend palette from swatch colours (strongest first) and the lower bound of each
- * swatch's bin. Each swatch is assigned the midpoint of its bin, converted to dBZ.
- */
-function paletteFromBins(
-  colors: [number, number, number][],
-  lowerBounds: number[],
-  toDbz: (value: number) => number = v => v
-): RadarPaletteEntry[] {
-  return colors.map((rgb, i) => {
-    const lower = lowerBounds[i];
-    const upper = i > 0 ? lowerBounds[i - 1] : lower + (lower - lowerBounds[1]);
-    return { rgb, dbz: Math.round(toDbz((lower + upper) / 2) * 10) / 10 };
-  });
-}
-
-// Thiruvananthapuram (C-Band) legend: identical colours across CAZ / PPI / SRI / PAC.
-const TVM_COLORS: [number, number, number][] = [
-  [199, 0, 78], [199, 0, 0], [254, 62, 0], [254, 114, 0], [254, 188, 0], [254, 229, 0],
-  [254, 247, 192], [254, 254, 254], [134, 240, 254], [82, 208, 254], [25, 162, 254],
-  [0, 120, 254], [0, 51, 254], [0, 0, 199], [57, 0, 159]
-];
-const TVM_RAIN_BINS = [93.34, 86.68, 80.02, 73.36, 66.70, 60.04, 53.38, 46.72, 40.06, 33.40, 26.74, 20.08, 13.42, 6.76, 0.10];
-
-// Mangaluru (C-Band) legends. White (41 dBZ / 50 mm/h) is omitted because the basemap draws
-// district borders and the coastline in pure white; red (>100 mm/h SRI) is omitted because town
-// markers are pure red. Neighbouring swatches still cover those cores after smoothing.
-const MLR_REFLECTIVITY_PALETTE = paletteFromBins(
-  [[163, 0, 0], [199, 0, 0], [225, 63, 0], [255, 63, 0], [255, 188, 0], [255, 229, 0], [255, 247, 192],
-   [134, 240, 255], [83, 208, 255], [26, 162, 255], [0, 121, 255], [0, 52, 255], [0, 0, 199], [0, 0, 160], [0, 0, 147]],
-  [60.0, 57.3, 54.7, 52.0, 49.3, 46.7, 44.0, 38.7, 36.0, 33.3, 30.7, 28.0, 25.3, 22.7, 20.0]
-);
-const MLR_RAIN_BINS = [92.9, 85.9, 78.8, 71.7, 64.6, 57.6, 43.4, 36.4, 29.3, 22.2, 15.1, 8.1, 1.0];
-const MLR_SRI_PALETTE = paletteFromBins(
-  [[255, 55, 0], [255, 111, 0], [255, 170, 0], [255, 191, 64], [255, 213, 128], [250, 233, 196],
-   [169, 255, 255], [85, 255, 255], [0, 255, 255], [0, 167, 223], [0, 96, 191], [0, 40, 159], [0, 0, 127]],
-  MLR_RAIN_BINS,
-  rainRateToDbz
-);
-const MLR_PAC_PALETTE = paletteFromBins(
-  [[213, 46, 0], [234, 101, 0], [255, 170, 0], [255, 191, 64], [255, 213, 128], [251, 233, 195],
-   [170, 255, 255], [85, 255, 255], [0, 255, 255], [0, 167, 223], [0, 96, 191], [0, 40, 159], [0, 0, 127]],
-  MLR_RAIN_BINS,
-  rainRateToDbz
-);
-
 // Chennai (S-Band) MAX(Z) picture: 16 swatches, 20 to 60 dBZ in steps of 2.5 (read off the picture's colour bar; the middle of each step is
 // the dBZ; strongest first, and a swatch the GIF draws in two nearby colours has both). The picture's sea is light blue and its labels white, so those swatches count only next to other echoes. The picture's
 // GIF repeats one colour for two steps in places (yellow-orange for 42.5 to 47.5), so that colour takes the middle, 45.
@@ -340,37 +288,8 @@ function createImdStation(params: {
   };
 }
 
-/** A measured station (imd-radar-network.ts) as a station of the app. */
-function measuredStation(m: (typeof MEASURED_STATIONS)[number]): RadarStationConfig {
-  const keys: RadarProductKey[] = ['caz', 'ppi', 'ppz', 'sri', 'pac'];
-  const measured = (k: RadarProductKey): Exclude<MeasuredProduct, { unmeasured: true }> | null => {
-    const q = m.products[k];
-    return 'unmeasured' in q ? null : q;
-  };
-  const colours = (p: MeasuredColour[] | 'chennai' | undefined): RadarPaletteEntry[] | undefined =>
-    p === 'chennai' ? CNI_CAZ_PALETTE : p?.map(([r, g, b, dbz, tol, ctx]) => ({ rgb: [r, g, b] as [number, number, number], dbz, ...(tol ? { tol } : {}), ...(ctx ? { context: true } : {}) }));
-  const pick = <T>(f: (q: Exclude<MeasuredProduct, { unmeasured: true }>) => T) =>
-    Object.fromEntries(keys.flatMap(k => (measured(k) ? [[k, f(measured(k)!)]] : []))) as Partial<Record<RadarProductKey, T>>;
-  const caz = measured('caz');
-  return createImdStation({
-    id: m.id,
-    name: m.name,
-    fullName: `IMD ${m.name} ${m.band} Doppler Weather Radar`,
-    code: m.code,
-    lat: m.lat,
-    lng: m.lng,
-    state: m.state,
-    band: m.band,
-    rangeKm: caz?.rangeKm ?? (m.band === 'X-Band' ? 100 : 250),
-    productRanges: pick(q => q.rangeKm),
-    crops: pick(q => q.crop),
-    palettes: Object.fromEntries(Object.entries(pick(q => colours(q.palette))).filter(([, v]) => v)) as Partial<Record<RadarProductKey, RadarPaletteEntry[]>>,
-    unmeasured: keys.filter(k => !measured(k)),
-  });
-}
-
-// 📡 The IMD Doppler Weather Radar network: Karaikal and Chennai first (measured by hand on their pictures), the southern radars measured
-// before (Kochi, Thiruvananthapuram, Mangaluru; Pallikaranai and Sriharikota since removed), and every other IMD radar (imd-radar-network.ts)
+// 📡 The IMD Doppler Weather Radars shown: Karaikal and Chennai (measured by hand on their pictures). The others were removed on the owner's
+// request (3 Nov 2026: "remove radar related code for other stations except chennai and karaikal").
 export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
   createImdStation({
     id: 'karaikal',
@@ -437,106 +356,6 @@ export const IMD_RADAR_STATIONS: RadarStationConfig[] = [
     },
     palettes: { caz: CNI_CAZ_PALETTE }
   }),
-  createImdStation({
-    id: 'kochi',
-    name: 'Kochi DWR',
-    fullName: 'IMD Kochi S-Band Doppler Weather Radar (250km)',
-    code: 'koc',
-    lat: 9.9312,
-    lng: 76.2673,
-    state: 'Kerala',
-    band: 'S-Band',
-    rangeKm: 250,
-    animationFile: 'animation/Converted/KOC_MAXZ.gif',
-    productRanges: {
-      caz: 255,
-      ppi: 158,
-      sri: 158,
-      pac: 158,
-      ppz: 500
-    },
-    crops: {
-      caz: { x: 100, y: 300, w: 600, h: 600 },
-      ppi: { x: 100, y: 300, w: 600, h: 600 },
-      sri: { x: 40, y: 40, w: 708, h: 708 },
-      pac: { x: 40, y: 40, w: 708, h: 708 },
-      ppz: { x: 100, y: 300, w: 600, h: 600 }
-    }
-  }),
-  createImdStation({
-    id: 'thiruvananthapuram',
-    name: 'Thiruvananthapuram DWR',
-    fullName: 'IMD Thiruvananthapuram C-Band Doppler Weather Radar (240km)',
-    code: 'tvm',
-    lat: 8.5374,
-    lng: 76.8657,
-    state: 'Kerala',
-    band: 'C-Band',
-    rangeKm: 240,
-    // Ranges and crops measured from the range rings of each 1082x720 product image
-    productRanges: {
-      caz: 240,
-      ppi: 240,
-      sri: 124,
-      pac: 76,
-      ppz: 365
-    },
-    crops: {
-      caz: { x: 43, y: 181, w: 514, h: 514 },
-      ppi: { x: 43, y: 45, w: 652, h: 652 },
-      sri: { x: 43, y: 45, w: 652, h: 652 },
-      pac: { x: 43, y: 45, w: 652, h: 652 },
-      ppz: { x: 43, y: 45, w: 652, h: 652 }
-    },
-    palettes: {
-      caz: paletteFromBins(TVM_COLORS, [56, 52, 48, 44, 40, 36, 32, 28, 24, 20, 16, 12, 8, 4, 0]),
-      ppi: paletteFromBins(TVM_COLORS, [60.67, 56.33, 52.0, 47.67, 43.33, 39.0, 34.67, 30.33, 26.0, 21.67, 17.33, 13.0, 8.67, 4.33, 0]),
-      sri: paletteFromBins(TVM_COLORS, TVM_RAIN_BINS, rainRateToDbz),
-      pac: paletteFromBins(TVM_COLORS, TVM_RAIN_BINS, rainRateToDbz),
-      ppz: paletteFromBins(TVM_COLORS, [60.67, 56.33, 52.0, 47.67, 43.33, 39.0, 34.67, 30.33, 26.0, 21.67, 17.33, 13.0, 8.67, 4.33, 0])
-    }
-  }),
-  createImdStation({
-    id: 'mangaluru',
-    name: 'Mangaluru DWR',
-    fullName: 'IMD Mangaluru C-Band Doppler Weather Radar (250km)',
-    code: 'mlr',
-    // Radar site fitted from the airport markers on the product image (±2 km)
-    lat: 12.901,
-    lng: 74.856,
-    state: 'Karnataka',
-    band: 'C-Band',
-    rangeKm: 250,
-    // Each product's map panel is a square whose half-width is the 250 km range
-    // The pictures carry no timestamp of their own: the scan time is read from the printed "HH:MM:SS UTC" line (last text line of the side panel)
-    stamps: {
-      caz: { x: 1082, y: 60, w: 228, h: 80 },
-      ppi: { x: 824, y: 100, w: 228, h: 100 },
-      ppz: { x: 882, y: 100, w: 228, h: 100 }
-    },
-    crops: {
-      caz: { x: 0, y: 200, w: 880, h: 880 },
-      ppi: { x: 0, y: 0, w: 822, h: 822 },
-      sri: { x: 0, y: 0, w: 800, h: 800 },
-      pac: { x: 0, y: 0, w: 800, h: 800 }, // the picture is 1030 x 800 (23 Oct 2026)
-      ppz: { x: 0, y: 0, w: 880, h: 880 }
-    },
-    productRanges: {
-      caz: 250,
-      ppi: 250,
-      sri: 250,
-      pac: 250,
-      ppz: 450
-    },
-    palettes: {
-      caz: MLR_REFLECTIVITY_PALETTE,
-      ppi: MLR_REFLECTIVITY_PALETTE,
-      sri: MLR_SRI_PALETTE,
-      pac: MLR_PAC_PALETTE,
-      ppz: MLR_REFLECTIVITY_PALETTE
-    }
-  }),
-  ...MEASURED_STATIONS.map(measuredStation),
 ];
 
 // Station reference constants
