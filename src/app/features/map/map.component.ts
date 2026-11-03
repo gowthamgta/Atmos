@@ -50,6 +50,7 @@ import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
 import { RadarHoverTooltipComponent } from './radar-hover-tooltip.component';
 import { LowPowerService } from '../../core/ui/low-power.service';
+import { DistrictLookupService } from '../../core/geo/district-lookup.service';
 
 @Component({
   selector: 'app-map',
@@ -84,6 +85,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
   private readonly lowPower = inject(LowPowerService);
+  private readonly districts = inject(DistrictLookupService);
   private storms = inject(StormTracksService);
   private coverage = inject(RadarCoverageService);
   private terrain = inject(TerrainService);
@@ -629,11 +631,9 @@ export class MapComponent implements OnInit, OnDestroy {
   private initBoundaries(): void {
     if (!this.map || this.map.getSource(BOUNDARY_SOURCE_ID)) return;
 
-    this.map.addSource(BOUNDARY_SOURCE_ID, {
-      type: 'geojson',
-      data: '/data/south-india-districts.geojson',
-      tolerance: 0.5
-    });
+    // the outlines come from the district lookup's download (one download of the 1.8 MB file instead of two)
+    this.map.addSource(BOUNDARY_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, tolerance: 0.5 });
+    void this.districts.geojson().then(data => (this.map?.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined)?.setData(data as never)).catch(() => undefined);
 
     const widths = (z5: number, z10: number): maplibregl.ExpressionSpecification =>
       ['interpolate', ['linear'], ['zoom'], 5, z5, 10, z10];
