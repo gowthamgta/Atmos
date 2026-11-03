@@ -26,6 +26,13 @@ fingerprint only together with this file, on the owner's request.
 - **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.
+- **Merged RGB: Meteosat-9 and Himawari-9 in one picture, the default** (the owner, 3 Nov 2026: "merge all these things to create a high
+  quality RGB ... windy rgb look but cloud tops shape should be visible. keep infrared same"; pipeline/merge_rgb.py, run by the satellite
+  workflow after both satellites' pictures): their HRV Cloud pictures (same grid) weighted by cos(view zenith)^4, so each place comes from
+  the satellite that sees it more directly (Himawari's 0.5 km visible in the east), Himawari's brightness matched to Meteosat's first; only
+  at times both have a day picture (else Meteosat's). Drawn in the agreed Windy colours, which keep the brightness detail (the shapes of the
+  cloud tops). The infrared is Meteosat's, unchanged (its data pack). The panel's switch: Merged (first), Meteosat-9, Himawari-9.
+  Rapid scan was asked for too: none reaches India (EUMETSAT's and MTG's cover Europe; Himawari's full disc every 10 min is the fastest).
 - **The HD 1.25 km window loads by default** on desktop and phone (b4afa62), and the **newest frame is shown first** (2b73678).
 - **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
   (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to

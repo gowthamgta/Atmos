@@ -10,10 +10,17 @@ import type { GeoBounds } from './satellite.config';
 const SITE = 'https://gowthamgta.github.io/atmos-satellite/';
 
 export type OwnKind = 'rgb' | 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'infrared' | 'wvdiff' | 'custom';
-export type OwnSatellite = 'msg' | 'h9';
+export type OwnSatellite = 'merged' | 'msg' | 'h9';
 
 /** The two satellites' published folders and what each makes. */
 export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; kinds: readonly OwnKind[]; ir: string; note: string }> = {
+  // the owner, 3 Nov 2026 ("merge all these things to create a high quality RGB ... windy rgb look but cloud tops shape should be visible.
+  // keep infrared same"): pipeline/merge_rgb.py; the RGB in the agreed Windy colours (satellite-image.ts), the infrared Meteosat's
+  merged: {
+    name: 'Merged', base: SITE + 'rgb-merged/', ir: '10.8',
+    kinds: ['rgb', 'infrared', 'wvdiff', 'custom'],
+    note: "Meteosat-9 and Himawari-9 together: each place from the satellite that sees it more directly (Himawari's sharper view in the east), in Windy's colours; the infrared is Meteosat-9's.",
+  },
   msg: {
     name: 'Meteosat-9', base: SITE + 'rgb-msg/', ir: '10.8',
     kinds: ['rgb', 'infrared', 'natural', 'hrv', 'sandwich', 'convection', 'nightmicro', 'wvdiff', 'custom'],

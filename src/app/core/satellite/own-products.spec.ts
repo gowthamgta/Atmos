@@ -8,7 +8,7 @@ describe('our own satellite pictures', () => {
     expect(autoKind('h9', false)).toBe('infrared');
     expect(autoKind('msg', true)).toBe('rgb');
     expect(autoKind('h9', true)).toBe('rgb');
-    for (const sat of ['msg', 'h9'] as const) {
+    for (const sat of ['merged', 'msg', 'h9'] as const) {
       expect(OWN_SATELLITES[sat].kinds).toContain(autoKind(sat, true));
       expect(OWN_SATELLITES[sat].kinds).toContain('infrared');
     }

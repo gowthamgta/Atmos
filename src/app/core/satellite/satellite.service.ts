@@ -408,7 +408,8 @@ export class SatelliteService {
       if (!p) {
         p = fetch(url)
           .then(r => (r.ok ? r.blob() : null))
-          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true, true) : null))
+          // the merged picture in the agreed Windy colours (cleared of the ground); each satellite's own in its own colours
+          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true, satellite !== 'merged') : null))
           .then(res => res && {
             timeMs: it.timeMs,
             product: SATELLITE_HRV,
@@ -874,11 +875,13 @@ function readCustom(): readonly CustomChannel[] {
   return DEFAULT_CUSTOM;
 }
 
+/** The satellite last picked, else the merged pictures (Meteosat-9 with Himawari-9). */
 function readOwnSatellite(): OwnSatellite {
   try {
-    return localStorage.getItem('atmosiq.satellite.ownSatellite') === 'h9' ? 'h9' : 'msg';
+    const v = localStorage.getItem('atmosiq.satellite.ownSatellite');
+    return v === 'h9' || v === 'msg' ? v : 'merged';
   } catch {
-    return 'msg';
+    return 'merged';
   }
 }
 
