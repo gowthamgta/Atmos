@@ -14,7 +14,7 @@ describe('data age badge', () => {
 
   it('flags an old radar scan and a late satellite picture', () => {
     expect(dataAgeMessage({ ...base, radarOn: true, radarAgeMin: 130 })).toBe('Radar: the newest scan is 2 h 10 min old');
-    expect(dataAgeMessage({ ...base, satelliteOn: true, satelliteAgeMin: 176 })).toBe('Satellite: the newest picture is 2 h 56 min old (EUMETSAT is running late)');
+    expect(dataAgeMessage({ ...base, satelliteOn: true, satelliteAgeMin: 176 })).toBe('Satellite: the newest picture is 2 h 56 min old (our satellite workflow is running late)');
   });
 
   it('flags a radar with no picture, but not while it is still loading or when every radar is off', () => {

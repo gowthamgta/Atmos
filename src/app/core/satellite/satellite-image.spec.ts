@@ -1,14 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   CLOUD_TOP_STOPS,
-  DEBLOCK_MAX_STEP,
-  JPEG_BLOCK,
-  LUMA_GRID_SIZE,
-  buildLumaGrid,
   classifyCloudTop,
   cloudTopColor,
   cloudTopGradient,
-  deblockJpeg,
   hrvBackground,
   irLumaToTempC,
   irTempToHeightKm,
@@ -16,8 +11,6 @@ import {
   mercatorHeight,
   mercatorRowMap,
   mercatorY,
-  sampleLumaGrid,
-  satelliteCoordinates,
   shadePixel,
   hrvCloudKeep,
   windyCloudColor,
@@ -237,64 +230,6 @@ describe('toOverlayPixels', () => {
   });
 });
 
-describe('satelliteCoordinates', () => {
-  it('lists the corners clockwise from the north-west', () => {
-    expect(satelliteCoordinates()).toEqual([[68, 37.5], [97.5, 37.5], [97.5, 5], [68, 5]]);
-  });
-});
-
-describe('deblockJpeg', () => {
-  /** A picture made of flat 8 x 8 blocks, each `step` brighter than the one to its left (the look of JPEG blocking). */
-  function blocky(width: number, height: number, step: number): Uint8ClampedArray {
-    const px = new Uint8ClampedArray(width * height * 4);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const v = 60 + Math.floor(x / JPEG_BLOCK) * step;
-        px.set([v, v, v, 255], (y * width + x) * 4);
-      }
-    }
-    return px;
-  }
-  const row = (px: Uint8ClampedArray, w: number, y: number) => Array.from({ length: w }, (_, x) => px[(y * w + x) * 4]);
-
-  it('softens a small step at a block edge into a ramp, without moving the flat parts far away', () => {
-    const w = 32;
-    const px = blocky(w, 16, 10);
-    const before = row(px, w, 4);
-    deblockJpeg(px, w, 16);
-    const after = row(px, w, 4);
-    // across the edge between pixel 7 and 8 the jump (10) is now spread over four pixels
-    expect(Math.abs(after[8] - after[7])).toBeLessThan(Math.abs(before[8] - before[7]) * 0.4);
-    for (let x = 6; x < 10; x++) expect(after[x + 1]).toBeGreaterThanOrEqual(after[x]); // still a monotonic ramp
-    expect(after[3]).toBe(before[3]); // far from any edge nothing changes
-  });
-
-  it('leaves real edges (big steps) alone and never touches alpha', () => {
-    const w = 32;
-    const px = blocky(w, 16, DEBLOCK_MAX_STEP + 20);
-    const copy = px.slice();
-    deblockJpeg(px, w, 16);
-    expect(px).toEqual(copy);
-    const flat = blocky(w, 16, 6);
-    flat.forEach((_, i) => { if (i % 4 === 3) flat[i] = 77; });
-    deblockJpeg(flat, w, 16);
-    for (let i = 3; i < flat.length; i += 4) expect(flat[i]).toBe(77);
-  });
-
-  it('also smooths horizontal block edges, and keeps flat pictures flat', () => {
-    const w = 16;
-    const px = new Uint8ClampedArray(w * 32 * 4);
-    for (let y = 0; y < 32; y++) for (let x = 0; x < w; x++) px.set([50 + Math.floor(y / 8) * 8, 0, 0, 255], (y * w + x) * 4);
-    const col = (y: number) => px[(y * w + 3) * 4];
-    const stepBefore = col(8) - col(7);
-    deblockJpeg(px, w, 32);
-    expect(col(8) - col(7)).toBeLessThan(stepBefore * 0.4);
-    const flat = new Uint8ClampedArray(16 * 16 * 4).fill(120);
-    deblockJpeg(flat, 16, 16);
-    expect(new Set(flat).size).toBe(1);
-  });
-});
-
 describe('infrared temperature, height and kind of cloud', () => {
   it('maps normalized luma 0..1 monotonically from warm (+30C) to cold (-85C)', () => {
     expect(irLumaToTempC(0)).toBeCloseTo(30, 1);
@@ -319,7 +254,7 @@ describe('infrared temperature, height and kind of cloud', () => {
   });
 });
 
-describe('twilight terminator blending and luma hover grid', () => {
+describe('twilight terminator blending and the clearing of the ground', () => {
   it('blends daytime HRV with nighttime infrared across the dawn terminator', () => {
     const w = 16, h = 8;
     const hrv = new Uint8ClampedArray(w * h * 4);
@@ -363,24 +298,5 @@ describe('twilight terminator blending and luma hover grid', () => {
     expect(out[o + 3]).toBe(255);
     expect(out[o + 2]).toBeGreaterThanOrEqual(out[o]); // high cloud stays white with a blue tint
     expect(out[(300 * w + 250) * 4 + 3]).toBeLessThan(15);
-  });
-
-  it('builds and samples the compact luma grid accurately by lat/lon', () => {
-    const w = 20, h = 20;
-    const src = new Uint8ClampedArray(w * h * 4);
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const v = x < 10 ? 40 : 210;
-        src.set([v, v, v, 255], (y * w + x) * 4);
-      }
-    }
-    const grid = buildLumaGrid(src, w, h, 'ir');
-    const west = sampleLumaGrid(grid, LUMA_GRID_SIZE, 20, 72);
-    const east = sampleLumaGrid(grid, LUMA_GRID_SIZE, 20, 92);
-    expect(west).not.toBeNull();
-    expect(east).not.toBeNull();
-    expect(east!.tempC).toBeLessThan(west!.tempC - 40);
-    expect(east!.heightKm).toBeGreaterThan(west!.heightKm + 5);
-    expect(sampleLumaGrid(grid, LUMA_GRID_SIZE, 2, 72)).toBeNull(); // outside bounds
   });
 });

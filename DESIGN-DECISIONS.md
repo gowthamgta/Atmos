@@ -18,32 +18,18 @@ fingerprint only together with this file, on the owner's request.
   himawari_rgb.py). Unless the viewer picks a kind, **infrared at night, our natural colour (Meteosat) / true colour (Himawari) by day**.
   **Infrared in Windy's colours** for both: CLOUD_TOP_STOPS applied to the measured temperature through greyScaleTempFromMeasured (the grey-
   level scale read cold tops 10-20 C too cold; measured 22 Oct, r = 0.99). Also HRV, sandwich, convection, night micro, WV difference and a
-  custom WMO-formula RGB; the hover readout is measured. EUMETView's pictures are no longer offered as a choice: they remain only behind the
-  3D clouds. The agreed look below stays recorded (and fingerprinted) for that path.
+  custom WMO-formula RGB; the hover readout is measured. EUMETView's pictures are gone (3 Nov 2026, with the 3D clouds that were their last
+  use); the agreed Windy look below stays recorded and fingerprinted (satellite-image.ts still clears the ground with it for the loop's motion).
 - **The day RGB is drawn in its own colours** (owner, 23 Oct: "why cant we apply our raw rgb"): EUMETSAT's HRV Cloud RGB from the raw
   data (pipeline hrv_clouds_rgb: EUMETView's brightness curve, highlights rolled off above 190, sun normalisation capped at 70 degrees),
   only re-spaced to Mercator (toRawMercator), not recoloured by the Windy ramps; not cleared of the ground (owner, 24 Oct: "remove land and sea colors and give raw rgb").
-- **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
-  (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
-  brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.
-- **Merged RGB: Meteosat-9 and Himawari-9 in one picture, the default** (the owner, 3 Nov 2026: "merge all these things to create a high
-  quality RGB ... windy rgb look but cloud tops shape should be visible. keep infrared same"; pipeline/merge_rgb.py, run by the satellite
-  workflow after both satellites' pictures): their HRV Cloud pictures (same grid) weighted by cos(view zenith)^4, so each place comes from
-  the satellite that sees it more directly (Himawari's 0.5 km visible in the east), Himawari's brightness matched to Meteosat's first; only
-  at times both have a day picture (else Meteosat's). Drawn in the agreed Windy colours, which keep the brightness detail (the shapes of the
-  cloud tops). The infrared is Meteosat's, unchanged (its data pack). The panel's switch: Merged (first), Meteosat-9, Himawari-9.
-  Rapid scan was asked for too: none reaches India (EUMETSAT's and MTG's cover Europe; Himawari's full disc every 10 min is the fastest).
-- **Windy's ground under the merged picture** (the owner, 3 Nov 2026: "For the merged image change the background of the map like windy"):
-  the map under it is Windy's, as measured side by side on 19 Oct (43c518c, reverted then with the rest of that day's changes): land
-  #3e3a37, sea #343741, no rivers or roads (coasts and borders stay); the ground is cleared strictly there (a pixel no brighter or colder
-  than the ground around it is see-through, even in a gap between cumulus), so the clear sea between clouds is that sea, not black. Meteosat-9
-  and Himawari-9 on their own keep the plain grey map and the agreed clearing.
-- **The HD 1.25 km window loads by default** on desktop and phone (b4afa62), and the **newest frame is shown first** (2b73678).
+- **Removed: the 3D clouds, the merged Meteosat-9 + Himawari-9 picture and EUMETView's HD window** (the owner, 3 Nov 2026: "remove the
+  code for 3d clouds and merged clouds, no need these two"): the 3D view (cloud-field.ts, cloud-volume.layer.ts), the measured-temperature
+  frames it read, EUMETView's pictures and their closer HD window (satellite-detail.service.ts, satellite-window.ts), the merge step and
+  Windy's ground under it are gone; the panel offers Meteosat-9 and Himawari-9. The **newest frame is shown first** (2b73678).
 - **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
   (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to
   oldest, each batch joining the loop as it is built (`FIRST_FRAMES`, `loopFrames` in `core/satellite/satellite.service.ts`).
-- **Never ask EUMETView for pixels finer than about 1.25 km**: the HRV is built from 1.2 to 1.5 km pixels and a finer request is padded
-  into streaks and rectangles.
 - 🔒 **Infrared (night, and the Visible/Infrared switch): Windy's cloud-top colours**, greys to -44 °C, then blue, cyan, green, yellow,
   orange, red and dark red (`CLOUD_TOP_STOPS`), calibrated against a Windy screenshot of the same day.
 - **Turned down:** the natural-colour fusion (13 Oct); the 19 Oct rework (natural look / RGB composite blended with the map, clouds only
@@ -155,6 +141,13 @@ fingerprint only together with this file, on the owner's request.
   or Play give the radar's own (measured with e2e/perf.mjs).
 - **The satellite loop moves the clouds between pictures** (motion from block matching) instead of cross-fading; the pictures' own
   colours are unchanged.
+
+## Performance
+
+- **Terrain relief off by default** (the owner, 3 Nov 2026: "turn off the terrain relief default for max performance"); the layer menu still
+  switches it on, and that choice is remembered. A weak device (2 cores or fewer, 2 GB or less, a software GPU, or under 36 frames a second
+  once the map is loaded) also draws the map at 1.5x at most and keeps relief off unless chosen (`LowPowerService`).
+- **The place card's rain line waits for the page to settle** before it fetches the radars' composite (it competed with the first forecast).
 
 ## Name and hosting
 

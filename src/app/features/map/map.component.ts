@@ -19,15 +19,12 @@ import { SatelliteFrame, SatelliteService } from '../../core/satellite/satellite
 import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
-import { CloudVolumeLayer } from '../../core/rendering/cloud-volume.layer';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { GibsHdService } from '../../core/satellite/gibs-hd.service';
 import { GIBS_MAX_ZOOM, GIBS_TILE_SIZE } from '../../core/satellite/gibs-hd';
 import { registerGibsProtocol } from '../../core/satellite/gibs-hd-protocol';
-import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM, SatelliteChannel } from '../../core/satellite/satellite.config';
-import { SatelliteDetailService, ShownWindow } from '../../core/satellite/satellite-detail.service';
-import type { MapView } from '../../core/satellite/satellite-window';
+import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM } from '../../core/satellite/satellite.config';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
 import { TerrainService } from '../../core/forecast/terrain.service';
 import { syncCoverageLayer } from './radar-coverage-overlay';
@@ -47,13 +44,6 @@ const DARK_LAND = '#2b2e35';
 const DARK_SEA = '#171b22';
 const PLAIN_LAND = '#585b64';
 const PLAIN_SEA = '#3d424d';
-/**
- * Windy's ground under its satellite picture, measured side by side on 19 Oct 2026 (43c518c): with the merged satellite picture the map is
- * this, without rivers and roads (coasts and borders stay), so the clouds sit on it as on Windy (the owner, 3 Nov 2026: "For the merged image
- * change the background of the map like windy").
- */
-const WINDY_LAND = '#3e3a37';
-const WINDY_SEA = '#343741';
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
@@ -98,7 +88,6 @@ export class MapComponent implements OnInit, OnDestroy {
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
   private readonly lowPower = inject(LowPowerService);
-  private satelliteDetail = inject(SatelliteDetailService);
   private gibs = inject(GibsHdService);
   private storms = inject(StormTracksService);
   private coverage = inject(RadarCoverageService);
@@ -172,32 +161,14 @@ export class MapComponent implements OnInit, OnDestroy {
     const frames = this.satellite.frames();
     const position = this.satellite.position();
     const opacity = this.satellite.opacity();
-    const kind = this.satellite.current()?.product.id;
-    const threeD = this.satellite.threeD();
-    const heightScale = this.satellite.heightScale();
-    this.satellite.irColour3D();   // redraw the 3D clouds when their colouring changes
     const custom = this.satellite.custom();
     if (!this.map || !this.isMapLoaded()) return;
-    // our own pictures (own-products.ts): the 3D clouds are built from EUMETView's frames only
+    // our own pictures (own-products.ts): the RGB as a picture, the infrared and the others drawn from the data pack in the shader
     const own = frames[0]?.own;
     const shader = !!own && isShaderKind(own.kind);
-    const show3D = threeD && (!own || own.kind === 'rgb');   // our RGB frames carry the 3D field (with measured tops)
-    this.updateSatelliteOverlay(on && !shader, frames, position, show3D ? 0 : opacity);
+    this.updateSatelliteOverlay(on && !shader, frames, position, opacity);
     this.updateSatelliteData(on && shader, frames, position, opacity, custom);
-    this.updateCloudVolume(on && show3D, frames, position, opacity, heightScale);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
-  });
-
-  // Reactive Effect: the closer window of the satellite picture at HRV's finer pixel (see satellite-detail.service.ts)
-  private satelliteDetailEffect = effect(() => {
-    const shown = this.satelliteDetail.shown();
-    const position = this.satellite.position();
-    const opacity = this.satellite.opacity();
-    const kind = this.satellite.current()?.product.id;
-    const threeD = this.satellite.threeD();
-    const own = this.satellite.source() !== 'eumetview';
-    if (!this.map || !this.isMapLoaded()) return;
-    this.updateSatelliteDetailLayer(threeD || own ? null : shown, position, opacity, kind);
   });
 
   // Reactive Effect: high-detail (250 m) true-colour satellite tiles from NASA GIBS
@@ -234,8 +205,6 @@ export class MapComponent implements OnInit, OnDestroy {
   private plainBasemap = computed(() => this.layerService.layers().some(l => (l.id === 'radar' || l.id === 'satellite') && l.active));
   /** The satellite picture covers the ground, so the map's terrain is left out under it; the radar shows the terrain of the map (the Terrain relief toggle). */
   private satelliteOn = computed(() => this.layerService.layers().some(l => l.id === 'satellite' && l.active));
-  /** The merged satellite picture (flat) is on: Windy's ground under it. */
-  private windyGround = computed(() => this.satelliteOn() && this.satellite.ownSatellite() === 'merged' && this.satellite.source() !== 'eumetview' && !this.satellite.threeD());
 
   // Show or hide the basemap terrain hillshade (tied to the Terrain relief toggle; off under the satellite picture)
   private reliefEffect = effect(() => {
@@ -243,18 +212,17 @@ export class MapComponent implements OnInit, OnDestroy {
     // when the map was not there yet, and the ground under the radar and satellite stayed the forecast's dark one)
     const visible = this.forecastState.relief() && !this.satelliteOn();
     const plain = this.plainBasemap();
-    const windy = this.windyGround();
     const loaded = this.isMapLoaded();
     if (!this.map || !loaded) return;
     this.setHillshadeVisible(visible);
-    this.showPlainLines(plain, windy);
+    this.showPlainLines(plain);
   });
 
   /**
    * Under a radar or satellite picture the roads and rivers of the basemap would be covered by it: draw them again above it, thin and
    * faint (like Windy), only while one of those layers is on.
    */
-  private showPlainLines(on: boolean, windy = false): void {
+  private showPlainLines(on: boolean): void {
     const map = this.map;
     if (!map) return;
     const before = this.observationAnchorId();
@@ -272,12 +240,10 @@ export class MapComponent implements OnInit, OnDestroy {
         paint: { 'line-color': 'rgba(255, 255, 255, 0.4)', 'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.4, 9, 0.9, 13, 1.8] }
       }, before);
     }
-    for (const id of ['plain-waterway', 'plain-roads']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on && !windy ? 'visible' : 'none');
-    // under the merged satellite picture Windy's own ground, without rivers and roads (coasts and borders stay)
-    for (const id of ['base-waterway', 'base-road-motorway', 'base-road-primary']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', windy ? 'none' : 'visible');
+    for (const id of ['plain-waterway', 'plain-roads']) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
     // Windy's flat, mid-grey land and slightly darker sea under radar and satellite
-    if (map.getLayer('map-background-layer')) map.setPaintProperty('map-background-layer', 'background-color', windy ? WINDY_LAND : on ? PLAIN_LAND : DARK_LAND);
-    if (map.getLayer('base-water')) map.setPaintProperty('base-water', 'fill-color', windy ? WINDY_SEA : on ? PLAIN_SEA : DARK_SEA);
+    if (map.getLayer('map-background-layer')) map.setPaintProperty('map-background-layer', 'background-color', on ? PLAIN_LAND : DARK_LAND);
+    if (map.getLayer('base-water')) map.setPaintProperty('base-water', 'fill-color', on ? PLAIN_SEA : DARK_SEA);
   }
 
   private setHillshadeVisible(visible: boolean): void {
@@ -524,12 +490,6 @@ export class MapComponent implements OnInit, OnDestroy {
         this.radarService.updateHoverPosition(p.x, p.y);
       }
     });
-
-    // The satellite detail window follows the map's position and size
-    const sendView = () => this.satelliteDetail.setView(this.mapView());
-    map.on('moveend', sendView);
-    map.on('resize', sendView);
-    map.on('load', sendView); // a map that opens where it is looking (a shared link, the last visit) gets its closer picture without a first move
   }
 
   // --- 1. IMD Doppler Weather Radar Unified Merged Composite Mosaic ---
@@ -564,35 +524,17 @@ export class MapComponent implements OnInit, OnDestroy {
   // --- Meteosat satellite pictures: one GPU layer with smooth (bicubic) magnification and a cross-fade between pictures ---
 
   private satelliteLayer: SatelliteImageLayer | null = null;
-  private satelliteDetailLayer: SatelliteImageLayer | null = null;
   private satelliteKeys = '';
-  private satelliteDetailKeys = '';
-
-  /** The map's current view as the detail service needs it. */
-  private mapView(): MapView {
-    const map = this.map!;
-    const c = map.getCenter();
-    const el = map.getContainer();
-    return { lat: c.lat, lon: c.lng, zoom: map.getZoom(), width: el.clientWidth, height: el.clientHeight };
-  }
 
   private removeSatelliteLayers(): void {
     if (this.map && this.satelliteData && this.map.getLayer(this.satelliteData.id)) this.map.removeLayer(this.satelliteData.id);
     this.satelliteData = null;
-    if (this.map && this.cloudVolume && this.map.getLayer(this.cloudVolume.id)) this.map.removeLayer(this.cloudVolume.id);
-    this.cloudVolume = null;
     this.removeFlatLayers();
   }
 
-  /** The flat picture and its closer window (the 3D clouds and the browser-drawn products have their own layers). */
+  /** The flat picture (the browser-drawn products have their own layer). */
   private removeFlatLayers(): void {
-    if (this.map && this.satelliteDetailLayer && this.map.getLayer(this.satelliteDetailLayer.id)) this.map.removeLayer(this.satelliteDetailLayer.id);
-    this.satelliteDetailLayer = null;
-    this.satelliteDetailKeys = '';
-    if (this.map && this.satelliteLayer) {
-      this.satelliteLayer.setWindow(null);
-      if (this.map.getLayer(this.satelliteLayer.id)) this.map.removeLayer(this.satelliteLayer.id);
-    }
+    if (this.map && this.satelliteLayer && this.map.getLayer(this.satelliteLayer.id)) this.map.removeLayer(this.satelliteLayer.id);
     this.satelliteLayer = null;
     this.satelliteKeys = '';
   }
@@ -643,80 +585,6 @@ export class MapComponent implements OnInit, OnDestroy {
     this.satelliteData.setFrames(frames.map(f => ({ key: f.url, url: f.url })), own.bounds, own.minK, own.spanK);
     this.satelliteData.setStyle({ mode: own.kind === 'infrared' ? 0 : own.kind === 'wvdiff' ? 1 : 2, custom });
     this.satelliteData.setPosition(position, opacity);
-  }
-
-  // --- The live clouds in 3D (cloud-volume.layer.ts): the flat picture steps aside and the map tilts to show their heights ---
-
-  private cloudVolume: CloudVolumeLayer | null = null;
-  private tiltedFor3D = false;
-
-  private updateCloudVolume(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number, heightScale: number): void {
-    const map = this.map;
-    if (!map) return;
-    if (!on) {
-      if (this.cloudVolume && map.getLayer(this.cloudVolume.id)) map.removeLayer(this.cloudVolume.id);
-      this.cloudVolume = null;
-      if (this.tiltedFor3D) {
-        this.tiltedFor3D = false;
-        map.easeTo({ pitch: 0, duration: 900 });
-      }
-      return;
-    }
-    if (!this.cloudVolume) {
-      this.cloudVolume = new CloudVolumeLayer();
-      map.addLayer(this.cloudVolume, this.observationAnchorId());
-    }
-    if (!this.tiltedFor3D) {
-      this.tiltedFor3D = true;
-      if (map.getPitch() < 30) map.easeTo({ pitch: 55, duration: 1200 });
-    }
-    this.cloudVolume.setFrames(frames.map(f => ({
-      key: f.url, field: f.cloudField ?? null, timeMs: f.timeMs, picture: f.url,
-      ir: f.own ? { url: f.own.dataUrl, bounds: f.own.dataBounds ?? f.own.bounds } : undefined,
-    })));
-    this.cloudVolume.setIrColour(this.satellite.irColour3D());
-    this.cloudVolume.setFlows(this.satellite.flows());
-    this.cloudVolume.setHeightScale(heightScale);
-    this.cloudVolume.setPosition(position, opacity);
-  }
-
-  /**
-   * The closer window of the satellite picture at HRV's finer pixel, drawn over the whole-India picture. It has its own
-   * GPU layer that fades in at its edge; the main layer makes a hole of the same size (see `setWindow`), so the two blend
-   * seamlessly and the window shows no frame.
-   */
-  private updateSatelliteDetailLayer(shown: ShownWindow | null, position: number, opacity: number, kind: SatelliteChannel | undefined): void {
-    if (!this.map || !this.satelliteLayer) return;
-    if (!shown || shown.frames.every(f => f === null)) {
-      if (this.satelliteDetailLayer) {
-        if (this.map.getLayer(this.satelliteDetailLayer.id)) this.map.removeLayer(this.satelliteDetailLayer.id);
-        this.satelliteDetailLayer = null;
-        this.satelliteDetailKeys = '';
-        this.satelliteLayer.setWindow(null);
-      }
-      return;
-    }
-    if (!this.satelliteDetailLayer) {
-      this.satelliteDetailLayer = new SatelliteImageLayer({ id: 'satellite-detail-layer', featherFraction: 0.06 });
-      // right above the main satellite layer
-      this.map.addLayer(this.satelliteDetailLayer, this.observationAnchorId());
-      this.satelliteLayer.setWindow(this.satelliteDetailLayer);
-    }
-    this.satelliteDetailLayer.setBounds(shown.window.bounds);
-    // Build the frame list aligned to the main loop's times: null where the window has no picture yet
-    const mainFrames = this.satellite.frames();
-    const detailFrames = mainFrames.map(mf => {
-      const idx = shown.times.indexOf(mf.timeMs);
-      const df = idx >= 0 ? shown.frames[idx] : null;
-      return df ? { key: df.url, url: df.url } : null;
-    });
-    const keys = detailFrames.map(f => f?.key ?? '').join('|');
-    if (keys !== this.satelliteDetailKeys) {
-      this.satelliteDetailKeys = keys;
-      this.satelliteDetailLayer.setFrames(detailFrames);
-    }
-    this.satelliteDetailLayer.setFlows(this.satellite.flows()); // the main loop's motion, read by map position
-    this.satelliteDetailLayer.setPosition(position, opacity);
   }
 
 
@@ -881,7 +749,7 @@ export class MapComponent implements OnInit, OnDestroy {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
     }
     this.setHillshadeVisible(this.forecastState.relief() && !this.satelliteOn());
-    this.showPlainLines(this.plainBasemap(), this.windyGround()); // the ground under a radar or satellite picture again
+    this.showPlainLines(this.plainBasemap()); // the ground under a radar or satellite picture again
   }
 
   public flyToMosaicCenter(): void {

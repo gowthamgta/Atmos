@@ -1,6 +1,6 @@
 /**
  * What the device can take. Phones (and other small touch screens) get lighter settings by default: fewer texture reads
- * per pixel in the forecast shader, smaller satellite and radar images. Everything stays switchable by the user where it
+ * per pixel in the forecast shader, a smaller radar mosaic. Everything stays switchable by the user where it
  * changes the look (the terrain relief switch in the layer menu).
  */
 export function isPhone(): boolean {
@@ -8,14 +8,6 @@ export function isPhone(): boolean {
   const screen = globalThis as { innerWidth?: number; ontouchstart?: unknown };
   if (typeof screen.innerWidth !== 'number') return false;
   return screen.innerWidth < 700 || ('ontouchstart' in screen && screen.innerWidth < 900);
-}
-
-/**
- * Satellite picture size to request (pixels) for the India box (29.5 by 29.5 degrees, square): about 1.6 km per pixel on
- * desktop, about 3 km on a phone.
- */
-export function satelliteImageSize(phone: boolean): { width: number; height: number } {
-  return phone ? { width: 1000, height: 1000 } : { width: 2000, height: 2000 };
 }
 
 /** Largest side of the radar mosaic (pixels): 0.5 km per pixel where it fits, coarser over all of India. */

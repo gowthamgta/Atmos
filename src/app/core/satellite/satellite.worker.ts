@@ -1,30 +1,14 @@
 /// <reference lib="webworker" />
-import { buildLumaGrid, deblockJpeg, hrvBackground, mercatorHeight, toOverlayPixels, toRawMercator } from './satellite-image';
-import { BrightnessGrid, CloudField, buildCloudField } from './cloud-field';
-import { enhancePicture } from './satellite-enhance';
+import { mercatorHeight, toOverlayPixels, toRawMercator } from './satellite-image';
+import { enhancePicture, pictureScale } from './satellite-enhance';
 import { encodePng } from './png-encode';
-import { pictureScale } from './satellite-window';
-import { GeoBounds, SATELLITE_BOUNDS, SatelliteChannel } from './satellite.config';
+import { SATELLITE_BOUNDS } from './satellite.config';
 import { FlowField, MotionGrid, cloudFlow, motionGrid } from './satellite-flow';
 
+/** One of our RGB pictures (the HRV Cloud picture of the satellite workflow, on the app's satellite box) to re-space to Mercator. */
 export interface SatelliteWorkerRequest {
   id: number;
-  jpeg: Blob;
-  kind: SatelliteChannel;
-  /** Infrared picture for the same frame during dawn/dusk twilight, blended across the solar terminator. */
-  twilightIr?: Blob;
-  /** Frame timestamp in epoch ms (needed for solar terminator position during twilight). */
-  timeMs?: number;
-  /** The ground the picture covers, when it is a closer window and not all of India. */
-  bounds?: GeoBounds;
-  /** The picture is a PNG (no JPEG blocks to smooth). */
-  lossless?: boolean;
-  /** Draw the picture in its own colours (our RGB from the raw data), not recoloured: only re-spaced to Mercator. */
-  raw?: boolean;
-  /** Clear the ground strictly, so the map shows between clouds (the merged picture). */
-  strictGround?: boolean;
-  /** The frame's measured brightness temperatures (pipeline/satellite_bt.py), for the 3D clouds' heights. */
-  bt?: { url: string; offsetK: number; stepK: number };
+  picture: Blob;
 }
 
 /** One of our own data packs (own-products.ts) to decode for the hover readout: its RGB bytes. */
@@ -40,12 +24,12 @@ export interface SatelliteFlowRequest {
 }
 
 export type SatelliteWorkerResponse =
-  | { id: number; png: Blob; lumaGrid?: Uint8Array; motion?: MotionGrid; cloudField?: CloudField }
+  | { id: number; png: Blob; motion?: MotionGrid }
   | { id: number; field: FlowField | null }
   | { id: number; pack: { w: number; h: number; rgb: Uint8Array } | null }
   | { id: number; error: string };
 
-/** Decodes a satellite picture and builds the overlay (Mercator rows, colour, opacity) off the main thread. */
+/** Decodes a satellite picture and re-spaces it to Mercator off the main thread (and works out the loop's cloud motion, and decodes data packs). */
 addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | SatelliteFlowRequest | SatelliteDecodeRequest>) => {
   if ('decode' in event.data) {
     const { id, decode } = event.data;
@@ -63,73 +47,27 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     }
     return;
   }
-  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless, bt, raw, strictGround } = event.data;
-  const box = bounds ?? SATELLITE_BOUNDS;
+  const { id, picture } = event.data;
+  const box = SATELLITE_BOUNDS;
   try {
-    const bitmap = await createImageBitmap(jpeg);
+    const bitmap = await createImageBitmap(picture);
     const { width, height } = bitmap;
     const scratch = new OffscreenCanvas(width, height);
     const sctx = scratch.getContext('2d', { willReadFrequently: true })!;
     sctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     const src = sctx.getImageData(0, 0, width, height).data;
-    if (!lossless) deblockJpeg(src, width, height); // the service sends JPEG: remove its block seams before they can be sharpened
-    const lumaGrid = bounds ? undefined : buildLumaGrid(src, width, height, kind); // the hover readout reads the whole-India picture
-    let irPixels: Uint8ClampedArray | undefined;
-    if (twilightIr && kind === 'hrv' && timeMs !== undefined) {
-      const irBitmap = await createImageBitmap(twilightIr);
-      sctx.clearRect(0, 0, width, height);
-      sctx.drawImage(irBitmap, 0, 0, width, height);
-      irBitmap.close();
-      irPixels = sctx.getImageData(0, 0, width, height).data;
-      deblockJpeg(irPixels, width, height);
-    }
-    // the infrared steps go (the hover readout above reads the picture as the service made it)
-    const scale = pictureScale(box, width);
-    const rawSrc = raw ? src.slice() : null; // its own colours, before any smoothing
-    enhancePicture(src, width, height, kind, scale);
-    if (irPixels) enhancePicture(irPixels, width, height, 'ir', scale);
     const outHeight = mercatorHeight(width, box);
-    // the whole-India picture also gives the clouds' heights and thickness for the 3D view (cloud-field.ts)
-    const cover = !bounds && kind === 'hrv' ? new Uint8Array(width * outHeight) : undefined;
-    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover, strictGround);
-    const grid = !bounds && bt ? await brightnessGrid(bt) : null;
-    const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0, grid);
-    let out = pixels;
-    if (rawSrc) {
-      // the satellite's own colours on cloud, land and sea (raw RGB from satellite sensors, re-spaced to Mercator)
-      out = toRawMercator(rawSrc, width, height, outHeight, box);
-    }
-    const png = encodePng(out, width, outHeight); // not via a canvas: its premultiplied storage bands the colour of faint cloud
-    // how much cloud is where, for the loop's motion between pictures (the whole-India picture only: a window follows its motion)
-    const motion = bounds ? undefined : motionGrid(pixels, width, outHeight);
-    const transfer: Transferable[] = [];
-    if (lumaGrid) transfer.push(lumaGrid.buffer);
-    if (motion) transfer.push(motion.data.buffer);
-    if (field) transfer.push(field.data.buffer);
-    postMessage({ id, png, lumaGrid, motion, cloudField: field } satisfies SatelliteWorkerResponse, transfer);
+    // the picture in its own colours (the satellite's RGB on cloud, land and sea), re-spaced to Mercator
+    const png = encodePng(toRawMercator(src, width, height, outHeight, box), width, outHeight); // not via a canvas: its premultiplied storage bands faint cloud
+    // how much cloud is where (the HRV picture cleared of the ground), for the loop's motion between pictures
+    enhancePicture(src, width, height, 'hrv', pictureScale(box, width));
+    const motion = motionGrid(toOverlayPixels(src, width, height, 'hrv', outHeight, undefined, undefined, box), width, outHeight);
+    postMessage({ id, png, motion } satisfies SatelliteWorkerResponse, [motion.data.buffer]);
   } catch (e) {
     postMessage({ id, error: String(e) } satisfies SatelliteWorkerResponse);
   }
 });
-
-/** The measured brightness temperatures of a frame, or null when they cannot be had (the picture's grey level is used instead). */
-async function brightnessGrid(bt: { url: string; offsetK: number; stepK: number }): Promise<BrightnessGrid | null> {
-  try {
-    const res = await fetch(bt.url);
-    if (!res.ok) return null;
-    const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-    ctx.drawImage(bitmap, 0, 0);
-    const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
-    const grid = { w: bitmap.width, h: bitmap.height, data, offsetK: bt.offsetK, stepK: bt.stepK };
-    bitmap.close();
-    return grid;
-  } catch {
-    return null;
-  }
-}
 
 /** A data pack's bytes (red, green, blue per pixel), or null when it cannot be had. */
 async function decodePack(url: string): Promise<{ w: number; h: number; rgb: Uint8Array } | null> {

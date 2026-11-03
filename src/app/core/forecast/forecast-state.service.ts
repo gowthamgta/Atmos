@@ -59,7 +59,8 @@ export class ForecastStateService {
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
   readonly districtLines = signal(false);
   /** 90 m hill shading of the colour layers and the basemap, on by default (the layer menu switches it off). */
-  readonly relief = signal(true);
+  /** The 90 m terrain relief shading: off unless switched on (the owner, 3 Nov 2026: "turn off the terrain relief default for max performance"). */
+  readonly relief = signal(false);
   /** Where the probability-of-rain layer comes from (consensus.service.ts), remembered between visits. */
   readonly probabilitySource = signal<'ensemble' | 'blend'>(readProbabilitySource());
 

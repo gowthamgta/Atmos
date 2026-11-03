@@ -10,17 +10,10 @@ import type { GeoBounds } from './satellite.config';
 const SITE = 'https://gowthamgta.github.io/atmos-satellite/';
 
 export type OwnKind = 'rgb' | 'hrv' | 'natural' | 'truecolor' | 'sandwich' | 'convection' | 'nightmicro' | 'infrared' | 'wvdiff' | 'custom';
-export type OwnSatellite = 'merged' | 'msg' | 'h9';
+export type OwnSatellite = 'msg' | 'h9';
 
 /** The two satellites' published folders and what each makes. */
 export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; kinds: readonly OwnKind[]; ir: string; note: string }> = {
-  // the owner, 3 Nov 2026 ("merge all these things to create a high quality RGB ... windy rgb look but cloud tops shape should be visible.
-  // keep infrared same"): pipeline/merge_rgb.py; the RGB in the agreed Windy colours (satellite-image.ts), the infrared Meteosat's
-  merged: {
-    name: 'Merged', base: SITE + 'rgb-merged/', ir: '10.8',
-    kinds: ['rgb', 'infrared', 'wvdiff', 'custom'],
-    note: "Meteosat-9 and Himawari-9 together: each place from the satellite that sees it more directly (Himawari's sharper view in the east), in Windy's colours; the infrared is Meteosat-9's.",
-  },
   msg: {
     name: 'Meteosat-9', base: SITE + 'rgb-msg/', ir: '10.8',
     kinds: ['rgb', 'infrared', 'natural', 'hrv', 'sandwich', 'convection', 'nightmicro', 'wvdiff', 'custom'],
@@ -32,8 +25,6 @@ export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; 
     note: 'From Himawari-9\'s raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.',
   },
 };
-/** Where the satellite panel's pictures come from: EUMETView (default) or one of ours. */
-export type SatelliteSource = 'eumetview' | OwnKind;
 
 export const OWN_KINDS: readonly { id: OwnKind; label: string; title: string; day?: boolean; shader?: boolean }[] = [
   { id: 'rgb', label: 'RGB', day: true, title: 'The visible picture in Windy\'s colours: EUMETSAT\'s HRV Cloud RGB from the raw data, coloured and cleared of the ground as agreed' },
@@ -48,8 +39,8 @@ export const OWN_KINDS: readonly { id: OwnKind; label: string; title: string; da
   { id: 'custom', label: 'Custom RGB', shader: true, title: 'Your own recipe: each colour from a band or a difference, with its range and gamma' },
 ];
 
-export const isShaderKind = (k: SatelliteSource): k is OwnKind => OWN_KINDS.some(o => o.id === k && o.shader);
-export const isDayKind = (k: SatelliteSource): boolean => OWN_KINDS.some(o => o.id === k && o.day);
+export const isShaderKind = (k: OwnKind): boolean => OWN_KINDS.some(o => o.id === k && o.shader);
+export const isDayKind = (k: OwnKind): boolean => OWN_KINDS.some(o => o.id === k && o.day);
 
 /** The quantities a custom RGB channel can show (kelvin): the data pack's bands and two differences. */
 export const CUSTOM_SOURCES: readonly { id: number; label: string }[] = [

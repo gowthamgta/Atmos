@@ -2,9 +2,8 @@ import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inj
 import { IconComponent } from '../../shared/icon.component';
 import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
-import { SATELLITE_CREDIT, SATELLITE_NAME, isTwilightTime, productForTime } from '../../core/satellite/satellite.config';
+import { productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
-import { SatelliteDetailService } from '../../core/satellite/satellite-detail.service';
 import { cloudTopGradient, greyScaleTempFromMeasured } from '../../core/satellite/satellite-image';
 import { CUSTOM_PRESETS, CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
 
@@ -17,7 +16,6 @@ function istClock(ms: number): string {
 }
 
 /** Where the labels of the cloud-top colour bar sit along it: the bar runs from +20 °C on the left to -85 °C on the right. */
-const LEGEND_MARKS = [-20, -40, -60, -80].map(t => ({ label: `${t}°`, left: ((20 - t) / 105) * 100 }));
 /** The same bar for our infrared, labelled with measured temperatures (the colours sit where greyScaleTempFromMeasured puts them). */
 const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((20 - greyScaleTempFromMeasured(t)) / 105) * 100 }));
 
@@ -33,12 +31,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           <span class="live" [class.off]="failed()" aria-hidden="true"></span>
           <div class="heading">
             <div class="title-row">
-              <strong>{{ own() ? ownSat().name : sourceLabel }}</strong>
-              @if (detailActive()) {
-                <span class="hd-badge" [class.loading]="detailLoading()" title="The part of the map in view is drawn from a closer picture of the HRV, at the satellite's own pixel (about 1.3 km)">
-                  {{ detailLoading() ? 'HD loading…' : 'HD ' + detailKm() + ' km' }}
-                </span>
-              }
+              <strong>{{ ownSat().name }}</strong>
             </div>
             <span class="sub">Observed, {{ productLabel() }}</span>
           </div>
@@ -61,8 +54,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
         } @else {
-          @if (!sat.threeD()) {
-            <div class="channel" role="group" aria-label="Satellite">
+          <div class="channel" role="group" aria-label="Satellite">
               @for (s of ownSatellites; track s.id) {
                 <button type="button" [class.on]="sat.ownSatellite() === s.id" [attr.aria-pressed]="sat.ownSatellite() === s.id" (click)="sat.setOwnSatellite(s.id)">{{ s.name }}</button>
               }
@@ -77,22 +69,6 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
               <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow.</p>
             }
             <p class="hint3d full-only">{{ ownSat().note }}</p>
-          }
-          <div class="channel view3d full-only" role="group" aria-label="View">
-            <button type="button" [class.on]="!sat.threeD()" [attr.aria-pressed]="!sat.threeD()" (click)="sat.setThreeD(false)">Flat</button>
-            <button type="button" [class.on]="sat.threeD()" [attr.aria-pressed]="sat.threeD()" (click)="sat.setThreeD(true)" title="The clouds of the live picture in 3D at their heights: tops from the infrared temperature, thickness from the visible brightness">3D clouds</button>
-          </div>
-          @if (sat.threeD()) {
-            <div class="heights full-only">
-              <span>Heights</span>
-              <div class="channel" role="group" aria-label="Height scale">
-                @for (k of heightScales; track k) {
-                  <button type="button" [class.on]="sat.heightScale() === k" [attr.aria-pressed]="sat.heightScale() === k" (click)="sat.setHeightScale(k)" [title]="k === 1 ? 'True scale' : 'Heights stretched ' + k + ' times'">{{ k === 1 ? 'True' : '×' + k }}</button>
-                }
-              </div>
-            </div>
-            <p class="hint3d full-only">Shaped by the satellite's own 1.25 km picture, tops from the measured cloud-top temperature, thickness from how bright the cloud is; only the finest billows are drawn. Tilt with right-drag or two fingers.</p>
-          }
           <div class="scan">
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.updatedAgoMinutes() !== null) { Updated {{ sat.updatedAgoMinutes()! < 1 ? 'just now' : sat.updatedAgoMinutes() + ' min ago' }} } @else if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
@@ -100,7 +76,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           <input type="range" class="frames" min="0" [max]="Math.max(count() - 1, 0)" step="0.01" [value]="sat.position()" [disabled]="noLoop()" (input)="onFrame($event)" aria-label="Satellite time" />
           <div class="ends full-only"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
           @if (sat.loading()) { <div class="loading">Loading pictures…</div> }
-          @else if (historyHint()) { <div class="loading">Press play to load {{ own() ? 'the last 4 hours' : 'the last hour' }}.</div> }
+          @else if (historyHint()) { <div class="loading">Press play to load the last 4 hours.</div> }
         }
 
         @if (nightLegend()) {
@@ -108,7 +84,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             <div class="label">Cloud-top temperature (°C)</div>
             <div class="cloud-bar" [style.background]="gradient"></div>
             <div class="cloud-scale">
-              @for (m of legendMarks(); track m.label) { <span [style.left.%]="m.left">{{ m.label }}</span> }
+              @for (m of legendMarks; track m.label) { <span [style.left.%]="m.left">{{ m.label }}</span> }
             </div>
           </div>
         }
@@ -133,7 +109,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           <input type="range" min="0.2" max="1" step="0.05" [value]="sat.opacity()" (input)="onOpacity($event)" aria-label="Satellite opacity" />
         </label>
         <app-lightning-key class="full-only" />
-        <p class="note full-only">{{ own() ? ownNote : note }}</p>
+        <p class="note full-only">{{ ownNote }}</p>
       </section>
     }
   `,
@@ -146,8 +122,6 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .heading { flex: 1; min-width: 0; }
     .title-row { display: flex; align-items: center; gap: 6px; }
     .heading strong { display: block; font-size: 14px; white-space: nowrap; }
-    .hd-badge { display: inline-flex; align-items: center; font-size: var(--fs-xs); font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(6, 182, 212, 0.16); border: 1px solid rgba(6, 182, 212, 0.45); color: var(--neon-cyan); letter-spacing: 0.02em; white-space: nowrap; line-height: 1.3; }
-    .hd-badge.loading { animation: pulse-glow 1.4s ease-in-out infinite alternate; opacity: 0.85; }
     @keyframes pulse-glow { from { opacity: 0.55; } to { opacity: 1; } }
     .sub { color: var(--text-muted); font-size: 11px; }
     .playback { display: flex; align-items: center; gap: 4px; flex: none; }
@@ -174,8 +148,6 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .cname.c1 { color: #22c55e; }
     .cname.c2 { color: #3b82f6; }
     .reset { justify-self: end; padding: 3px 8px; border: 0; border-radius: 6px; background: var(--surface-3); color: var(--text-secondary); font: inherit; font-size: 11px; cursor: pointer; }
-    .heights { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
-    .heights .channel { flex: 1; margin-top: 0; }
     .hint3d { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: var(--text-secondary); }
     .scan { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 10px 0 6px; color: var(--text-secondary); }
     .age { font-weight: 600; color: var(--text-primary); }
@@ -225,26 +197,17 @@ export class SatellitePanelComponent {
     return recipe.every((r, i) => c[i] && r.source === c[i].source && r.min === c[i].min && r.max === c[i].max && r.gamma === c[i].gamma);
   }
   protected readonly sat = inject(SatelliteService);
-  private readonly detail = inject(SatelliteDetailService);
   private readonly layers = inject(MapLayerService);
   protected readonly Math = Math;
   protected readonly gradient = cloudTopGradient();
-  protected readonly legendMarks = computed(() => (this.sat.current()?.own ? MEASURED_MARKS : LEGEND_MARKS));
+  protected readonly legendMarks = MEASURED_MARKS;
 
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly count = computed(() => this.sat.frames().length);
   protected readonly failed = this.sat.failed;
-  protected readonly detailActive = computed(() => this.detail.shown() !== null && this.sat.source() === 'eumetview');
-  protected readonly detailLoading = this.detail.loading;
-  /** The pixel of the closer picture on the map, to a tenth of a kilometre. */
-  protected readonly detailKm = computed(() => (this.detail.shown()?.window.kmPerPx ?? 0).toFixed(1));
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */
-  protected readonly nightLegend = computed(() => {
-    const f = this.sat.current();
-    if (f?.own) return f.own.kind === 'infrared';
-    return !!f && (f.product.id === 'ir' || isTwilightTime(f.timeMs));
-  });
+  protected readonly nightLegend = computed(() => this.sat.current()?.own.kind === 'infrared');
   /** Night over India: the visible picture is the infrared too, so there is nothing to choose between. */
   protected readonly night = computed(() => {
     const f = this.sat.current();
@@ -256,14 +219,8 @@ export class SatellitePanelComponent {
   protected readonly historyHint = computed(() => this.count() > 0 && !this.sat.historyRequested());
   protected readonly productLabel = computed(() => {
     const f = this.sat.current();
-    if (!f) return 'loading';
-    if (f.own) return OWN_KINDS.find(k => k.id === f.own!.kind)?.label ?? '';
-    if (f.product.id === 'ir') return this.sat.infraredOnly() ? 'infrared, cloud tops' : 'night infrared, cloud tops';
-    return isTwilightTime(f.timeMs) ? 'twilight HRV + infrared' : 'daylight, HRV';
+    return f ? (OWN_KINDS.find(k => k.id === f.own.kind)?.label ?? '') : 'loading';
   });
-  protected readonly sourceLabel = SATELLITE_NAME;
-  /** Our own pictures are shown instead of EUMETView's. */
-  protected readonly own = computed(() => this.sat.source() !== 'eumetview');
   protected readonly ownSat = computed(() => OWN_SATELLITES[this.sat.ownSatellite()]);
   protected readonly ownKinds = computed(() => OWN_KINDS.filter(k => this.ownSat().kinds.includes(k.id)));
   protected readonly ownSatellites = (Object.keys(OWN_SATELLITES) as OwnSatellite[]).map(id => ({ id, name: OWN_SATELLITES[id].name }));
@@ -276,9 +233,7 @@ export class SatellitePanelComponent {
     }
     return 'Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres';
   });
-  protected readonly heightScales = [1, 3, 6] as const;
   protected readonly ownNote = 'Last 4 hours, made by our satellite workflow from raw satellite data: Meteosat-9 © EUMETSAT, Himawari-9 © JMA (via NOAA Open Data on AWS). The hover readout is measured.';
-  protected readonly note = `Last hour, every 15 minutes. HRV (high-resolution visible) by day; at night infrared, with cold cloud tops and high cloud picked out. The Infrared switch shows the infrared by day too. ${SATELLITE_CREDIT}`;
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
     return f ? istClock(f.timeMs) : '';

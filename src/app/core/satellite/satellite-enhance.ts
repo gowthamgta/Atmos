@@ -6,7 +6,7 @@
  * infrared picture, and the infrared that sits in the blue channel of the HRV picture, are blurred a little (about a third of a
  * source pixel) so the steps go and the clouds keep their shape. The HRV's own red and green, which are sharp, are left alone.
  */
-import type { SatelliteChannel } from './satellite.config';
+import { GeoBounds, SATELLITE_BOUNDS, type SatelliteChannel } from './satellite.config';
 
 /**
  * The picture the sizes below are given for: the whole-India picture 2000 pixels across (1.5 km a pixel). Other pictures scale them by
@@ -93,3 +93,15 @@ export function enhancePicture(px: Uint8ClampedArray, width: number, height: num
   if (kind === 'hrv') smoothChannel(px, width, height, 2, sigma);
   else smoothGrey(px, width, height, sigma);
 }
+
+/** Kilometres across a pixel of a picture `width` pixels wide over `bounds` (at its middle latitude). */
+function kmPerPixel(bounds: GeoBounds, width: number): number {
+  const lat = (bounds.north + bounds.south) / 2;
+  return ((bounds.east - bounds.west) * 111.32 * Math.cos((lat * Math.PI) / 180)) / width;
+}
+
+/** How many times finer a picture's pixel is than the whole-India picture on a desktop (2000 pixels across), which the processing is tuned for. */
+export function pictureScale(bounds: GeoBounds, width: number): number {
+  return kmPerPixel(SATELLITE_BOUNDS, 2000) / kmPerPixel(bounds, width);
+}
+

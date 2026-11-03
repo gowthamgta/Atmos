@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bestMs, loadScaledBudget } from '../testing/bench';
-import { blurPlane, enhancePicture, gaussianKernel, smoothChannel, smoothGrey } from './satellite-enhance';
+import { blurPlane, enhancePicture, gaussianKernel, pictureScale, smoothChannel, smoothGrey } from './satellite-enhance';
+import { SATELLITE_BOUNDS } from './satellite.config';
 
 /** A small repeatable random generator (the tests must not depend on luck). */
 function lcg(seed: number): () => number {
@@ -156,5 +157,10 @@ describe('enhancePicture', () => {
     // both include making the picture, so only the order of magnitude counts
     expect(hrvMs).toBeLessThan(loadScaledBudget(3000));
     expect(irMs).toBeLessThan(loadScaledBudget(3000));
+  });
+
+  it('measures a picture against the desktop whole-India picture it is tuned for', () => {
+    expect(pictureScale(SATELLITE_BOUNDS, 2000)).toBeCloseTo(1, 6);
+    expect(pictureScale(SATELLITE_BOUNDS, 1000)).toBeCloseTo(0.5, 6);
   });
 });

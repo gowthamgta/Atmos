@@ -12,7 +12,7 @@ const CPU_SLOWDOWN = 4;
 const NETWORK = { offline: false, latency: 150, downloadThroughput: (9 * 1024 * 1024) / 8, uploadThroughput: (1.5 * 1024 * 1024) / 8 }; // fast 4G
 
 const VIEWS = [
-  { name: 'forecast (temperature, wind particles)', hash: '#l=temp&o=particles,relief', settleMs: 15_000 },
+  { name: 'forecast (temperature, wind particles)', hash: '#l=temp&o=particles', settleMs: 15_000 },
   { name: 'radar', hash: '#l=radar', settleMs: 25_000 },
   { name: 'satellite (playing)', hash: '#l=satellite', settleMs: 20_000, play: true },
 ];

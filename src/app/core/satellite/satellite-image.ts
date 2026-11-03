@@ -51,39 +51,6 @@ function smoothstep(lo: number, hi: number, v: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Side of a JPEG block, and the biggest step (0-255 per channel) across a block edge that is treated as compression, not cloud. */
-export const JPEG_BLOCK = 8;
-export const DEBLOCK_MAX_STEP = 20;
-
-/**
- * Smooths the faint steps JPEG compression leaves at the 8 x 8 block edges of an RGBA picture (in place; alpha is not
- * touched). Across each block edge the two pixels either side move towards each other, and their outer neighbours a
- * little, but only where the step is small. Real cloud edges (bigger steps) are left alone. Without this, sharpening
- * the picture at deep zoom would bring out the block grid.
- */
-export function deblockJpeg(px: Uint8ClampedArray, width: number, height: number, maxStep = DEBLOCK_MAX_STEP): void {
-  const stride = width * 4;
-  const smooth = (i: number, step: number): void => {
-    // i: index of the first pixel after the edge; step: distance in the array between neighbouring pixels across it
-    for (let c = 0; c < 3; c++) {
-      const a = px[i - step + c];
-      const b = px[i + c];
-      const d = b - a;
-      if (d === 0 || Math.abs(d) > maxStep) continue;
-      px[i - 2 * step + c] += 0.15 * d;
-      px[i - step + c] = a + 0.35 * d;
-      px[i + c] = b - 0.35 * d;
-      px[i + step + c] -= 0.15 * d;
-    }
-  };
-  for (let y = 0; y < height; y++) {
-    for (let x = JPEG_BLOCK; x < width - 1; x += JPEG_BLOCK) smooth(y * stride + x * 4, 4);
-  }
-  for (let y = JPEG_BLOCK; y < height - 1; y += JPEG_BLOCK) {
-    for (let x = 0; x < width; x++) smooth(y * stride + x * 4, stride);
-  }
-}
-
 /**
  * The typical brightness of land and sea in the blue channel of an HRV picture: its median. Cloud covers well under
  * half of the area, so the median is the background, whatever the sun's height (it is low at dawn and dusk).
@@ -518,7 +485,7 @@ function upsample(plane: Float32Array, w: number, h: number, width: number, heig
  * How much of each pixel of an HRV picture is cloud (0 = the clear ground, 1 = cloud), from how far it stands out from the ground around
  * it. `width` x `height` is the picture, which covers `b`.
  */
-function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number, strict = false): Float32Array {
+function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number): Float32Array {
   const midLat = (b.north + b.south) / 2;
   const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
   const stride = Math.max(1, Math.round(width / 250));
@@ -587,21 +554,15 @@ function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: G
   // a small hole in the middle of a cloud (a darker patch of the cloud itself) is not ground: close gaps up to 6 pixels
   const closed = morph(morph(keep, width, height, closeRadius, true), width, height, closeRadius, false);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.8 * closed[i]);
-  // strict (the merged picture): a pixel no brighter or colder than the ground around it is ground, even inside a closed gap, so the clear
-  // sea between fair-weather cumulus shows the map, not the picture's black (the owner, 3 Nov 2026: "change the background of the map like windy")
-  if (strict) for (let i = 0; i < keep.length; i++) keep[i] *= smoothstep(STRICT_FROM, STRICT_FULL, excess[i]);
   boxBlur(keep, width, height, 1, 2); // and the edge of what is left is smooth
   return keep;
 }
-/** In the strict clearing, how far a pixel must stand out from the ground around it (picture levels) to start to show, and to show fully. */
-const STRICT_FROM = 3;
-const STRICT_FULL = 12;
 
-export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS, strict = false): Float32Array {
+export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS): Float32Array {
   // the mask is smooth, so a big picture is judged at half the size (a quarter of the work) and stretched back
-  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3, strict);
+  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3);
   const half = halve(src, width, height);
-  return upsample(cloudKeepAt(half.data, half.w, half.h, b, 1, 2, strict), half.w, half.h, width, height);
+  return upsample(cloudKeepAt(half.data, half.w, half.h, b, 1, 2), half.w, half.h, width, height);
 }
 
 /**
@@ -621,13 +582,11 @@ export function toOverlayPixels(
   timeMs?: number,
   b = SATELLITE_BOUNDS,
   coverOut?: Uint8Array,
-  /** Clear the ground strictly (the merged picture: see cloudKeepAt). */
-  strictGround = false,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
-  const cloud = kind === 'hrv' ? hrvCloudKeep(src, width, srcHeight, b, strictGround) : null;
+  const cloud = kind === 'hrv' ? hrvCloudKeep(src, width, srcHeight, b) : null;
   const irOverlay =
     twilightIr && kind === 'hrv' && timeMs !== undefined
       ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', outHeight, undefined, undefined, b)
@@ -677,8 +636,6 @@ export function toOverlayPixels(
   return out;
 }
 
-export const LUMA_GRID_SIZE = 120;
-
 export interface SatelliteHoverReading {
   lat: number;
   lon: number;
@@ -688,67 +645,6 @@ export interface SatelliteHoverReading {
   color: string;
   /** Measured brightness temperatures (kelvin) from our own data pack, when the reading is not an estimate from a picture's grey. */
   measured?: { ir: number; wv62: number; wv73: number };
-}
-
-/**
- * Downsamples a source satellite image (`width` x `height` in EPSG:4326) to a compact `gridSize` x `gridSize` IR
- * brightness grid (`0` = no data, `1..255` = IR brightness) for fast hover inspection on the main thread.
- */
-export function buildLumaGrid(
-  src: Uint8ClampedArray,
-  width: number,
-  height: number,
-  kind: SatelliteChannel,
-  gridSize = LUMA_GRID_SIZE,
-): Uint8Array<ArrayBuffer> {
-  const out = new Uint8Array(gridSize * gridSize);
-  const bg = kind === 'hrv' ? hrvBackground(src) : 0;
-  const floor = Math.max(0, bg - 18);
-  const span = Math.max(1, 255 - floor);
-  for (let r = 0; r < gridSize; r++) {
-    const sy = Math.min(height - 1, Math.floor(((r + 0.5) / gridSize) * height));
-    for (let c = 0; c < gridSize; c++) {
-      const sx = Math.min(width - 1, Math.floor(((c + 0.5) / gridSize) * width));
-      const p = (sy * width + sx) * 4;
-      const red = src[p];
-      const green = src[p + 1];
-      const blue = src[p + 2];
-      if (red + green + blue === 0) continue;
-      const luma = kind === 'hrv' ? Math.max(0, (blue - floor) / span) : (red + green + blue) / (3 * 255);
-      out[r * gridSize + c] = Math.max(1, Math.min(255, Math.round(luma * 254 + 1)));
-    }
-  }
-  return out;
-}
-
-/** Reads Cloud-Top Temperature (°C), Cloud-Top Height (km) and cloud classification at `(lat, lon)` from a luma grid. */
-export function sampleLumaGrid(
-  grid: Uint8Array,
-  gridSize: number,
-  lat: number,
-  lon: number,
-  b = SATELLITE_BOUNDS,
-): SatelliteHoverReading | null {
-  if (lat < b.south || lat > b.north || lon < b.west || lon > b.east || grid.length < gridSize * gridSize) return null;
-  const r = Math.min(gridSize - 1, Math.max(0, Math.floor(((b.north - lat) / (b.north - b.south)) * gridSize)));
-  const c = Math.min(gridSize - 1, Math.max(0, Math.floor(((lon - b.west) / (b.east - b.west)) * gridSize)));
-  const raw = grid[r * gridSize + c];
-  if (!raw) return null;
-  const luma = (raw - 1) / 254;
-  const tempC = irLumaToTempC(luma);
-  const heightKm = irTempToHeightKm(tempC);
-  const { label, color } = classifyCloudTop(tempC);
-  return { lat, lon, tempC, heightKm, label, color };
-}
-
-/** The overlay's corners for MapLibre: top-left, top-right, bottom-right, bottom-left as [lng, lat]. */
-export function satelliteCoordinates(b = SATELLITE_BOUNDS): [[number, number], [number, number], [number, number], [number, number]] {
-  return [
-    [b.west, b.north],
-    [b.east, b.north],
-    [b.east, b.south],
-    [b.west, b.south],
-  ];
 }
 
 /**
