@@ -11,14 +11,6 @@ export const ALL_LEVELS: readonly Level[] = ['surface', ...PRESSURE_LEVELS];
 /** How high each pressure level is above sea level in the standard atmosphere, to 100 m (see altitude.ts, whose spec keeps this table honest). */
 export const LEVEL_KM: Record<number, number> = { 925: 0.8, 850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8 };
 
-export function levelLabel(level: Level): string {
-  return level === 'surface' ? 'Surface' : `${level} hPa`;
-}
-
-export function levelHeightLabel(level: Level): string {
-  return level === 'surface' ? 'at the ground' : `about ${LEVEL_KM[level]} km up`;
-}
-
 export type LayerGroup = 'Temperature' | 'Wind' | 'Rain and humidity' | 'Visibility' | 'Pressure and storms' | 'Upper air';
 
 /** The part of a layer that changes with altitude. */

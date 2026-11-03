@@ -22,7 +22,6 @@ import { IMD_WRITE_GAP_MS, LOOK_LEAD_MS, extractRadarIsoTimestamp, pictureNotDue
 import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, isObservationEligible, type MosaicRing, ringKey } from './radar-mosaic';
-import { RadarCoverageService } from './radar-coverage.service';
 import { MARSHALL_PALMER_A, lastHourRain } from './radar-sample';
 import { MapLayerService } from './map-layer.service';
 
@@ -117,11 +116,6 @@ export class RadarService implements OnDestroy {
   readonly ringResults = signal<Map<string, ProcessedRadarResult>>(new Map());
   readonly transparentMode = signal<boolean>(true);
   readonly radarOpacity = signal<number>(1.0);
-  /**
-   * Leave out faint echoes where the beam passes high above the ground (far from a radar, behind mountains): there they are mostly cloud or rain
-   * that never lands, and on a radar whose clutter filter is off, noise (see radar-coverage.ts). Remembered between visits.
-   */
-  private readonly coverage = inject(RadarCoverageService);
 
   // Dynamic Live Clock & Freshness State
   readonly liveClock = signal<number>(Date.now());
@@ -493,10 +487,8 @@ export class RadarService implements OnDestroy {
   /** That composite as put on the map (the app's own composite, built when the workflow's is missing, replaces it). */
   private workflowComposite: ProcessedRadarResult | null = null;
 
-  private static readonly PREPROCESSED_SOURCES = [
-    'https://gowthamgta.github.io/atmos-radar/',
-    '/data/radar/',
-  ];
+  /** Where the radar workflow publishes (an old copy kept in the app itself was dropped: it could only ever show a stale radar). */
+  private static readonly PREPROCESSED_SOURCES = ['https://gowthamgta.github.io/atmos-radar/'];
 
   /**
    * Fetches the preprocessed All-India composite published by the background workflow (gowthamgta/atmos-radar).
@@ -688,8 +680,7 @@ export class RadarService implements OnDestroy {
 
   /**
    * Rebuilding the composite takes a good fraction of a second, so station updates arriving close together (one per station
-   * on every refresh) are merged into a single rebuild, and rebuilds are spaced at least `MOSAIC_MIN_GAP_MS` apart. The last
-   * one of a refresh is not waited for (see `flushMosaic`).
+   * on every refresh) are merged into a single rebuild, and rebuilds are spaced at least `MOSAIC_MIN_GAP_MS` apart.
    */
   private static readonly MOSAIC_MIN_GAP_MS = 1500;
   private lastMosaicAt = 0;
@@ -702,15 +693,6 @@ export class RadarService implements OnDestroy {
       this.lastMosaicAt = Date.now();
       this.generateComposite();
     }, wait);
-  }
-
-  /** Builds the composite now if a rebuild is waiting (the end of a refresh: every station's newest scan is in). */
-  private flushMosaic(): void {
-    if (!this.mosaicTimer) return;
-    clearTimeout(this.mosaicTimer);
-    this.mosaicTimer = null;
-    this.lastMosaicAt = Date.now();
-    this.generateComposite();
   }
 
   /** FNV-1a hash of the raw image bytes, used to detect unchanged sweeps. */

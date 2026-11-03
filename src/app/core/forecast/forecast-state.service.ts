@@ -1,6 +1,5 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { MapLayerService } from '../services/map-layer.service';
-import { isPhone } from '../ui/device-profile';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { RELIEF_CHOICE_KEY } from '../ui/device-profile';
 import {

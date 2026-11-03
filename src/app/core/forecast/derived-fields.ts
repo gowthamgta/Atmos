@@ -8,13 +8,6 @@ import { ForecastGrid, sampleGrid } from './forecast.model';
 /** The 0.1 degree grid of all India that both ECMWF IFS and the UK Met Office are published on (see pipeline/config.py). */
 export const INDIA_GRID: ForecastGrid = { latMax: 37.5, latMin: 5.0, lonMin: 68.0, lonMax: 97.5, step: 0.1, nx: 296, ny: 326 };
 
-/** The value of the cell nearest a point (categories must not be blended), NaN outside the grid. */
-export function nearestValue(values: ArrayLike<number>, grid: ForecastGrid, lat: number, lon: number): number {
-  const x = Math.round((lon - grid.lonMin) / grid.step);
-  const y = Math.round((grid.latMax - lat) / grid.step);
-  return x < 0 || y < 0 || x >= grid.nx || y >= grid.ny ? NaN : values[y * grid.nx + x];
-}
-
 /** a * (1 - mix) + b * mix, NaN where either is NaN. */
 export function blendFields(a: Float32Array, b: Float32Array, mix: number): Float32Array {
   if (mix <= 0) return a;
@@ -122,17 +115,6 @@ export function rainMmToSeverity(mm: number): number {
   if (mm < 50) return 1.0 + ((mm - 22) / 28) * 1.0;
   if (mm < 100) return 2.0 + ((mm - 50) / 50) * 1.0;
   return 3.0;
-}
-
-/** Inverts `rainMmToSeverity`: agreed 24 h rain (mm) from a 0..3 severity value, for the map pin tooltip and place card. */
-export function severityToRainMm(sev: number): number {
-  if (Number.isNaN(sev)) return NaN;
-  if (sev <= 0) return 0;
-  if (sev < 0.5) return (sev / 0.5) * 10;
-  if (sev < 1.0) return 10 + ((sev - 0.5) / 0.5) * 12;
-  if (sev < 2.0) return 22 + (sev - 1.0) * 28;
-  if (sev < 3.0) return 50 + (sev - 2.0) * 50;
-  return 100;
 }
 
 /**

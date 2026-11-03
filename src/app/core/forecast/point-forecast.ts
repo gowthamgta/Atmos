@@ -87,7 +87,6 @@ export function windFromUV(u: number, v: number): { speedMs: number; fromDeg: nu
 const fmt = (v: number, digits = 0): string => (Number.isNaN(v) ? '–' : v.toFixed(digits));
 /** A value with its unit, or just a dash when the model does not provide it. */
 const withUnit = (v: number, digits: number, unit: string): string => (Number.isNaN(v) ? '–' : `${v.toFixed(digits)} ${unit}`);
-const KMH_PER_MS = 3.6;
 
 /** A temperature in °C as "27.2 °C" or "81.0 °F", by the chosen units. */
 const tempText = (c: number, units: Units, digits = 1): string => (Number.isNaN(c) ? '–' : `${tempFromC(c, units.temp).toFixed(digits)} ${TEMP_LABEL[units.temp]}`);

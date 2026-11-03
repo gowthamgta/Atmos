@@ -169,7 +169,6 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                   }
                   <button type="button" (click)="share()"><app-icon name="share" [size]="16" />{{ copied() ? 'Link copied' : 'Share this view' }}</button>
                   <button type="button" (click)="about()"><app-icon name="help" [size]="16" />Help &amp; credits</button>
-                  <a href="clouds/index.html" title="The ten cloud types in 3D at their heights over South India, with today's temperatures"><app-icon name="cloud" [size]="16" />Clouds in 3D</a>
                 </div>
               </section>
 

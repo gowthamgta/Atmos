@@ -65,12 +65,6 @@ export const DEFAULT_CUSTOM: readonly CustomChannel[] = [
   { source: 1, min: 243, max: 213, gamma: 1 },   // blue: 6.2 um, moist upper air (cold at 6.2 um) adds blue; dry clear air none
 ];
 
-/** The WMO RGB formula for one channel: ((v - min) / (max - min)) ^ (1 / gamma), 0..1. */
-export function wmoChannel(v: number, c: CustomChannel): number {
-  const x = Math.min(1, Math.max(0, (v - c.min) / (c.max - c.min || 1)));
-  return Math.pow(x, 1 / Math.max(c.gamma, 0.05));
-}
-
 export interface OwnIndex {
   /** The box of the pictures and of the data pack (the RGB is on the app's satellite box, SATELLITE_BOUNDS). */
   bounds: GeoBounds;

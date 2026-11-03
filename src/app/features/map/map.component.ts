@@ -46,7 +46,6 @@ const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
 import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
-import { ForecastInspectorService } from '../../core/forecast/forecast-inspector.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
 import { RadarHoverTooltipComponent } from './radar-hover-tooltip.component';
@@ -89,7 +88,6 @@ export class MapComponent implements OnInit, OnDestroy {
   private coverage = inject(RadarCoverageService);
   private terrain = inject(TerrainService);
   private forecastState = inject(ForecastStateService);
-  private forecastInspector = inject(ForecastInspectorService);
 
   private map: MapLibreMap | null = null;
   readonly isMapLoaded = signal<boolean>(false);

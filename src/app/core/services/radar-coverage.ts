@@ -40,14 +40,6 @@ export function coverageAt(grid: CoverageGrid, lat: number, lon: number): number
   return grid.classes[y * m.nx + x];
 }
 
-/** What each class is called, from the best to the worst. */
-export const COVERAGE_LEGEND: readonly { cls: number; label: string; hint: string }[] = [
-  { cls: COVERAGE_GOOD, label: 'Seen well', hint: 'Close to a radar: the beam is low over the ground' },
-  { cls: COVERAGE_LIMITED, label: 'Partly seen', hint: 'Farther away or behind hills: the beam passes above the lowest rain' },
-  { cls: COVERAGE_POOR, label: 'Mostly missed', hint: 'The beam is far above the ground or blocked by mountains: only tall storms show' },
-  { cls: COVERAGE_NONE, label: 'No radar', hint: 'Out of range of every radar: a blank here says nothing about rain' },
-];
-
 /** Opacity of the haze over each class (the best is clear, so the haze only marks where the radar is weaker). */
 const HAZE_ALPHA: Record<number, number> = {
   [COVERAGE_NONE]: 0.3,
@@ -56,10 +48,6 @@ const HAZE_ALPHA: Record<number, number> = {
   [COVERAGE_GOOD]: 0,
 };
 
-/** The haze opacity of a class, 0 to 1 (for the legend's swatches). */
-export function hazeAlpha(cls: number): number {
-  return HAZE_ALPHA[cls] ?? 0;
-}
 /** Slate, light enough to show on the dark map and over the sea. */
 export const HAZE_RGB: readonly [number, number, number] = [104, 120, 146];
 

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, afterNextRender, computed, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, afterNextRender, computed, input, output, signal, viewChild } from '@angular/core';
 import { forecastModelById, modelColor, pointModelById } from '../../core/forecast/forecast-models';
 import { CompareVar } from '../../core/meteogram/meteogram.service';
 import {

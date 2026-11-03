@@ -46,7 +46,6 @@ export interface ApiModel {
 }
 
 export const API_BASE = 'https://api.open-meteo.com/v1/forecast';
-const HOUR_MS = 3_600_000;
 
 /** The address of one request: all models, all variables, the day before today and `forecastDays` ahead, speeds in m/s. */
 export function seriesUrl(lat: number, lon: number, models: readonly ApiModel[], pastDays = 1, forecastDays = 10): string {
@@ -189,9 +188,4 @@ export function windowIndexes(times: readonly number[], startMs: number, endMs: 
   while (to + 1 < times.length && times[to + 1] <= endMs) to++;
   from = Math.max(from, 0);
   return to >= from ? { from, to } : null;
-}
-
-/** Whole hours between two series times (they are hourly, so this is the number of steps). */
-export function hoursBetween(a: number, b: number): number {
-  return Math.round((b - a) / HOUR_MS);
 }

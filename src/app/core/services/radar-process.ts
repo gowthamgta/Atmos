@@ -164,7 +164,7 @@ export function removeRadialSpikes(grid: Float32Array, size: number, rangeKm: nu
   // a dotted chain), at least SPIKE_MIN_FILL of the run being echo; a wider rain cell on the way ends the chain
   const spike = new Uint8Array(A * R);
   let any = false;
-  const minRun = SPIKE_MIN_RUN_KM / kmPerPx, maxGap = SPIKE_MAX_GAP_KM / kmPerPx;
+  const maxGap = SPIKE_MAX_GAP_KM / kmPerPx;
   for (let a = 0; a < A; a++) {
     let r = Math.ceil(minR);
     while (r < R) {

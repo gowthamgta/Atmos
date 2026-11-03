@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult } from '../domain/models/radar.model';
 import { RadarCompute, composeWithAloft, replyTransfer, runJob } from './radar-compute';
 import { composeRadarMosaic } from './radar-mosaic';
-import { uniformMotionField } from './radar-motion';
 
 const N = 120;
 const karaikal = IMD_RADAR_STATIONS.find(s => s.id === 'karaikal')!;
