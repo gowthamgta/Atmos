@@ -4,6 +4,7 @@ import type { GeoBounds } from '../satellite/satellite.config';
 import type { CustomChannel } from '../satellite/own-products';
 import { windyInfraredTable } from '../satellite/satellite-image';
 import { PendingProgram } from './gl-program';
+import { SATELLITE_SATURATION, SATELLITE_SHARPEN } from './satellite-image.layer';
 
 /**
  * Our own satellite products drawn in the browser from a frame's data pack (pipeline/himawari_rgb.py): a lossless PNG of brightness
@@ -68,6 +69,15 @@ vec4 sampleK(sampler2D t, vec2 px) {
   return vec4((a.rgb * wa + b.rgb * wb + c.rgb * wc + d.rgb * wd) / w, min(1.0, w * 1.5));
 }
 
+// sharper (SATELLITE_SHARPEN, satellite-image.layer.ts): the temperatures plus some of their difference from their mean a texel around
+vec4 sharpK(sampler2D t, vec2 px) {
+  vec4 s = sampleK(t, px);
+  if (s.a <= 0.0) return s;
+  vec4 m = 0.25 * (sampleK(t, px + vec2(1.0, 1.0)) + sampleK(t, px + vec2(-1.0, 1.0)) + sampleK(t, px + vec2(1.0, -1.0)) + sampleK(t, px + vec2(-1.0, -1.0)));
+  if (m.a > 0.0) s.rgb += ${SATELLITE_SHARPEN.toFixed(3)} * (s.rgb - m.rgb);
+  return s;
+}
+
 vec3 lerp3(vec3 a, vec3 b, float t) { return mix(a, b, clamp(t, 0.0, 1.0)); }
 
 vec3 wvDiff(float d) {
@@ -108,8 +118,9 @@ void main() {
   vec2 uv = vec2((v_merc.x - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) discard;
   vec2 px = uv * vec2(u_size);
-  vec4 c = shade(sampleK(u_a, px));
-  if (u_hasB == 1) c = mix(c, shade(sampleK(u_b, px)), u_mixB);
+  vec4 c = shade(sharpK(u_a, px));
+  if (u_hasB == 1) c = mix(c, shade(sharpK(u_b, px)), u_mixB);
+  c.rgb = mix(vec3(dot(c.rgb, vec3(0.2126, 0.7152, 0.0722))), c.rgb, ${SATELLITE_SATURATION.toFixed(3)}); // a little less saturated
   o = c * u_opacity;
 }`;
 
