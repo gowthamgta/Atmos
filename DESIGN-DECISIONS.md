@@ -33,6 +33,11 @@ fingerprint only together with this file, on the owner's request.
   at times both have a day picture (else Meteosat's). Drawn in the agreed Windy colours, which keep the brightness detail (the shapes of the
   cloud tops). The infrared is Meteosat's, unchanged (its data pack). The panel's switch: Merged (first), Meteosat-9, Himawari-9.
   Rapid scan was asked for too: none reaches India (EUMETSAT's and MTG's cover Europe; Himawari's full disc every 10 min is the fastest).
+- **Windy's ground under the merged picture** (the owner, 3 Nov 2026: "For the merged image change the background of the map like windy"):
+  the map under it is Windy's, as measured side by side on 19 Oct (43c518c, reverted then with the rest of that day's changes): land
+  #3e3a37, sea #343741, no rivers or roads (coasts and borders stay); the ground is cleared strictly there (a pixel no brighter or colder
+  than the ground around it is see-through, even in a gap between cumulus), so the clear sea between clouds is that sea, not black. Meteosat-9
+  and Himawari-9 on their own keep the plain grey map and the agreed clearing.
 - **The HD 1.25 km window loads by default** on desktop and phone (b4afa62), and the **newest frame is shown first** (2b73678).
 - **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
   (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to

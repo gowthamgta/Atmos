@@ -518,7 +518,7 @@ function upsample(plane: Float32Array, w: number, h: number, width: number, heig
  * How much of each pixel of an HRV picture is cloud (0 = the clear ground, 1 = cloud), from how far it stands out from the ground around
  * it. `width` x `height` is the picture, which covers `b`.
  */
-function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number): Float32Array {
+function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds, spreadRadius: number, closeRadius: number, strict = false): Float32Array {
   const midLat = (b.north + b.south) / 2;
   const kmPerPx = ((b.east - b.west) * 111.32 * Math.cos(midLat * RAD)) / width;
   const stride = Math.max(1, Math.round(width / 250));
@@ -587,15 +587,21 @@ function cloudKeepAt(src: Uint8ClampedArray, width: number, height: number, b: G
   // a small hole in the middle of a cloud (a darker patch of the cloud itself) is not ground: close gaps up to 6 pixels
   const closed = morph(morph(keep, width, height, closeRadius, true), width, height, closeRadius, false);
   for (let i = 0; i < keep.length; i++) keep[i] = Math.max(keep[i], 0.8 * closed[i]);
+  // strict (the merged picture): a pixel no brighter or colder than the ground around it is ground, even inside a closed gap, so the clear
+  // sea between fair-weather cumulus shows the map, not the picture's black (the owner, 3 Nov 2026: "change the background of the map like windy")
+  if (strict) for (let i = 0; i < keep.length; i++) keep[i] *= smoothstep(STRICT_FROM, STRICT_FULL, excess[i]);
   boxBlur(keep, width, height, 1, 2); // and the edge of what is left is smooth
   return keep;
 }
+/** In the strict clearing, how far a pixel must stand out from the ground around it (picture levels) to start to show, and to show fully. */
+const STRICT_FROM = 3;
+const STRICT_FULL = 12;
 
-export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS): Float32Array {
+export function hrvCloudKeep(src: Uint8ClampedArray, width: number, height: number, b: GeoBounds = SATELLITE_BOUNDS, strict = false): Float32Array {
   // the mask is smooth, so a big picture is judged at half the size (a quarter of the work) and stretched back
-  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3);
+  if (width < 1200) return cloudKeepAt(src, width, height, b, 2, 3, strict);
   const half = halve(src, width, height);
-  return upsample(cloudKeepAt(half.data, half.w, half.h, b, 1, 2), half.w, half.h, width, height);
+  return upsample(cloudKeepAt(half.data, half.w, half.h, b, 1, 2, strict), half.w, half.h, width, height);
 }
 
 /**
@@ -615,11 +621,13 @@ export function toOverlayPixels(
   timeMs?: number,
   b = SATELLITE_BOUNDS,
   coverOut?: Uint8Array,
+  /** Clear the ground strictly (the merged picture: see cloudKeepAt). */
+  strictGround = false,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(width * outHeight * 4);
   const rowMap = mercatorRowMap(srcHeight, outHeight, b);
   const background = kind === 'hrv' ? hrvBackground(src) : 0;
-  const cloud = kind === 'hrv' ? hrvCloudKeep(src, width, srcHeight, b) : null;
+  const cloud = kind === 'hrv' ? hrvCloudKeep(src, width, srcHeight, b, strictGround) : null;
   const irOverlay =
     twilightIr && kind === 'hrv' && timeMs !== undefined
       ? toOverlayPixels(twilightIr, width, srcHeight, 'ir', outHeight, undefined, undefined, b)

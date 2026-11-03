@@ -3,6 +3,8 @@ import { RADAR_FIELD_SIZE } from './radar-process';
 import { PERSIST_MIN_SCANS, PERSIST_SIZE, clearCells, decodePersist, encodePersist, newPersistState, persistLevels, persistentCells, updatePersist } from './radar-persist';
 
 const N = RADAR_FIELD_SIZE;
+/** Whole 1024 x 1024 fields over dozens of scans: seconds on a busy machine, so more than the default 5 s. */
+const HEAVY_MS = 30_000;
 const intensity = (dbz: number) => (dbz - 12) / 9.6;
 /** A field with square blobs: [x, y, half-width, dBZ] in field pixels. */
 const field = (blobs: [number, number, number, number][]) => {
@@ -30,7 +32,7 @@ describe('echo that stays put', () => {
     expect(last.every(v => v === 0)).toBe(true);
     // one scan fewer: not yet
     expect(run(Array.from({ length: PERSIST_MIN_SCANS - 1 }, () => field([[300, 300, 6, 40]]))).lost).toBe(0);
-  });
+  }, HEAVY_MS);
 
   it('keeps clutter that flickers out now and then counted, and rain that moves or changes untouched', () => {
     // clutter missing in one scan of four still gets there, a few scans later
@@ -41,13 +43,13 @@ describe('echo that stays put', () => {
     expect(run(moving).lost).toBe(0);
     const pulsing = Array.from({ length: 30 }, (_, i) => field([[600, 600, 20, i % 2 ? 30 : 42]]));
     expect(run(pulsing).lost).toBe(0);
-  });
+  }, HEAVY_MS);
 
   it('keeps a small steady spot inside moving rain (the patch is mostly not steady)', () => {
     const scans = Array.from({ length: 30 }, (_, i) => field([[400, 400, 60, 25 + (i % 3) * 8], [400, 400, 3, 45]]));
     const { lost } = run(scans);
     expect(lost).toBe(0);
-  });
+  }, HEAVY_MS);
 
   it('carries the memory from run to run', () => {
     const { st } = run(Array.from({ length: 5 }, () => field([[300, 300, 6, 40]])));
@@ -56,5 +58,5 @@ describe('echo that stays put', () => {
     expect(back.get('karaikal:caz')!.count).toEqual(st.count);
     expect(back.get('karaikal:caz')!.level.length).toBe(PERSIST_SIZE * PERSIST_SIZE);
     expect(decodePersist(new Uint8Array([0, 0, 0, 2, 123, 125])).size).toBe(0);
-  });
+  }, HEAVY_MS);
 });

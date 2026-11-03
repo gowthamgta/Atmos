@@ -21,6 +21,8 @@ export interface SatelliteWorkerRequest {
   lossless?: boolean;
   /** Draw the picture in its own colours (our RGB from the raw data), not recoloured: only re-spaced to Mercator. */
   raw?: boolean;
+  /** Clear the ground strictly, so the map shows between clouds (the merged picture). */
+  strictGround?: boolean;
   /** The frame's measured brightness temperatures (pipeline/satellite_bt.py), for the 3D clouds' heights. */
   bt?: { url: string; offsetK: number; stepK: number };
 }
@@ -61,7 +63,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     }
     return;
   }
-  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless, bt, raw } = event.data;
+  const { id, jpeg, kind, twilightIr, timeMs, bounds, lossless, bt, raw, strictGround } = event.data;
   const box = bounds ?? SATELLITE_BOUNDS;
   try {
     const bitmap = await createImageBitmap(jpeg);
@@ -90,7 +92,7 @@ addEventListener('message', async (event: MessageEvent<SatelliteWorkerRequest | 
     const outHeight = mercatorHeight(width, box);
     // the whole-India picture also gives the clouds' heights and thickness for the 3D view (cloud-field.ts)
     const cover = !bounds && kind === 'hrv' ? new Uint8Array(width * outHeight) : undefined;
-    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover);
+    const pixels = toOverlayPixels(src, width, height, kind, outHeight, irPixels, timeMs, box, cover, strictGround);
     const grid = !bounds && bt ? await brightnessGrid(bt) : null;
     const field = bounds ? undefined : buildCloudField(src, width, height, kind, outHeight, cover ?? null, kind === 'hrv' ? hrvBackground(src) : 0, grid);
     let out = pixels;

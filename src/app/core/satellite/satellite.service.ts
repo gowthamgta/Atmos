@@ -418,7 +418,7 @@ export class SatelliteService {
         p = fetch(url)
           .then(r => (r.ok ? r.blob() : null))
           // the merged picture in the agreed Windy colours (cleared of the ground); each satellite's own in its own colours
-          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true, satellite !== 'merged') : null))
+          .then(blob => (blob ? this.process(blob, SATELLITE_HRV, undefined, it.timeMs, undefined, true, satellite !== 'merged', satellite === 'merged') : null))
           .then(res => res && {
             timeMs: it.timeMs,
             product: SATELLITE_HRV,
@@ -704,6 +704,7 @@ export class SatelliteService {
     bounds?: GeoBounds,
     lossless = false,
     raw = false,
+    strictGround = false,
   ): Promise<{ url: string; lumaGrid?: Uint8Array; motion?: MotionGrid; cloudField?: CloudField } | null> {
     if (typeof Worker === 'undefined') return Promise.resolve(null);
     if (this.workers.length === 0) this.workers = Array.from({ length: SatelliteService.poolSize() }, () => this.createWorker());
@@ -712,7 +713,7 @@ export class SatelliteService {
     const btPending = bounds || timeMs === undefined ? Promise.resolve(undefined) : this.brightnessFor(timeMs);
     return btPending.then(bt => new Promise(resolve => {
       this.pending.set(id, r => resolve('png' in r ? { url: URL.createObjectURL(r.png), lumaGrid: r.lumaGrid, motion: r.motion, cloudField: r.cloudField } : null));
-      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless, bt, raw } satisfies SatelliteWorkerRequest);
+      worker.postMessage({ id, jpeg, kind: product.id, twilightIr, timeMs, bounds, lossless, bt, raw, strictGround } satisfies SatelliteWorkerRequest);
     }));
   }
 

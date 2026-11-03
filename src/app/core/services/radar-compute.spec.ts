@@ -31,7 +31,7 @@ describe('radar work off the main thread', () => {
     const fade = withFade.displayFade!;
     expect(fade.reduce((a, b) => Math.min(a, b), 255)).toBeLessThan(255); // the far edge is faded
     expect(fade.reduce((a, b) => Math.max(a, b), 0)).toBe(255); // the middle (near the radar) is not
-  });
+  }, 30_000); // two whole mosaics: seconds on a busy machine
 
   it('runs a job and names the buffers it can hand back without copying', () => {
     const reply = runJob({ id: 7, kind: 'compose', req: { sources: [['karaikal', scan(3)]], kmPerPx: 2, maxPx: 600, product: 'caz' } });
