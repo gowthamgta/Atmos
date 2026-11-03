@@ -61,6 +61,9 @@ import {
 
 const STACK_PRODUCTS: readonly RadarProductKey[] = ['ppi', 'caz', 'ppz'];
 /** Where this workflow publishes (the last run's manifest is read from it) and our satellite (the cloud map). */
+/** The radars the workflow fetches and composes (the owner, 3 Nov 2026: only Chennai and Karaikal; the others are not in the workflow). */
+const WORKFLOW_STATION_IDS = ['karaikal', 'chennai'];
+const WORKFLOW_STATIONS = IMD_RADAR_STATIONS.filter(s => WORKFLOW_STATION_IDS.includes(s.id));
 const RADAR_SITE = 'https://gowthamgta.github.io/atmos-radar/';
 const SATELLITE_SITE = 'https://gowthamgta.github.io/atmos-satellite/rgb-msg/';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -381,7 +384,7 @@ async function main() {
   const args = parseArgs();
   const { outDir, concurrency } = args;
   console.log(`[RadarPipeline] Starting Kralveth Weather Radar Pipeline...`);
-  console.log(`[RadarPipeline] Stations configured: ${IMD_RADAR_STATIONS.length}`);
+  console.log(`[RadarPipeline] Stations configured: ${WORKFLOW_STATIONS.length}`);
   console.log(`[RadarPipeline] Output directory: ${outDir}`);
 
   fs.mkdirSync(outDir, { recursive: true });
@@ -400,7 +403,7 @@ async function main() {
   type FetchJob = { station: RadarStationConfig; productKey: RadarProductKey };
   const jobs: FetchJob[] = [];
 
-  for (const station of IMD_RADAR_STATIONS) {
+  for (const station of WORKFLOW_STATIONS) {
     for (const p of STACK_PRODUCTS) {
       if (!station.products[p]?.unmeasured) {
         jobs.push({ station, productKey: p });
@@ -493,7 +496,7 @@ async function main() {
   const rings: [string, MosaicRing][] = [];
 
   const reachKm = new Map<string, number>();
-  for (const station of IMD_RADAR_STATIONS) {
+  for (const station of WORKFLOW_STATIONS) {
     const usable = (p: RadarProductKey) => {
       const r = ringResults.get(ringKey(station.id, p));
       return !!r?.fieldData && r.isDisplayed !== false && isObservationEligible(r.timing, nowMs);
@@ -510,7 +513,7 @@ async function main() {
   }
 
   const ringsMap = new Map<string, MosaicRing>(rings);
-  const composed = composeRadarMosaic(IMD_RADAR_STATIONS, sources, MOSAIC_KM_PER_PX, 2800, 'ppz', nowMs, ringsMap);
+  const composed = composeRadarMosaic(WORKFLOW_STATIONS, sources, MOSAIC_KM_PER_PX, 2800, 'ppz', nowMs, ringsMap);
 
   if (!composed || !composed.fieldData || !composed.displayField) {
     console.error(`[RadarPipeline] Error: Mosaic composition produced no output.`);
@@ -528,7 +531,7 @@ async function main() {
   console.log(`[RadarPipeline] Computing lowest beam elevations and aloft attenuation...`);
   const { cropW: w, cropH: h } = composed.fieldData;
   const activeStationIds = [...new Set(sources.map(([k]) => k.slice(0, k.indexOf(':'))))];
-  const activeConfigs = IMD_RADAR_STATIONS.filter(s => activeStationIds.includes(s.id));
+  const activeConfigs = WORKFLOW_STATIONS.filter(s => activeStationIds.includes(s.id));
   const beamHeights = lowestBeamHeights(activeConfigs, 'ppz', composed.coordinates, w, h);
   const fade = withAloftFade(composed.fieldData.field, beamHeights, composed.displayFade);
 
@@ -594,7 +597,7 @@ async function main() {
     height: h,
     kmPerPx: MOSAIC_KM_PER_PX,
     activeStationCount: activeConfigs.length,
-    totalStationCount: IMD_RADAR_STATIONS.length,
+    totalStationCount: WORKFLOW_STATIONS.length,
     stations: stationsSummary,
     // what the quality control left out (radar-qc.ts), and each picture's fingerprint for the next run's stale check
     qc,
@@ -602,7 +605,7 @@ async function main() {
   };
 
   fs.writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-  console.log(`[RadarPipeline] Exported manifest.json (${activeConfigs.length}/${IMD_RADAR_STATIONS.length} stations active)`);
+  console.log(`[RadarPipeline] Exported manifest.json (${activeConfigs.length}/${WORKFLOW_STATIONS.length} stations active)`);
 
   // 4. Export index.html viewer for GitHub Pages
   const html = `<!DOCTYPE html>
