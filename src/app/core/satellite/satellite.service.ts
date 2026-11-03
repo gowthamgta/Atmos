@@ -245,8 +245,16 @@ export class SatelliteService {
     if (this.checkTimer === null) this.checkTimer = setInterval(() => void this.load(), CHECK_MS);
     if (this.clockTimer === null) this.clockTimer = setInterval(() => this.now.set(Date.now()), 30_000); // the "updated N min ago" counts on
     this.now.set(Date.now());
+    if (!this.onVisible && typeof document !== 'undefined') {
+      // back on the tab: look for the newest pictures at once (a hidden tab's timers are slowed, so the check may be minutes away)
+      this.onVisible = () => {
+        if (document.visibilityState === 'visible' && this.active()) void this.load();
+      };
+      document.addEventListener('visibilitychange', this.onVisible);
+    }
     void this.load();
   }
+  private onVisible: (() => void) | null = null;
 
   deactivate(): void {
     this.active.set(false);
@@ -334,7 +342,8 @@ export class SatelliteService {
     if (this.frames().length === 0) this.loading.set(true);
     this.failed.set(false);
     try {
-      const res = await fetch(base + 'index.json', { cache: 'no-cache' });
+      // a new query each time: GitHub Pages' cache keeps a file 10 minutes, so a run's new pictures show at the next check, not 10 minutes on
+      const res = await fetch(`${base}index.json?t=${Date.now()}`, { cache: 'no-cache' });
       if (token !== this.loadToken) return;
       if (!res.ok) throw new Error(String(res.status));
       const index = (await res.json()) as OwnIndex;
@@ -713,7 +722,7 @@ export class SatelliteService {
   /** The measured temperatures for a picture's time, if the satellite workflow has them (its indexes are looked at every few minutes). */
   private async brightnessFor(timeMs: number): Promise<{ url: string; offsetK: number; stepK: number } | undefined> {
     if (!this.btIndexes || Date.now() - this.btIndexes.at > 4 * 60_000) {
-      this.btLoading ??= Promise.all(BT_SOURCES.map(base => fetch(base + 'index.json', { cache: 'no-cache' })
+      this.btLoading ??= Promise.all(BT_SOURCES.map(base => fetch(`${base}index.json?t=${Date.now()}`, { cache: 'no-cache' })
         .then(r => (r.ok ? r.json() : null))
         .then((j: { frames?: { time: string; file: string }[]; offsetK?: number; stepK?: number } | null) => ({
           frames: (j?.frames ?? []).map(f => ({ timeMs: Date.parse(f.time), url: base + f.file })).filter(f => Number.isFinite(f.timeMs)),
