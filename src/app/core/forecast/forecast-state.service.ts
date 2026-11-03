@@ -2,6 +2,7 @@ import { Injectable, computed, effect, inject, signal, untracked } from '@angula
 import { MapLayerService } from '../services/map-layer.service';
 import { isPhone } from '../ui/device-profile';
 import { ForecastCatalogService } from './forecast-catalog.service';
+import { RELIEF_CHOICE_KEY } from '../ui/device-profile';
 import {
   ALL_LEVELS,
   FORECAST_LAYERS,
@@ -176,6 +177,11 @@ export class ForecastStateService {
   /** Turn the 90 m relief shading of the colour layers on or off. */
   toggleRelief(): void {
     this.relief.update(on => !on);
+    try {
+      localStorage.setItem(RELIEF_CHOICE_KEY, this.relief() ? 'on' : 'off'); // the visitor's choice: LowPowerService leaves it alone
+    } catch {
+      // not remembered
+    }
   }
 
   private pauseIfIdle(): void {

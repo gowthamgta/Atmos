@@ -1,4 +1,4 @@
-import { Injectable, computed, effect, inject } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { ForecastInspectorService } from '../forecast/forecast-inspector.service';
 import { MAX_SCAN_AGE_MIN } from './radar-mosaic';
 import { COVERAGE_GOOD, COVERAGE_LIMITED } from './radar-coverage';
@@ -30,6 +30,8 @@ export class RainEtaService {
   private readonly nowcast = inject(RadarNowcastService);
   private readonly coverage = inject(RadarCoverageService);
   private readonly inspector = inject(ForecastInspectorService);
+  /** The page has settled after opening (the radars may be fetched for the rain line from then on). */
+  private readonly settled = signal(false);
 
   /** The whole minute now (the line is worked out again once a minute, not every second). */
   private readonly minute = computed(() => Math.floor(this.radar.liveClock() / 60_000));
@@ -51,8 +53,15 @@ export class RainEtaService {
   });
 
   constructor() {
-    // the motion is kept up to date while a place is on the card, even with the radar layer off
-    effect(() => this.nowcast.wanted.set(this.inspector.selected() !== null));
+    // the motion is kept up to date while a place is on the card, even with the radar layer off; only once the page has settled (a few
+    // seconds, or when the browser is idle): the radars' composite is megabytes, and fetched with the first forecast it slowed the opening
+    effect(() => this.nowcast.wanted.set(this.inspector.selected() !== null && this.settled()));
+    if (typeof window !== 'undefined') {
+      const idle = (window as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+      setTimeout(() => (idle ? idle(() => this.settled.set(true), { timeout: 4000 }) : this.settled.set(true)), 2500);
+    } else {
+      this.settled.set(true);
+    }
   }
 
   /** Whether a working radar's picture of the moment reaches the place. */

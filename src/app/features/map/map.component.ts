@@ -63,6 +63,7 @@ import { ForecastInspectorService } from '../../core/forecast/forecast-inspector
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
 import { RadarHoverTooltipComponent } from './radar-hover-tooltip.component';
+import { LowPowerService } from '../../core/ui/low-power.service';
 
 @Component({
   selector: 'app-map',
@@ -96,6 +97,7 @@ export class MapComponent implements OnInit, OnDestroy {
   private radarService = inject(RadarService);
   private forecastMap = inject(ForecastMapController);
   private satellite = inject(SatelliteService);
+  private readonly lowPower = inject(LowPowerService);
   private satelliteDetail = inject(SatelliteDetailService);
   private gibs = inject(GibsHdService);
   private storms = inject(StormTracksService);
@@ -462,6 +464,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
     map.on('load', () => {
       this.isMapLoaded.set(true);
+      this.lowPower.check(map); // a device that cannot keep up: relief off, fewer pixels (LowPowerService)
 
       // 1. Set initial basemap visibility (Dark Terrain)
       this.syncBasemap('dark');

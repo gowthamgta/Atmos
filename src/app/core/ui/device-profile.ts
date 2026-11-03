@@ -29,3 +29,35 @@ export function radarMosaicMaxPx(phone: boolean): number {
 export function maxPixelRatio(phone: boolean, deviceRatio: number): number {
   return phone ? Math.min(deviceRatio, 2) : deviceRatio;
 }
+
+/**
+ * What the browser says about the hardware, before anything is drawn: few processor cores, little memory, or a GPU that is software (no
+ * graphics chip to speak of). Any one of them makes the device count as weak (see LowPowerService, which also measures the frame rate).
+ */
+export function weakHardware(cores = navigator.hardwareConcurrency, memoryGb = (navigator as { deviceMemory?: number }).deviceMemory, renderer = gpuRenderer()): boolean {
+  if (typeof cores === 'number' && cores > 0 && cores <= 2) return true;
+  if (typeof memoryGb === 'number' && memoryGb > 0 && memoryGb <= 2) return true;
+  return /swiftshader|llvmpipe|software|basic render|mesa offscreen/i.test(renderer);
+}
+
+/** The GPU's name as WebGL reports it ('' when it cannot be had). */
+export function gpuRenderer(): string {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl');
+    if (!gl) return 'software';   // no WebGL at all
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return name;
+  } catch {
+    return '';
+  }
+}
+
+/** The visitor's own choice of the terrain relief (the layer menu), kept so the automatic choice never overrides it. */
+export const RELIEF_CHOICE_KEY = 'atmosiq.relief.choice';
+
+/** Below this many frames a second (median, the map drawing) the device counts as weak. */
+export const WEAK_FPS = 36;
+/** The pixel ratio a weak device draws the map at (at most): a third fewer pixels to colour on a 2x screen, still sharp. */
+export const WEAK_PIXEL_RATIO = 1.5;
