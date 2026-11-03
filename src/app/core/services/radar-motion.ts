@@ -3,7 +3,7 @@ import { MOTION_BLOCK, MotionVector, TrackingGrid, motionAt } from './storm-trac
 /**
  * The motion of the rain over the whole radar picture, as a smooth field: how many degrees east and north it moves in an hour at each node of
  * a coarse lattice. It comes from the block-matching vectors of two radar pictures (storm-tracking.ts), or from one steering wind where the
- * radar gives none. Used to slide the picture forward (the nowcast) and to say when rain will reach a place.
+ * radar gives none. Used to move the storm cells along (storm-tracks.service.ts).
  */
 export interface MotionField {
   west: number;

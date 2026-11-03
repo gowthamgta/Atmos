@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { IMD_RADAR_STATIONS, ProcessedRadarResult } from '../domain/models/radar.model';
 import { RadarCompute, composeWithAloft, replyTransfer, runJob } from './radar-compute';
 import { composeRadarMosaic } from './radar-mosaic';
-import { nowcastPicture } from './radar-nowcast';
 import { uniformMotionField } from './radar-motion';
 
 const N = 120;
@@ -39,16 +38,6 @@ describe('radar work off the main thread', () => {
     expect(reply.mosaic?.fieldData.cropW).toBeGreaterThan(0);
     expect(replyTransfer(reply).length).toBeGreaterThanOrEqual(2);
     expect(runJob({ id: 8, kind: 'compose', req: { sources: [], kmPerPx: 2, maxPx: 600, product: 'caz' } }).mosaic).toBeNull();
-  });
-
-  it('makes the nowcast pictures of every lead at once, as nowcastPicture does', () => {
-    const field = new Uint8Array(40 * 40);
-    field[20 * 40 + 20] = 200;
-    const box = { west: 79, east: 80, north: 11, south: 10, width: 40, height: 40 };
-    const motion = uniformMotionField({ west: 79, east: 80, north: 11, south: 10 }, 0.2, 0);
-    const reply = runJob({ id: 1, kind: 'nowcast', req: { field, box, motion, leads: [10, 30], outScale: 2 } });
-    expect(reply.pictures!.map(p => p.lead)).toEqual([10, 30]);
-    expect(reply.pictures![1].field).toEqual(nowcastPicture(field, box, motion, 30, 2).field);
   });
 
   it('works on the main thread where there are no workers (the same results)', async () => {

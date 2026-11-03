@@ -1,6 +1,5 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { SteeringWindService } from '../forecast/steering-wind.service';
-import { BOT_CAPTURE, NowcastCell, publishNowcast } from '../ui/bot-capture';
 import { isPhone } from '../ui/device-profile';
 import { MapLayerService } from './map-layer.service';
 import { RadarService } from './radar.service';
@@ -60,7 +59,7 @@ export class StormTracksService {
   readonly summary = signal<StormSummary>({ count: 0, source: null });
   readonly visible = computed(() => this.enabled() && this.layers.layers().some(l => l.id === 'radar' && l.active));
 
-  private readonly cache = new Map<string, { geojson: StormFeatureCollection; summary: StormSummary; cells: NowcastCell[] }>();
+  private readonly cache = new Map<string, { geojson: StormFeatureCollection; summary: StormSummary }>();
   private token = 0;
 
   /**
@@ -74,7 +73,7 @@ export class StormTracksService {
     effect(() => {
       const on = this.visible();
       const live = this.radar.compositeMosaic();
-      if (!on || !live || this.loopRequested || (isPhone() && !BOT_CAPTURE)) return;
+      if (!on || !live || this.loopRequested || isPhone()) return;
       untracked(() => {
         if (this.radar.history().length > 0 || this.radar.historyLoading()) return;
         this.loopRequested = true;
@@ -107,7 +106,6 @@ export class StormTracksService {
     const hit = this.cache.get(key);
     if (hit) {
       this.publish(hit.geojson, hit.summary);
-      if (index === null) this.publishLive(current.timeMs, hit.summary, history.length, hit.cells);
       return;
     }
 
@@ -133,10 +131,9 @@ export class StormTracksService {
     }
 
     const features: Feature[] = [];
-    const found: NowcastCell[] = [];
     let usedWind = false;
     for (const c of cells) {
-      const { lat, lon, radiusKm } = cellPlace(c, grid);
+      const { lat, lon } = cellPlace(c, grid);
       let m = motion?.(c, lat) ?? null;
       if (!m) {
         const wind = await this.steering.at(lat, lon, current.timeMs);
@@ -147,23 +144,13 @@ export class StormTracksService {
         }
       }
       features.push(...this.stormFeatures(c, lat, lon, m, grid.step));
-      found.push({
-        lat, lon, dbz: Math.round(12 + c.peak * 9.6), radiusKm,
-        speedKmh: m ? Math.round(m.speedKmh) : null, towardsDeg: m ? Math.round(m.towardsDeg) : null,
-      });
     }
     if (my !== this.token) return;
     const summary: StormSummary = { count: cells.length, source: source ?? (usedWind ? 'wind' : null) };
     const geojson: StormFeatureCollection = { type: 'FeatureCollection', features };
     if (this.cache.size > 40) this.cache.clear();
-    this.cache.set(key, { geojson, summary, cells: found });
+    this.cache.set(key, { geojson, summary });
     this.publish(geojson, summary);
-    if (index === null) this.publishLive(current.timeMs, summary, history.length, found);
-  }
-
-  /** The live picture's cells, for the nowcast bot (only in bot mode, see bot-capture.ts). */
-  private publishLive(timeMs: number, summary: StormSummary, historyLength: number, cells: NowcastCell[]): void {
-    publishNowcast({ radarTimeMs: timeMs, motionSource: summary.source, loopLoaded: historyLength > 0, cells });
   }
 
   private publish(geojson: StormFeatureCollection, summary: StormSummary): void {

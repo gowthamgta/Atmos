@@ -75,7 +75,7 @@ export class DataAgeBadgeComponent {
     const frames = this.satellite.frames();
     return dataAgeMessage({
       radarOn: on('radar'),
-      radarLive: this.radar.playIndex() === null && this.radar.leadIndex() === null,
+      radarLive: this.radar.playIndex() === null,
       radarAgeMin: radarMs ? Math.max(0, Math.floor((this.radar.liveClock() - radarMs) / 60_000)) : null,
       radarAnyShown: shownIds.length > 0,
       radarSyncing: this.radar.isRefreshing() || this.radar.lastSyncTime() === null,

@@ -1,12 +1,10 @@
 import { IMD_RADAR_STATIONS, type ProcessedRadarResult, type RadarProductKey } from '../domain/models/radar.model';
 import { composeRadarMosaic, type MosaicRing } from './radar-mosaic';
 import { lowestBeamHeights, withAloftFade } from './radar-beam';
-import { nowcastPicture, type FieldBox } from './radar-nowcast';
-import type { MotionField } from './radar-motion';
 
 /**
  * The radar work that took the main thread for up to a second on a phone (measured with e2e/perf.mjs, CPU 4x slower): composing the mosaic of the
- * radars (with the rain-aloft fade, radar-beam.ts) and the nowcast pictures. It runs in a web worker (radar-compute.worker.ts); where there are
+ * radars (with the rain-aloft fade, radar-beam.ts). It runs in a web worker (radar-compute.worker.ts); where there are
  * no workers (the tests, an old browser, a worker that failed) the same functions run here, so the results are the same either way.
  */
 
@@ -22,21 +20,6 @@ export interface ComposeRequest {
   nowMs?: number;
   /** The stack: the ring each source (`stationId:product`) draws. */
   rings?: [string, MosaicRing][];
-}
-
-export interface NowcastRequest {
-  field: Uint8Array;
-  box: FieldBox;
-  motion: MotionField;
-  leads: readonly number[];
-  outScale: number;
-}
-
-export interface NowcastPicture {
-  lead: number;
-  field: Uint8Array;
-  width: number;
-  height: number;
 }
 
 /** Lowest beam height over each pixel of the mosaic, kept while the radars, the product and the grid stay the same. */
@@ -57,13 +40,9 @@ export function composeWithAloft(req: ComposeRequest): ProcessedRadarResult | nu
   return fade === res.displayFade ? res : { ...res, displayFade: fade };
 }
 
-export function nowcastPictures(req: NowcastRequest): NowcastPicture[] {
-  return req.leads.map(lead => ({ lead, ...nowcastPicture(req.field, req.box, req.motion, lead, req.outScale) }));
-}
-
-type Job = { id: number } & ({ kind: 'compose'; req: ComposeRequest } | { kind: 'nowcast'; req: NowcastRequest });
+type Job = { id: number; kind: 'compose'; req: ComposeRequest };
 export type ComputeJob = Job;
-export type ComputeReply = { id: number; mosaic?: ProcessedRadarResult | null; pictures?: NowcastPicture[]; error?: string };
+export type ComputeReply = { id: number; mosaic?: ProcessedRadarResult | null; error?: string };
 
 /** The buffers of a reply that can move to the other thread without a copy. */
 export function replyTransfer(reply: ComputeReply): Transferable[] {
@@ -74,15 +53,13 @@ export function replyTransfer(reply: ComputeReply): Transferable[] {
     if (m.displayField) out.push(m.displayField.buffer);
     if (m.displayFade && m.displayFade.buffer !== m.displayField?.buffer) out.push(m.displayFade.buffer);
   }
-  for (const p of reply.pictures ?? []) out.push(p.field.buffer);
   return [...new Set(out)];
 }
 
 /** Runs a job (in the worker, or here as the fallback). */
 export function runJob(job: Job): ComputeReply {
   try {
-    if (job.kind === 'compose') return { id: job.id, mosaic: composeWithAloft(job.req) };
-    return { id: job.id, pictures: nowcastPictures(job.req) };
+    return { id: job.id, mosaic: composeWithAloft(job.req) };
   } catch (e) {
     return { id: job.id, error: String(e) };
   }
@@ -135,10 +112,5 @@ export class RadarCompute {
   async compose(req: ComposeRequest): Promise<ProcessedRadarResult | null> {
     const r = await this.run({ kind: 'compose', req });
     return r.mosaic ?? null;
-  }
-
-  async nowcast(req: NowcastRequest): Promise<NowcastPicture[]> {
-    const r = await this.run({ kind: 'nowcast', req });
-    return r.pictures ?? [];
   }
 }

@@ -4,8 +4,6 @@ import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RadarService } from '../../core/services/radar.service';
 import { StormTracksService } from '../../core/services/storm-tracks.service';
-import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
-import { VerificationService } from '../../core/forecast/verification.service';
 
 const FRESHNESS_LABEL: Record<string, string> = {
   fresh: 'Fresh',
@@ -15,7 +13,7 @@ const FRESHNESS_LABEL: Record<string, string> = {
   syncing: 'Syncing',
 };
 
-/** The IMD radar is observed data (a nowcast of what is falling now), so its menu only needs the picture's freshness and the last-hour loop: every radar's PPI, CAZ and PPZ are always merged (the owner, 1 Nov 2026: no product buttons, no opacity). */
+/** The IMD radar is observed data (what is falling now), so its menu only needs the picture's freshness and the last-hour loop: every radar's PPI, CAZ and PPZ are always merged (the owner, 1 Nov 2026: no product buttons, no opacity). */
 @Component({
   selector: 'app-radar-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,8 +25,8 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <span class="live" aria-hidden="true"></span>
           <div class="heading">
             <strong>IMD radar</strong>
-            <span class="sub full-only" [attr.data-state]="guess() ? 'guess' : null">{{ guess() ?? 'Observed now, not a forecast' }}</span>
-            <span class="sub compact-only" [attr.data-state]="guess() ? 'guess' : freshness()">{{ guess() ?? compactStatus() }}</span>
+            <span class="sub full-only">Observed now, not a forecast</span>
+            <span class="sub compact-only" [attr.data-state]="freshness()">{{ compactStatus() }}</span>
           </div>
           <button type="button" class="icon-btn" (click)="refresh()" [disabled]="refreshing()" aria-label="Refresh radar" title="Refresh radar">
             <app-icon name="refresh" [size]="15" />
@@ -55,9 +53,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
           <span class="storm-text">Storm tracks <span class="storm-sub">{{ stormSummary() }}</span></span>
         </button>
 
-        @if (nowcastLine(); as line) {
-          <p class="nowcast full-only" role="status">{{ line }}</p>
-        }
 
         <div class="legend" role="img" [attr.aria-label]="legendTitle()">
           <div class="label full-only">{{ legendTitle() }}</div>
@@ -84,7 +79,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .icon-btn:disabled { opacity: 0.5; cursor: progress; }
     .icon-btn svg { transition: transform 0.2s; }
     .compact-only { display: none; }
-    .nowcast { margin: 8px 2px 0; font-size: var(--fs-xs); line-height: 1.35; color: var(--text-secondary); }
     .storm-toggle { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 10px; padding: 6px 10px; min-height: 36px; border-radius: 10px;
       border: 1px solid transparent; background: var(--surface-3); color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; text-align: left; }
     .storm-toggle:hover { background: var(--surface-4); }
@@ -95,7 +89,6 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .faint-icon::before, .faint-icon::after { content: ''; position: absolute; border-radius: 50%; }
     .faint-icon::before { left: 1px; top: 4px; width: 5px; height: 5px; background: rgba(58, 217, 228, 0.55); }    /* a faint echo */
     .faint-icon::after { right: 1px; top: 1px; width: 9px; height: 9px; background: rgba(250, 204, 21, 0.95); }     /* a firm one */
-    .sub[data-state='guess'] { color: var(--warn); font-weight: 600; }
     .sub[data-state='fresh'] { color: var(--ok); }
     .sub[data-state='recent'] { color: var(--warn); }
     .sub[data-state='stale'] { color: var(--warn); }
@@ -150,25 +143,6 @@ export class RadarPanelComponent {
   protected readonly storms = inject(StormTracksService);
   protected readonly frames = this.radar.history;
   protected readonly playing = this.radar.playing;
-  protected readonly nowcast = inject(RadarNowcastService);
-  private readonly verification = inject(VerificationService);
-  /** While a picture of the nowcast is on the map, the panel says it is a guess (empty otherwise). */
-  protected readonly guess = computed(() => {
-    const i = this.radar.leadIndex();
-    const frame = i === null ? null : this.radar.nowcast()[i];
-    return frame ? `Nowcast +${frame.leadMin} min: a guess, not observed` : null;
-  });
-  /** What the nowcast rests on, and how it did on the last hour (nothing until there is something to say). */
-  protected readonly nowcastLine = computed(() => {
-    const motion = this.nowcast.motion();
-    if (!motion || this.radar.nowcast().length === 0) return '';
-    const how = motion.source === 'radar' ? `rain followed over the last ${Math.round(motion.minutes ?? 30)} minutes` : 'no earlier picture yet: moved with the forecast wind';
-    const skill = this.nowcast.skill();
-    const check = skill ? ` On the last hour a ${skill.leadMin}-minute guess matched ${Math.round(skill.nowcast * 100)}% of the rain area (a picture that did not move: ${Math.round(skill.still * 100)}%).` : '';
-    const daily = this.verification.nowcast30();
-    const scored = daily ? ` Scored daily over the last ${daily.days} days, 30 minutes ahead: ${Math.round(daily.nowcast * 100)}% (a picture that did not move: ${Math.round(daily.still * 100)}%).` : '';
-    return `Nowcast: ${how}.${check}${scored}`;
-  });
   protected readonly stormSummary = computed(() => {
     const { count, source } = this.storms.summary();
     if (!this.storms.enabled()) return 'Off';
@@ -208,7 +182,6 @@ export class RadarPanelComponent {
   protected readonly legendTicks = computed(() => ['17', '28', '39', '50', '60+']);
 
   constructor() {
-    this.verification.load(); // the nowcast's daily score (a small file)
     // On larger screens the last hour is built as soon as the radar is shown (phones wait for the play button, since
     // the animations are several megabytes), and rebuilt every hour while the radar stays on (each new live picture joins it in between).
     effect(() => {

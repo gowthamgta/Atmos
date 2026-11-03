@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MARSHALL_PALMER_A, RAIN_DBZ, ZR_EXP, byteToDbz, dbzAt, lastHourRain, rainRate, sampleAll, sampleBox } from './radar-sample';
+import { MARSHALL_PALMER_A, ZR_EXP, byteToDbz, dbzAt, lastHourRain, rainRate } from './radar-sample';
 import type { RadarDisplayFrame } from './radar.service';
 
 /** A 101 x 101 frame over 10-11 N, 79-80 E: the west half `byte`, the east half empty. */
@@ -11,40 +11,10 @@ function frame(byte: number, timeMs = 1000): RadarDisplayFrame {
 
 const byteFor = (dbz: number) => Math.round((((dbz - 12) / 9.6) * 255) / 6);
 
-describe('radar sampling for the bot', () => {
+describe('radar bytes', () => {
   it('reads bytes as the colour scale does', () => {
     expect(byteToDbz(0)).toBeNull();
     expect(byteToDbz(byteFor(40))).toBeCloseTo(40, 0);
-  });
-
-  it('averages Z^(1/1.6) over a box, with the strongest echo and the wet share', () => {
-    const f = frame(byteFor(40));
-    const west = sampleBox(f, 10.5, 79.2, 0.1)!; // all in the echo
-    const dbz = byteToDbz(byteFor(40))!;
-    expect(west.zp).toBeCloseTo(Math.pow(10, dbz / 10) ** ZR_EXP, 0);
-    expect(west.max).toBeCloseTo(dbz, 1);
-    expect(west.wet).toBe(1);
-    const east = sampleBox(f, 10.5, 79.8, 0.1)!; // no echo
-    expect(east).toEqual({ zp: 0, max: 0, wet: 0 });
-    const across = sampleBox(f, 10.5, 79.5, 0.2)!; // half in it
-    expect(across.wet).toBeGreaterThan(0.3);
-    expect(across.wet).toBeLessThan(0.7);
-    expect(sampleBox(f, 20, 79.5, 0.2)).toBeNull(); // off the frame
-  });
-
-  it('counts only echoes of RAIN_DBZ or more as wet', () => {
-    expect(sampleBox(frame(byteFor(RAIN_DBZ - 5)), 10.5, 79.2, 0.1)!.wet).toBe(0);
-  });
-
-  it('samples the live picture and the nowcast 30 and 60 minutes ahead', () => {
-    const live = frame(byteFor(40), 5000);
-    const s = sampleAll(live, [{ ...frame(byteFor(30)), leadMin: 30 }, { ...frame(0), leadMin: 60 }], [[10.5, 79.2], [12, 79]], 0.1);
-    expect(s.timeMs).toBe(5000);
-    expect(s.live[0]!.wet).toBe(1);
-    expect(s.live[1]).toBeNull();
-    expect(s.n30[0]!.max).toBeCloseTo(byteToDbz(byteFor(30))!, 1);
-    expect(s.n60[0]!.zp).toBe(0);
-    expect(sampleAll(null, [], [[10.5, 79.2]], 0.1)).toEqual({ timeMs: null, live: [null], n30: [null], n60: [null] });
   });
 });
 

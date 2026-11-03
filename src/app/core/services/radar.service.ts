@@ -23,8 +23,7 @@ import { TrackingGrid, sampleToGrid, trackingGrid } from './storm-tracking';
 import { isPhone, radarMosaicMaxPx } from '../ui/device-profile';
 import { MAX_SCAN_AGE_MIN, MOSAIC_KM_PER_PX, isObservationEligible, type MosaicRing, ringKey } from './radar-mosaic';
 import { RadarCoverageService } from './radar-coverage.service';
-import { BOT_CAPTURE } from '../ui/bot-capture';
-import { MARSHALL_PALMER_A, RadarSamples, lastHourRain, sampleAll } from './radar-sample';
+import { MARSHALL_PALMER_A, lastHourRain } from './radar-sample';
 import { MapLayerService } from './map-layer.service';
 
 /** What the map shows for the radar: the mosaic's intensity (one byte per pixel) placed by its corners, and its time. */
@@ -36,13 +35,6 @@ export interface RadarDisplayFrame {
   height: number;
   coordinates: [[number, number], [number, number], [number, number], [number, number]];
   timeMs: number | null;
-}
-
-/** One step of the nowcast: the live picture slid ahead along the motion of the rain (see radar-nowcast.ts). It is a guess, not an observation. */
-export interface NowcastFrame extends RadarDisplayFrame {
-  timeMs: number;
-  /** Minutes after the live picture. */
-  leadMin: number;
 }
 
 /** One step of the one-hour loop: its picture and the intensity on the ~4 km storm-tracking grid. */
@@ -158,20 +150,10 @@ export class RadarService implements OnDestroy {
   /** Loop position: an index into `history`, or null for the live picture. */
   readonly playIndex = signal<number | null>(null);
   readonly playing = signal(false);
-  /** The nowcast, ten minutes apart from ten minutes ahead (set by RadarNowcastService); empty until it has been worked out. */
-  readonly nowcast = signal<NowcastFrame[]>([]);
-  /** Position in `nowcast` while one of its pictures is on the map, else null (`playIndex` is the loop's; both null is the live picture). */
-  readonly leadIndex = signal<number | null>(null);
-  /** Where the radar's clock is, as one number along the whole strip: the loop's frames, then the live picture, then the nowcast. */
-  readonly cursor = computed(() => {
-    const h = this.history().length;
-    const p = this.playIndex();
-    if (p !== null) return p;
-    const l = this.leadIndex();
-    return l !== null ? h + 1 + l : h;
-  });
-  /** The last position of the strip (the live picture when there is no nowcast). */
-  readonly cursorMax = computed(() => this.history().length + this.nowcast().length);
+  /** Where the radar's clock is, as one number along the strip: the loop's frames, then the live picture. */
+  readonly cursor = computed(() => this.playIndex() ?? this.history().length);
+  /** The last position of the strip: the live picture. */
+  readonly cursorMax = computed(() => this.history().length);
   /** IMD publishes animations for the max-reflectivity (CAZ) and rain-rate (SRI) products only. */
   readonly historyAvailable = computed(() => animationFile('x', this.activeProduct()) !== null);
   /** The live picture as it is drawn (every echo, nothing filtered out), or null when there is none or even its newest scan is too old to show. */
@@ -190,11 +172,8 @@ export class RadarService implements OnDestroy {
         }
       : null;
   });
-  /** The picture on the map: a step of the nowcast or a loop frame while one is chosen, otherwise the live composite. */
+  /** The picture on the map: a loop frame while one is chosen, otherwise the live composite. */
   readonly displayed = computed<RadarDisplayFrame | null>(() => {
-    const ahead = this.leadIndex();
-    const guess = ahead === null ? null : this.nowcast()[ahead];
-    if (guess) return guess;
     const i = this.playIndex();
     const frame = i === null ? null : this.history()[i];
     if (frame) return frame;
@@ -271,15 +250,12 @@ export class RadarService implements OnDestroy {
   /** Decodes the pictures and builds their intensity fields in web workers (see radar-processor.ts). */
   private readonly processor = new RadarProcessor();
 
-  /** Something off the radar layer needs the live picture (the place card's rain line, through RadarNowcastService.wanted). */
-  readonly liveWanted = signal(false);
   private readonly layers = inject(MapLayerService);
   /**
-   * Whether the radars are fetched at all: while the radar is on the map, or something else needs its live picture. With 45 radars (and
-   * three pictures each in the stack) fetching, decoding and composing them every minute slowed the forecast maps down while the radar
-   * was not even shown (the owner, 24 Oct 2026: "the numerical models are taking a lot of time to load").
+   * Whether the radars are fetched at all: only while the radar is on the map. Fetching, decoding and composing them every minute slowed the
+   * forecast maps down while the radar was not even shown (the owner, 24 Oct 2026: "the numerical models are taking a lot of time to load").
    */
-  readonly needed = computed(() => BOT_CAPTURE || this.liveWanted() || this.layers.layers().some(l => l.id === 'radar' && l.active));
+  readonly needed = computed(() => this.layers.layers().some(l => l.id === 'radar' && l.active));
 
   constructor() {
     // the first fetch, and a fresh one whenever the radar is wanted again (its pictures may be old by then)
@@ -293,11 +269,6 @@ export class RadarService implements OnDestroy {
       this.compositeMosaic();
       untracked(() => this.rollHistory());
     });
-    // the nowcast bot reads the radar over the rain gauges' cells from here (see radar-sample.ts); nothing of it runs for a visitor
-    if (BOT_CAPTURE) {
-      (window as unknown as { __atmosSample?: (points: [number, number][], halfDeg: number) => RadarSamples }).__atmosSample = (points, halfDeg) =>
-        sampleAll(this.liveFrame(), this.nowcast(), points, halfDeg);
-    }
   }
 
   /** The live picture before the newest, kept so it can join the loop when the next one arrives. */
@@ -566,7 +537,7 @@ export class RadarService implements OnDestroy {
         const displayField = new Uint8Array(binBuf, 0, totalPx);
         const displayFade = binBuf.byteLength >= totalPx * 2 ? new Uint8Array(binBuf, totalPx, totalPx) : undefined;
 
-        // Reconstruct continuous Float32Array intensity field (0..6.0) for liveTrack and nowcast rain-sampling
+        // Reconstruct continuous Float32Array intensity field (0..6.0) for liveTrack (the storm tracks)
         const field = new Float32Array(totalPx);
         for (let i = 0; i < totalPx; i++) {
           field[i] = (displayField[i] / 255) * 6.0;
@@ -1022,7 +993,7 @@ export class RadarService implements OnDestroy {
   /** Resolution of the composite: 0.5 km per pixel, capped so a phone's GPU can take it. */
   private static readonly MOSAIC_MAX_PX = radarMosaicMaxPx(isPhone());
 
-  /** The mosaic and the nowcast pictures are made in a worker (radar-compute.ts): they took up to a second of a phone's main thread. */
+  /** The mosaic is made in a worker (radar-compute.ts): it took up to a second of a phone's main thread. */
   readonly compute = new RadarCompute();
 
   /** The mosaic of the radars that are on (with rain aloft see-through), made off the main thread. */
@@ -1234,35 +1205,23 @@ export class RadarService implements OnDestroy {
     this.historyLoading.set(false);
     this.pause();
     this.playIndex.set(null);
-    this.leadIndex.set(null);
-    this.nowcast.set([]);
     this.replaceHistory([]);
   }
 
   /** Show a loop frame (or null for live). */
   setPlayIndex(i: number | null): void {
     const n = this.history().length;
-    this.leadIndex.set(null);
     this.playIndex.set(i === null || n === 0 ? null : Math.min(Math.max(Math.round(i), 0), n - 1));
   }
 
-  /** Put the radar's clock at a position of the strip: a loop frame, the live picture (the position after the last loop frame) or a nowcast step. */
+  /** Put the radar's clock at a position of the strip: a loop frame, or the live picture (the position after the last loop frame). */
   setCursor(position: number): void {
     const h = this.history().length;
-    const i = Math.min(Math.max(Math.round(position), 0), h + this.nowcast().length);
-    if (i < h) {
-      this.leadIndex.set(null);
-      this.playIndex.set(i);
-    } else if (i === h) {
-      this.leadIndex.set(null);
-      this.playIndex.set(null);
-    } else {
-      this.playIndex.set(null);
-      this.leadIndex.set(i - h - 1);
-    }
+    const i = Math.min(Math.max(Math.round(position), 0), h);
+    this.playIndex.set(i < h ? i : null);
   }
 
-  /** Play the last hour, the live picture and the nowcast; it holds on the last picture a moment before starting again. */
+  /** Play the last hour and the live picture; it holds on the live picture a moment before starting again. */
   async togglePlay(): Promise<void> {
     if (this.playing()) {
       this.pause();
@@ -1311,7 +1270,7 @@ export class RadarService implements OnDestroy {
 
 
   // the readout under the pointer (see radar-inspector.ts)
-  /** Each radar's a of Z = a R^1.6 where the gauges have fitted one (public/data/verification/radar.json, verify_radar.py); empty until then. */
+  /** Each radar's a of Z = a R^1.6 as last fitted to the Tamil Nadu gauges (public/data/verification/radar.json); Marshall-Palmer's where there is none. */
   private readonly zrA = signal<Record<string, number>>({});
   private zrAsked = false;
 
@@ -1334,7 +1293,7 @@ export class RadarService implements OnDestroy {
     const frames = live ? [...this.history(), live] : [];
     const input = {
       zrA: this.zrA(),
-      lastHourMm: (stationId: string) => (this.playIndex() === null && this.leadIndex() === null ? lastHourRain(frames, lat, lng, this.zrA()[stationId] ?? MARSHALL_PALMER_A) : null),
+      lastHourMm: (stationId: string) => (this.playIndex() === null ? lastHourRain(frames, lat, lng, this.zrA()[stationId] ?? MARSHALL_PALMER_A) : null),
       shown: this.displayed(),
       allResults: this.allRadarResults(),
       stations: this.stations,

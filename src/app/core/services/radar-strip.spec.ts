@@ -1,16 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProcessedRadarResult } from '../domain/models/radar.model';
-import { NowcastFrame, RadarHistoryFrame, RadarService } from './radar.service';
+import { RadarHistoryFrame, RadarService } from './radar.service';
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 9, 13, 5, 0);
 
 function frame(timeMs: number, tag = 1): RadarHistoryFrame {
   return { field: new Uint8Array(16).fill(tag), width: 4, height: 4, coordinates: [[76, 9], [77, 9], [77, 8], [76, 8]], timeMs, track: new Float32Array(4) };
-}
-function guess(leadMin: number, tag = 9): NowcastFrame {
-  return { field: new Uint8Array(4).fill(tag), width: 2, height: 2, coordinates: [[76, 9], [77, 9], [77, 8], [76, 8]], timeMs: T0 + leadMin * MIN, leadMin };
 }
 function mosaic(timeMs: number, tag = 1): ProcessedRadarResult {
   return {
@@ -40,87 +37,62 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('the strip of the last hour, the live picture and the nowcast', () => {
-  it('numbers the pictures from the oldest to the last step ahead, with the live picture in between', () => {
+describe('the strip of the last hour and the live picture', () => {
+  it('numbers the pictures from the oldest to the live picture', () => {
     const svc = service();
     svc.history.set([frame(T0 - 30 * MIN), frame(T0 - 20 * MIN), frame(T0 - 10 * MIN)]);
-    svc.nowcast.set([guess(10), guess(20)]);
-    expect(svc.cursorMax()).toBe(5);
+    expect(svc.cursorMax()).toBe(3);
     expect(svc.cursor()).toBe(3);                                   // the live picture, after the three of the loop
 
     svc.setCursor(0);
-    expect([svc.playIndex(), svc.leadIndex(), svc.cursor()]).toEqual([0, null, 0]);
+    expect([svc.playIndex(), svc.cursor()]).toEqual([0, 0]);
     svc.setCursor(3);
-    expect([svc.playIndex(), svc.leadIndex(), svc.cursor()]).toEqual([null, null, 3]);
-    svc.setCursor(4);
-    expect([svc.playIndex(), svc.leadIndex(), svc.cursor()]).toEqual([null, 0, 4]);
-    svc.setCursor(5);
-    expect([svc.playIndex(), svc.leadIndex(), svc.cursor()]).toEqual([null, 1, 5]);
+    expect([svc.playIndex(), svc.cursor()]).toEqual([null, 3]);
     svc.setCursor(99);
-    expect(svc.cursor()).toBe(5);
+    expect(svc.cursor()).toBe(3);
     svc.setCursor(-4);
     expect(svc.cursor()).toBe(0);
   });
 
-  it('shows the picture the clock is at: a step of the nowcast, a loop frame, or the live picture', () => {
+  it('shows the picture the clock is at: a loop frame, or the live picture', () => {
     const svc = service();
     svc.compositeMosaic.set(mosaic(T0, 7));
     svc.history.set([frame(T0 - 20 * MIN, 2), frame(T0 - 10 * MIN, 3)]);
-    svc.nowcast.set([guess(10, 9), guess(20, 8)]);
     expect(svc.displayed()?.field[0]).toBe(7);                      // live
     svc.setCursor(0);
     expect(svc.displayed()?.field[0]).toBe(2);
-    svc.setCursor(3);
-    expect(svc.displayed()?.field[0]).toBe(9);
-    expect(svc.displayed()?.timeMs).toBe(T0 + 10 * MIN);
-    svc.setCursor(4);
-    expect(svc.displayed()?.field[0]).toBe(8);
-  });
-
-  it('leaves the nowcast when a loop frame is chosen, and the loop when a step ahead is', () => {
-    const svc = service();
-    svc.history.set([frame(T0 - 10 * MIN)]);
-    svc.nowcast.set([guess(10)]);
-    svc.setCursor(2);
-    expect(svc.leadIndex()).toBe(0);
-    svc.setPlayIndex(0);
-    expect([svc.playIndex(), svc.leadIndex()]).toEqual([0, null]);
-    svc.setCursor(2);
-    expect([svc.playIndex(), svc.leadIndex()]).toEqual([null, 0]);
+    svc.setCursor(1);
+    expect(svc.displayed()?.field[0]).toBe(3);
     svc.setPlayIndex(null);
-    expect([svc.playIndex(), svc.leadIndex()]).toEqual([null, null]);
+    expect(svc.displayed()?.field[0]).toBe(7);
   });
 
-  it('forgets the nowcast along with the loop when the product changes', () => {
+  it('forgets the loop when the product changes', () => {
     const svc = service();
     svc.history.set([frame(T0 - 10 * MIN)]);
-    svc.nowcast.set([guess(10)]);
-    svc.setCursor(2);
+    svc.setCursor(0);
     svc.clearHistory();
     expect(svc.history()).toEqual([]);
-    expect(svc.nowcast()).toEqual([]);
-    expect([svc.playIndex(), svc.leadIndex(), svc.cursorMax()]).toEqual([null, null, 0]);
+    expect([svc.playIndex(), svc.cursorMax()]).toEqual([null, 0]);
   });
 
-  it('plays the whole strip from the oldest picture to the last guess, holds there, and starts again', async () => {
+  it('plays the strip from the oldest picture to the live one, holds there, and starts again', async () => {
     const svc = service();
     svc.history.set([frame(T0 - 20 * MIN), frame(T0 - 10 * MIN)]);
-    svc.nowcast.set([guess(10), guess(20)]);
     await svc.togglePlay();                                         // from the live picture it starts at the beginning
     const seen = [svc.cursor()];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 6; i++) {
       vi.advanceTimersByTime(700);
       seen.push(svc.cursor());
     }
     svc.pause();
-    expect(seen).toEqual([0, 1, 2, 3, 4, 4, 0, 1, 2]);              // 0 to 4, held on the last guess for one more tick, then round again
+    expect(seen).toEqual([0, 1, 2, 2, 0, 1, 2]);                    // 0 to 2 (live), held for one more tick, then round again
     expect(svc.playing()).toBe(false);
   });
 
   it('does not play with fewer than two loop frames', async () => {
     const svc = service();
     svc.history.set([frame(T0 - 10 * MIN)]);
-    svc.nowcast.set([guess(10)]);
     await svc.togglePlay();
     expect(svc.playing()).toBe(false);
   });

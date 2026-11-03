@@ -10,7 +10,6 @@ import { currentIcon, temperatureBar } from '../../core/forecast/outlook';
 import { runLines } from '../../core/forecast/model-runs';
 import { ModelRunsService } from '../../core/forecast/model-runs.service';
 import { MeteogramService } from '../../core/meteogram/meteogram.service';
-import { RainEtaService } from '../../core/services/rain-eta.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { PanelService } from '../../core/ui/panel.service';
 import { UnitsService } from '../../core/units/units.service';
@@ -82,13 +81,6 @@ export function firstNumber(text: string | undefined): number | null {
                 @if (humidity(); as h) { <span>Humidity {{ h }}</span> }
               </div>
             </div>
-            @if (rainEta.line(); as rl) {
-              <div class="rain-eta" [class.wet]="rl.wet" role="status" [title]="rl.detail">
-                <app-icon name="rain" [size]="16" />
-                <span class="re-text">{{ rl.text }}</span>
-                <span class="re-detail">{{ rl.detail }}</span>
-              </div>
-            }
             @if (activeLayerReadout(); as lr) {
               <div class="layer-readout" [class.stale]="inspector.stale()"><span>{{ lr.label }}</span><strong [title]="inspector.stale() ? 'Working out the new value' : ''">{{ inspector.stale() ? '…' : lr.text }}</strong></div>
             }
@@ -190,10 +182,6 @@ export function firstNumber(text: string | undefined): number | null {
     .facts { display: flex; flex-direction: column; gap: 1px; margin-left: var(--sp-1); font-size: var(--fs-m); color: var(--text-secondary); min-width: 0; }
     .facts span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* rain on the radar: when it reaches the place or stops there */
-    .rain-eta { display: grid; grid-template-columns: auto 1fr; column-gap: var(--sp-2); align-items: center; margin: var(--sp-2) 0 2px; padding: 6px 10px; border-radius: var(--radius-m); background: var(--surface-3); color: var(--text-secondary); font-size: var(--fs-m); }
-    .rain-eta.wet { background: var(--accent-soft); color: var(--text-primary); }
-    .re-text { font-weight: var(--fw-medium); }
-    .re-detail { grid-column: 2; font-size: var(--fs-xs); line-height: 1.3; color: var(--text-muted); }
     .layer-readout { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 4px 0 2px; padding: 4px 10px; border-radius: var(--radius-s); background: var(--accent-soft); font-size: var(--fs-s); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
     .layer-readout strong { color: var(--text-primary); font-weight: var(--fw-strong); }
     .when { margin: 2px 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); }
@@ -260,7 +248,6 @@ export class PlaceCardComponent {
   protected readonly inspector = inject(ForecastInspectorService);
   protected readonly catalog = inject(ForecastCatalogService);
   protected readonly outlook = inject(OutlookService);
-  protected readonly rainEta = inject(RainEtaService);
   protected readonly meteogram = inject(MeteogramService);
   protected readonly panels = inject(PanelService);
   private readonly state = inject(ForecastStateService);

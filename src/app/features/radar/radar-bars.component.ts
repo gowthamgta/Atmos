@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject } from '@angular/core';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { RADAR_COLOR_STOPS } from '../../core/services/radar-field';
-import { RadarNowcastService } from '../../core/services/radar-nowcast.service';
 import { RadarService } from '../../core/services/radar.service';
 import { IconComponent } from '../../shared/icon.component';
 import { followDrag, fractionAlong } from '../../shared/pointer-drag';
@@ -29,8 +28,7 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
 
 /**
  * The bar along the bottom while the radar is on, as the forecast layers have: a play button, then the time as a strip of pictures, the last hour
- * of radar to the left of "Now" and the nowcast (the radar slid ahead along the motion of the rain) to the right, in stripes so a guess is never
- * mistaken for what the radar saw; and under it the colour bar. Drag the amber line or its time badge, click the strip or use the arrow keys.
+ * of radar up to "Now"; and under it the colour bar. Drag the amber line or its time badge, click the strip or use the arrow keys.
  */
 @Component({
   selector: 'app-radar-bars',
@@ -39,24 +37,21 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
   template: `
     @if (active()) {
       <section class="bar" aria-label="Radar time">
-        <button type="button" class="play" (click)="radar.togglePlay()" [disabled]="loading() && notches().length < 2" [attr.aria-label]="radar.playing() ? 'Pause' : 'Play the last hour and the nowcast'" [attr.aria-pressed]="radar.playing()" [title]="radar.playing() ? 'Pause (Space)' : 'Play the last hour and the nowcast (Space)'">
+        <button type="button" class="play" (click)="radar.togglePlay()" [disabled]="loading() && notches().length < 2" [attr.aria-label]="radar.playing() ? 'Pause' : 'Play the last hour'" [attr.aria-pressed]="radar.playing()" [title]="radar.playing() ? 'Pause (Space)' : 'Play the last hour (Space)'">
           <app-icon [name]="radar.playing() ? 'pause' : 'play'" [size]="26" />
         </button>
 
         <div class="track">
           <div class="inner" #inner>
             <div class="zone observed" [style.width.%]="nowPct()" aria-hidden="true"><span>{{ notches().length < 2 ? '' : 'Observed' }}</span></div>
-            @if (ahead() > 0) {
-              <div class="zone guess" [style.left.%]="nowPct()" [style.width.%]="100 - nowPct()" aria-hidden="true"><span>Nowcast</span></div>
-            }
             @for (n of notches(); track n.i) {
-              <span class="notch" [class.now]="n.now" [class.guess]="n.guess" [class.odd]="n.odd" [class.third]="n.third" [style.left.%]="n.pct" aria-hidden="true"><span class="lbl">{{ n.label }}</span></span>
+              <span class="notch" [class.now]="n.now" [class.odd]="n.odd" [class.third]="n.third" [style.left.%]="n.pct" aria-hidden="true"><span class="lbl">{{ n.label }}</span></span>
             }
-            <div class="playhead" [class.guess]="isGuess()" [style.left.%]="headPct()" aria-hidden="true">
+            <div class="playhead" [style.left.%]="headPct()" aria-hidden="true">
               <span class="tip" (pointerdown)="beginPlayheadDrag($event, inner)">{{ tip() }}</span>
             </div>
             @if (notches().length > 1) {
-              <input type="range" aria-label="Radar time" [attr.aria-valuetext]="tipFull()" min="0" [max]="radar.cursorMax()" step="1" [value]="radar.cursor()" (input)="onScrub($event)" />
+              <input type="range" aria-label="Radar time" [attr.aria-valuetext]="tip()" min="0" [max]="radar.cursorMax()" step="1" [value]="radar.cursor()" (input)="onScrub($event)" />
             }
           </div>
           @if (loading()) {
@@ -90,20 +85,16 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
     .inner { position: absolute; inset: 0 22px; }
     .zone { position: absolute; top: 0; bottom: 0; display: flex; align-items: flex-start; padding: 3px 6px 0; font-size: var(--fs-xs); font-weight: var(--fw-strong); letter-spacing: var(--ls-caps); text-transform: uppercase; color: var(--text-muted); pointer-events: none; overflow: hidden; }
     .zone.observed { left: 0; background: rgba(255, 255, 255, 0.07); }
-    .zone.guess { background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0 6px, rgba(255, 255, 255, 0.04) 6px 12px); justify-content: flex-end; }
     :host-context(:root[data-theme='light']) .zone.observed { background: rgba(20, 40, 70, 0.05); }
-    :host-context(:root[data-theme='light']) .zone.guess { background: repeating-linear-gradient(135deg, rgba(20, 40, 70, 0.14) 0 6px, rgba(20, 40, 70, 0.04) 6px 12px); }
     .notch { position: absolute; bottom: 0; width: 1px; height: 8px; margin-left: -0.5px; background: var(--line-strong); pointer-events: none; }
     .notch.now { height: 100%; width: 2px; margin-left: -1px; background: var(--text-secondary); opacity: 0.55; }
     .notch .lbl { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font-size: var(--fs-s); font-weight: var(--fw-medium); color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; text-shadow: var(--text-halo); }
     .notch.now .lbl { bottom: auto; top: 4px; left: 6px; transform: none; font-weight: var(--fw-strong); color: var(--text-primary); }
-    .notch.guess .lbl { font-style: italic; opacity: 0.85; }
     @container (max-width: 560px) { .notch.odd:not(.now) .lbl { display: none; } }
     @container (max-width: 330px) { .notch.third:not(.now) .lbl { display: none; } }
     .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 2; }
     .playhead .tip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 4px 12px 3px; border-radius: 9px 9px 0 0; background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; box-shadow: 0 0 4px rgba(0, 0, 0, 0.6); pointer-events: auto; cursor: grab; touch-action: none; user-select: none; }
     .playhead .tip:active { cursor: grabbing; }
-    .playhead.guess .tip { background: repeating-linear-gradient(135deg, var(--accent) 0 8px, color-mix(in srgb, var(--accent) 80%, white) 8px 16px); }
     input[type=range] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; touch-action: none; z-index: 3; }
     .track:has(input:focus-visible) { outline: 2px solid var(--accent-strong); outline-offset: -2px; }
     .note { position: absolute; inset: auto 22px 3px 22px; text-align: center; font-size: var(--fs-s); color: var(--text-secondary); pointer-events: none; }
@@ -132,8 +123,6 @@ const TICKS = [20, 30, 40, 50, 60].map(dbz => ({ label: String(dbz), pos: (((dbz
 export class RadarBarsComponent {
   protected readonly radar = inject(RadarService);
   private readonly layers = inject(MapLayerService);
-  /** Instantiated here so the nowcast is worked out whenever the bar is on. */
-  protected readonly nowcast = inject(RadarNowcastService);
 
   protected readonly gradient = radarGradient();
   protected readonly ticks = TICKS;
@@ -141,12 +130,11 @@ export class RadarBarsComponent {
   protected readonly loading = this.radar.historyLoading;
   protected readonly percent = computed(() => Math.round(this.radar.historyProgress() * 100));
 
-  /** The loop's pictures, the live picture and the nowcast steps in a row: one notch each. */
+  /** The loop's pictures and the live picture in a row: one notch each. */
   protected readonly notches = computed(() => {
     const h = this.radar.history();
-    const a = this.radar.nowcast();
     const live = this.radar.compositeMosaic()?.timing?.epochMs ?? null;
-    const times = [...h.map(f => f.timeMs), live, ...a.map(f => f.timeMs)];
+    const times = [...h.map(f => f.timeMs), live];
     const last = times.length - 1;
     return times.flatMap((t, i) => {
       if (t === null) return [];
@@ -156,15 +144,12 @@ export class RadarBarsComponent {
         i,
         pct: last === 0 ? 100 : (i / last) * 100,
         now,
-        guess: rel > 0,
         odd: rel % 2 !== 0,
         third: rel % 3 !== 0,
         label: now ? 'Now' : istClock(t),
       }];
     });
   });
-  /** How many nowcast steps there are. */
-  protected readonly ahead = computed(() => this.radar.nowcast().length);
   /** Where "now" is along the strip, in percent. */
   protected readonly nowPct = computed(() => {
     const total = this.radar.cursorMax();
@@ -174,12 +159,9 @@ export class RadarBarsComponent {
     const total = this.radar.cursorMax();
     return total === 0 ? 100 : (this.radar.cursor() / total) * 100;
   });
-  protected readonly isGuess = computed(() => this.radar.leadIndex() !== null);
 
   /** The time of the picture on the map, ms. */
   private readonly shownMs = computed<number | null>(() => {
-    const li = this.radar.leadIndex();
-    if (li !== null) return this.radar.nowcast()[li]?.timeMs ?? null;
     const pi = this.radar.playIndex();
     return pi !== null ? (this.radar.history()[pi]?.timeMs ?? null) : (this.radar.compositeMosaic()?.timing?.epochMs ?? null);
   });
@@ -192,10 +174,9 @@ export class RadarBarsComponent {
   protected readonly tip = computed(() => {
     const t = this.shownMs();
     if (t === null) return 'Live';
-    if (this.radar.playIndex() === null && this.radar.leadIndex() === null) return `Live ${istClock(t)}`;
+    if (this.radar.playIndex() === null) return `Live ${istClock(t)}`;
     return `${istClock(t)} · ${this.offset()}`;
   });
-  protected readonly tipFull = computed(() => (this.isGuess() ? `Nowcast, ${this.tip()}` : this.tip()));
 
   protected onScrub(event: Event): void {
     this.radar.pause();

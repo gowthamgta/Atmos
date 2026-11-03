@@ -81,7 +81,7 @@ fingerprint only together with this file, on the owner's request.
   is removed, cloud or no cloud; in a patch only when steady cells are at least half of it (the whole patch from 80%), so moving rain with a
   steady spot in it stays. Checked on IMD's 3-hour loops of Karaikal and Chennai: only the clutter at Chennai's radar and on the hills west
   of Karaikal is that steady; no rain band came near.
-- **The radars are fetched only while the radar is on the map** (or the place card needs the rain nowcast): with 45 radars, fetching
+- **The radars are fetched only while the radar is on the map**: with 45 radars, fetching
   and composing them every minute slowed the forecast maps down while the radar was not shown (the owner, 24 Oct 2026).
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
 - **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the unified all-India composite served directly, station chips and product mode buttons are no longer displayed in the radar menu. The All/CAZ/PPZ/PPI buttons were back; removed again with the radar's
@@ -132,11 +132,12 @@ fingerprint only together with this file, on the owner's request.
 
 ## Radar rain and alerts
 
-- **The rain rate in the radar readout uses each radar's Z-R relation fitted to the Tamil Nadu gauges** (verify_radar.py, daily, kept
-  only when it beats Marshall-Palmer on held-back days; until then Z = 200 R^1.6). With the loop in, it also gives the last hour's radar rain.
-- **The radar nowcast is scored daily** against the pictures that followed, beside a picture that does not move (radar panel).
-- **No nowcast bot** (the owner, 1 Nov 2026): the bot that posted storms to Telegram, Discord and X, and the owner's own rain alerts, were
-  removed; `nowcast.yml` only keeps the radar over the gauge cells for the daily verification (bot/README.md).
+- **The rain rate in the radar readout uses each radar's Z-R relation as last fitted to the Tamil Nadu gauges** (public/data/verification/
+  radar.json, kept as it was when the fitting stopped; Z = 200 R^1.6 for a radar without one). With the loop in, it also gives the last
+  hour's radar rain.
+- **No nowcast at all** (the owner, 3 Nov 2026: "Remove ... Nowcast workflow"; after the bot that posted storms, 1 Nov): the radar slid ahead
+  in the time bar, its line and score in the radar panel, the place card's rain line, nowcast.yml and its radar sampler (bot/), and the
+  daily radar scoring that read the sampler (verify_radar.py) are gone. The radar is fetched only while it is on the map.
 - **On phones the radar animations are not downloaded in the background** (about 8 MB): storm motion from the wind until live pictures
   or Play give the radar's own (measured with e2e/perf.mjs).
 - **The satellite loop moves the clouds between pictures** (motion from block matching) instead of cross-fading; the pictures' own
