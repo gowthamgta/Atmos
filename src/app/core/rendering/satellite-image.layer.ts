@@ -4,14 +4,6 @@ import { GeoBounds, SATELLITE_BOUNDS } from '../satellite/satellite.config';
 import type { FlowField } from '../satellite/satellite-flow';
 import { PendingProgram } from './gl-program';
 
-/**
- * The owner's look of 3 Nov 2026 ("increase the sharpness in our satellite image and do some reduce saturation"), for the RGB (here) and
- * the infrared and other data pictures (satellite-data.layer.ts) alike: an unsharp mask of this strength (the picture plus this much of its
- * difference from a blur one picture pixel wide), and the colour taken this far towards its own grey (1: as made, 0: grey).
- */
-export const SATELLITE_SHARPEN = 1.0;
-export const SATELLITE_SATURATION = 0.75;
-
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
 in vec2 a_pos;
@@ -96,21 +88,12 @@ vec4 around(sampler2D tex, vec2 px, float r) {
                + premultiplied(textureLod(tex, (px + vec2(r, -r)) * inv, 0.0)) + premultiplied(textureLod(tex, (px + vec2(-r, -r)) * inv, 0.0)));
 }
 
-// Sharper (SATELLITE_SHARPEN): the picture plus some of its difference from a blur a picture pixel wide (an unsharp mask), its colour
-// kept within its opacity
-vec4 sharpened(sampler2D tex, vec4 c, vec2 px) {
-  vec4 s = c + ${SATELLITE_SHARPEN.toFixed(3)} * (c - around(tex, px, 1.0));
-  s.a = clamp(s.a, 0.0, 1.0);
-  s.rgb = clamp(s.rgb, vec3(0.0), vec3(s.a));
-  return s;
-}
-
 // Magnified: the colour is softened a little (so the picture's pixels do not show as blocks), and then the
 // cloud's edge (its opacity) is softened, so the boundary of a cloud is a smooth curve, not a staircase. Colour stays premultiplied
 // and never exceeds the opacity.
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
-  if (!magnifying) return sharpened(tex, premultiplied(textureGrad(tex, uv, gx, gy)), px); // explicit gradients: safe inside a per-pixel branch
-  vec4 c = sharpened(tex, bicubic(tex, px), px);
+  if (!magnifying) return premultiplied(textureGrad(tex, uv, gx, gy)); // explicit gradients: safe inside a per-pixel branch
+  vec4 c = bicubic(tex, px);
   if (c.a <= 0.001 && around(tex, px, 1.0).a <= 0.001) return c; // clear ground, well away from any cloud
   c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5 * u_soften);
   c.a = clamp(mix(c.a, around(tex, px, 0.5).a, 0.6 * u_soften), 0.0, 1.0);
@@ -156,7 +139,6 @@ void main() {
   c *= smoothstep(0.0, 6.0, min(e.x, e.y));
   if (u_feather > 0.0) c *= edgeMask(v_merc, u_box, u_feather);
   if (u_holeFeather > 0.0) c *= 1.0 - edgeMask(v_merc, u_hole, u_holeFeather);
-  c.rgb = mix(vec3(dot(c.rgb, vec3(0.2126, 0.7152, 0.0722))), c.rgb, ${SATELLITE_SATURATION.toFixed(3)}); // a little less saturated
   outColor = c * u_opacity;
 }`;
 

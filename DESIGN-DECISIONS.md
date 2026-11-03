@@ -26,11 +26,6 @@ fingerprint only together with this file, on the owner's request.
 - **3D clouds** (the panel's Flat / 3D clouds switch, off by default, 22 Oct): the live frame raised into lit cloud volumes over a tilted map
   (core/satellite/cloud-field.ts, core/rendering/cloud-volume.layer.ts). Tops from the infrared temperature, thickness from the HRV
   brightness, bases by cloud kind; heights True / x3 / x6 (x3 default). The flat picture and its agreed colours are unchanged.
-- **Sharper and a little less saturated on screen** (the owner, 3 Nov 2026: "increase the sharpness in our satellite image and do some
-  reduce saturation"): every flat satellite picture (our RGB, the infrared and the other data pictures, the HD window) is drawn with an
-  unsharp mask (`SATELLITE_SHARPEN` 1.0, a blur one picture pixel wide) and its colour taken a quarter of the way to grey
-  (`SATELLITE_SATURATION` 0.75), in the shaders (satellite-image.layer.ts, satellite-data.layer.ts); the pictures and the agreed colour
-  tables themselves are unchanged.
 - **The HD 1.25 km window loads by default** on desktop and phone (b4afa62), and the **newest frame is shown first** (2b73678).
 - **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
   (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to
