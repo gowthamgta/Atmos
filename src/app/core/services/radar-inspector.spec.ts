@@ -25,7 +25,7 @@ describe('radar inspector', () => {
   it('reads the echo under the pointer with each radar beam over the place', () => {
     const info = inspectRadar(input(frame(byteFor(40))), 11.75, 78.95, { x: 5, y: 6 })!;
     expect(info.dbz).toBe(40);
-    expect(info.label).toBe('Heavy Rain (40 dBZ)');
+    expect(info.label).toBe('Heavy Rain');
     expect(info.x).toBe(5);
     expect(info.beams.map(b => b.name)).toEqual(['Karaikal', 'Chennai']);
   });
@@ -33,7 +33,7 @@ describe('radar inspector', () => {
   it('calls a faint echo seen only from high up rain aloft', () => {
     // with Karaikal off, only Chennai's beam (about 4.4 km up) sees the place
     const info = inspectRadar(input(frame(byteFor(20)), ['karaikal']), 11.75, 78.95, { x: 0, y: 0 })!;
-    expect(info.label).toBe('Rain aloft (20 dBZ): may not reach the ground');
+    expect(info.label).toBe('Rain aloft: may not reach the ground');
   });
 
   it('shows the beam heights where there is no echo, and nothing outside every radar', () => {

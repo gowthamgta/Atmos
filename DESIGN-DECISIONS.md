@@ -94,7 +94,9 @@ fingerprint only together with this file, on the owner's request.
 - **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the unified all-India composite served directly, station chips and product mode buttons are no longer displayed in the radar menu. The All/CAZ/PPZ/PPI buttons were back; removed again with the radar's
   opacity slider (the owner, 1 Nov 2026: "no need the radar menus as we are by default merging all those, and remove the opacity"): the
   radar is always the merged stack at full opacity.
-- **Clicking shows the radar tooltip** (the owner, 25 Oct 2026: "The radar tooltip only enable when users click on the location or else no need to show and if user clicked again somewhere no need to show the tooltip"): the dBZ, rain rate and beam heights are shown on click, and hidden when clicking again anywhere; no longer triggered by mouse hover.
+- **Clicking shows the radar tooltip** (the owner, 25 Oct 2026; trimmed 3 Nov: "remove the unwanted tooltip data from radar layer"): the
+  dBZ, the rain rate (and the last hour's rain) and the kind of rain ("Rain aloft" where only a high beam sees it); no coordinates and no
+  table of each radar's beam heights. Hidden when clicking again anywhere; not on hover.
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
 - **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45
   radars (Sriharikota removed on owner request, 25 Oct 2026; Pallikaranai, 1 Nov 2026: "remove the pallikaranai radar"), Karaikal and Chennai first. Kochi, Thiruvananthapuram and Mangaluru as measured before; every other

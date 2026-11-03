@@ -168,7 +168,7 @@ export function inspectRadar(input: RadarInspectInput, lat: number, lng: number,
       lat,
       lng,
       dbz,
-      label: aloft ? `Rain aloft (${dbz} dBZ): may not reach the ground` : `${label} (${dbz} dBZ)`,
+      label: aloft ? 'Rain aloft: may not reach the ground' : label,   // the dBZ is on the line above
       color,
       rate,
       beams,

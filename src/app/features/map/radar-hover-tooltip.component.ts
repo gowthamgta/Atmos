@@ -1,7 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RadarService } from '../../core/services/radar.service';
 
-/** The radar readout under the pointer (echo, rain rate, beam heights; see radar-inspector.ts), placed at the pointer on the map. */
+/**
+ * The radar readout where the map was clicked (see radar-inspector.ts): the echo, its rain rate (and the last hour's) and what kind of rain it
+ * is. The coordinates and each radar's beam heights are no longer shown (the owner, 3 Nov 2026: "remove the unwanted tooltip data").
+ */
 @Component({
   selector: 'app-radar-hover-tooltip',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -27,23 +30,7 @@ import { RadarService } from '../../core/services/radar.service';
         }
         <div class="tooltip-desc-row">
           <strong style="color: #f8fafc">{{ info.label }}</strong>
-          <span class="tooltip-sep">•</span>
-          <span class="tooltip-coords">
-            {{ info.lat.toFixed(3) }}°N, {{ info.lng.toFixed(3) }}°E
-          </span>
         </div>
-        @if (info.beams.length > 0) {
-          <div class="tooltip-beams">
-            @for (b of info.beams; track b.name) {
-              <div class="tooltip-beam">
-                <span>{{ b.name }} <span class="tooltip-beam-dist">{{ b.distanceKm.toFixed(0) }} km</span></span>
-                <strong>{{ b.centreKm.toFixed(1) }} km up</strong>
-                <span class="tooltip-beam-dist">{{ b.bottomKm.toFixed(1) }}–{{ b.topKm.toFixed(1) }}</span>
-              </div>
-            }
-            <div class="tooltip-beam-note">{{ info.beamNote }}</div>
-          </div>
-        }
       </div>
     }
   `,
@@ -102,32 +89,6 @@ import { RadarService } from '../../core/services/radar.service';
       display: flex;
       align-items: center;
       gap: 0.35rem;
-    }
-    .tooltip-beams {
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px solid rgba(148, 163, 184, 0.25);
-      display: grid;
-      gap: 2px;
-      font-size: 11px;
-      color: #cbd5e1;
-    }
-    .tooltip-beam {
-      display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px;
-      align-items: baseline;
-    }
-    .tooltip-beam strong { color: #f8fafc; }
-    .tooltip-beam-dist { color: #94a3b8; font-size: 11px; }
-    .tooltip-beam-note { margin-top: 2px; color: #94a3b8; font-size: 11px; max-width: 240px; }
-    .tooltip-sep {
-      color: #475569;
-    }
-    .tooltip-coords {
-      font-family: monospace;
-      font-size: 0.72rem;
-      color: #64748b;
     }
   `],
 })

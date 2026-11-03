@@ -8,7 +8,7 @@ test.describe('radar', () => {
     expect(errors).toEqual([]);
   });
 
-  test('reads the beam height of each radar on click, and dismisses on next click', async ({ page }) => {
+  test('reads the echo on click (no coordinates or beam heights), and dismisses on next click', async ({ page }) => {
     await openRadar(page);
     const map = page.locator('canvas.maplibregl-canvas');
     const box = (await map.boundingBox())!;
@@ -18,8 +18,9 @@ test.describe('radar', () => {
     await page.mouse.click(x, y);
     const tooltip = page.locator('.radar-hover-tooltip');
     await expect(tooltip).toBeVisible();
-    await expect(tooltip).toContainText(/Karaikal \d+ km/);
-    await expect(tooltip).toContainText(/\d+\.\d km up/);
+    await expect(tooltip).toContainText(/No echo|Rain|Echo|Storm/);
+    await expect(tooltip).not.toContainText('km up');
+    await expect(tooltip).not.toContainText('°N');
 
     // Clicking again dismisses the tooltip
     await page.mouse.click(x, y);
