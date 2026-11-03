@@ -20,7 +20,6 @@ export class MapLayerService {
   readonly layers = signal<LayerConfig[]>([
     { id: 'radar', name: 'IMD radar', active: false, opacity: 1.0 },
     { id: 'satellite', name: 'Meteosat satellite', active: false, opacity: 0.9 },
-    { id: 'gibs', name: 'HD satellite', active: false, opacity: 1.0 },
   ]);
 
   readonly activeLayers = computed(() => this.layers().filter(l => l.active));

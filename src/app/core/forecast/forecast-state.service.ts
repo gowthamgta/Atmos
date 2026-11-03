@@ -207,15 +207,6 @@ export class ForecastStateService {
     this.mapLayers.selectSingleLayer('satellite');
   }
 
-  /** The high-detail daily satellite picture is another observed layer, like the others replacing any forecast layer. */
-  selectGibs(): void {
-    this.activeLayerId.set(null);
-    this.windParticles.set(false);
-    this.isobars.set(false);
-    this.pause();
-    this.mapLayers.selectSingleLayer('gibs');
-  }
-
   private start(): void {
     void this.catalog.ensureLoaded().then(() => this.initialiseTime());
   }

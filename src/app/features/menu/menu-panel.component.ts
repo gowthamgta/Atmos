@@ -63,9 +63,6 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                     <button type="button" class="tile" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Live satellite: Meteosat-9 over India, HRV by day, infrared at night">
                       <app-icon name="satellite" [size]="20" /><span class="tile-name">Satellite</span><span class="tile-sub">15 min</span>
                     </button>
-                    <button type="button" class="tile" [class.active]="gibsActive()" [attr.aria-pressed]="gibsActive()" (click)="toggleGibs()" title="High-detail true-colour picture at 250 m, one per day (NASA GIBS)">
-                      <app-icon name="globe" [size]="20" /><span class="tile-name">HD satellite</span><span class="tile-sub">375 m option · daily</span>
-                    </button>
                   </div>
                 </section>
               }
@@ -320,7 +317,6 @@ export class MenuPanelComponent {
   protected readonly tab = this.panels.menuTab;
   protected readonly radarActive = computed(() => this.mapLayers.layers().some(l => l.id === 'radar' && l.active));
   protected readonly satelliteActive = computed(() => this.mapLayers.layers().some(l => l.id === 'satellite' && l.active));
-  protected readonly gibsActive = computed(() => this.mapLayers.layers().some(l => l.id === 'gibs' && l.active));
 
   /** Layers grouped for display, narrowed by the search box. */
   protected readonly groups = computed(() => {
@@ -405,10 +401,6 @@ export class MenuPanelComponent {
     else this.state.selectRadar();
   }
 
-  protected toggleGibs(): void {
-    if (this.gibsActive()) this.mapLayers.deactivateAll();
-    else this.state.selectGibs();
-  }
 
   protected toggleSatellite(): void {
     if (this.satelliteActive()) this.mapLayers.deactivateAll();

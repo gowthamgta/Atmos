@@ -98,7 +98,6 @@ export class UrlStateService {
     if (view.layer) {
       if (view.layer === 'radar') this.state.selectRadar();
       else if (view.layer === 'satellite') this.state.selectSatellite();
-      else if (view.layer === 'gibs') this.state.selectGibs();
       else if (forecastLayerById(view.layer) && view.layer !== this.state.activeLayerId()) this.state.toggleLayer(view.layer);
     }
     const layer = forecastLayerById(this.state.activeLayerId());

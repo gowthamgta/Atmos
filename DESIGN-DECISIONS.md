@@ -27,6 +27,8 @@ fingerprint only together with this file, on the owner's request.
   code for 3d clouds and merged clouds, no need these two"): the 3D view (cloud-field.ts, cloud-volume.layer.ts), the measured-temperature
   frames it read, EUMETView's pictures and their closer HD window (satellite-detail.service.ts, satellite-window.ts), the merge step and
   Windy's ground under it are gone; the panel offers Meteosat-9 and Himawari-9. The **newest frame is shown first** (2b73678).
+- **Removed: the HD satellite layer** (NASA GIBS, 250 m true colour once a day; the owner, 3 Nov 2026: "Completely remove ... HD satellite").
+  The live satellite (our Meteosat-9 and Himawari-9 pictures) stays.
 - **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
   (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to
   oldest, each batch joining the loop as it is built (`FIRST_FRAMES`, `loopFrames` in `core/satellite/satellite.service.ts`).

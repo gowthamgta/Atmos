@@ -59,7 +59,7 @@ describe('lightning strokes', () => {
   it('is shown with the radar and with the satellite, and not over a forecast layer', () => {
     expect(lightningShown([{ id: 'radar', active: true }, { id: 'satellite', active: false }])).toBe(true);
     expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: true }])).toBe(true);
-    expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: false }, { id: 'gibs', active: true }])).toBe(false);
+    expect(lightningShown([{ id: 'radar', active: false }, { id: 'satellite', active: false }])).toBe(false);
     expect(lightningShown([])).toBe(false);
   });
   it('flashes a stroke when it first arrives, not every bolt on the first poll', () => {

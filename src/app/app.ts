@@ -4,7 +4,6 @@ import { AboutComponent } from './features/about/about.component';
 import { RadarPanelComponent } from './features/radar/radar-panel.component';
 import { RadarBarsComponent } from './features/radar/radar-bars.component';
 import { SatellitePanelComponent } from './features/satellite/satellite-panel.component';
-import { GibsPanelComponent } from './features/satellite/gibs-panel.component';
 import { ForecastLegendComponent } from './features/forecast/forecast-legend.component';
 import { MenuPanelComponent } from './features/menu/menu-panel.component';
 import { MeteogramComponent } from './features/meteogram/meteogram.component';
@@ -30,7 +29,6 @@ import { AppUpdateService } from './core/ui/app-update.service';
     RadarPanelComponent,
     RadarBarsComponent,
     SatellitePanelComponent,
-    GibsPanelComponent,
     ForecastLegendComponent,
     MenuPanelComponent,
     MeteogramComponent,
