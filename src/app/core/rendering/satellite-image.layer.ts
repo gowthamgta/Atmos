@@ -9,8 +9,8 @@ import { PendingProgram } from './gl-program';
  * the infrared and other data pictures (satellite-data.layer.ts) alike: an unsharp mask of this strength (the picture plus this much of its
  * difference from a blur one picture pixel wide), and the colour taken this far towards its own grey (1: as made, 0: grey).
  */
-export const SATELLITE_SHARPEN = 0.0;
-export const SATELLITE_SATURATION = 1;
+export const SATELLITE_SHARPEN = 0.4;
+export const SATELLITE_SATURATION = 0.90;
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
