@@ -142,8 +142,15 @@ export class TerrainTileGpu {
     const visible = tilesInBounds(this.tileGrid, bounds, this.presentTiles(data));
     this.tilesOnScreen = new Set(visible);
     this.slots.touch(visible);
+    // a tile that found no free slot is asked for again only once the tiles on screen change (a pan or a zoom): asked for again every frame,
+    // with more tiles on screen than slots, it was downloaded thousands of times a minute (measured 3 Nov 2026: 20,000 requests in 90 s)
+    const onScreenKey = `${level}|${visible.join(',')}`;
+    if (onScreenKey !== this.noRoomFor) {
+      this.noRoom.clear();
+      this.noRoomFor = onScreenKey;
+    }
     for (const name of visible) {
-      if (this.slots.has(name) || this.tilesPending.has(name) || this.recentlyFailed(name)) continue;
+      if (this.slots.has(name) || this.tilesPending.has(name) || this.noRoom.has(name) || this.recentlyFailed(name)) continue;
       this.loadTile(gl, data, name, level);
     }
     // the tiles just outside the view are loaded ahead of a pan, into free slots only: they never push out a tile on screen
@@ -192,6 +199,8 @@ export class TerrainTileGpu {
   private reset(gl: WebGL2RenderingContext | null): void {
     if (gl && this.tileTex) gl.deleteTexture(this.tileTex);
     this.tilesFailedAt.clear();
+    this.noRoom.clear();
+    this.noRoomFor = '';
     this.tileTex = null;
     this.tileLevel = null;
     this.slots = null;
@@ -207,6 +216,10 @@ export class TerrainTileGpu {
     }
     return this.presentCache!;
   }
+
+  /** Tiles on screen that found no free slot, and the tiles on screen they were left out for (see update). */
+  private readonly noRoom = new Set<string>();
+  private noRoomFor = '';
 
   private recentlyFailed(name: string): boolean {
     const t = this.tilesFailedAt.get(name);
@@ -273,6 +286,7 @@ export class TerrainTileGpu {
       const slot = this.slots.assign(name, this.tilesOnScreen);
       if (slot === null) {
         bitmap.close();
+        this.noRoom.add(name); // not asked for again while the same tiles are on screen
         return;
       }
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);

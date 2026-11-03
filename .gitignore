@@ -73,3 +73,7 @@ pipeline/data/rain_history/
 
 # Cloudflare wrangler (local pages dev)
 /.wrangler
+
+# benchmark reports (e2e/perf.mjs, e2e/layer-switch.mjs)
+/e2e/*-report.json
+/e2e/perf-report.json

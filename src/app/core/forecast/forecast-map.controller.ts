@@ -18,7 +18,7 @@ import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
 import { TerrainService } from './terrain.service';
 import { ForecastManifest, bracketSteps } from './forecast.model';
-import type { ForecastLayerDef } from './forecast-layers';
+import { FORECAST_LAYERS, type ForecastLayerDef } from './forecast-layers';
 import { isPhone } from '../ui/device-profile';
 import { MeteogramService } from '../meteogram/meteogram.service';
 import { PerfMeterService } from '../ui/perf-meter.service';
@@ -250,12 +250,42 @@ export class ForecastMapController {
           def.varId2 ? frame(def.varId2, hA, bitmaps[2]) : null,
           def.varId2 ? frame(def.varId2, hB, bitmaps[3]) : null
         );
+        // the moment a picked layer's data is on the GPU (its picture is on the next frame): what the layer-switch benchmark times
+        performance.mark('forecast-layer-shown', { detail: def.id });
         // Warm the neighbours so scrubbing and playback stay smooth.
         const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
         for (const v of varIds) this.loader.prefetch(v, ahead);
+        this.prefetchOtherLayers(manifest, [hA, hB]);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
   }
+
+  /**
+   * The other layers' pictures for the time on show, fetched in the background once the map's own are in and the browser is idle (low
+   * priority, one at a time), so switching to another layer only puts pictures already decoded onto the GPU instead of downloading them
+   * (the owner, 3 Nov 2026: a layer should show within 30 ms of being picked). Once per run and time; the derived layers (the rain period,
+   * the probability of rain) are left out: they are worked out, not fetched.
+   */
+  private prefetchOtherLayers(manifest: ForecastManifest, steps: readonly number[]): void {
+    const key = `${manifest.model}/${manifest.run}/${steps.join(',')}`;
+    if (key === this.prefetchedFor) return;
+    this.prefetchedFor = key;
+    const varIds = [...new Set(FORECAST_LAYERS.filter(l => l.id !== 'raintot' && l.id !== 'extreme').flatMap(l => (l.varId2 ? [l.varId, l.varId2] : [l.varId])))]
+      .filter(v => manifest.vars[v]);
+    const idle = (cb: () => void) => {
+      const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+      if (ric) ric(cb, { timeout: 2000 });
+      else setTimeout(cb, 200);
+    };
+    const next = (i: number): void => {
+      if (i >= varIds.length || this.prefetchedFor !== key) return;
+      idle(() => {
+        Promise.all(steps.map(h => this.loader.get(varIds[i], h, 'low'))).catch(() => undefined).finally(() => next(i + 1));
+      });
+    };
+    setTimeout(() => next(0), 1500); // after the first pictures and the wind are in
+  }
+  private prefetchedFor = '';
 
   /** The rain between the two chosen times: the running total at the end minus the one at the start, each blended between its two steps. */
   private async updateRainRange(layer: ScalarFieldLayer, def: ForecastLayerDef, manifest: ForecastManifest, start: number | null, end: number | null, my: number): Promise<void> {
