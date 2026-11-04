@@ -45,6 +45,7 @@ fingerprint only together with this file, on the owner's request.
   other IMD radars (the measured network of imd-radar-network.ts, Kochi, Thiruvananthapuram, Mangaluru and their legends) are gone from
   the app, the radar workflow and the coverage map (baked again for the two). Entries below that name other radars record how the
   generic filters were found.
+- **Radar switch: Both / Karaikal / Chennai** (the owner, 4 Nov 2026: "keep switch for radars for either turning karaikal or chennai alone"): a three-way switch in the radar panel. Both shows the workflow's merged picture; one radar alone is built in the app from that radar's IMD pictures. The choice is remembered. This brings back a station choice after the 25 Oct removal below, on the owner's request.
 
 - **The echoes are drawn as IMD's own pictures have them**: no filtering of echoes at all (789e9a3; the spoke remover and the far-range
   filter were removed), intense cores always kept (166aade), intensity the same as the picture.

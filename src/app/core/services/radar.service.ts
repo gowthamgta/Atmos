@@ -442,6 +442,27 @@ export class RadarService implements OnDestroy {
     this.generateComposite();
   }
 
+  /**
+   * Shows one radar alone, or both (null): the owner, 4 Nov 2026 ("keep switch for radars for either turning karaikal or chennai alone").
+   * The radars are fetched again: with one alone the app reads that radar's pictures itself (the workflow's picture has both).
+   */
+  showOnly(stationId: string | null): void {
+    const hidden = new Set(stationId ? this.stations.filter(s => s.id !== stationId).map(s => s.id) : []);
+    if ([...hidden].sort().join() === [...this.hiddenStations()].sort().join()) return;
+    this.hiddenStations.set(hidden);
+    writeHiddenStations(hidden);
+    if (stationId) this.activeStationId.set(stationId);
+    this.clearHistory();
+    this.generateComposite(); // at once from the pictures already here, then fresh ones
+    this.fetchAllRadarSweeps();
+  }
+
+  /** The radar shown alone, or null when both are on. */
+  readonly onlyStation = computed(() => {
+    const shown = this.stations.filter(s => !this.hiddenStations().has(s.id));
+    return shown.length === 1 ? shown[0].id : null;
+  });
+
   setProduct(product: RadarView): void {
     this.activeView.set(product);
     this.allRadarResults.set(new Map());
@@ -466,7 +487,7 @@ export class RadarService implements OnDestroy {
    * often overlap at start-up).
    */
   fetchAllRadarSweeps(): Promise<void> {
-    const key = `${this.activeView()}|${this.transparentMode()}`;
+    const key = `${this.activeView()}|${this.transparentMode()}|${[...this.hiddenStations()].sort().join()}`;
     const running = this.inFlightSweeps;
     // a run that has hung (a request that never answers) is not joined: a new one starts instead
     if (running?.key === key && Date.now() - running.startedAt < RadarService.SWEEP_JOIN_MAX_MS) return running.done;
@@ -593,7 +614,8 @@ export class RadarService implements OnDestroy {
     // Fetch the preprocessed all-India composite published by the background workflow
     try {
       // the workflow publishes the All view only (each radar's PPI inside, CAZ around, PPZ outside): a single product is read here
-      const loaded = this.stacked() && (await this.tryFetchPreprocessedComposite(requestId));
+      // (only with both radars on: the workflow's picture has both, so with one turned off the app builds its own from that radar's pictures)
+      const loaded = this.stacked() && this.hiddenStations().size === 0 && (await this.tryFetchPreprocessedComposite(requestId));
       if (loaded) {
         if (requestId === this.currentRequestId) {
           this.isRefreshing.set(false);

@@ -47,6 +47,13 @@ const FRESHNESS_LABEL: Record<string, string> = {
           }
         </div>
 
+        <div class="which full-only" role="radiogroup" aria-label="Which radars">
+          <button type="button" role="radio" [attr.aria-checked]="radar.onlyStation() === null" [class.on]="radar.onlyStation() === null" (click)="radar.showOnly(null)">Both</button>
+          @for (st of stations; track st.id) {
+            <button type="button" role="radio" [attr.aria-checked]="radar.onlyStation() === st.id" [class.on]="radar.onlyStation() === st.id" (click)="radar.showOnly(st.id)" [title]="st.name + ' alone'">{{ st.name.replace(' DWR', '') }}</button>
+          }
+        </div>
+
         <button type="button" class="storm-toggle full-only" [class.active]="storms.enabled()" [attr.aria-pressed]="storms.enabled()" (click)="storms.toggle()"
           title="Storm cells with the area they are expected to cross in the next hour">
           <span class="cone" aria-hidden="true"></span>
@@ -110,6 +117,10 @@ const FRESHNESS_LABEL: Record<string, string> = {
     .age[data-state='recent'] { color: var(--warn); }
     .age[data-state='stale'] { color: var(--warn); }
     .age[data-state='offline'] { color: var(--danger); }
+    .which { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--surface-3); }
+    .which button { flex: 1; min-height: 32px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text-secondary); font: 600 12px var(--font-body); cursor: pointer; }
+    .which button:hover:not(.on) { background: var(--surface-4); }
+    .which button.on { background: var(--surface-1, var(--surface-4)); border-color: var(--accent-line); color: var(--text-primary); }
     .stations { margin-top: 10px; }
     .label { color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
     .value { color: var(--text-primary); float: right; font-weight: 600; }
