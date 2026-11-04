@@ -61,10 +61,12 @@ UKMO = RegularModel(
 # box (about 15 thousand cells instead of 96 thousand: their five days of pictures stay small on the site)
 COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0.25, "india-0.25-5-37.5N-68-97.5E")
 # every step each forecast publishes (Open-Meteo): GFS hourly to +120 h then 3-hourly to +384 h, of which every 3 h to +120 h and every
-# 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. A run built shorter than this just publishes the steps it has.
-GFS_STEPS = list(range(0, 121, 3)) + list(range(126, 385, 6))
-AIGFS_STEPS = list(range(0, 385, 6))
-AIFS_STEPS = list(range(0, 361, 6))
+# 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
+# forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
+MAP_REACH_H = 240
+GFS_STEPS = list(range(0, 121, 3)) + list(range(126, MAP_REACH_H + 1, 6))
+AIGFS_STEPS = list(range(0, MAP_REACH_H + 1, 6))
+AIFS_STEPS = list(range(0, MAP_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
 # NOAA GFS: 13 km surface fields (ncep_gfs013) and the pressure levels, gusts, CAPE and pressure at 25 km (ncep_gfs025).
@@ -78,7 +80,7 @@ GFS = RegularModel(
     ],
 )
 
-# NOAA AIGFS (AI forecast of NOAA): 25 km, every 6 hours to +384 h.
+# NOAA AIGFS (AI forecast of NOAA): 25 km, every 6 hours (the map to +240 h).
 AIGFS = RegularModel(
     model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 6, 12, 18), step_hours=AIGFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
@@ -87,7 +89,7 @@ AIGFS = RegularModel(
     )],
 )
 
-# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +360 h.
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours (the map to +240 h).
 AIFS = RegularModel(
     model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(

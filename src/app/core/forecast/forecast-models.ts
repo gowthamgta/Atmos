@@ -44,15 +44,15 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   // UK Met Office is no longer drawn on the map (the site had to stay under GitHub Pages' 1 GB); the place forecast and the Blend still use it
   {
     id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, all India', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/gfs`,
-    centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 384,
+    centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 240,
   },
   {
     id: 'aigfs', label: 'NOAA AIGFS', short: 'AIGFS', resolution: '25 km, all India', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aigfs`,
-    centre: 'NOAA', ai: true, datasets: ['ncep_aigfs025'], apiId: 'ncep_aigfs025', reachHours: 384,
+    centre: 'NOAA', ai: true, datasets: ['ncep_aigfs025'], apiId: 'ncep_aigfs025', reachHours: 240,
   },
   {
     id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, all India', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
-    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 360,
+    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 240,
   },
   {
     id: 'icon', label: 'DWD ICON', short: 'ICON', resolution: '13 km, drawn at 25 km, all India', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/icon`,
