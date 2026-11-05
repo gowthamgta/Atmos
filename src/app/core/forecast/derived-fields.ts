@@ -6,7 +6,19 @@ import { ForecastGrid, sampleGrid } from './forecast.model';
  */
 
 /** The 0.1 degree grid of all India that both ECMWF IFS and the UK Met Office are published on (see pipeline/config.py). */
-export const INDIA_GRID: ForecastGrid = { latMax: 22.0, latMin: 5.0, lonMin: 68.0, lonMax: 97.5, step: 0.1, nx: 296, ny: 171 }; // the forecast box (pipeline/config.py)
+/**
+ * The forecast box (the owner, 6 Nov 2026: "i want this region alone, for all models ... make every forecast only on this area"): South
+ * India, the Arabian Sea's east and the Bay of Bengal. The pipeline builds every model on it (pipeline/config.py); outside it the app shows
+ * no forecast and no state lines.
+ */
+export const FORECAST_BOX = { south: 5.0, north: 20.0, west: 70.0, east: 97.5 } as const;
+
+/** True when a place is inside the forecast box. */
+export function inForecastBox(lat: number, lon: number): boolean {
+  return lat >= FORECAST_BOX.south && lat <= FORECAST_BOX.north && lon >= FORECAST_BOX.west && lon <= FORECAST_BOX.east;
+}
+
+export const INDIA_GRID: ForecastGrid = { latMax: 20.0, latMin: 5.0, lonMin: 70.0, lonMax: 97.5, step: 0.1, nx: 276, ny: 151 }; // FORECAST_BOX at 0.1 degree
 
 /** a * (1 - mix) + b * mix, NaN where either is NaN. */
 export function blendFields(a: Float32Array, b: Float32Array, mix: number): Float32Array {

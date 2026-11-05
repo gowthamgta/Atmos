@@ -3,6 +3,7 @@ import { FORECAST_MODELS, POINT_ONLY_MODELS } from '../forecast/forecast-models'
 import { VerificationService } from '../forecast/verification.service';
 import { BLEND_ID, CorrectionsFile, applyCorrections, blendSeries, extraBlendModels } from './blend';
 import { ApiModel, PointSeries, parsePointSeries, seriesUrl } from './point-series';
+import { inForecastBox } from '../forecast/derived-fields';
 
 export type SeriesStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -61,6 +62,14 @@ export class PointSeriesService {
   }
 
   private async run(lat: number, lon: number, key: string, force: boolean): Promise<void> {
+    if (!inForecastBox(lat, lon)) {
+      // every forecast is for the forecast box only (FORECAST_BOX)
+      ++this.token;
+      this.data.set(null);
+      this.status.set('error');
+      this.error.set('Outside the forecast area');
+      return;
+    }
     const hit = this.cache.get(key);
     if (hit && !force && Date.now() - hit.at < CACHE_MS) {
       ++this.token;

@@ -9,6 +9,8 @@ import {
   untracked,
   isDevMode
 } from '@angular/core';
+import { clipOutlines } from '../../core/geo/clip-outlines';
+import { FORECAST_BOX } from '../../core/forecast/derived-fields';
 import type * as maplibregl from 'maplibre-gl';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { loadMapLibre } from '../../core/map/maplibre-lazy';
@@ -633,7 +635,10 @@ export class MapComponent implements OnInit, OnDestroy {
 
     // the outlines come from the district lookup's download (one download of the 1.8 MB file instead of two)
     this.map.addSource(BOUNDARY_SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, tolerance: 0.5 });
-    void this.districts.geojson().then(data => (this.map?.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined)?.setData(data as never)).catch(() => undefined);
+    // only inside the forecast box (clipOutlines): outside it there is no forecast, so no state lines either
+    void this.districts.geojson()
+      .then(data => (this.map?.getSource(BOUNDARY_SOURCE_ID) as maplibregl.GeoJSONSource | undefined)?.setData(clipOutlines(data, FORECAST_BOX) as never))
+      .catch(() => undefined);
 
     const widths = (z5: number, z10: number): maplibregl.ExpressionSpecification =>
       ['interpolate', ['linear'], ['zoom'], 5, z5, 10, z10];

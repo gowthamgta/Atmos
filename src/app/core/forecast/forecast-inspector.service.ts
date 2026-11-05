@@ -1,4 +1,5 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { inForecastBox } from './derived-fields';
 import { DistrictLookupService } from '../geo/district-lookup.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
@@ -164,7 +165,7 @@ export class ForecastInspectorService {
     const time = this.state.timeMs();
     if (!manifest || time === null) return;
     const g = manifest.grid;
-    if (lat > g.latMax || lat < g.latMin || lon < g.lonMin || lon > g.lonMax) {
+    if (lat > g.latMax || lat < g.latMin || lon < g.lonMin || lon > g.lonMax || !inForecastBox(lat, lon)) {
       this.point.set(null); // outside the forecast domain
       this.settle(false);
       return;
