@@ -46,9 +46,10 @@ STEPS_3H_144 = list(range(0, 145, 3))
 # all of India on the 0.1 degree grid (the same box as ECMWF IFS, so the two models line up and share the terrain's model ground)
 INDIA_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, C.STEP_DEG, C.IFS_DOMAIN)
 
-# UK Met Office global deterministic, ~10 km. Short range (about 2.5 days) and big files, so two runs a day.
+# UK Met Office global deterministic, ~10 km, on the 0.1 degree grid (back on the map: the owner, 6 Nov 2026, "add ukmo back"; the smaller
+# forecast box leaves room under GitHub Pages' 1 GB). The 00Z and 12Z runs reach 7 days (the 06Z and 18Z only 2.5); the map takes 5, every 3 h.
 UKMO = RegularModel(
-    model_id="ukmo", label="UK Met Office", run_hours=(0, 6, 12, 18), step_hours=list(range(0, 61, 3)), grid=INDIA_GRID,
+    model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 121, 3)), grid=INDIA_GRID,
     sources=[Source(
         "ukmo_global_deterministic_10km",
         _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars() + level_w()),
@@ -65,7 +66,6 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
 MAP_REACH_H = 240
 GFS_STEPS = list(range(0, 121, 3)) + list(range(126, MAP_REACH_H + 1, 6))
-AIGFS_STEPS = list(range(0, MAP_REACH_H + 1, 6))
 AIFS_STEPS = list(range(0, MAP_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
@@ -78,15 +78,6 @@ GFS = RegularModel(
         Source("ncep_gfs025", _SAME(["pressure_msl", "wind_gusts_10m", "cape", "convective_inhibition", "lifted_index", "visibility"]
                                     + LEVEL_SCALARS + level_w() + level_uv())),
     ],
-)
-
-# NOAA AIGFS (AI forecast of NOAA): 25 km, every 6 hours (the map to +240 h).
-AIGFS = RegularModel(
-    model_id="aigfs", label="NOAA AIGFS", run_hours=(0, 6, 12, 18), step_hours=AIGFS_STEPS, grid=COARSE_GRID,
-    sources=[Source(
-        "ncep_aigfs025",
-        _SAME(["temperature_2m", "precipitation", "cloud_cover", "pressure_msl", "wind_gusts_10m"] + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()),
-    )],
 )
 
 # ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours (the map to +240 h).
@@ -111,6 +102,15 @@ ICON = RegularModel(
 )
 
 
-# UKMO is not built for the map any more (22-23 Oct: the site was over GitHub Pages' 1 GB, the owner chose to give it up); the point
-# forecast and the Blend still read it from Open-Meteo directly
-ALL: tuple[RegularModel, ...] = (GFS, AIGFS, AIFS, ICON)
+# CMA GRAPES global (China), 0.125 degree (~15 km), every 3 hours: drawn on the 0.25 degree grid like ICON (the owner, 6 Nov 2026: "add ...
+# cma"; it was among the better models at the airports for rain timing). The 00Z and 12Z runs, to +120 h.
+CMA = RegularModel(
+    model_id="cma", label="CMA GRAPES", run_hours=(0, 12), step_hours=list(range(0, 121, 3)), grid=COARSE_GRID,
+    sources=[Source(
+        "cma_grapes_global",
+        _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CIN_LI + CLOUD_LAYERS + ["visibility", "shortwave_radiation"] + LEVEL_SCALARS + level_w() + level_uv()),
+    )],
+)
+
+# NOAA AIGFS was taken off the map (the owner, 6 Nov 2026: "remove aigfs"; among the weaker models at the airports)
+ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIFS, ICON, CMA)

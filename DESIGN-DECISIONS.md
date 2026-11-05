@@ -131,9 +131,8 @@ fingerprint only together with this file, on the owner's request.
 - **Rain probability: the ECMWF ensemble** (share of members with rain), models' agreement only as the fallback (5b7da55). Meteologix was
   not used (its charts are not open data).
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.
-- **UK Met Office is not drawn on the map** (owner, 23 Oct: "lets compramise UK MET"): the published site was 1.077 GB, over GitHub Pages' 1 GB, and UKMO's
-  folder was about 205 MB; without it the site is about 0.87 GB. The place forecast and the Kralveth Blend still read UKMO from Open-Meteo.
-- **GFS, AIGFS and AIFS maps reach 10 days** (the owner, 4 Nov 2026: "reduce the atmos data size"): the forecast site was 838 MB of GitHub Pages' 1 GB (ECMWF IFS 360 MB, GFS 127, AIGFS 77, ICON 62, AIFS 55, terrain 132; only the newest run of each model is kept). Days 11 to 16 of those three were about 95 MB, so the map stops at +240 h (`MAP_REACH_H` in models_regular.py). The place forecast already shows 10 days, so the two now match.
+- **UK Met Office is back on the map; CMA GRAPES added; NOAA AIGFS removed** (the owner, 6 Nov 2026: "add ukmo back", "add ... cma", "remove aigfs"): with the smaller forecast box (2-20 N, 70-99 E) leaving room under GitHub Pages' 1 GB, UKMO is drawn on the 0.1° grid (00Z and 12Z runs, to 5 days / +120 h). CMA GRAPES global (~15 km, 0.125°) is drawn on the 0.25° grid to +120 h. NOAA AIGFS was retired from the map.
+- **GFS and AIFS maps reach 10 days** (the owner, 4 Nov 2026: "reduce the atmos data size"): the forecast site was 838 MB of GitHub Pages' 1 GB (ECMWF IFS 360 MB, GFS 127, ICON 62, AIFS 55, terrain 132; only the newest run of each model is kept). Days 11 to 16 were about 95 MB, so the map stops at +240 h (`MAP_REACH_H` in models_regular.py). The place forecast already shows 10 days, so the two now match.
 - The Clouds layer was left out on purpose (6cddf45).
 - **Clouds in 3D** (public/clouds/, linked from Settings > Map): the owner asked for a realistic 3D presentation of the cloud types. It is
   a standalone WebGL 2 page outside the Angular bundle (the service worker leaves /clouds alone). Heights are the WMO Cloud Atlas tropical

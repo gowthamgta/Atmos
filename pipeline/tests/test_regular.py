@@ -294,10 +294,14 @@ def test_the_latest_run_steps_back_to_a_cycle_the_model_uses(monkeypatch):
     from datetime import datetime, timezone
     info = lambda h: FR.DatasetInfo(reference=datetime(2026, 10, 10, h, tzinfo=timezone.utc), offsets=[0.0, 3.0], bbox=(0, 0, 1, 1))
     ukmo = models_regular.UKMO
-    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(18))      # the newest run is 18Z: a cycle the model builds
-    assert ukmo.latest_run() == datetime(2026, 10, 10, 18, tzinfo=timezone.utc)
-    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(7))       # 07Z is not a cycle: the 06Z run before it is built
-    assert ukmo.latest_run() == datetime(2026, 10, 10, 6, tzinfo=timezone.utc)
+    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(18))      # 18Z is not a cycle for UKMO (00Z, 12Z): steps back to 12Z
+    assert ukmo.latest_run() == datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(7))       # 07Z is not a cycle: the 00Z run before it is built
+    assert ukmo.latest_run() == datetime(2026, 10, 10, 0, tzinfo=timezone.utc)
+    # GFS has all four cycles (00Z, 06Z, 12Z, 18Z): 07Z steps back to 06Z
+    gfs = models_regular.GFS
+    monkeypatch.setattr(FR, "dataset_info", lambda dataset: info(7))
+    assert gfs.latest_run() == datetime(2026, 10, 10, 6, tzinfo=timezone.utc)
 
 
 def test_cumulative_accumulation_adds_up_the_rain_from_the_start_of_the_run():

@@ -138,7 +138,7 @@ describe('how current a model is', () => {
   });
 
   it('puts it together for a model, noting a run published with gaps', () => {
-    const model = forecastModelById('aigfs');
+    const model = forecastModelById('gfs');
     const run = { run: '20261011T18Z', initMs: run18, builtMs: Date.parse('2026-10-12T03:39:35Z'), complete: true, reachHours: 384 };
     const info = modelRunInfo(model, run, aigfs, now);
     expect(info.status).toBe('updating');
@@ -169,9 +169,11 @@ describe('the model list', () => {
       expect(m.apiId).toBeTruthy();
       expect(m.reachHours).toBeGreaterThan(0);
     }
-    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id).sort()).toEqual(['aifs', 'aigfs']);
+    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id).sort()).toEqual(['aifs']);
     expect(forecastModelById('aifs').centre).toBe('ECMWF');
-    expect(forecastModelById('aigfs').centre).toBe('NOAA');
+    expect(forecastModelById('gfs').centre).toBe('NOAA');
+    expect(forecastModelById('ukmo').centre).toBe('Met Office');
+    expect(forecastModelById('cma').centre).toBe('CMA');
   });
 });
 
@@ -200,7 +202,7 @@ describe('the lines of a model row', () => {
 
   it('does not promise a next run while an update is already on its way', () => {
     const aigfsUp = combineUpstream([parseDatasetRun(AIGFS_STATUS)])!;
-    const info = modelRunInfo(forecastModelById('aigfs'), published, aigfsUp, now);
+    const info = modelRunInfo(forecastModelById('gfs'), published, aigfsUp, now);
     expect(runLines(info, run18 + 5 * H, now).next).toBe('');
   });
 

@@ -20,7 +20,7 @@ export interface ForecastModelDef {
   groundKm: number;
   baseUrl: string;
   /** The centre that runs it: the model's colour follows this (blue ECMWF, violet NOAA, green Met Office). */
-  centre: 'ECMWF' | 'NOAA' | 'Met Office' | 'DWD';
+  centre: 'ECMWF' | 'NOAA' | 'Met Office' | 'DWD' | 'CMA';
   /** An AI model (learned from past weather) rather than a physics model: its colour is the lighter shade and its chart line is dashed. */
   ai: boolean;
   /**
@@ -41,14 +41,13 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
     id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, South India and its seas', gridKm: 9, groundKm: 9, baseUrl: `${PAGES}/ecmwf_ifs`,
     centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 144,
   },
-  // UK Met Office is no longer drawn on the map (the site had to stay under GitHub Pages' 1 GB); the place forecast and the Blend still use it
+  {
+    id: 'ukmo', label: 'UK Met Office', short: 'UKMO', resolution: '10 km, South India and its seas', gridKm: 10, groundKm: 10, baseUrl: `${PAGES}/ukmo`,
+    centre: 'Met Office', ai: false, datasets: ['ukmo_global_deterministic_10km'], apiId: 'ukmo_global_deterministic_10km', reachHours: 120,
+  },
   {
     id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, South India and its seas', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/gfs`,
     centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 240,
-  },
-  {
-    id: 'aigfs', label: 'NOAA AIGFS', short: 'AIGFS', resolution: '25 km, South India and its seas', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aigfs`,
-    centre: 'NOAA', ai: true, datasets: ['ncep_aigfs025'], apiId: 'ncep_aigfs025', reachHours: 240,
   },
   {
     id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, South India and its seas', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
@@ -57,6 +56,10 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
     id: 'icon', label: 'DWD ICON', short: 'ICON', resolution: '13 km, drawn at 25 km, South India and its seas', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/icon`,
     centre: 'DWD', ai: false, datasets: ['dwd_icon'], apiId: 'icon_global', reachHours: 120,
+  },
+  {
+    id: 'cma', label: 'CMA GRAPES', short: 'CMA', resolution: '15 km, drawn at 25 km, South India and its seas', gridKm: 15, groundKm: 28, baseUrl: `${PAGES}/cma`,
+    centre: 'CMA', ai: false, datasets: ['cma_grapes_global'], apiId: 'cma_grapes_global', reachHours: 120,
   },
 ];
 
