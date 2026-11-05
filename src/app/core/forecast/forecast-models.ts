@@ -38,28 +38,28 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
+    id: 'blend', label: 'Kralveth Blend', short: 'Blend', resolution: '1 km high definition, South India and its seas', gridKm: 1, groundKm: 9, baseUrl: `${PAGES}/blend`,
+    centre: 'Kralveth', ai: false, datasets: ['ecmwf_ifs', 'ukmo_global_deterministic_10km', 'ncep_gfs013', 'ecmwf_aifs025_single', 'dwd_icon'], apiId: 'blend', reachHours: 120,
+  },
+  {
     id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, South India and its seas', gridKm: 9, groundKm: 9, baseUrl: `${PAGES}/ecmwf_ifs`,
     centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 144,
-  },
-  {
-    id: 'ukmo', label: 'UK Met Office', short: 'UKMO', resolution: '10 km, South India and its seas', gridKm: 10, groundKm: 10, baseUrl: `${PAGES}/ukmo`,
-    centre: 'Met Office', ai: false, datasets: ['ukmo_global_deterministic_10km'], apiId: 'ukmo_global_deterministic_10km', reachHours: 120,
-  },
-  {
-    id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, South India and its seas', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/gfs`,
-    centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 240,
-  },
-  {
-    id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, South India and its seas', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
-    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 240,
   },
   {
     id: 'icon', label: 'DWD ICON', short: 'ICON', resolution: '13 km, drawn at 25 km, South India and its seas', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/icon`,
     centre: 'DWD', ai: false, datasets: ['dwd_icon'], apiId: 'icon_global', reachHours: 120,
   },
   {
-    id: 'blend', label: 'Kralveth Blend', short: 'Blend', resolution: '1 km high definition, South India and its seas', gridKm: 1, groundKm: 9, baseUrl: `${PAGES}/blend`,
-    centre: 'Kralveth', ai: false, datasets: ['ecmwf_ifs', 'ukmo_global_deterministic_10km', 'ncep_gfs013', 'ecmwf_aifs025_single', 'dwd_icon'], apiId: 'blend', reachHours: 120,
+    id: 'gfs', label: 'NOAA GFS', short: 'GFS', resolution: '13 km surface, South India and its seas', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/gfs`,
+    centre: 'NOAA', ai: false, datasets: ['ncep_gfs013', 'ncep_gfs025'], apiId: 'gfs_global', reachHours: 240,
+  },
+  {
+    id: 'ukmo', label: 'UK Met Office', short: 'UKMO', resolution: '10 km, South India and its seas', gridKm: 10, groundKm: 10, baseUrl: `${PAGES}/ukmo`,
+    centre: 'Met Office', ai: false, datasets: ['ukmo_global_deterministic_10km'], apiId: 'ukmo_global_deterministic_10km', reachHours: 120,
+  },
+  {
+    id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, South India and its seas', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
+    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 240,
   },
 ];
 

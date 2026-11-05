@@ -12,9 +12,9 @@ describe('forecast model registry', () => {
     }
   });
 
-  it('lists the pipeline models by their folder id, with ECMWF IFS as the default', () => {
-    expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('ecmwf_ifs');
-    expect(FORECAST_MODELS.map(m => m.id).sort()).toEqual(['aifs', 'blend', 'ecmwf_ifs', 'gfs', 'icon', 'ukmo']);
+  it('lists the pipeline models by their folder id, with Kralveth Blend as the default', () => {
+    expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('blend');
+    expect(FORECAST_MODELS.map(m => m.id)).toEqual(['blend', 'ecmwf_ifs', 'icon', 'gfs', 'ukmo', 'aifs']);
   });
 
   it('falls back to the default model for an unknown id', () => {

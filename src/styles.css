@@ -57,7 +57,7 @@
   --m-gfs: #b794ff;
   --m-blend: #ffb547;
   --m-icon: #ff8fb8;
-  --model: var(--m-ecmwf_ifs);
+  --model: var(--m-blend);
 
   /* Meteogram series, when a single model is shown */
   --s-temp: #ff8a65;
