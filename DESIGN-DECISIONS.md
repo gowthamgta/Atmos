@@ -112,6 +112,7 @@ fingerprint only together with this file, on the owner's request.
   the estimate drawn outside the radars' range, its learning from the radars and the bot's pairs were all removed.
 
 ## Forecast and the rest of the map
+- **Wind in Windy's own colour scale, opaque** (the owner, 6 Nov 2026, Windy's 700 hPa wind beside ours: "look at windy color palette vs ours, fix ours"): the colours are pinned to speeds as Windy's are (`WIND_ANCHORS` in windy-palettes.ts: blue-violet calm, blue 1 m/s, teal 3, sea-green 5, green 7-9, olive 11, ochre 13, brown-red 15, wine 17, magenta 19, violet 21, then jet-stream blues, purple and pale), so a speed has the same colour at every level; wind and gusts are drawn at full opacity (were 0.8 and 0.85, which dulled them over the dark map).
 - **Humidity is blue only above 75 %** (the owner, 5 Nov 2026: "make the humidity palette blue only after 75 percent"): the Windy colours are pinned to values (`humidityStops` in windy-palettes.ts: brown 30, olive 40, green 50, teal-green 65 to 75, then blue from 80 to slate at 100), at ground level and aloft alike.
 
 - **Only national and state highways on the map** (the owner, 1 Nov 2026): OSM's motorway and trunk (India's national highways) and

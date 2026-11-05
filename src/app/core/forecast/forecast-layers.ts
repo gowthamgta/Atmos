@@ -1,7 +1,7 @@
 /** Declarative registry of the scalar forecast layers. The menu and legend are generated from this list. */
 
 import type { TerrainMode } from './terrain-correction';
-import { WINDY_HUMIDITY, humidityStops, WINDY_RAIN, WINDY_RAIN_ACCUMULATION, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
+import { WINDY_HUMIDITY, humidityStops, windStops, WINDY_RAIN, WINDY_RAIN_ACCUMULATION, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
 export type Level = 'surface' | 925 | 850 | 800 | 700 | 600 | 500 | 300 | 250 | 200;
@@ -133,10 +133,10 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'dew', label: 'Dew point', icon: '💦', group: 'Temperature', varId: 'dew', unit: '°C', min: 10, max: 28, stops: DEW, gamma: 1, clearBelow: 0, ticks: [12, 16, 20, 24, 28], opacity: 0.85, terrain: 'dewpoint' },
   {
     id: 'wind', label: 'Wind', icon: '🍃', group: 'Wind', varId: 'u10', varId2: 'v10', unit: 'km/h', displayScale: 3.6, min: 0, max: 20, stops: WIND,
-    gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 0.8, terrain: 'wind',
-    atLevel: l => ({ varId: `u${l}`, varId2: `v${l}`, min: 0, max: WIND_RANGE[l][0], ticks: WIND_RANGE[l][1] }),
+    gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 1, terrain: 'wind',
+    atLevel: l => ({ varId: `u${l}`, varId2: `v${l}`, min: 0, max: WIND_RANGE[l][0], ticks: WIND_RANGE[l][1], stops: windStops(0, WIND_RANGE[l][0]) }),
   },
-  { id: 'gust', label: 'Wind gusts', icon: '💨', group: 'Wind', varId: 'gust', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: WIND, gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 0.85, terrain: 'wind' },
+  { id: 'gust', label: 'Wind gusts', icon: '💨', group: 'Wind', varId: 'gust', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: windStops(0, 25), gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 1, terrain: 'wind' },
   {
     id: 'humidity', label: 'Humidity', icon: '💧', group: 'Rain and humidity', varId: 'rh', unit: '%', min: 30, max: 100, stops: HUMIDITY, gamma: 1,
     clearBelow: 0, ticks: [40, 60, 80, 100], opacity: 0.85, terrain: 'humidity',
