@@ -1,7 +1,7 @@
 /** Declarative registry of the scalar forecast layers. The menu and legend are generated from this list. */
 
 import type { TerrainMode } from './terrain-correction';
-import { WINDY_HUMIDITY, WINDY_RAIN, WINDY_RAIN_ACCUMULATION, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
+import { WINDY_HUMIDITY, humidityStops, WINDY_RAIN, WINDY_RAIN_ACCUMULATION, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
 export type Level = 'surface' | 925 | 850 | 800 | 700 | 600 | 500 | 300 | 250 | 200;
@@ -23,6 +23,8 @@ export interface LevelSpec {
   max: number;
   ticks: readonly number[];
   label?: string;
+  /** The level's own palette stops, when its range differs and the colours are pinned to values (humidity). */
+  stops?: readonly string[];
 }
 
 export interface ForecastLayerDef {
@@ -65,6 +67,7 @@ export interface ForecastLayerDef {
  *  and only the extremes get bright, so overlays never glare against the dark map. */
 const TEMP = WINDY_TEMP;
 const HUMIDITY = WINDY_HUMIDITY;
+const LEVEL_HUMIDITY = humidityStops(0, 100);
 const RAIN = WINDY_RAIN;
 const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
 const WIND = WINDY_WIND;
@@ -137,7 +140,7 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   {
     id: 'humidity', label: 'Humidity', icon: '💧', group: 'Rain and humidity', varId: 'rh', unit: '%', min: 30, max: 100, stops: HUMIDITY, gamma: 1,
     clearBelow: 0, ticks: [40, 60, 80, 100], opacity: 0.85, terrain: 'humidity',
-    atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100] }),
+    atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100], stops: LEVEL_HUMIDITY }),
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: 20, stops: RAIN, gamma: 0.5, clearBelow: 0.1, ticks: [0.5, 2, 5, 10, 20], opacity: 0.9, terrain: 'rain' },
   { id: 'raintot', label: 'Rain accumulation, choose period', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm in the chosen period', min: 0, max: 300, stops: WINDY_RAIN_ACCUMULATION, gamma: 0.27, clearBelow: 0.5, ticks: [3, 10, 25, 100, 300], opacity: 0.9, terrain: 'rain' },

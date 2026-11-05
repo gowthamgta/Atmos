@@ -112,6 +112,7 @@ fingerprint only together with this file, on the owner's request.
   the estimate drawn outside the radars' range, its learning from the radars and the bot's pairs were all removed.
 
 ## Forecast and the rest of the map
+- **Humidity is blue only above 75 %** (the owner, 5 Nov 2026: "make the humidity palette blue only after 75 percent"): the Windy colours are pinned to values (`humidityStops` in windy-palettes.ts: brown 30, olive 40, green 50, teal-green 65 to 75, then blue from 80 to slate at 100), at ground level and aloft alike.
 
 - **Only national and state highways on the map** (the owner, 1 Nov 2026): OSM's motorway and trunk (India's national highways) and
   primary (mostly state highways); secondary, tertiary and minor roads are not drawn.
