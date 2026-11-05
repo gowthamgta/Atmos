@@ -462,10 +462,7 @@ async function main() {
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
   console.log(`[RadarPipeline] Fetch complete. Total valid sweeps: ${ringResults.size}`);
 
-  if (ringResults.size === 0) {
-    console.error(`[RadarPipeline] Error: No radar sweeps could be retrieved.`);
-    process.exit(1);
-  }
+  if (ringResults.size === 0) return skipDeploy('no radar picture could be read (both radars offline?)');
   if (Object.keys(qc.steady).length) console.log(`[RadarPipeline] Steady echo removed (px): ${Object.entries(qc.steady).map(([k, n]) => `${k} ${n}`).join(', ')}`);
   fs.writeFileSync(path.join(outDir, PERSIST_FILE), zlib.gzipSync(encodePersist(persist), { level: 6 }));
   if (qc.frozen.length) console.log(`[RadarPipeline] Stale (the same picture for over ${MAX_SCAN_AGE_MIN} min): ${qc.frozen.join(', ')}`);
@@ -512,10 +509,7 @@ async function main() {
   const ringsMap = new Map<string, MosaicRing>(rings);
   const composed = composeRadarMosaic(IMD_RADAR_STATIONS, sources, MOSAIC_KM_PER_PX, 2800, 'ppz', nowMs, ringsMap);
 
-  if (!composed || !composed.fieldData || !composed.displayField) {
-    console.error(`[RadarPipeline] Error: Mosaic composition produced no output.`);
-    process.exit(1);
-  }
+  if (!composed || !composed.fieldData || !composed.displayField) return skipDeploy('no radar picture is recent enough to draw');
 
   // patches of echo entirely under a clear sky (clutter, clear-air echo, specks) go; a patch that touches cloud anywhere stays whole
   if (cloud) {
@@ -648,6 +642,15 @@ async function main() {
   fs.writeFileSync(path.join(outDir, 'index.html'), html);
   console.log(`[RadarPipeline] Exported index.html`);
   console.log(`[RadarPipeline] Pipeline successfully finished.`);
+}
+
+/**
+ * Nothing new to publish (the radars are offline, or their newest pictures too old): the run ends without an error and the workflow skips
+ * its deploy (`deploy=false`), so the last good composite stays on the site and the app shows its age.
+ */
+function skipDeploy(reason: string): void {
+  console.log(`::warning::Radar not published: ${reason}. The last published composite stays live.`);
+  if (process.env['GITHUB_OUTPUT']) fs.appendFileSync(process.env['GITHUB_OUTPUT'], 'deploy=false\n');
 }
 
 main().catch(err => {
