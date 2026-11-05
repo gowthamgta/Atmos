@@ -218,7 +218,8 @@ export class ForecastInspectorService {
           return blendTime(sampleRg16Bitmap(x, g, lat, lon, totalInfo.min, totalInfo.max), sampleRg16Bitmap(y, g, lat, lon, totalInfo.min, totalInfo.max), s.mix);
         };
         const [atEnd, atStart] = await Promise.all([totalAt(to), totalAt(from)]);
-        values['rainrange'] = Math.max(0, atEnd - atStart);
+        const diff = atEnd - atStart;
+        values['rainrange'] = diff < 0.15 ? 0 : Math.max(0, diff);
       }
       if (layerId === 'extreme' || detailed) {
         const agreed = await this.consensus.compute(time);

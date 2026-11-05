@@ -107,6 +107,8 @@ export class PointSeriesService {
       }
       if (my !== this.token) return; // a newer request replaced this one
       series = withCorrections(series, corr);
+      const blended = blendSeries(series, corr ?? { airports: {}, models: {} });
+      if (blended) series = { ...series, models: { ...series.models, blend: blended.blend } };
       this.cache.set(key, { at: Date.now(), series });
       while (this.cache.size > CACHE_SIZE) this.cache.delete(this.cache.keys().next().value as string);
       this.data.set(series);

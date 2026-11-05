@@ -32,7 +32,10 @@ export function blendFields(a: Float32Array, b: Float32Array, mix: number): Floa
 /** The rain that fell between two times, from the running total at each: max(0, end - start); NaN where either is unknown. */
 export function differenceField(end: Float32Array, start: Float32Array): Float32Array {
   const out = new Float32Array(end.length);
-  for (let i = 0; i < out.length; i++) out[i] = Math.max(0, end[i] - start[i]);
+  for (let i = 0; i < out.length; i++) {
+    const diff = end[i] - start[i];
+    out[i] = diff < 0.15 ? 0 : Math.max(0, diff);
+  }
   return out;
 }
 

@@ -348,7 +348,7 @@ export class MeteogramChartComponent implements OnDestroy {
     return series.slice(w.from, w.to + 1).map(v => (v === null ? null : convert(v)));
   }
 
-  private readonly model = computed(() => this.series().models[this.modelId()]);
+  private readonly model = computed(() => this.series().models[this.modelId()] ?? this.series().models['blend'] ?? this.series().models['ecmwf_ifs'] ?? Object.values(this.series().models)[0]);
 
   // ---- model mode: temperature ---------------------------------------------------------------------------------------
   /** The temperature line has the panel above its rain bars: the bars climb the lower half at most. */

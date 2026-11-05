@@ -115,6 +115,7 @@ def _gap_rain(rates: dict[int, np.ndarray], windows: dict[int, int]) -> dict[int
         if windows[h] < spacing and prev in rates:
             before = rates[prev]
             rate = np.where(np.isfinite(before), 0.5 * (before + rate), rate)  # step 0 has no rain field: use the later rate
+        rate = np.where(rate < 0.1, 0.0, rate)  # eliminate trace drizzle noise below 0.1 mm/h
         gap_rain[h] = np.nan_to_num(rate, nan=0.0) * spacing
     return gap_rain
 

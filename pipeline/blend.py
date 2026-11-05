@@ -237,8 +237,8 @@ def probability_matched(pattern: np.ndarray, parts: list[tuple[float, np.ndarray
     matched = np.empty(n, np.float32)
     matched[ranked] = target
     out[cells] = matched
-    # Smoothly taper drizzle noise below 0.05 mm/h
-    out = np.where(out < 0.05, 0.0, out)
+    # Smoothly taper drizzle noise below 0.10 mm/h
+    out = np.where(out < 0.10, 0.0, out)
     return out
 
 
@@ -385,6 +385,8 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
 
         if var in PROBABILITY_MATCHED:
             pattern = probability_matched(np.maximum(pattern, 0.0), parts)
+        elif var == "precip":
+            pattern = np.where(pattern < 0.10, 0.0, np.maximum(pattern, 0.0))
 
         out[var] = pattern
 

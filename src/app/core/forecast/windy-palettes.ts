@@ -43,30 +43,38 @@ export function windStops(min: number, max: number): string[] {
 }
 
 /**
- * Rain accumulation in mm with the user's 5-colour palette (the owner, 6 Nov 2026:
- * #99a5ff lavender blue, #de8e1f golden amber, #ff7878 salmon coral, #d10808 bold red, #631978 deep purple),
- * applied only above 1.5 mm.
+ * Rain accumulation in mm with Windy's colours (the owner, 6 Nov 2026: reverted to the old palette,
+ * with sky blue #38bdf8 at the base: sky blue to 3 mm, blue 5.5, cyan at 10, aqua at 16,
+ * aqua-green at 25, lime at 50, orange at 100, red 173, dark red at 300).
  */
 const RAIN_ACCUMULATION_ANCHORS: readonly [number, string][] = [
-  [0, '#99a5ff'],
-  [1.5, '#99a5ff'],
-  [10, '#de8e1f'],
-  [35, '#ff7878'],
-  [100, '#d10808'],
-  [300, '#631978'],
+  [0, '#38bdf8'],
+  [3, '#38bdf8'],
+  [5.5, '#3f7bea'],
+  [10, '#29bced'],
+  [16, '#25d2d1'],
+  [25, '#29e6b0'],
+  [50, '#c1ee34'],
+  [100, '#f7a82b'],
+  [173, '#d33104'],
+  [300, '#8a0b03'],
 ];
 
 /**
- * Rain rate in mm/h with the same 5-colour palette (the owner, 6 Nov 2026:
- * #99a5ff, #de8e1f, #ff7878, #d10808, #631978), applied only above 1.5 mm/h.
+ * Rain rate in mm/h in the accumulation's colours (sky blue to 0.5 mm/h, blue 1, cyan 2,
+ * aqua 3, aqua-green 5, lime 10, orange 20, red 35, dark red 50).
  */
 const RAIN_ANCHORS: readonly [number, string][] = [
-  [0, '#99a5ff'],
-  [1.5, '#99a5ff'],
-  [5, '#de8e1f'],
-  [15, '#ff7878'],
-  [30, '#d10808'],
-  [50, '#631978'],
+  [0, '#38bdf8'],
+  [0.5, '#38bdf8'],
+  [1, '#3f7bea'],
+  [2, '#29bced'],
+  [3, '#25d2d1'],
+  [5, '#29e6b0'],
+  [10, '#c1ee34'],
+  [20, '#f7a82b'],
+  [35, '#d33104'],
+  [50, '#8a0b03'],
 ];
 
 /** The palette stops for a value-pinned scale drawn with a gamma (stop i sits at min + (max - min) * (i / n)^(1 / gamma), as the shader reads). */
