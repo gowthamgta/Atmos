@@ -43,15 +43,6 @@ export function windStops(min: number, max: number): string[] {
 }
 
 /**
- * Rain rate in mm/h with Windy's "Rain, thunder" colours, read from its legend (6 Nov 2026). Windy's scale is mm in 3 hours (blue to 3,
- * teal 5, green 7, lime 10, yellow 15, red 20, wine 25, magenta 30), so each colour sits at a third of Windy's amount here.
- */
-const RAIN_ANCHORS: readonly [number, string][] = [
-  [0, '#3b7ca2'], [0.5, '#3b7ca2'], [2 / 3, '#3b80a2'], [1, '#3a89a2'], [5 / 3, '#3a99a2'], [7 / 3, '#32a66f'], [17 / 6, '#4aa439'],
-  [10 / 3, '#81a23b'], [5, '#a2a23b'], [20 / 3, '#a23c3b'], [25 / 3, '#ab366b'], [10, '#a43a9a'],
-];
-
-/**
  * Rain accumulation in mm with Windy's colours, read from its legend (6 Nov 2026): violet-blue to 3 mm, blue, cyan at 10, aqua-green at 25,
  * lime at 50, orange at 100, red, dark red at 300.
  */
@@ -60,14 +51,23 @@ const RAIN_ACCUMULATION_ANCHORS: readonly [number, string][] = [
   [173, '#d33104'], [300, '#8a0b03'],
 ];
 
+/**
+ * Rain rate in mm/h in the accumulation's colours (the owner, 6 Nov 2026: "also use the same rain accumulation colors for rain"):
+ * violet-blue to 0.5 mm/h, blue 1, cyan 2, aqua 3, aqua-green 5, lime 10, orange 20, red 35, dark red 50.
+ */
+const RAIN_ANCHORS: readonly [number, string][] = [
+  [0, '#4352bf'], [0.5, '#4352bf'], [1, '#3f7bea'], [2, '#29bced'], [3, '#25d2d1'], [5, '#29e6b0'], [10, '#c1ee34'], [20, '#f7a82b'],
+  [35, '#d33104'], [50, '#8a0b03'],
+];
+
 /** The palette stops for a value-pinned scale drawn with a gamma (stop i sits at min + (max - min) * (i / n)^(1 / gamma), as the shader reads). */
 function gammaStops(anchors: readonly [number, string][], min: number, max: number, gamma: number): string[] {
   const n = 64;
   return Array.from({ length: n + 1 }, (_, i) => colourAt(anchors, min + (max - min) * Math.pow(i / n, 1 / gamma)));
 }
 
-export const RAIN_MAX = 12;
-export const RAIN_GAMMA = 0.5;
+export const RAIN_MAX = 50;
+export const RAIN_GAMMA = 0.4;
 export const RAIN_ACCUMULATION_GAMMA = 0.27;
 export const WINDY_RAIN_RATE = gammaStops(RAIN_ANCHORS, 0, RAIN_MAX, RAIN_GAMMA);
 export const WINDY_RAIN_ACCUMULATION = gammaStops(RAIN_ACCUMULATION_ANCHORS, 0, 300, RAIN_ACCUMULATION_GAMMA);
