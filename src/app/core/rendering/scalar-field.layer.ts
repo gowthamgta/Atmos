@@ -87,6 +87,7 @@ uniform int u_terrainMode; // 0 off, else TERRAIN_MODE_CODE
 uniform float u_relief;    // 0..1 strength of the relief shading
 uniform float u_levelHeight; // pressure-level layers: height of the level (m); 0 at the ground
 uniform int u_lite;        // 1: phone mode, the relief slope from screen differences (about 20 texture reads per pixel fewer)
+uniform int u_cubic;       // 1: zoomed in far enough that a grid cell spans several screen pixels: the field is read with a smooth curve
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -110,10 +111,43 @@ vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
   return vec2(wsum > 0.001 ? sum / wsum : 0.0, wsum);
 }
 
+// Catmull-Rom weights of the four nodes around a position t (0..1) between the middle two.
+vec4 catmullRom(float t) {
+  float t2 = t * t;
+  float t3 = t2 * t;
+  return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
+}
+
+// Smooth (bicubic Catmull-Rom over 4 x 4 nodes) where every node has data, else bilinear. The curve passes through the nodes, so the values
+// there are the model's; it is kept within the four nearest nodes' range, so it never invents a peak or a negative rain the model has not.
+vec2 sampleSmooth(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
+  vec2 lin = sampleField(tex, g, size, enc);
+  if (u_cubic == 0 || lin.y < 0.999) return lin;
+  vec2 fr = fract(g);
+  ivec2 i0 = ivec2(floor(g));
+  vec4 wx = catmullRom(fr.x);
+  vec4 wy = catmullRom(fr.y);
+  float sum = 0.0;
+  float lo = 1e30;
+  float hi = -1e30;
+  for (int j = 0; j < 4; j++) {
+    float row = 0.0;
+    for (int i = 0; i < 4; i++) {
+      vec4 c = texelFetch(tex, clamp(i0 + ivec2(i - 1, j - 1), ivec2(0), size - 1), 0);
+      if (c.b > 0.5) return lin;   // a node without data nearby: the plain blend
+      float d = decode(c, enc);
+      row += d * wx[i];
+      if (i >= 1 && i <= 2 && j >= 1 && j <= 2) { lo = min(lo, d); hi = max(hi, d); }
+    }
+    sum += row * wy[j];
+  }
+  return vec2(clamp(sum, lo, hi), 1.0);
+}
+
 // Blends two time steps of one variable; where one step has no data the other is used. Returns (value, valid).
 vec2 blendTime(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
-  vec2 a = sampleField(ta, g, u_size, enc);
-  vec2 b = sampleField(tb, g, u_size, enc);
+  vec2 a = sampleSmooth(ta, g, u_size, enc);
+  vec2 b = sampleSmooth(tb, g, u_size, enc);
   float wa = (1.0 - u_mix) * (a.y > 0.5 ? 1.0 : 0.0);
   float wb = u_mix * (b.y > 0.5 ? 1.0 : 0.0);
   if (wa + wb < 0.0001) return vec2(0.0, 0.0);
@@ -259,7 +293,7 @@ const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
-  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite',
+  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 
@@ -353,6 +387,17 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.relief = strength;
     this.map?.triggerRepaint();
   }
+
+  /**
+   * True when a grid cell spans at least CUBIC_MIN_PX screen pixels: zoomed in that far the straight blend between nodes shows as facets and
+   * diamonds, so the field is read with a smooth curve (sampleSmooth); further out a cell is a pixel or two and the cheaper blend looks the same.
+   */
+  private cubicAt(grid: ForecastGrid): boolean {
+    if (!this.map) return false;
+    const cellPx = (grid.step / 360) * 512 * Math.pow(2, this.map.getZoom()) * (globalThis.devicePixelRatio || 1);
+    return cellPx >= ScalarFieldLayer.CUBIC_MIN_PX;
+  }
+  private static readonly CUBIC_MIN_PX = 6;
 
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
@@ -469,6 +514,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_relief'], terrainOn ? this.relief : 0);
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
+    gl.uniform1i(u['u_cubic'], this.cubicAt(grid) ? 1 : 0);
     this.tiles.setUniforms(gl, u, terrainOn);
     const meta = this.terrain?.meta;
     if (terrainOn && meta) {
