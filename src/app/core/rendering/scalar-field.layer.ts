@@ -73,6 +73,7 @@ uniform vec2 u_enc2;     // same, second component
 uniform vec2 u_disp;     // display range mapped onto the palette
 uniform float u_gamma;
 uniform float u_clear;
+uniform float u_clearFade; // the colour fades in from u_clear to u_clear times this
 uniform vec4 u_grid;     // lonMin, latMax, step, unused
 uniform ivec2 u_size;
 uniform vec4 u_smoothGrid; // smoothed terrain
@@ -258,7 +259,7 @@ void main() {
   vec4 lutColor = texture(u_lut, vec2(t * (255.0 / 256.0) + 0.5 / 256.0, 0.5));
   vec3 rgb = lutColor.rgb;
   float alpha = u_opacity * edgeFade * lutColor.a;   // a palette can fade to transparent (the clouds layer)
-  if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * 1.5, v);
+  if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * u_clearFade, v);
 
   if (onGround) {
     // 90 m relief: hills lit from the north-west, so the Ghats, Nilgiris and valleys read through every layer
@@ -291,7 +292,7 @@ interface Uniforms {
 
 const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
-  'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_grid', 'u_size',
+  'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_clearFade', 'u_grid', 'u_size',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
@@ -390,14 +391,14 @@ export class ScalarFieldLayer implements CustomLayerInterface {
 
   /**
    * True when a grid cell spans at least CUBIC_MIN_PX screen pixels: zoomed in that far the straight blend between nodes shows as facets and
-   * diamonds, so the field is read with a smooth curve (sampleSmooth); further out a cell is a pixel or two and the cheaper blend looks the same.
+   * diamonds, so the field is read with a smooth curve (sampleSmooth); further out a cell is a pixel or so and the cheaper blend looks the same.
    */
   private cubicAt(grid: ForecastGrid): boolean {
     if (!this.map) return false;
     const cellPx = (grid.step / 360) * 512 * Math.pow(2, this.map.getZoom()) * (globalThis.devicePixelRatio || 1);
     return cellPx >= ScalarFieldLayer.CUBIC_MIN_PX;
   }
-  private static readonly CUBIC_MIN_PX = 6;
+  private static readonly CUBIC_MIN_PX = 3;
 
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
@@ -506,6 +507,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform2f(u['u_disp'], def.min, def.max);
     gl.uniform1f(u['u_gamma'], def.gamma);
     gl.uniform1f(u['u_clear'], def.clearBelow);
+    gl.uniform1f(u['u_clearFade'], def.clearFade ?? 1.5);
     gl.uniform4f(u['u_grid'], grid.lonMin, grid.latMax, grid.step, 0);
     gl.uniform2i(u['u_size'], grid.nx, grid.ny);
     gl.uniform1i(u['u_terrainOn'], terrainOn ? 1 : 0);
