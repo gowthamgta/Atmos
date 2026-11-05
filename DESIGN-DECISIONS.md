@@ -190,6 +190,7 @@ fingerprint only together with this file, on the owner's request.
 - **Corrections are learned daily** (learn_bias.py): each model's usual temperature and humidity error by airport and hour, kept only where
   it lowers the error on held-back days. They correct the meteogram and the comparison table for every model, and the ECMWF IFS map
   near the airports (the other map models are not corrected).
+- **Removed: the Kralveth Blend in the app** (the owner, 6 Nov 2026: "the blend is not accurate so lets remove it"): no Blend line on the place card, no Blend days, no Blend row or line in the meteogram, no "Atmos Blend" choice for the probability of rain (the ECMWF ensemble only). Each model's airport correction stays. The pipeline still writes the Blend's weights in corrections.json (unused by the app). The entry below records how it worked.
 - **The Kralveth Blend**: the corrected models weighted by recent error (rain by the square of the threat score), only in the meteogram's
   comparison and the place card (its next days while its backtest beats every model), not a map layer.
 - **DWD ICON is a map model again** (22 Oct): 00Z and 12Z to +120 h on the 0.25 degree grid (the site must stay under Pages' 1 GB).

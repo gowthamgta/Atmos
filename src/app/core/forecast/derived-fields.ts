@@ -180,31 +180,3 @@ export function encodeFieldBitmap(values: Float32Array, grid: ForecastGrid, min:
   const data = new ImageData(encodeFieldPixels(values, min, max) as Uint8ClampedArray<ArrayBuffer>, grid.nx, grid.ny);
   return createImageBitmap(data, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
 }
-
-/**
- * The Kralveth Blend's chance of rain over the next 24 hours on the grid (0..100 %): as the Blend works it out at a place
- * (core/meteogram/blend.ts), the weighted share of the models that bring rain, each weighted by its recent rain skill and each counted from
- * its own threshold (the amount at which it forecasts rain as often as the airports report it). A model's rain is read from the most it
- * brings close by (as the models' agreement does), and its "yes" is soft around its threshold (half to twice it), so the share does not
- * jump at one exact amount.
- */
-export function blendRainProbability(models: readonly { values: Float32Array; weight: number; thresholdMm: number }[], grid: ForecastGrid = INDIA_GRID): Float32Array {
-  const n = grid.nx * grid.ny;
-  const out = new Float32Array(n).fill(NaN);
-  if (models.length === 0) return out;
-  const envelopes = models.map(m => smoothNeighbourhoodMax(m.values, grid.nx, grid.ny));
-  for (let i = 0; i < n; i++) {
-    let w = 0;
-    let yes = 0;
-    for (let m = 0; m < models.length; m++) {
-      const v = envelopes[m][i];
-      if (Number.isNaN(v)) continue;
-      const t = models[m].thresholdMm;
-      const x = Math.min(1, Math.max(0, (v - 0.5 * t) / (1.5 * t)));
-      yes += models[m].weight * x * x * (3 - 2 * x);
-      w += models[m].weight;
-    }
-    if (w > 0) out[i] = (100 * yes) / w;
-  }
-  return out;
-}

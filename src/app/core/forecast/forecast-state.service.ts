@@ -60,17 +60,6 @@ export class ForecastStateService {
   /** 90 m hill shading of the colour layers and the basemap, on by default (the layer menu switches it off). */
   /** The 90 m terrain relief shading: off unless switched on (the owner, 3 Nov 2026: "turn off the terrain relief default for max performance"). */
   readonly relief = signal(false);
-  /** Where the probability-of-rain layer comes from (consensus.service.ts), remembered between visits. */
-  readonly probabilitySource = signal<'ensemble' | 'blend'>(readProbabilitySource());
-
-  setProbabilitySource(source: 'ensemble' | 'blend'): void {
-    this.probabilitySource.set(source);
-    try {
-      localStorage.setItem('atmosiq.probabilitySource', source);
-    } catch {
-      // not remembered
-    }
-  }
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
   readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 
@@ -329,13 +318,5 @@ export class ForecastStateService {
     if (current === null) this.timeMs.set(Math.min(Math.max(Date.now(), start), end));
     else this.setTime(current); // a newer run may have a different range
     this.ensureRainRange();
-  }
-}
-
-function readProbabilitySource(): 'ensemble' | 'blend' {
-  try {
-    return localStorage.getItem('atmosiq.probabilitySource') === 'blend' ? 'blend' : 'ensemble';
-  } catch {
-    return 'ensemble';
   }
 }

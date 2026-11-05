@@ -74,19 +74,13 @@ export interface PointModelDef {
   ai: boolean;
 }
 
-/**
- * The Kralveth Blend: the corrected models weighted by how right each has been lately (core/meteogram/blend.ts). It is not a map model, only a
- * line and a row in the meteogram's comparison.
- */
-export const BLEND_MODEL: PointModelDef = { id: 'blend', label: 'Kralveth Blend', short: 'Blend', ai: false };
-
 /** Models compared in the meteogram that are not on the map, with Open-Meteo's names (none at the moment: DWD ICON is on the map now). */
 export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [];
 
-/** The models of the meteogram's comparison: the Blend first, then the map's models, then the others. */
-export const POINT_MODELS: readonly PointModelDef[] = [BLEND_MODEL, ...FORECAST_MODELS, ...POINT_ONLY_MODELS];
+/** The models of the meteogram's comparison: the map's models, then the others. */
+export const POINT_MODELS: readonly PointModelDef[] = [...FORECAST_MODELS, ...POINT_ONLY_MODELS];
 
-/** True for a model that can be shown on the map (the Blend and the point-only models cannot). */
+/** True for a model that can be shown on the map (the point-only models cannot). */
 export function isMapModel(id: string): boolean {
   return FORECAST_MODELS.some(m => m.id === id);
 }

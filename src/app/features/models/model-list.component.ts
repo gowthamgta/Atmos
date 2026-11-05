@@ -46,7 +46,6 @@ import { SKILL_WINDOW_DAYS, VerificationService } from '../../core/forecast/veri
       @if (verification.airportCount()) {
         Accuracy: a day ahead, the last {{ windowDays }} days at {{ verification.airportCount() }} South Indian airports (temperature error, and the rainy hours each model forecast rain in).
         "Corrected": after taking off the model's usual error at the airports, as the meteogram shows it.
-        @if (blendLine()) { The Kralveth Blend of the corrected models (in the meteogram's comparison): {{ blendLine() }}. }
       }
       Run is when the model started its forecast (UTC hour). Hour is how many hours into that run the time on the bar is.
       @if (checked()) { Checked {{ checked() }}. }
@@ -88,10 +87,6 @@ export class ModelListComponent {
   private readonly state = inject(ForecastStateService);
   protected readonly verification = inject(VerificationService);
   protected readonly windowDays = SKILL_WINDOW_DAYS;
-  protected readonly blendLine = computed(() => {
-    const b = this.verification.blendSkill();
-    return b && b.days >= 3 ? skillLine(b) : '';
-  });
   protected readonly skillTitle = 'How far its temperature forecast a day ahead was from the airport reports, and the share of rainy hours it forecast rain in';
 
   /** A model was chosen (the popover closes). */

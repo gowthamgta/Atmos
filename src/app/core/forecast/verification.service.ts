@@ -17,16 +17,11 @@ export class VerificationService {
     const f = this.file();
     return new Map((f ? summarizeSkill(f, SKILL_WINDOW_DAYS, 1, FORECAST_MODELS.map(m => m.id)) : []).map(s => [s.modelId, s]));
   });
-  /** The Blend's skill over the same days (null until it has been scored). */
-  readonly blendSkill = computed<ModelSkill | null>(() => {
-    const f = this.file();
-    return (f && summarizeSkill(f, SKILL_WINDOW_DAYS, 1, ['blend'])[0]) || null;
-  });
   /** The airports the scores come from. */
   readonly airportCount = computed(() => this.file()?.airports.length ?? 0);
 
   private correctionsPromise: Promise<CorrectionsFile | null> | null = null;
-  /** The corrections and Blend weights (learn_bias.py), once loaded; null until then or when they cannot be had. */
+  /** The corrections (learn_bias.py), once loaded; null until then or when they cannot be had. */
   readonly corrections = signal<CorrectionsFile | null>(null);
 
   /** Loads the corrections once (a failure is asked again next time). */

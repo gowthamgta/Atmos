@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { FORECAST_MODELS, POINT_ONLY_MODELS } from '../forecast/forecast-models';
 import { VerificationService } from '../forecast/verification.service';
-import { BLEND_ID, CorrectionsFile, applyCorrections, blendSeries, extraBlendModels } from './blend';
+import { CorrectionsFile, applyCorrections } from './blend';
 import { ApiModel, PointSeries, parsePointSeries, seriesUrl } from './point-series';
 import { inForecastBox } from '../forecast/derived-fields';
 
@@ -18,15 +18,9 @@ const MODELS: readonly ApiModel[] = [...FORECAST_MODELS, ...POINT_ONLY_MODELS].m
 /** How long the forecast waits for the corrections file before going without them (it is small and usually cached). */
 const CORRECTIONS_WAIT_MS = 2500;
 
-/**
- * The series as the meteogram shows it: each model corrected at the place, and the Kralveth Blend of them added (see blend.ts). The models only
- * the Blend needs stay in the series but are not drawn.
- */
-export function withBlend(series: PointSeries, corr: CorrectionsFile | null): PointSeries {
-  if (!corr) return series;
-  const corrected = applyCorrections(series, corr);
-  const b = blendSeries(corrected, corr);
-  return b ? { ...corrected, models: { ...corrected.models, [BLEND_ID]: b.blend }, rainChance: b.rainChance } : corrected;
+/** The series as the meteogram shows it: each model corrected at the place (see blend.ts). */
+export function withCorrections(series: PointSeries, corr: CorrectionsFile | null): PointSeries {
+  return corr ? applyCorrections(series, corr) : series;
 }
 
 /**
@@ -90,7 +84,7 @@ export class PointSeriesService {
         new Promise<null>(resolve => setTimeout(() => resolve(null), CORRECTIONS_WAIT_MS)),
       ]);
       if (my !== this.token) return;
-      const models: ApiModel[] = [...MODELS, ...extraBlendModels(corr, MODELS.map(m => m.id))];
+      const models: ApiModel[] = [...MODELS];
       let attempt = 0;
       let series: PointSeries | null = null;
       for (;;) {
@@ -112,7 +106,7 @@ export class PointSeriesService {
         throw new Error(typeof reason === 'string' ? reason : 'The forecast for this place could not be read.');
       }
       if (my !== this.token) return; // a newer request replaced this one
-      series = withBlend(series, corr);
+      series = withCorrections(series, corr);
       this.cache.set(key, { at: Date.now(), series });
       while (this.cache.size > CACHE_SIZE) this.cache.delete(this.cache.keys().next().value as string);
       this.data.set(series);

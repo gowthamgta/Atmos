@@ -231,8 +231,8 @@ export class MeteogramComponent implements OnDestroy {
   protected readonly units = this.unitsService.units;
   protected readonly rangeDays = RANGE_DAYS;
   protected readonly compareTabs = COMPARE_TABS;
-  /** The models of the comparison: the Blend (when it could be made for this place), then the map's models. */
-  protected readonly models = computed(() => POINT_MODELS.filter(def => def.id !== 'blend' || !!this.series.data()?.models['blend']));
+  /** The models of the comparison: the map's models. */
+  protected readonly models = computed(() => POINT_MODELS);
 
   private readonly sheet = viewChild<ElementRef<HTMLElement>>('sheet');
   private stopWatching: (() => void) | null = null;

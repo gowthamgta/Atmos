@@ -215,7 +215,7 @@ export class ForecastMapController {
     }
 
     if (consensusLayer) {
-      void this.updateConsensus(layer, def, time, ++this.token, this.state.probabilitySource());
+      void this.updateConsensus(layer, def, time, ++this.token);
       return;
     }
     if (rangeLayer) {
@@ -315,9 +315,9 @@ export class ForecastMapController {
   }
 
   /** The multi-model 24 h rain probability layer (`0..100 %`, see ConsensusService). */
-  private async updateConsensus(layer: ScalarFieldLayer, def: ForecastLayerDef, time: number, my: number, source: 'ensemble' | 'blend'): Promise<void> {
+  private async updateConsensus(layer: ScalarFieldLayer, def: ForecastLayerDef, time: number, my: number): Promise<void> {
     try {
-      const result = await this.consensus.compute(time, source);
+      const result = await this.consensus.compute(time);
       if (my !== this.token || !this.layer) return;
       if (!result) {
         layer.setLayer(null);
@@ -325,7 +325,7 @@ export class ForecastMapController {
       }
       const bitmap = await encodeFieldBitmap(result.values, INDIA_GRID, 0, 100);
       if (my !== this.token || !this.layer) return;
-      const frame = { key: `consensus/${source}/${Math.round(time / 60_000)}/${result.models.join(',')}`, bitmap };
+      const frame = { key: `consensus/${Math.round(time / 60_000)}/${result.models.join(',')}`, bitmap };
       layer.setGrid(INDIA_GRID);
       layer.setLayer(def, [0, 100]);
       layer.setFrames(frame, frame, 0);
