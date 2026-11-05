@@ -25,7 +25,8 @@ import himawari_bt as H
 import himawari_rgb as G
 
 FOLDER = "rgb-msg"
-BOX = (68.0, 97.5, 5.0, 37.5)
+# the satellite box is the forecast box, 5-20 N, 70-97.5 E (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region")
+BOX = (70.0, 97.5, 5.0, 20.0)
 RES_M = 1250
 DATA_RES_M = 3000
 SUB_LON = 45.5

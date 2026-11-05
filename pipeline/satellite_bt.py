@@ -26,7 +26,8 @@ import numpy as np
 VERSION = 1
 COLLECTION = os.environ.get("EUMETSAT_COLLECTION", "EO:EUM:DAT:MSG:HRSEVIRI-IODC")
 # the box of the app's satellite pictures (satellite.config.ts SATELLITE_BOUNDS)
-WEST, EAST, SOUTH, NORTH = 68.0, 97.5, 5.0, 37.5
+# the satellite box is the forecast box, 5-20 N, 70-97.5 E (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region")
+WEST, EAST, SOUTH, NORTH = 70.0, 97.5, 5.0, 20.0
 STEP_DEG = 0.03                 # about 3 km: the infrared channels' own pixel over India
 OFFSET_K = 180.0
 STEP_K = 0.5                    # 180 K .. 307.5 K in 255 steps
@@ -80,6 +81,12 @@ def update_index(folder: str, new: list[tuple[datetime, str]], now: datetime) ->
             for f in json.load(open(path))["frames"]:
                 frames[f["time"]] = f["file"]
         except (ValueError, KeyError):
+            frames = {}
+        try:
+            b = json.load(open(path))["bounds"]
+            if (b["west"], b["east"], b["south"], b["north"]) != (WEST, EAST, SOUTH, NORTH):
+                frames = {}   # frames of another box: the loop starts again
+        except (ValueError, KeyError, TypeError):
             frames = {}
     for t, name in new:
         frames[t.strftime("%Y-%m-%dT%H:%M:%SZ")] = name

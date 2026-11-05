@@ -9,8 +9,8 @@ import himawari_rgb as G
 
 def test_grid_is_web_mercator_over_the_box():
     g = G.grid(1000)
-    assert (g["cols"], g["rows"]) == (2505, 2946)
-    assert abs(g["lat"][0, 0] - 30) < 0.02 and abs(g["lat"][-1, 0] - 5) < 0.02     # rows north to south
+    assert (g["cols"], g["rows"]) == (2505, 1716)
+    assert abs(g["lat"][0, 0] - 20) < 0.02 and abs(g["lat"][-1, 0] - 5) < 0.02     # rows north to south
     r, c = g["to_rc"](np.array([g["lat"][100, 7]]), np.array([g["lon"][100, 7]]))
     assert abs(r[0] - 100) < 1e-6 and abs(c[0] - 7) < 1e-6                          # a place maps back to its own cell
 
@@ -53,7 +53,19 @@ def test_index_keeps_whole_recent_frames(tmp_path):
                                     (datetime(2026, 10, 22, 4, 0, tzinfo=timezone.utc), {"truecolor": "old.webp"})], now)
     assert [f["time"] for f in index["frames"]] == ["2026-10-22T06:20:00Z"]
     assert sorted(os.listdir(folder)) == ["a.webp", "b.png", "index.json"]
-    assert index["bounds"] == {"west": 75.0, "east": 97.5, "south": 5.0, "north": 30.0}
+    assert index["bounds"] == {"west": 75.0, "east": 97.5, "south": 5.0, "north": 20.0}
+
+
+def test_index_starts_again_when_the_box_changes(tmp_path):
+    folder = str(tmp_path)
+    now = datetime(2026, 10, 22, 6, 30, tzinfo=timezone.utc)
+    for n in ("old.webp", "new.webp"):
+        open(os.path.join(folder, n), "wb").write(b"x")
+    old = {"bounds": {"west": 68.0, "east": 97.5, "south": 5.0, "north": 37.5}, "frames": [{"time": "2026-10-22T06:10:00Z", "files": {"rgb": "old.webp"}}]}
+    json.dump(old, open(os.path.join(folder, "index.json"), "w"))
+    index = G.update_index(folder, [(datetime(2026, 10, 22, 6, 20, tzinfo=timezone.utc), {"rgb": "new.webp"})], now)
+    assert [f["time"] for f in index["frames"]] == ["2026-10-22T06:20:00Z"]   # the frame of the old box is dropped
+    assert "old.webp" not in os.listdir(folder)
 
 
 def test_meteosat_pictures_helpers():
@@ -67,7 +79,7 @@ def test_meteosat_pictures_helpers():
     assert s[1, 1, 0] > 0.5 and s[0, 0, 0] < 0.5                          # the HRV's detail comes through
     assert np.allclose(s[2, 2], 0.5)                                       # no HRV: unchanged
     g = G.grid(M.RES_M, M.BOX)
-    assert (g["cols"], g["rows"]) == (2627, 3161)
+    assert (g["cols"], g["rows"]) == (2449, 1373)
     z, _ = H.view_geometry(np.array([13.0]), np.array([80.3]), M.SUB_LON)
     assert 35 < z[0] < 45                                                  # Chennai, seen from 45.5 E
 

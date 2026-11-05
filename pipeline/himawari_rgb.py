@@ -31,7 +31,7 @@ import satellite_bt as S
 from net import download
 
 FOLDER = "rgb-h9"
-WEST, EAST, SOUTH, NORTH = 75.0, 97.5, 5.0, 30.0
+WEST, EAST, SOUTH, NORTH = 75.0, 97.5, 5.0, 20.0   # Himawari's own data box: the satellite box east of 75 E (it sees further west too slantwise)
 RES_M = 1000                    # the pictures (Web Mercator metres at the equator)
 DATA_RES_M = 2000               # the data pack: the infrared's own pixel
 SEGMENTS = ("03", "04", "05")   # 5-30 N
@@ -211,7 +211,8 @@ def make_scan(files: list[str], t: datetime, folder: str) -> dict:
 # matches this to a pixel value or two at every temperature (correlation 0.98), so the app's agreed Windy colouring (satellite-image.ts), tuned
 # on EUMETView's picture, takes this picture as it is, but uncompressed and at the satellite's own resolution. Made on the app's satellite box
 # (68-97.5 E, 5-37.5 N, latitude rows as EUMETView's) at two sizes: full (about 1.25 km) and a lighter one for phones (about 2.5 km).
-APP_BOX = (68.0, 97.5, 5.0, 37.5)
+# the satellite box is the forecast box, 5-20 N, 70-97.5 E (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region")
+APP_BOX = (70.0, 97.5, 5.0, 20.0)
 HRV_STEP_DEG = {"rgb": 0.0125, "rgb_lo": 0.025}
 
 
@@ -285,6 +286,8 @@ def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime, b
                 frames[f["time"]] = f["files"]
         except (ValueError, KeyError):
             frames = {}
+    if os.path.exists(path) and _box_changed(path, box):
+        frames = {}   # pictures of another box would be drawn stretched over this one: the loop starts again
     for t, files in new:
         frames[t.strftime("%Y-%m-%dT%H:%M:%SZ")] = files
     keep = {}
@@ -312,6 +315,15 @@ def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime, b
     with open(path, "w") as f:
         json.dump(index, f, separators=(",", ":"))
     return index
+
+
+def _box_changed(path: str, box: tuple[float, float, float, float]) -> bool:
+    """True when the index at `path` was made for another box (or cannot be read)."""
+    try:
+        b = json.load(open(path))["bounds"]
+        return (b["west"], b["east"], b["south"], b["north"]) != tuple(box)
+    except (ValueError, KeyError, TypeError):
+        return True
 
 
 def scan_keys(t: datetime) -> list[str]:

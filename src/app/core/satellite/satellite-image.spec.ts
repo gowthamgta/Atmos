@@ -22,10 +22,10 @@ describe('mercator helpers', () => {
     for (const lat of [-30, 0, 4, 13, 22, 60]) expect(latFromMercatorY(mercatorY(lat))).toBeCloseTo(lat, 8);
   });
 
-  it('gives a taller picture than plain latitude would for 5-37.5 N', () => {
+  it('gives a taller picture than plain latitude would for 5-20 N', () => {
     const h = mercatorHeight(1100);
-    expect(h).toBeGreaterThan(1212); // the plain-latitude picture is about 1212 tall (32.5 of 29.5 degrees)
-    expect(h).toBeLessThan(1360);
+    expect(h).toBeGreaterThan(600); // the plain-latitude picture is 600 tall (15 of 27.5 degrees)
+    expect(h).toBeLessThan(630);
   });
 });
 

@@ -12,7 +12,8 @@ export interface GeoBounds {
 }
 
 /** The satellite pictures' box: all of India (the forecast domain covers the same box). */
-export const SATELLITE_BOUNDS: GeoBounds = { west: 68, east: 97.5, south: 5, north: 37.5 };
+/** The satellite pictures' box: the forecast box (FORECAST_BOX; the owner, 6 Nov 2026: "lets change the satellite also to cover only this region"). */
+export const SATELLITE_BOUNDS: GeoBounds = { west: 70, east: 97.5, south: 5, north: 20 };
 
 /** The pictures shown: Meteosat's HRV by day and infrared (10.8 µm) at night. */
 export type SatelliteChannel = 'hrv' | 'ir';

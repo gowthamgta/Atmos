@@ -20,8 +20,8 @@ def test_encode_round_trip_and_no_data():
 
 def test_grid_matches_the_apps_box():
     rows, cols = S.grid_shape()
-    assert (rows, cols) == (1083, 983)
-    assert (S.WEST, S.EAST, S.SOUTH, S.NORTH) == (68.0, 97.5, 5.0, 37.5)
+    assert (rows, cols) == (500, 917)
+    assert (S.WEST, S.EAST, S.SOUTH, S.NORTH) == (70.0, 97.5, 5.0, 20.0)
 
 
 def test_frames_written_and_old_ones_dropped(tmp_path):
