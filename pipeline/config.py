@@ -39,7 +39,8 @@ LEVELS = (925, 850, 800, 700, 600, 500, 300, 250, 200)
 LEVEL_KM = {925: 0.8, 850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8}
 
 # Encoding ranges per level: temperature (degC) and geopotential height (m). Generous, so no value can clip.
-_LEVEL_T = {925: (8, 36), 850: (4, 32), 800: (0, 28), 700: (-8, 22), 600: (-18, 12), 500: (-28, 2), 300: (-58, -18), 250: (-68, -28), 200: (-78, -38)}
+# wide enough for the whole domain (Ladakh's winter, the jet's cold core at 200 hPa down to -100 °C): the app colours them on Windy's scale
+_LEVEL_T = {925: (-10, 40), 850: (-20, 35), 800: (-25, 30), 700: (-35, 25), 600: (-45, 15), 500: (-55, 5), 300: (-75, -15), 250: (-85, -25), 200: (-100, -30)}
 _LEVEL_GH = {925: (400, 1100), 850: (1100, 1800), 800: (1600, 2400), 700: (2600, 3300), 600: (3900, 4700), 500: (5500, 6100), 300: (9000, 10000), 250: (10200, 11200), 200: (11800, 12800)}
 
 
@@ -60,10 +61,10 @@ def _level_vars() -> list[Var]:
 
 
 VARS: dict[str, Var] = {v.id: v for v in [
-    Var("t2m", "°C", -10, 50),
+    Var("t2m", "°C", -40, 50),
     Var("rh", "%", 0, 100),
-    Var("feels", "°C", -10, 60),
-    Var("dew", "°C", -20, 40),
+    Var("feels", "°C", -50, 60),
+    Var("dew", "°C", -50, 40),
     Var("u10", "m/s", -60, 60),
     Var("v10", "m/s", -60, 60),
     Var("gust", "m/s", 0, 80),
@@ -79,8 +80,8 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("tcwv", "kg/m²", 0, 80),
     Var("li", "°C", -15, 25, 12),         # lifted index: negative means unstable air
     Var("cin", "J/kg", 0, 1000, 12),      # convective inhibition (magnitude)
-    Var("tmin24", "°C", -10, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
-    Var("tmax24", "°C", -10, 50),        # see derive.forward_extreme)
+    Var("tmin24", "°C", -40, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
+    Var("tmax24", "°C", -40, 50),        # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
     Var("extreme", "%", 0, 100),          # multi-model probability of rain over the next 24 hours (0 to 100 %, derived from rain24 across models)
     Var("raintot", "mm", 0, 1500),        # rain from the start of the run to this step (derived across steps, see derive.cumulative_accumulation)

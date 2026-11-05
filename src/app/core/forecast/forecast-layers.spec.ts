@@ -1,3 +1,4 @@
+import { tempStops } from './windy-palettes';
 import { describe, expect, it } from 'vitest';
 import {
   ALL_LEVELS,
@@ -106,7 +107,7 @@ describe('altitude', () => {
     expect(temp.terrain).toBeNull(); // the 90 m terrain correction is a near-surface thing
     expect(temp.min).toBeLessThan(-8); // 500 hPa is about -5 degC in the tropics, inside the range
     expect(temp.max).toBeGreaterThan(-5);
-    expect(temp.stops).toEqual(forecastLayerById('temp')!.stops); // same palette
+    expect(temp.stops).toEqual(tempStops(temp.min, temp.max)); // the same colour for the same temperature, over the level's range
 
     const wind = resolveLayer(forecastLayerById('wind')!, 300);
     expect([wind.varId, wind.varId2]).toEqual(['u300', 'v300']);

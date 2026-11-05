@@ -1,5 +1,5 @@
 import type { PointSeries } from '../meteogram/point-series';
-import { WINDY_TEMP } from './windy-palettes';
+import { tempColour } from './windy-palettes';
 
 /** The picture standing for a day on the outlook strip (names from shared/icons.ts). */
 export type OutlookIcon = 'sun' | 'partly' | 'cloud' | 'rain' | 'rain24';
@@ -47,14 +47,9 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-/** The colour of the temperature palette at a temperature (in °C, over the range the temperature layer is drawn in). */
-export function temperatureColor(c: number, lo = 18, hi = 42): string {
-  const t = Math.min(Math.max((c - lo) / (hi - lo), 0), 1) * (WINDY_TEMP.length - 1);
-  const k = Math.min(Math.floor(t), WINDY_TEMP.length - 2);
-  const f = t - k;
-  const a = hexToRgb(WINDY_TEMP[k]);
-  const b = hexToRgb(WINDY_TEMP[k + 1]);
-  const rgb = a.map((x, i) => Math.round(x * (1 - f) + b[i] * f));
+/** The colour of a temperature (°C) on Windy's scale, as the temperature layer draws it. */
+export function temperatureColor(c: number): string {
+  const rgb = hexToRgb(tempColour(c));
   return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 }
 

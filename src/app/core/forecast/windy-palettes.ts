@@ -4,8 +4,27 @@
  * the high end of its scale and is spread across the layer's own display range (see forecast-layers.ts).
  */
 
-/** Temperature (Windy: purple for the cold end, through blue, green and yellow, to dark red for the heat). */
-export const WINDY_TEMP = ['#96d1d8', '#66b3ba', '#5f8fc5', '#508c3d', '#7a921c', '#aba10e', '#dfb106', '#f39606', '#ec5e15', '#be4112', '#8a2a0a'];
+/**
+ * Temperature in °C, pinned to degrees as Windy's legend has them (read 6 Nov 2026: one colour every 5 °C, -20 to +40): violet at -20,
+ * pale cyan -15, teal -10 and -5, blue 0, green 5, olive 10, mustard 15, yellow 20, orange 25, red 30, brick 35, dark red 40; colder than its
+ * legend, Windy's own upper-air colours (purple -40, pale pink -55, plum -70, held to -100).
+ */
+const TEMP_ANCHORS: readonly [number, string][] = [
+  [-100, '#734669'], [-70, '#734669'], [-55, '#caacc3'], [-40, '#a24691'], [-20, '#9589d3'], [-15, '#96d1d8'], [-10, '#81ccc5'],
+  [-5, '#67b4ba'], [0, '#5f8fc5'], [5, '#508c3e'], [10, '#79921c'], [15, '#aba10e'], [20, '#dfb106'], [25, '#f39606'], [30, '#ec5f15'],
+  [35, '#be4112'], [40, '#8a2b0a'], [50, '#5a1a06'],
+];
+
+/** Windy's colour of a temperature (°C), as "#rrggbb". */
+export function tempColour(c: number): string {
+  return colourAt(TEMP_ANCHORS, c);
+}
+
+/** Windy's temperature colours as evenly spaced stops over a display range in °C, so a temperature has the same colour on every layer and level. */
+export function tempStops(min: number, max: number): string[] {
+  return pinnedStops(TEMP_ANCHORS, min, max, (max - min) / 128);
+}
+
 
 /**
  * Wind speed in m/s, pinned to values as Windy does (its own scale: blue-violet calm, blue 1, teal 3, sea-green 5, green 7-9, olive 11,

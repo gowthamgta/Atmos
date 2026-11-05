@@ -1,7 +1,7 @@
 /** Declarative registry of the scalar forecast layers. The menu and legend are generated from this list. */
 
 import type { TerrainMode } from './terrain-correction';
-import { WINDY_HUMIDITY, humidityStops, windStops, RAIN_ACCUMULATION_GAMMA, RAIN_GAMMA, RAIN_MAX, WINDY_RAIN_RATE, WINDY_RAIN_ACCUMULATION, WINDY_TEMP, WINDY_WIND } from './windy-palettes';
+import { WINDY_HUMIDITY, humidityStops, windStops, RAIN_ACCUMULATION_GAMMA, RAIN_GAMMA, RAIN_MAX, WINDY_RAIN_RATE, WINDY_RAIN_ACCUMULATION, tempStops, WINDY_WIND } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
 export type Level = 'surface' | 925 | 850 | 800 | 700 | 600 | 500 | 300 | 250 | 200;
@@ -65,7 +65,7 @@ export interface ForecastLayerDef {
 
 /** Dark-theme palettes: the low end sinks into the dark basemap, mid-tones stay saturated and deep,
  *  and only the extremes get bright, so overlays never glare against the dark map. */
-const TEMP = WINDY_TEMP;
+const TEMP = tempStops(-20, 45);
 const HUMIDITY = WINDY_HUMIDITY;
 const LEVEL_HUMIDITY = humidityStops(0, 100);
 const RAIN = WINDY_RAIN_RATE;
@@ -75,7 +75,7 @@ const WIND = WINDY_WIND;
 const EXTREME = ['#1f6f8f', '#2a9d6b', '#d4a524', '#e0652a', '#b3262f', '#8a1f9a'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
-const DEW = WINDY_TEMP; // Windy draws the dew point on its temperature scale
+const DEW = tempStops(-20, 30); // Windy draws the dew point on its temperature scale
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
 const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
@@ -86,15 +86,15 @@ const INHIBITION = ['#1c2330', '#2a4a8a', '#1f8fa8', '#4fae6a', '#e0b02a', '#e06
 // --- what changes with altitude -------------------------------------------------------------------------------
 // Display ranges are chosen for the tropics (this domain), wide enough to cover every season.
 const TEMP_RANGE: Record<number, [number, number, number[]]> = {
-  925: [18, 34, [20, 24, 28, 32]],
-  850: [12, 26, [14, 18, 22, 26]],
-  800: [8, 22, [10, 14, 18, 22]],
-  700: [2, 16, [4, 8, 12, 16]],
-  600: [-6, 8, [-4, 0, 4, 8]],
-  500: [-14, 0, [-12, -8, -4, 0]],
-  300: [-40, -24, [-38, -34, -30, -26]],
-  250: [-56, -40, [-54, -50, -46, -42]],
-  200: [-60, -44, [-58, -54, -50, -46]],
+  925: [-10, 40, [0, 10, 20, 30, 40]],
+  850: [-20, 35, [-10, 0, 10, 20, 30]],
+  800: [-25, 30, [-20, -10, 0, 10, 20, 30]],
+  700: [-35, 25, [-30, -20, -10, 0, 10, 20]],
+  600: [-45, 15, [-40, -30, -20, -10, 0, 10]],
+  500: [-55, 5, [-50, -40, -30, -20, -10, 0]],
+  300: [-75, -15, [-70, -60, -50, -40, -30, -20]],
+  250: [-85, -25, [-80, -70, -60, -50, -40, -30]],
+  200: [-100, -30, [-100, -80, -60, -40]],
 };
 // maximum wind speed shown (m/s), with ticks in km/h
 const WIND_RANGE: Record<number, [number, number[]]> = {
@@ -123,14 +123,14 @@ const HEIGHT_RANGE: Record<number, [number, number, number[]]> = {
 
 export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   {
-    id: 'temp', label: 'Temperature', icon: '🌡', group: 'Temperature', varId: 't2m', unit: '°C', min: 18, max: 42, stops: TEMP, gamma: 1,
-    clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature',
-    atLevel: l => ({ varId: `t${l}`, min: TEMP_RANGE[l][0], max: TEMP_RANGE[l][1], ticks: TEMP_RANGE[l][2] }),
+    id: 'temp', label: 'Temperature', icon: '🌡', group: 'Temperature', varId: 't2m', unit: '°C', min: -20, max: 45, stops: TEMP, gamma: 1,
+    clearBelow: 0, ticks: [-10, 0, 10, 20, 30, 40], opacity: 1, terrain: 'temperature',
+    atLevel: l => ({ varId: `t${l}`, min: TEMP_RANGE[l][0], max: TEMP_RANGE[l][1], ticks: TEMP_RANGE[l][2], stops: tempStops(TEMP_RANGE[l][0], TEMP_RANGE[l][1]) }),
   },
-  { id: 'tmin24', label: 'Lowest, next 24 h', icon: '🥶', group: 'Temperature', varId: 'tmin24', unit: '°C', min: 18, max: 42, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature' },
-  { id: 'tmax24', label: 'Highest, next 24 h', icon: '🔥', group: 'Temperature', varId: 'tmax24', unit: '°C', min: 18, max: 42, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40], opacity: 0.85, terrain: 'temperature' },
-  { id: 'feels', label: 'Feels like', icon: '🥵', group: 'Temperature', varId: 'feels', unit: '°C', min: 18, max: 48, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [20, 25, 30, 35, 40, 45], opacity: 0.85, terrain: 'temperature' },
-  { id: 'dew', label: 'Dew point', icon: '💦', group: 'Temperature', varId: 'dew', unit: '°C', min: 10, max: 28, stops: DEW, gamma: 1, clearBelow: 0, ticks: [12, 16, 20, 24, 28], opacity: 0.85, terrain: 'dewpoint' },
+  { id: 'tmin24', label: 'Lowest, next 24 h', icon: '🥶', group: 'Temperature', varId: 'tmin24', unit: '°C', min: -20, max: 45, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [-10, 0, 10, 20, 30, 40], opacity: 1, terrain: 'temperature' },
+  { id: 'tmax24', label: 'Highest, next 24 h', icon: '🔥', group: 'Temperature', varId: 'tmax24', unit: '°C', min: -20, max: 45, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [-10, 0, 10, 20, 30, 40], opacity: 1, terrain: 'temperature' },
+  { id: 'feels', label: 'Feels like', icon: '🥵', group: 'Temperature', varId: 'feels', unit: '°C', min: -20, max: 45, stops: TEMP, gamma: 1, clearBelow: 0, ticks: [-10, 0, 10, 20, 30, 40], opacity: 1, terrain: 'temperature' },
+  { id: 'dew', label: 'Dew point', icon: '💦', group: 'Temperature', varId: 'dew', unit: '°C', min: -20, max: 30, stops: DEW, gamma: 1, clearBelow: 0, ticks: [-10, 0, 10, 20, 30], opacity: 1, terrain: 'dewpoint' },
   {
     id: 'wind', label: 'Wind', icon: '🍃', group: 'Wind', varId: 'u10', varId2: 'v10', unit: 'km/h', displayScale: 3.6, min: 0, max: 20, stops: WIND,
     gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60], opacity: 1, terrain: 'wind',
