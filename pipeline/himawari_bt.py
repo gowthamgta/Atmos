@@ -220,6 +220,7 @@ def main() -> int:
     args = ap.parse_args()
     folder = os.path.join(args.out, FOLDER)
     os.makedirs(folder, exist_ok=True)
+    S.start_again_if_box_changed(folder, (S.WEST, S.EAST, S.SOUTH, S.NORTH))
     now = datetime.now(timezone.utc)
     try:
         if args.files:

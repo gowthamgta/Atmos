@@ -10,7 +10,7 @@ fingerprint only together with this file, on the owner's request.
 
 ## Satellite
 
-- **The satellite covers the forecast box only, 5-20 N, 70-97.5 E** (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region"; was 5-37.5 N, 68-97.5 E). Meteosat-9 and Himawari-9 pictures, the data packs and the infrared frames are made on it (`BOX` in meteosat_rgb.py, `APP_BOX` and Himawari's 75-97.5 E data box in himawari_rgb.py, satellite_bt.py; `SATELLITE_BOUNDS` in the app). An index made for another box starts its loop again, so old pictures are never drawn stretched.
+- **The satellite covers the forecast box only, 5-20 N, 70-97.5 E** (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region"; was 5-37.5 N, 68-97.5 E). Meteosat-9 and Himawari-9 pictures, the data packs and the infrared frames are made on it (`BOX` in meteosat_rgb.py, `APP_BOX` and Himawari's 75-97.5 E data box in himawari_rgb.py, satellite_bt.py; `SATELLITE_BOUNDS` in the app). A folder made for another box is emptied before a run (`start_again_if_box_changed`), so old pictures are never drawn stretched and the recent scans are made again on the new box.
 - 🔒 **Visible by day: Meteosat HRV with the Windy exposure ramps** (agreed 17 Oct 2026, commit 5c8edf7). Each pixel is recoloured by
   brightness on a warm ramp (slate, sand, cream) and blended toward lavender-white by how cold its top is (`WARM_STOPS`, `COLD_STOPS`,
   `windyCloudColor` in `core/satellite/satellite-image.ts`), fitted to Windy's picture of the same frame.

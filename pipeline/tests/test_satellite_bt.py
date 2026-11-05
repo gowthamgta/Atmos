@@ -48,3 +48,15 @@ def test_without_keys_it_does_nothing(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.argv", ["satellite_bt.py", "--out", str(tmp_path)])
     assert S.main() == 0
     assert os.listdir(tmp_path) == []
+
+
+def test_a_folder_made_for_another_box_starts_again(tmp_path):
+    folder = str(tmp_path)
+    for n in ("bt-20261022T0600Z.png", "index.json"):
+        open(os.path.join(folder, n), "w").write("x")
+    json.dump({"bounds": {"west": 68.0, "east": 97.5, "south": 5.0, "north": 37.5}}, open(os.path.join(folder, "index.json"), "w"))
+    assert S.start_again_if_box_changed(folder, (S.WEST, S.EAST, S.SOUTH, S.NORTH))
+    assert os.listdir(folder) == []                                        # nothing left to look done
+    json.dump({"bounds": {"west": S.WEST, "east": S.EAST, "south": S.SOUTH, "north": S.NORTH}}, open(os.path.join(folder, "index.json"), "w"))
+    assert not S.start_again_if_box_changed(folder, (S.WEST, S.EAST, S.SOUTH, S.NORTH))
+    assert os.listdir(folder) == ["index.json"]

@@ -72,6 +72,25 @@ def write_frame(folder: str, t: datetime, ir108: np.ndarray, ir039: np.ndarray) 
     return name
 
 
+def start_again_if_box_changed(folder: str, box: tuple[float, float, float, float]) -> bool:
+    """Empties a published folder whose index was made for another box (west, east, south, north): its frames would be drawn stretched over
+    the new one, and their files would make the recent scans look done, so they would never be made again on the new box. True when emptied."""
+    path = os.path.join(folder, "index.json")
+    if not os.path.exists(path):
+        return False
+    try:
+        b = json.load(open(path))["bounds"]
+        same = (b["west"], b["east"], b["south"], b["north"]) == tuple(box)
+    except (ValueError, KeyError, TypeError):
+        same = False
+    if same:
+        return False
+    for name in os.listdir(folder):
+        os.remove(os.path.join(folder, name))
+    print(f"{folder}: made for another box; starting again on {box}")
+    return True
+
+
 def update_index(folder: str, new: list[tuple[datetime, str]], now: datetime) -> dict:
     """The index with the new frames added and those older than KEEP_MINUTES left out (their files deleted)."""
     path = os.path.join(folder, "index.json")
@@ -192,9 +211,13 @@ def main() -> int:
         return 0
     folder = os.path.join(args.out, FOLDER)
     os.makedirs(folder, exist_ok=True)
+    start_again_if_box_changed(folder, (WEST, EAST, SOUTH, NORTH))
     now = datetime.now(timezone.utc)
     try:
         rgb_folder = os.path.join(args.out, "rgb-msg") if args.pictures else None
+        if rgb_folder is not None and os.path.isdir(rgb_folder):
+            import meteosat_rgb
+            start_again_if_box_changed(rgb_folder, meteosat_rgb.BOX)
         new, rgb_new = fetch_new(folder, args.max_new, now, rgb_folder)
     except SystemExit:
         raise
