@@ -1,10 +1,10 @@
 import build_terrain as B
 
 
-def test_the_90m_tiles_are_the_south_india_box_only():
-    assert B.in_full_res_box(5, 73)          # the south-west tile of the box
-    assert B.in_full_res_box(14, 89)         # the north-east tile of the box
-    assert B.in_full_res_box(8, 80)          # inside
-    assert not B.in_full_res_box(15, 80)     # north of 14.5 N: only the 270 m tile
-    assert not B.in_full_res_box(20, 78)     # all of central India
-    assert not B.in_full_res_box(4, 80)      # the tile south of 5.5 N (overlaps only the sea)
+def test_the_90m_tiles_cover_the_forecast_box():
+    assert B.in_full_res_box(2, 70)          # the south-west tile of the box
+    assert B.in_full_res_box(19, 98)         # the north-east tile of the box
+    assert B.in_full_res_box(15, 80)         # north of the old South India box: now 90 m too
+    assert not B.in_full_res_box(20, 78)     # north of 20 N: outside the box
+    assert not B.in_full_res_box(15, 69)     # west of 70 E
+    assert not B.in_full_res_box(1, 80)      # the tile south of 2 N

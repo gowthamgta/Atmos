@@ -26,8 +26,8 @@ import numpy as np
 VERSION = 1
 COLLECTION = os.environ.get("EUMETSAT_COLLECTION", "EO:EUM:DAT:MSG:HRSEVIRI-IODC")
 # the box of the app's satellite pictures (satellite.config.ts SATELLITE_BOUNDS)
-# the satellite box is the forecast box, 5-20 N, 70-97.5 E (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region")
-WEST, EAST, SOUTH, NORTH = 70.0, 97.5, 5.0, 20.0
+# the satellite box is the forecast box, 2-20 N, 70-99 E (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region")
+WEST, EAST, SOUTH, NORTH = 70.0, 99.0, 2.0, 20.0
 STEP_DEG = 0.03                 # about 3 km: the infrared channels' own pixel over India
 OFFSET_K = 180.0
 STEP_K = 0.5                    # 180 K .. 307.5 K in 255 steps

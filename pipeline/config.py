@@ -16,11 +16,12 @@ NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 91 rows, north to south
 NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 166 columns, west to east
 
 # ECMWF IFS (9 km) covers all of India, on the same 0.1 degree lattice (so the South India terrain sits inside it).
-# the forecast box: South India, the Arabian Sea's east and the Bay of Bengal, 5-20 N, 70-97.5 E (the owner, 6 Nov 2026, a cropped
-# screenshot: "i want this region alone, for all models"; was all of India, 5-37.5 N, 68-97.5 E). The app's FORECAST_BOX is the same.
-IFS_LAT_MAX, IFS_LAT_MIN = 20.0, 5.0
-IFS_LON_MIN, IFS_LON_MAX = 70.0, 97.5
-IFS_DOMAIN = "box-5-20N-70-97.5E"
+# the forecast box: South India, the Arabian Sea's east, the Bay of Bengal and the sea south of Sri Lanka, 2-20 N, 70-99 E (the owner,
+# 6 Nov 2026, a cropped screenshot: "i want this region alone, for all models", then "why u missed the below region": the crop reached
+# 2 N and 99 E; was all of India, 5-37.5 N, 68-97.5 E). The app's FORECAST_BOX is the same.
+IFS_LAT_MAX, IFS_LAT_MIN = 20.0, 2.0
+IFS_LON_MIN, IFS_LON_MAX = 70.0, 99.0
+IFS_DOMAIN = "box-2-20N-70-99E"
 IFS_NY = round((IFS_LAT_MAX - IFS_LAT_MIN) / STEP_DEG) + 1
 IFS_NX = round((IFS_LON_MAX - IFS_LON_MIN) / STEP_DEG) + 1
 

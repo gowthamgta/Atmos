@@ -59,7 +59,7 @@ UKMO = RegularModel(
 
 # the three forecasts added for a five-day view: they are coarser (25 km), so they are drawn on a 0.25 degree grid of the same
 # box (about 15 thousand cells instead of 96 thousand: their five days of pictures stay small on the site)
-COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0.25, "box-0.25-5-20N-70-97.5E")
+COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0.25, "box-0.25-2-20N-70-99E")
 # every step each forecast publishes (Open-Meteo): GFS hourly to +120 h then 3-hourly to +384 h, of which every 3 h to +120 h and every
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.

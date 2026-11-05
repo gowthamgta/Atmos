@@ -88,9 +88,10 @@ def load_source(lat: int, lon: int, cache: str) -> np.ndarray | None:
     return np.nan_to_num(tifffile.imread(path).astype(np.float32), nan=0.0)
 
 
-# The 90 m tiles (the full detail, about 0.9 MB each) are kept for South India only: the page size limit of the forecast host.
-# Everywhere else the terrain is the 270 m tiles (the 1.08 km ones too), and the app uses the 90 m files where they exist.
-FULL_RES_BOX = (5.5, 14.5, 73.0, 89.5)   # south, north, west, east of the 90 m tiles
+# The 90 m tiles (the full detail, about 0.9 MB each) cover the whole forecast box (the owner, 6 Nov 2026: "make sure we follow the
+# downscaling"; they were South India only while the box was all of India, for the forecast host's size limit). Elsewhere the terrain is the
+# 270 m tiles (the 1.08 km ones too), and the app uses the 90 m files where they exist.
+FULL_RES_BOX = (C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX)   # south, north, west, east of the 90 m tiles
 
 
 def in_full_res_box(lat: int, lon: int) -> bool:
