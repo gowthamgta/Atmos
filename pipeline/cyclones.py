@@ -20,7 +20,7 @@ VERSION = 1
 PRODUCT_ID = "cyclones"
 FILE_NAME = "tracks.json"
 # storms with any forecast position in this box (south, north, west, east) are kept
-REGION = (C.IFS_LAT_MIN - 4.0, C.IFS_LAT_MAX + 4.0, C.IFS_LON_MIN - 6.0, C.IFS_LON_MAX + 6.0)   # south, north, west, east: all of India and a margin
+REGION = (1.0, 41.5, 62.0, 103.5)   # south, north, west, east: all of India and a margin (wider than the forecast box, so a storm in the north Bay keeps its track)
 MISSING = -1e50                 # BUFR missing values come out as -1e100
 MEMBER_STEP_H = 12              # the members' positions are kept every 12 h
 KEEP_HOURS = 240

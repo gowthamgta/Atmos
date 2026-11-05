@@ -6,7 +6,7 @@ import { ForecastGrid, sampleGrid } from './forecast.model';
  */
 
 /** The 0.1 degree grid of all India that both ECMWF IFS and the UK Met Office are published on (see pipeline/config.py). */
-export const INDIA_GRID: ForecastGrid = { latMax: 37.5, latMin: 5.0, lonMin: 68.0, lonMax: 97.5, step: 0.1, nx: 296, ny: 326 };
+export const INDIA_GRID: ForecastGrid = { latMax: 22.0, latMin: 5.0, lonMin: 68.0, lonMax: 97.5, step: 0.1, nx: 296, ny: 171 }; // the forecast box (pipeline/config.py)
 
 /** a * (1 - mix) + b * mix, NaN where either is NaN. */
 export function blendFields(a: Float32Array, b: Float32Array, mix: number): Float32Array {

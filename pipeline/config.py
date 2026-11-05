@@ -16,9 +16,11 @@ NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 91 rows, north to south
 NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 166 columns, west to east
 
 # ECMWF IFS (9 km) covers all of India, on the same 0.1 degree lattice (so the South India terrain sits inside it).
-IFS_LAT_MAX, IFS_LAT_MIN = 37.5, 5.0
+# the map's forecast box: South India, the Arabian Sea and the Bay of Bengal to 22 N (the owner, 6 Nov 2026: "instead of using whole india
+# i want to switch our forecast for this region"; was all of India to 37.5 N)
+IFS_LAT_MAX, IFS_LAT_MIN = 22.0, 5.0
 IFS_LON_MIN, IFS_LON_MAX = 68.0, 97.5
-IFS_DOMAIN = "india-5-37.5N-68-97.5E"
+IFS_DOMAIN = "india-5-22N-68-97.5E"
 IFS_NY = round((IFS_LAT_MAX - IFS_LAT_MIN) / STEP_DEG) + 1
 IFS_NX = round((IFS_LON_MAX - IFS_LON_MIN) / STEP_DEG) + 1
 
