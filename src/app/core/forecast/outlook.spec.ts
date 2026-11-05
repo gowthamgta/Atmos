@@ -35,7 +35,7 @@ describe('outlook strip', () => {
   it('colours a temperature from the temperature palette and clamps outside its range', () => {
     expect(temperatureColor(-150)).toBe(temperatureColor(-100));  // colder than the scale: its coldest colour
     expect(temperatureColor(60)).toBe(temperatureColor(50));      // hotter: its hottest
-    expect(temperatureColor(40)).toBe('rgb(239, 68, 68)');        // windy's dark red at 40 °C
+    expect(temperatureColor(40)).toBe('rgb(138, 43, 10)');        // windy's dark red at 40 °C
     expect(temperatureColor(10)).not.toBe(temperatureColor(15));  // below 18 °C the colours still change
     expect(temperatureColor(30)).not.toBe(temperatureColor(20));
   });

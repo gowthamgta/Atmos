@@ -5,22 +5,22 @@
  */
 
 /**
- * Temperature in °C, pinned to degrees: below 30 °C green, above 30 °C transitioning from yellow to red
- * (the owner, 6 Nov 2026: "below 30 degree apply that green and so on above 30 make the yellow to red color");
- * sub-zero and upper-air temperatures use cool blues and purples held to -100 °C.
+ * Temperature in °C, pinned to degrees as Windy's legend has them (read 6 Nov 2026: one colour every 5 °C, -20 to +40): violet at -20,
+ * pale cyan -15, teal -10 and -5, blue 0, green 5, olive 10, mustard 15, yellow 20, orange 25, red 30, brick 35, dark red 40; colder than its
+ * legend, Windy's own upper-air colours (purple -40, pale pink -55, plum -70, held to -100).
  */
 const TEMP_ANCHORS: readonly [number, string][] = [
   [-100, '#734669'], [-70, '#734669'], [-55, '#caacc3'], [-40, '#a24691'], [-20, '#9589d3'], [-15, '#96d1d8'], [-10, '#81ccc5'],
-  [-5, '#67b4ba'], [0, '#5f8fc5'], [5, '#2ea879'], [10, '#16a34a'], [15, '#15803d'], [20, '#16a34a'], [25, '#22c55e'], [28, '#4ade80'],
-  [30, '#eab308'], [33, '#f59e0b'], [36, '#f97316'], [40, '#ef4444'], [45, '#b91c1c'], [50, '#5a1a06'],
+  [-5, '#67b4ba'], [0, '#5f8fc5'], [5, '#508c3e'], [10, '#79921c'], [15, '#aba10e'], [20, '#dfb106'], [25, '#f39606'], [30, '#ec5f15'],
+  [35, '#be4112'], [40, '#8a2b0a'], [50, '#5a1a06'],
 ];
 
-/** Colour of a temperature (°C), as "#rrggbb". */
+/** Windy's colour of a temperature (°C), as "#rrggbb". */
 export function tempColour(c: number): string {
   return colourAt(TEMP_ANCHORS, c);
 }
 
-/** Temperature colours as evenly spaced stops over a display range in °C, so a temperature has the same colour on every layer and level. */
+/** Windy's temperature colours as evenly spaced stops over a display range in °C, so a temperature has the same colour on every layer and level. */
 export function tempStops(min: number, max: number): string[] {
   return pinnedStops(TEMP_ANCHORS, min, max, (max - min) / 128);
 }
@@ -92,21 +92,11 @@ export const WINDY_RAIN_ACCUMULATION = gammaStops(RAIN_ACCUMULATION_ANCHORS, 0, 
 export const WINDY_WIND = windStops(0, 20);
 
 /**
- * Relative humidity (the owner, 6 Nov 2026:
- * under 30 % orange #de8e1f, 40 to 60 % green, above 60 % blue).
+ * Relative humidity (Windy: brown for the dry end, through olive and green, to teal and blue-slate for the moistest air), pinned to values:
+ * blue only above 75 % (the owner, 5 Nov 2026: "make the humidity palette blue only after 75 percent").
  */
 const HUMIDITY_ANCHORS: readonly [number, string][] = [
-  [0, '#de8e1f'],
-  [25, '#de8e1f'],
-  [30, '#de8e1f'],
-  [35, '#84cc16'],
-  [40, '#22c55e'],
-  [50, '#16a34a'],
-  [60, '#16a34a'],
-  [65, '#3b82f6'],
-  [75, '#2563eb'],
-  [85, '#1d4ed8'],
-  [100, '#1e3a8a'],
+  [30, '#ae6e38'], [40, '#ae9338'], [50, '#69ae38'], [65, '#3caf74'], [75, '#36af94'], [80, '#389dae'], [85, '#3884ae'], [90, '#386fa6'], [100, '#384672'],
 ];
 
 /** The humidity palette as evenly spaced stops (every 5 %) over a display range, so each colour stays at its humidity whatever the range. */
@@ -134,4 +124,4 @@ function colourAt(anchors: readonly [number, string][], v: number): string {
   return '#' + a.map((x, k) => Math.round(x + (b[k] - x) * t).toString(16).padStart(2, '0')).join('');
 }
 
-export const WINDY_HUMIDITY = humidityStops(20, 100);
+export const WINDY_HUMIDITY = humidityStops(30, 100);

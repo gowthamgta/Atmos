@@ -77,7 +77,7 @@ const WIND = WINDY_WIND;
 const EXTREME = ['#1f6f8f', '#2a9d6b', '#d4a524', '#e0652a', '#b3262f', '#8a1f9a'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
-const DEW = tempStops(-20, 30); // Dew point uses the temperature scale
+const DEW = tempStops(-20, 30); // Windy draws the dew point on its temperature scale
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
 const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
@@ -140,8 +140,8 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   },
   { id: 'gust', label: 'Wind gusts', icon: '💨', group: 'Wind', varId: 'gust', unit: 'km/h', displayScale: 3.6, min: 0, max: 25, stops: windStops(0, 25), gamma: 1, clearBelow: 0, ticks: [20, 40, 60, 80], opacity: 1, terrain: 'wind' },
   {
-    id: 'humidity', label: 'Humidity', icon: '💧', group: 'Rain and humidity', varId: 'rh', unit: '%', min: 20, max: 100, stops: HUMIDITY, gamma: 1,
-    clearBelow: 0, ticks: [20, 40, 60, 80, 100], opacity: 0.85, terrain: 'humidity',
+    id: 'humidity', label: 'Humidity', icon: '💧', group: 'Rain and humidity', varId: 'rh', unit: '%', min: 30, max: 100, stops: HUMIDITY, gamma: 1,
+    clearBelow: 0, ticks: [40, 60, 80, 100], opacity: 0.85, terrain: 'humidity',
     atLevel: l => ({ varId: `rh${l}`, min: 0, max: 100, ticks: [20, 40, 60, 80, 100], stops: LEVEL_HUMIDITY }),
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: RAIN_MAX, stops: RAIN, gamma: RAIN_GAMMA, clearBelow: 0.2, clearFade: 1.5, ticks: [1, 2, 5, 10, 20, 50], opacity: 1, terrain: 'rain' },
