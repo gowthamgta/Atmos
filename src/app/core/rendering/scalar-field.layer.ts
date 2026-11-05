@@ -19,6 +19,7 @@ import type { TerrainData } from '../forecast/terrain.service';
 import { sameLattice } from '../forecast/terrain-ground';
 import { TERRAIN_TILE_GLSL, TerrainTileGpu } from './terrain-tile-gpu';
 import { PendingProgram } from './gl-program';
+import { decodeFieldBitmap } from '../forecast/field-decode';
 
 const VERTEX = `#version 300 es
 uniform mat4 u_matrix;
@@ -94,55 +95,42 @@ out vec4 outColor;
 
 const float PI = 3.14159265358979;
 ${TERRAIN_TILE_GLSL}
-// Bilinear. Returns (value, weight of valid neighbours).
+// The fields are float textures of (value as a share of the encoding range times valid, valid), filtered by the GPU (fieldTexture): one
+// read gives the bilinear blend of the valid neighbours. Returns (value, weight of valid neighbours).
 vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
-  vec2 fr = fract(g);
-  ivec2 i0 = ivec2(floor(g));
-  float sum = 0.0;
-  float wsum = 0.0;
-  for (int k = 0; k < 4; k++) {
-    ivec2 o = ivec2(k & 1, k >> 1);
-    ivec2 p = clamp(i0 + o, ivec2(0), size - 1);
-    float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
-    vec4 c = texelFetch(tex, p, 0);
-    if (c.b > 0.5) continue;
-    sum += decode(c, enc) * w;
-    wsum += w;
-  }
-  return vec2(wsum > 0.001 ? sum / wsum : 0.0, wsum);
+  vec2 c = texture(tex, (g + 0.5) / vec2(size)).rg;
+  return vec2(c.g > 0.001 ? enc.x + c.r / c.g * (enc.y - enc.x) : 0.0, c.g);
 }
 
-// Catmull-Rom weights of the four nodes around a position t (0..1) between the middle two.
-vec4 catmullRom(float t) {
-  float t2 = t * t;
-  float t3 = t2 * t;
-  return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
-}
-
-// Smooth (bicubic Catmull-Rom over 4 x 4 nodes) where every node has data, else bilinear. The curve passes through the nodes, so the values
-// there are the model's; it is kept within the four nearest nodes' range, so it never invents a peak or a negative rain the model has not.
+// Smooth (bicubic Catmull-Rom) where every node around has data, else bilinear: nine filtered reads instead of sixteen exact ones (the
+// weights of the middle two nodes are folded into one filtered read between them). The curve passes through the nodes, so the values there
+// are the model's; it is kept within the encoding range.
 vec2 sampleSmooth(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
   vec2 lin = sampleField(tex, g, size, enc);
   if (u_cubic == 0 || lin.y < 0.999) return lin;
-  vec2 fr = fract(g);
-  ivec2 i0 = ivec2(floor(g));
-  vec4 wx = catmullRom(fr.x);
-  vec4 wy = catmullRom(fr.y);
-  float sum = 0.0;
-  float lo = 1e30;
-  float hi = -1e30;
-  for (int j = 0; j < 4; j++) {
-    float row = 0.0;
-    for (int i = 0; i < 4; i++) {
-      vec4 c = texelFetch(tex, clamp(i0 + ivec2(i - 1, j - 1), ivec2(0), size - 1), 0);
-      if (c.b > 0.5) return lin;   // a node without data nearby: the plain blend
-      float d = decode(c, enc);
-      row += d * wx[i];
-      if (i >= 1 && i <= 2 && j >= 1 && j <= 2) { lo = min(lo, d); hi = max(hi, d); }
-    }
-    sum += row * wy[j];
-  }
-  return vec2(clamp(sum, lo, hi), 1.0);
+  vec2 texSize = vec2(size);
+  vec2 pos = g + 0.5;
+  vec2 p1 = floor(pos - 0.5) + 0.5;
+  vec2 f = pos - p1;
+  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+  vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+  vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+  vec2 w3 = f * f * (-0.5 + 0.5 * f);
+  vec2 w12 = w1 + w2;
+  vec2 p0 = (p1 - 1.0) / texSize;
+  vec2 p3 = (p1 + 2.0) / texSize;
+  vec2 p12 = (p1 + w2 / w12) / texSize;
+  vec2 c = texture(tex, vec2(p0.x, p0.y)).rg * w0.x * w0.y
+         + texture(tex, vec2(p12.x, p0.y)).rg * w12.x * w0.y
+         + texture(tex, vec2(p3.x, p0.y)).rg * w3.x * w0.y
+         + texture(tex, vec2(p0.x, p12.y)).rg * w0.x * w12.y
+         + texture(tex, vec2(p12.x, p12.y)).rg * w12.x * w12.y
+         + texture(tex, vec2(p3.x, p12.y)).rg * w3.x * w12.y
+         + texture(tex, vec2(p0.x, p3.y)).rg * w0.x * w3.y
+         + texture(tex, vec2(p12.x, p3.y)).rg * w12.x * w3.y
+         + texture(tex, vec2(p3.x, p3.y)).rg * w3.x * w3.y;
+  if (abs(c.g - 1.0) > 0.001) return lin;   // a node without data within reach: the plain blend
+  return vec2(enc.x + clamp(c.r, 0.0, 1.0) * (enc.y - enc.x), 1.0);
 }
 
 // Blends two time steps of one variable; where one step has no data the other is used. Returns (value, valid).
@@ -450,12 +438,12 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     const { grid, def, frameA, frameB, program } = this;
     if (!this.visible || !grid || !def || !frameA || !frameB || !program) return;
 
-    const texA = this.textureFor(gl, frameA);
-    const texB = frameB.key === frameA.key ? texA : this.textureFor(gl, frameB);
+    const texA = this.textureFor(gl, frameA, this.enc);
+    const texB = frameB.key === frameA.key ? texA : this.textureFor(gl, frameB, this.enc);
     const magnitude = def.varId2 !== undefined && this.frameA2 !== null && this.frameB2 !== null;
     if (def.varId2 !== undefined && !magnitude) return; // second component not loaded yet
-    const texA2 = magnitude ? this.textureFor(gl, this.frameA2!) : null;
-    const texB2 = magnitude ? (this.frameB2!.key === this.frameA2!.key ? texA2 : this.textureFor(gl, this.frameB2!)) : null;
+    const texA2 = magnitude ? this.textureFor(gl, this.frameA2!, this.enc2) : null;
+    const texB2 = magnitude ? (this.frameB2!.key === this.frameA2!.key ? texA2 : this.textureFor(gl, this.frameB2!, this.enc2)) : null;
     if (this.lutFor !== def) this.uploadLut(gl, def);
     if (this.terrain && this.smoothUploadedFor !== this.terrain) {
       this.uploadTerrainImage(gl, this.demSmoothTex, this.terrain.smooth);
@@ -566,6 +554,36 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.lutFor = def;
   }
 
+  /**
+   * A field as a float texture the GPU can filter: (value as a share of the encoding range times valid, valid) per node. Decoded once on
+   * upload (a few thousand to forty thousand nodes), so the shader reads one filtered texel for a bilinear value and nine for a bicubic one,
+   * not four or sixteen packed bytes to decode (the owner, 6 Nov 2026: the live site had become slow with the smooth reading).
+   * 32-bit where the GPU filters it, else 16-bit (a share of the range to about 1/2000: 0.04 degrees C of temperature).
+   */
+  private fieldTexture(gl: WebGL2RenderingContext, bitmap: ImageBitmap, enc: readonly [number, number]): WebGLTexture {
+    const [lo, hi] = enc;
+    const values = decodeFieldBitmap(bitmap, lo, hi);
+    const span = hi - lo || 1;
+    const rg = new Float32Array(values.length * 2);
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (Number.isNaN(v)) continue;   // no data: weight 0
+      rg[i * 2] = (v - lo) / span;
+      rg[i * 2 + 1] = 1;
+    }
+    this.floatLinear ??= !!gl.getExtension('OES_texture_float_linear');
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    gl.texImage2D(gl.TEXTURE_2D, 0, this.floatLinear ? gl.RG32F : gl.RG16F, bitmap.width, bitmap.height, 0, gl.RG, gl.FLOAT, rg);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return tex;
+  }
+  private floatLinear: boolean | null = null;
+
   private uploadTerrainImage(gl: WebGL2RenderingContext, tex: WebGLTexture | null, bitmap: ImageBitmap): void {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -578,16 +596,14 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
 
-  private textureFor(gl: WebGL2RenderingContext, frame: FieldFrame): WebGLTexture {
+  private textureFor(gl: WebGL2RenderingContext, frame: FieldFrame, enc: readonly [number, number]): WebGLTexture {
     const cached = this.textures.get(frame.key);
     if (cached) {
       this.textures.delete(frame.key);
       this.textures.set(frame.key, cached); // mark most recently used
       return cached;
     }
-    const tex = gl.createTexture()!;
-    // NEAREST is required: the shader decodes exact bytes and interpolates the decoded values itself.
-    this.uploadTerrainImage(gl, tex, frame.bitmap);
+    const tex = this.fieldTexture(gl, frame.bitmap, enc);
     this.textures.set(frame.key, tex);
     const inUse = [this.frameA, this.frameB, this.frameA2, this.frameB2];
     while (this.textures.size > ScalarFieldLayer.MAX_TEXTURES) {
