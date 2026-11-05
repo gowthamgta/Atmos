@@ -48,8 +48,8 @@ export function windStops(min: number, max: number): string[] {
  * aqua-green at 25, lime at 50, orange at 100, red 173, dark red at 300).
  */
 const RAIN_ACCUMULATION_ANCHORS: readonly [number, string][] = [
-  [0, '#38bdf8'],
-  [3, '#38bdf8'],
+  [0, '#4352bf'],
+  [3, '#4352bf'],
   [5.5, '#3f7bea'],
   [10, '#29bced'],
   [16, '#25d2d1'],
@@ -65,8 +65,8 @@ const RAIN_ACCUMULATION_ANCHORS: readonly [number, string][] = [
  * aqua 3, aqua-green 5, lime 10, orange 20, red 35, dark red 50).
  */
 const RAIN_ANCHORS: readonly [number, string][] = [
-  [0, '#38bdf8'],
-  [0.5, '#38bdf8'],
+  [0, '#4352bf'],
+  [0.5, '#4352bf'],
   [1, '#3f7bea'],
   [2, '#29bced'],
   [3, '#25d2d1'],
