@@ -23,13 +23,37 @@ export function windStops(min: number, max: number): string[] {
   return pinnedStops(WIND_ANCHORS, min, max, (max - min) / 64);
 }
 
+/**
+ * Rain rate in mm/h with Windy's "Rain, thunder" colours, read from its legend (6 Nov 2026). Windy's scale is mm in 3 hours (blue to 3,
+ * teal 5, green 7, lime 10, yellow 15, red 20, wine 25, magenta 30), so each colour sits at a third of Windy's amount here.
+ */
+const RAIN_ANCHORS: readonly [number, string][] = [
+  [0, '#3b7ca2'], [0.5, '#3b7ca2'], [2 / 3, '#3b80a2'], [1, '#3a89a2'], [5 / 3, '#3a99a2'], [7 / 3, '#32a66f'], [17 / 6, '#4aa439'],
+  [10 / 3, '#81a23b'], [5, '#a2a23b'], [20 / 3, '#a23c3b'], [25 / 3, '#ab366b'], [10, '#a43a9a'],
+];
+
+/**
+ * Rain accumulation in mm with Windy's colours, read from its legend (6 Nov 2026): violet-blue to 3 mm, blue, cyan at 10, aqua-green at 25,
+ * lime at 50, orange at 100, red, dark red at 300.
+ */
+const RAIN_ACCUMULATION_ANCHORS: readonly [number, string][] = [
+  [0, '#4352bf'], [3, '#4352bf'], [5.5, '#3f7bea'], [10, '#29bced'], [16, '#25d2d1'], [25, '#29e6b0'], [50, '#c1ee34'], [100, '#f7a82b'],
+  [173, '#d33104'], [300, '#8a0b03'],
+];
+
+/** The palette stops for a value-pinned scale drawn with a gamma (stop i sits at min + (max - min) * (i / n)^(1 / gamma), as the shader reads). */
+function gammaStops(anchors: readonly [number, string][], min: number, max: number, gamma: number): string[] {
+  const n = 64;
+  return Array.from({ length: n + 1 }, (_, i) => colourAt(anchors, min + (max - min) * Math.pow(i / n, 1 / gamma)));
+}
+
+export const RAIN_MAX = 12;
+export const RAIN_GAMMA = 0.5;
+export const RAIN_ACCUMULATION_GAMMA = 0.27;
+export const WINDY_RAIN_RATE = gammaStops(RAIN_ANCHORS, 0, RAIN_MAX, RAIN_GAMMA);
+export const WINDY_RAIN_ACCUMULATION = gammaStops(RAIN_ACCUMULATION_ANCHORS, 0, 300, RAIN_ACCUMULATION_GAMMA);
+
 export const WINDY_WIND = windStops(0, 20);
-
-/** Rain (Windy's rain accumulation: slate blue for the lightest, teal and green, then olive, red and magenta for the heaviest). */
-export const WINDY_RAIN = ['#3b7ca2', '#3a9aa2', '#32a66e', '#4ba439', '#81a23b', '#a2a23b', '#a23b3b', '#ab366b', '#a43a9a'];
-
-/** Rain accumulation as Windy draws it (3, 10, 25, 100 and 300 mm): violet-blue for the first millimetres, then azure, cyan, green, yellow, orange and red. */
-export const WINDY_RAIN_ACCUMULATION = ['#4a3fb8', '#3b52d6', '#2f78e6', '#25a8ea', '#21d2e6', '#3fdc9a', '#7de05a', '#d2e43c', '#f5c820', '#f08a1c', '#d4281f', '#7e0c0c'];
 
 /**
  * Relative humidity (Windy: brown for the dry end, through olive and green, to teal and blue-slate for the moistest air), pinned to values:
@@ -46,20 +70,22 @@ export function humidityStops(min: number, max: number): string[] {
 
 /** Colours pinned to values (`anchors`, rising), sampled every `step` from min to max: evenly spaced stops for the palette texture. */
 function pinnedStops(anchors: readonly [number, string][], min: number, max: number, step: number): string[] {
-  const hex = (c: string) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
-  const at = (v: number): string => {
-    const i = anchors.findIndex(([a]) => a >= v);
-    if (i < 0) return anchors[anchors.length - 1][1];
-    if (i === 0) return anchors[0][1];
-    const [v0, c0] = anchors[i - 1];
-    const [v1, c1] = anchors[i];
-    const t = (v - v0) / (v1 - v0);
-    const [a, b] = [hex(c0), hex(c1)];
-    return '#' + a.map((x, k) => Math.round(x + (b[k] - x) * t).toString(16).padStart(2, '0')).join('');
-  };
   const stops: string[] = [];
-  for (let v = min; v <= max + 1e-9; v += step) stops.push(at(v));
+  for (let v = min; v <= max + 1e-9; v += step) stops.push(colourAt(anchors, v));
   return stops;
+}
+
+/** The colour at value `v` between the anchors around it (the first and last hold beyond the ends). */
+function colourAt(anchors: readonly [number, string][], v: number): string {
+  const hex = (c: string) => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+  const i = anchors.findIndex(([a]) => a >= v);
+  if (i < 0) return anchors[anchors.length - 1][1];
+  if (i === 0) return anchors[0][1];
+  const [v0, c0] = anchors[i - 1];
+  const [v1, c1] = anchors[i];
+  const t = (v - v0) / (v1 - v0);
+  const [a, b] = [hex(c0), hex(c1)];
+  return '#' + a.map((x, k) => Math.round(x + (b[k] - x) * t).toString(16).padStart(2, '0')).join('');
 }
 
 export const WINDY_HUMIDITY = humidityStops(30, 100);

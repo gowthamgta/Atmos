@@ -81,8 +81,8 @@ describe('forecast layer registry', () => {
   it('positions legend ticks with the layer gamma and the display scale', () => {
     const rain = forecastLayerById('rain')!;
     expect(legendPosition(rain, 0)).toBe(0);
-    expect(legendPosition(rain, 20)).toBe(1);
-    expect(legendPosition(rain, 5)).toBeCloseTo(0.5, 6); // sqrt(5/20)
+    expect(legendPosition(rain, 12)).toBe(1);
+    expect(legendPosition(rain, 3)).toBeCloseTo(0.5, 6); // sqrt(3/12)
     const wind = forecastLayerById('wind')!;
     expect(legendPosition(wind, 72)).toBeCloseTo(1, 9); // 20 m/s = 72 km/h is the top of the palette
     expect(legendPosition(wind, 36)).toBeCloseTo(0.5, 9);

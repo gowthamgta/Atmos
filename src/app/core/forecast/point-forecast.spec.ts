@@ -87,7 +87,7 @@ describe('point forecast helpers', () => {
 
   it('moves every near-surface value to the 90 m ground and marks it', () => {
     const rows = buildPointRows(values, ground(1000));
-    expect(rows.filter(r => r.terrainAdjusted).map(r => r.id)).toEqual(['temp', 'feels', 'dew', 'humidity', 'wind', 'gust', 'rain']);
+    expect(rows.filter(r => r.terrainAdjusted).map(r => r.id)).toEqual(['temp', 'feels', 'dew', 'humidity', 'wind', 'gust']); // rain is the model's, as the map draws it
     expect(find(rows, 'dew').text).toBe('22.2 °C'); // 1.8 °C per km
     expect(find(rows, 'temp').text).toBe('23.5 °C');
     expect(find(rows, 'wind').text).toMatch(/^18 km\/h from N/);
@@ -178,7 +178,7 @@ describe('point forecast helpers', () => {
     expect(find(buildPointRows(values, ground(0), 500), 'lvl-temp').text).toBe('–');
   });
 
-  it('makes a ridge windier, a windward slope wetter and a lee slope drier', () => {
+  it('makes a ridge windier and a windward slope cloudier, the rain left as the map draws it', () => {
     const flat = buildPointRows(values, ground(0));
     const ridge = buildPointRows(values, ground(0, { tpi: 200 }));
     const kmh = (rows: ReturnType<typeof buildPointRows>) => parseFloat(find(rows, 'wind').text);
@@ -187,8 +187,8 @@ describe('point forecast helpers', () => {
     const windward = buildPointRows(values, ground(0, { slope: [0, -0.05] }));
     const lee = buildPointRows(values, ground(0, { slope: [0, 0.05] }));
     const rain = (rows: ReturnType<typeof buildPointRows>) => parseFloat(find(rows, 'rain').text);
-    expect(rain(windward)).toBeGreaterThan(rain(flat));
-    expect(rain(lee)).toBeLessThan(rain(flat));
+    expect(rain(windward)).toBe(rain(flat));
+    expect(rain(lee)).toBe(rain(flat));
     expect(parseFloat(find(windward, 'cloudlayers').text)).toBeGreaterThan(40); // low cloud thickens too
   });
 });

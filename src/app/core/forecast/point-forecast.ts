@@ -119,7 +119,9 @@ export function buildPointRows(
     { id: 'humidity', label: 'Humidity', text: withUnit(adjust('humidity', v('rh')), 0, '%'), terrainAdjusted: adjusted },
     { id: 'wind', label: 'Wind', text: windText(v('u10'), v('v10'), windFactor, units), terrainAdjusted: adjusted },
     { id: 'gust', label: 'Gusts', text: formatWind(adjust('wind', v('gust')), units), terrainAdjusted: adjusted },
-    { id: 'rain', label: 'Rain', text: formatRain(adjust('rain', v('precip')), units, true), terrainAdjusted: adjusted && ctx?.liftWind !== null },
+    // the rain is the model's, as the map draws it (the owner, 6 Nov 2026: the pin said 0.4 mm/h where the map was clear, the hills'
+    // lift factor of up to 2.6 being on the number only)
+    { id: 'rain', label: 'Rain', text: formatRain(v('precip'), units, true), terrainAdjusted: false },
     { id: 'clouds', label: 'Clouds', text: withUnit(v('cloud'), 0, '%'), terrainAdjusted: false },
   ];
   // the lowest and highest temperature of the next 24 h, right under the temperature row
@@ -129,20 +131,20 @@ export function buildPointRows(
   if (!Number.isNaN(v('rain24'))) {
     // the row after the rain one: the 24 h total
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
-      id: 'rain24', label: 'Rain, next 24 h', text: formatRain(adjust('rain', v('rain24')), units), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+      id: 'rain24', label: 'Rain, next 24 h', text: formatRain(v('rain24'), units), terrainAdjusted: false,
     });
   }
   if (!Number.isNaN(v('raintot'))) {
     // the total since the model run began, after the 24 h row
     const after = rows.findIndex(r => r.id === 'rain24') >= 0 ? rows.findIndex(r => r.id === 'rain24') : rows.findIndex(r => r.id === 'rain');
     rows.splice(after + 1, 0, {
-      id: 'raintot', label: 'Rain, total so far', text: formatRain(adjust('rain', v('raintot')), units), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+      id: 'raintot', label: 'Rain, total so far', text: formatRain(v('raintot'), units), terrainAdjusted: false,
     });
   }
   if (!Number.isNaN(v('rainrange'))) {
     // the rain in the period chosen with the rain accumulation slider
     rows.splice(rows.findIndex(r => r.id === 'rain') + 1, 0, {
-      id: 'rainrange', label: 'Rain in the chosen period', text: formatRain(adjust('rain', v('rainrange')), units), terrainAdjusted: adjusted && ctx?.liftWind !== null,
+      id: 'rainrange', label: 'Rain in the chosen period', text: formatRain(v('rainrange'), units), terrainAdjusted: false,
     });
   }
   if (!Number.isNaN(v('extreme'))) {
