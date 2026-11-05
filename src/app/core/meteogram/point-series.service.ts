@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { FORECAST_MODELS, POINT_ONLY_MODELS } from '../forecast/forecast-models';
 import { VerificationService } from '../forecast/verification.service';
-import { CorrectionsFile, applyCorrections } from './blend';
+import { CorrectionsFile, applyCorrections, blendSeries } from './blend';
 import { ApiModel, PointSeries, parsePointSeries, seriesUrl } from './point-series';
 import { inForecastBox } from '../forecast/derived-fields';
 
@@ -14,7 +14,7 @@ const RETRY_MS = 1_500;
 /** Two places closer than this (about 1 km) share a download: the models' grids are 9 km at best. */
 const KEY_DIGITS = 2;
 
-const MODELS: readonly ApiModel[] = [...FORECAST_MODELS, ...POINT_ONLY_MODELS].map(m => ({ id: m.id, apiId: m.apiId }));
+const MODELS: readonly ApiModel[] = [...FORECAST_MODELS, ...POINT_ONLY_MODELS].filter(m => m.id !== 'blend').map(m => ({ id: m.id, apiId: m.apiId }));
 /** How long the forecast waits for the corrections file before going without them (it is small and usually cached). */
 const CORRECTIONS_WAIT_MS = 2500;
 

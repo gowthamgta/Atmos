@@ -55,7 +55,6 @@
   --m-aifs: #92d2ff;
   --m-ukmo: #4ddba9;
   --m-gfs: #b794ff;
-  --m-cma: #ffd166;
   --m-blend: #ffb547;
   --m-icon: #ff8fb8;
   --model: var(--m-ecmwf_ifs);
@@ -165,7 +164,6 @@
   --m-aifs: #3f93e6;
   --m-ukmo: #0a8f65;
   --m-gfs: #6c3fd0;
-  --m-cma: #8a6d00;
   --m-blend: #a35f00;
   --m-icon: #c2306f;
   --s-temp: #d9480f;

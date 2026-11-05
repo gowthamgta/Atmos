@@ -28,6 +28,7 @@ on:
       - ".github/workflows/nwp.yml"
       - "pipeline/cyclones.py"
       - "pipeline/ens.py"
+      - "pipeline/blend.py"
       - "pipeline/tests/**"
   workflow_dispatch:
     inputs:
@@ -115,12 +116,14 @@ jobs:
           # the chance of rain from the ECMWF ensemble (a small folder in the same format as a model; the live one is kept when there is nothing new)
           python ens.py --out site --live-url "$base/ens/latest.json" $force             || echo "::warning::ens failed; the live copy stays in place"
           # models that were not rebuilt come over from the live site (always: a deploy replaces the whole site)
-          if ! python mirror.py --site site --base-url "$base" --models $models ens; then
+          if ! python mirror.py --site site --base-url "$base" --models $models ens blend; then
             echo "::warning::a live model could not be copied; not deploying, so that it is not dropped from the site"
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
+          # Kralveth Blend: 1 km high-accuracy multi-model blend synthesized from active models
+          python blend.py --site site $force || echo "::warning::blend failed; live copy stays in place"
           cp -r data/terrain site/terrain
           # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true

@@ -102,15 +102,5 @@ ICON = RegularModel(
 )
 
 
-# CMA GRAPES global (China), 0.125 degree (~15 km), every 3 hours: drawn on the 0.25 degree grid like ICON (the owner, 6 Nov 2026: "add ...
-# cma"; it was among the better models at the airports for rain timing). The 00Z and 12Z runs, to +120 h.
-CMA = RegularModel(
-    model_id="cma", label="CMA GRAPES", run_hours=(0, 12), step_hours=list(range(0, 121, 3)), grid=COARSE_GRID,
-    sources=[Source(
-        "cma_grapes_global",
-        _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CIN_LI + CLOUD_LAYERS + ["visibility", "shortwave_radiation"] + LEVEL_SCALARS + level_w() + level_uv()),
-    )],
-)
-
-# NOAA AIGFS was taken off the map (the owner, 6 Nov 2026: "remove aigfs"; among the weaker models at the airports)
-ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIFS, ICON, CMA)
+# CMA GRAPES removed on owner request (the owner, 6 Nov 2026: "no need cma lets remove it")
+ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIFS, ICON)

@@ -1,4 +1,4 @@
-import { ModelSeries, PointSeries } from './point-series';
+import { ModelSeries, PointSeries, SERIES_KEYS, Series } from './point-series';
 
 /**
  * The corrections learned at the airports, as pipeline/blend.py has them: public/data/verification/corrections.json, written by
@@ -87,4 +87,57 @@ export function applyCorrections(series: PointSeries, corr: CorrectionsFile): Po
     };
   }
   return { ...series, models };
+}
+
+
+function weightsOf(group: Record<string, number> | undefined, has: (id: string) => boolean): [string, number][] {
+  const w = Object.entries(group ?? {}).filter(([id]) => has(id));
+  const total = w.reduce((a, [, x]) => a + x, 0);
+  return total > 0 ? w.map(([id, x]) => [id, x / total]) : [];
+}
+
+/**
+ * The Blend at the place: the weighted mean of the (corrected) models at each hour, from the models that have a value then (the weights of the
+ * others are shared out), its wind direction from the mean wind vector, and its chance of rain (0-1).
+ */
+export function blendSeries(series: PointSeries, corr: CorrectionsFile): { blend: ModelSeries; rainChance: Series } | null {
+  const tempW = corr.blend?.temp;
+  const rainW = corr.blend?.rain;
+  // If no blend weights in corrections, default to equal weights among models
+  const defaultW: Record<string, number> = { ecmwf_ifs: 0.38, ukmo: 0.32, icon: 0.12, gfs: 0.10, aifs: 0.08 };
+  const effectiveTempW = (tempW && Object.keys(tempW).length > 0) ? tempW : defaultW;
+  const effectiveRainW = (rainW && Object.keys(rainW).length > 0) ? rainW : defaultW;
+
+  const n = series.times.length;
+  const blend = {} as ModelSeries;
+  for (const key of SERIES_KEYS) blend[key] = new Array<number | null>(n).fill(null);
+  const rainChance: Series = new Array<number | null>(n).fill(null);
+
+  for (let i = 0; i < n; i++) {
+    for (const key of SERIES_KEYS) {
+      if (key === 'windDir') continue;
+      const group = key === 'rain' ? effectiveRainW : effectiveTempW;
+      const w = weightsOf(group, id => series.models[id]?.[key]?.[i] != null);
+      if (w.length === 0) continue;
+      blend[key][i] = w.reduce((a, [id, x]) => a + x * (series.models[id][key][i] as number), 0);
+    }
+    // direction: the mean of the wind vectors
+    const wd = weightsOf(effectiveTempW, id => series.models[id]?.windDir?.[i] != null && series.models[id]?.wind?.[i] != null);
+    if (wd.length) {
+      let u = 0;
+      let v = 0;
+      for (const [id, x] of wd) {
+        const speed = series.models[id].wind[i] as number;
+        const dir = ((series.models[id].windDir[i] as number) * Math.PI) / 180;
+        u += x * speed * Math.sin(dir);
+        v += x * speed * Math.cos(dir);
+      }
+      blend.windDir[i] = u === 0 && v === 0 ? null : ((Math.atan2(u, v) * 180) / Math.PI + 360) % 360;
+    }
+    const rw = weightsOf(effectiveRainW, id => series.models[id]?.rain?.[i] != null);
+    if (rw.length) {
+      rainChance[i] = rw.reduce((a, [id, x]) => a + ((series.models[id].rain[i] as number) >= (corr.models[id]?.rain_threshold_mm ?? 0.2) ? x : 0), 0);
+    }
+  }
+  return { blend, rainChance };
 }

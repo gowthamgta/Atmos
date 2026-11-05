@@ -173,7 +173,7 @@ describe('the model list', () => {
     expect(forecastModelById('aifs').centre).toBe('ECMWF');
     expect(forecastModelById('gfs').centre).toBe('NOAA');
     expect(forecastModelById('ukmo').centre).toBe('Met Office');
-    expect(forecastModelById('cma').centre).toBe('CMA');
+    expect(forecastModelById('blend').centre).toBe('Kralveth');
   });
 });
 

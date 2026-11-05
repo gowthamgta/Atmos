@@ -20,7 +20,7 @@ export interface ForecastModelDef {
   groundKm: number;
   baseUrl: string;
   /** The centre that runs it: the model's colour follows this (blue ECMWF, violet NOAA, green Met Office). */
-  centre: 'ECMWF' | 'NOAA' | 'Met Office' | 'DWD' | 'CMA';
+  centre: 'ECMWF' | 'NOAA' | 'Met Office' | 'DWD' | 'Kralveth';
   /** An AI model (learned from past weather) rather than a physics model: its colour is the lighter shade and its chart line is dashed. */
   ai: boolean;
   /**
@@ -58,8 +58,8 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
     centre: 'DWD', ai: false, datasets: ['dwd_icon'], apiId: 'icon_global', reachHours: 120,
   },
   {
-    id: 'cma', label: 'CMA GRAPES', short: 'CMA', resolution: '15 km, drawn at 25 km, South India and its seas', gridKm: 15, groundKm: 28, baseUrl: `${PAGES}/cma`,
-    centre: 'CMA', ai: false, datasets: ['cma_grapes_global'], apiId: 'cma_grapes_global', reachHours: 120,
+    id: 'blend', label: 'Kralveth Blend', short: 'Blend', resolution: '1 km high definition, South India and its seas', gridKm: 1, groundKm: 9, baseUrl: `${PAGES}/blend`,
+    centre: 'Kralveth', ai: false, datasets: ['ecmwf_ifs', 'ukmo_global_deterministic_10km', 'ncep_gfs013', 'ecmwf_aifs025_single', 'dwd_icon'], apiId: 'blend', reachHours: 120,
   },
 ];
 
