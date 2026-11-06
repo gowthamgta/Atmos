@@ -110,24 +110,25 @@ export function classifyCloudTop(tempC: number): CloudTopClassification {
  * orange, red, white at the coldest), which picks out the tall storm tops and the cirrus anvils.
  */
 export const CLOUD_TOP_STOPS: readonly (readonly [number, number, number, number, number])[] = [
-  // [tempC, R, G, B, alpha 0..255], warmest first. Windy's infrared, measured from its picture of the same day: a mid-to-light grey (the
-  // ground is not black), then the height of the cold tops in colour: blue, cyan, green, yellow, orange, red, dark red at the coldest.
-  // The band edges are set so each colour covers as much of the picture as it does on Windy.
-  [26, 93, 93, 93, 244],
-  [15, 105, 111, 105, 244],
-  [5, 127, 138, 130, 244],
-  [-5, 146, 158, 149, 246],
-  [-15, 170, 180, 170, 248],
-  [-25, 195, 201, 192, 250],
-  [-33, 225, 228, 220, 252],
-  [-44, 240, 242, 235, 253],
-  [-50, 44, 112, 238, 254],
-  [-56, 62, 198, 232, 254],
-  [-64, 92, 212, 112, 255],
-  [-73, 250, 226, 44, 255],
-  [-79, 255, 150, 32, 255],
-  [-82, 226, 52, 32, 255],
-  [-84, 150, 16, 18, 255],
+  // [tempC, R, G, B, alpha 0..255], warmest first.
+  // Windy's infrared palette calibrated directly to the reference screenshot (media_1793977479436_2b1daada.png):
+  // Clean neutral grayscale ground and clouds without greenish tints, transitioning into high-contrast,
+  // vivid electric convective rings (cyan -> neon lime green -> yellow -> fiery orange -> crimson red -> dark maroon).
+  [26, 108, 108, 108, 244],
+  [15, 115, 115, 115, 244],
+  [5, 135, 135, 135, 245],
+  [-5, 156, 156, 156, 247],
+  [-15, 180, 180, 180, 249],
+  [-25, 210, 210, 210, 251],
+  [-33, 236, 236, 236, 253],
+  [-44, 254, 254, 254, 254],
+  [-50, 48, 188, 215, 254],
+  [-56, 55, 212, 210, 254],
+  [-64, 116, 235, 95, 255],
+  [-73, 224, 210, 52, 255],
+  [-79, 235, 125, 30, 255],
+  [-82, 195, 42, 16, 255],
+  [-84, 145, 15, 12, 255],
   [-85, 100, 6, 12, 255],
 ];
 

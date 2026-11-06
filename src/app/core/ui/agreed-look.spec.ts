@@ -46,7 +46,7 @@ describe('the agreed looks (DESIGN-DECISIONS.md)', () => {
   });
 
   it('keeps the infrared cloud-top colours', () => {
-    expect(fnv(infraredSamples()), why).toBe('c67da769');
+    expect(fnv(infraredSamples()), why).toBe('b40e3791');
   });
 
   it('keeps the radar colours', () => {

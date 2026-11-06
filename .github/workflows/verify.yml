@@ -44,7 +44,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: pip install requests pytest numpy
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r requirements.txt
+        working-directory: pipeline
       - run: python -m pytest -q tests/test_verify.py tests/test_verify_gauges.py tests/test_blend.py tests/test_learn_bias.py tests/test_rain_factor.py
         working-directory: pipeline
       - name: Score at the airports

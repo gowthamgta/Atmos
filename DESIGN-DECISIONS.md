@@ -33,8 +33,7 @@ fingerprint only together with this file, on the owner's request.
 - **The loop is the last 4 hours, loaded newest first** (the owner, 1 Nov 2026): on opening, the newest picture, then the two before it
   (the slider can be dragged over those three); the rest of the 4 hours only once Play is pressed, in the background from newest to
   oldest, each batch joining the loop as it is built (`FIRST_FRAMES`, `loopFrames` in `core/satellite/satellite.service.ts`).
-- 🔒 **Infrared (night, and the Visible/Infrared switch): Windy's cloud-top colours**, greys to -44 °C, then blue, cyan, green, yellow,
-  orange, red and dark red (`CLOUD_TOP_STOPS`), calibrated against a Windy screenshot of the same day.
+- 🔒 **Infrared (night, and the Visible/Infrared switch): Windy's cloud-top colours**, neutral grayscale ground and clouds to -44 °C without green tint, then high-contrast electric cyan, neon lime green, yellow, orange, crimson red and dark maroon (`CLOUD_TOP_STOPS`), calibrated directly to the owner's Windy reference screenshot (6 Nov 2026). Fingerprinted in `agreed-look.spec.ts` (`b40e3791`).
 - **Turned down:** the natural-colour fusion (13 Oct); the 19 Oct rework (natural look / RGB composite blended with the map, clouds only
   with the ground see-through, Windy's dark ground under the satellite with rivers and roads hidden, unsharp mask, then denoise) was
   reverted on 20 Oct (79b4fd4); AMD CAS sharpening (no visible gain); water vapour and the Auto/IR/WV buttons; the EUMETSAT cloud mask at
