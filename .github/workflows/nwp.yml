@@ -64,7 +64,7 @@ jobs:
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           repo="${GITHUB_REPOSITORY#*/}"
-          base="https://${owner}.github.io/${repo}"
+          base="https://data.kralveth.workers.dev"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
           # a run started on time (by cron-job.org, or by hand) builds the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 7
@@ -115,11 +115,10 @@ jobs:
             || echo "::warning::cyclones failed; the live file stays in place"
           # the chance of rain from the ECMWF ensemble (a small folder in the same format as a model; the live one is kept when there is nothing new)
           python ens.py --out site --live-url "$base/ens/latest.json" $force             || echo "::warning::ens failed; the live copy stays in place"
-          # models that were not rebuilt come over from the live site (always: a deploy replaces the whole site)
+          # models that were not rebuilt come over from the live site (check B2, fallback to GitHub Pages for initial migration)
           if ! python mirror.py --site site --base-url "$base" --models $models ens blend; then
-            echo "::warning::a live model could not be copied; not deploying, so that it is not dropped from the site"
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::notice::trying previous live host to populate initial B2 mirror"
+            python mirror.py --site site --base-url "https://${owner}.github.io/${repo}" --models $models ens blend || true
           fi
           # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
           # Kralveth Blend: 1 km high-accuracy multi-model blend synthesized from active models
@@ -136,24 +135,12 @@ jobs:
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/upload-pages-artifact@v5
-        if: steps.build.outputs.deploy == 'true'
-        with:
-          path: pipeline/site
-
-  deploy:
-    needs: build
-    # only main deploys to the live site (a run started by hand on another branch builds, as a check, but does not deploy)
-    if: needs.build.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v5
-        with:
-          timeout: 1800000
+      - name: Deploy to Backblaze B2 via S3 sync
+        if: steps.build.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
+        run: |
+          aws s3 sync site s3://${{ secrets.B2_BUCKET }}/ \
+            --endpoint-url ${{ secrets.B2_ENDPOINT }} \
+            --no-progress
