@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, HostListener, computed, inject, sig
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { ForecastCatalogService } from '../../core/forecast/forecast-catalog.service';
 import { ForecastLayerDef, LAYER_GROUPS, layerAvailableAt, paletteGradientCss, supportsLevels } from '../../core/forecast/forecast-layers';
+import { layerSubtitle } from '../../core/forecast/layer-meaning';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { PerfMeterService } from '../../core/ui/perf-meter.service';
@@ -79,7 +80,10 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                         [title]="layerTitle(layer)" (click)="state.toggleLayer(layer.id)"
                       >
                         <app-icon class="l-icon" [name]="icon(layer.id)" [size]="18" />
-                        <span class="l-name">{{ layer.label }}</span>
+                        <div class="l-name-box">
+                          <span class="l-name">{{ layer.label }}</span>
+                          @if (subtitle(layer.id); as sub) { <span class="l-sub">{{ sub }}</span> }
+                        </div>
                         <span class="l-palette" [style.background]="palette(layer)" aria-hidden="true"></span>
                         @if (state.activeLayerId() === layer.id) { <app-icon class="tick" name="check" [size]="15" /> }
                       </button>
@@ -244,7 +248,10 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
     .layer.ground-only:not(.active) { opacity: 0.65; }
     .l-icon { color: var(--text-secondary); }
     .layer.active .l-icon { color: var(--on-accent); }
-    .l-name { flex: 1; min-width: 0; line-height: var(--lh-tight); }
+    .l-name-box { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .l-name { line-height: var(--lh-tight); }
+    .l-sub { font-size: 11px; font-weight: normal; color: var(--text-muted); line-height: 1.2; }
+    .layer.active .l-sub { color: inherit; opacity: 0.85; }
     /* the layer's own palette, small: this is where its colours are shown, so the buttons themselves can stay plain */
     .l-palette { flex: none; width: 44px; height: 6px; border-radius: 3px; opacity: 0.9; }
     .layer.active .l-palette { opacity: 1; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.32); }
@@ -327,6 +334,7 @@ export class MenuPanelComponent {
   });
 
   protected icon = layerIcon;
+  protected subtitle = layerSubtitle;
 
   /** A layer's palette as a thin bar. */
   protected palette(layer: ForecastLayerDef): string {

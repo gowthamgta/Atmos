@@ -80,7 +80,12 @@ export function firstNumber(text: string | undefined): number | null {
               </div>
             </div>
             @if (activeLayerReadout(); as lr) {
-              <div class="layer-readout" [class.stale]="inspector.stale()"><span>{{ lr.label }}</span><strong [title]="inspector.stale() ? 'Working out the new value' : ''">{{ inspector.stale() ? '…' : lr.text }}</strong></div>
+              <div class="layer-readout-box" [class.stale]="inspector.stale()">
+                <div class="layer-readout"><span>{{ lr.label }}</span><strong [title]="inspector.stale() ? 'Working out the new value' : ''">{{ inspector.stale() ? '…' : lr.text }}</strong></div>
+                @if (lr.meaning && !inspector.stale()) {
+                  <div class="layer-meaning"><span class="meaning-tag">What it means:</span> <span class="meaning-val">{{ lr.meaning }}</span></div>
+                }
+              </div>
             }
             <div class="when">{{ timeLabel() }} · {{ sel.lat.toFixed(2) }}°N, {{ sel.lon.toFixed(2) }}°E@if (p.elevationM !== null) { · {{ p.elevationM.toFixed(0) }} m }</div>
 
@@ -176,8 +181,12 @@ export function firstNumber(text: string | undefined): number | null {
     .facts { display: flex; flex-direction: column; gap: 1px; margin-left: var(--sp-1); font-size: var(--fs-m); color: var(--text-secondary); min-width: 0; }
     .facts span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     /* rain on the radar: when it reaches the place or stops there */
-    .layer-readout { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin: 4px 0 2px; padding: 4px 10px; border-radius: var(--radius-s); background: var(--accent-soft); font-size: var(--fs-s); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .layer-readout-box { margin: 4px 0 2px; display: flex; flex-direction: column; gap: 2px; }
+    .layer-readout { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: 4px 10px; border-radius: var(--radius-s); background: var(--accent-soft); font-size: var(--fs-s); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
     .layer-readout strong { color: var(--text-primary); font-weight: var(--fw-strong); }
+    .layer-meaning { display: flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--radius-s); background: var(--surface-3); font-size: var(--fs-xs); line-height: var(--lh-tight); color: var(--text-secondary); }
+    .layer-meaning .meaning-tag { color: var(--accent); font-weight: var(--fw-medium); }
+    .layer-meaning .meaning-val { color: var(--text-primary); }
     .when { margin: 2px 0 var(--sp-2); font-size: var(--fs-xs); color: var(--text-muted); }
     .days-source { margin-top: 2px; font-size: var(--fs-xs); color: var(--text-muted); }
 

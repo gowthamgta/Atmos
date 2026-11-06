@@ -32,7 +32,7 @@ export function shortUnit(unit: string): string {
   template: `
     @if (state.activeLayer(); as layer) {
       <div class="legend" role="group" [attr.aria-label]="layer.label + ' colour scale in ' + unitLabel() + (state.level() === 'surface' ? '' : ' at ' + state.level() + ' hPa')">
-        <div class="bar" [style.background]="gradient()">
+        <div class="bar" [style.background]="gradient()" [title]="guideTooltip()">
           <button type="button" class="unit" [disabled]="!choices()" (click)="cycle()" [attr.aria-label]="choices() ? 'Unit: ' + unitLabel() + '. Change unit' : 'Unit: ' + unitLabel()" [title]="choices() ? 'Click to change the unit' : layer.unit">
             {{ unitLabel() }}
           </button>
@@ -51,6 +51,18 @@ export function shortUnit(unit: string): string {
             <button type="button" class="btn-icon" (click)="infoOpen.set(false)" aria-label="Close" title="Close (Esc)"><app-icon name="close" [size]="16" /></button>
           </header>
           <dl>
+            @if (facts().userGuide; as ug) {
+              <div class="user-guide-box">
+                <dt class="ug-dt">Simple Guide for Common Users</dt>
+                <dd class="ug-summary">{{ ug.summary }}</dd>
+                <dd class="ug-text">{{ ug.guideText }}</dd>
+                <dd class="ug-scale">
+                  <span class="ug-low">◀ {{ ug.low }}</span>
+                  <span class="ug-arrow">⟶</span>
+                  <span class="ug-high">{{ ug.high }} ▶</span>
+                </dd>
+              </div>
+            }
             <div><dt>What it shows</dt><dd>{{ facts().what }}</dd></div>
             <div><dt>Colour scale</dt><dd>{{ facts().scale }}</dd></div>
             <div><dt>Time</dt><dd>{{ facts().time }}</dd></div>
@@ -90,6 +102,14 @@ export function shortUnit(unit: string): string {
     dl { margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
     dt { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); }
     dd { margin: 1px 0 0; font-size: var(--fs-m); line-height: var(--lh-normal); color: var(--text-secondary); }
+    .user-guide-box { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-m); background: var(--surface-2); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+    .ug-dt { color: var(--accent); font-weight: var(--fw-strong); font-size: var(--fs-xs); letter-spacing: var(--ls-caps); text-transform: uppercase; }
+    .ug-summary { font-size: var(--fs-m); font-weight: var(--fw-strong); color: var(--text-primary); margin: 0; }
+    .ug-text { font-size: var(--fs-s); line-height: var(--lh-normal); color: var(--text-secondary); margin: 0; }
+    .ug-scale { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line); font-size: 11px; font-weight: var(--fw-medium); color: var(--text-secondary); }
+    .ug-low { color: #f97316; }
+    .ug-arrow { color: var(--text-muted); }
+    .ug-high { color: var(--neon-cyan, #06b6d4); }
   `]
 })
 export class ForecastLegendComponent {
@@ -120,6 +140,10 @@ export class ForecastLegendComponent {
   protected readonly ticks = computed(() => {
     const layer = this.state.activeLayer();
     return layer ? legendTicks(layer, this.quantity(), this.unitsService.units()) : [];
+  });
+  protected readonly guideTooltip = computed(() => {
+    const ug = this.facts().userGuide;
+    return ug ? `${ug.summary}: ${ug.low} → ${ug.high}. Click (i) for common user guide.` : (this.state.activeLayer()?.label ?? '');
   });
 
   /** What the colours of the layer on the map mean (the layer as drawn at the chosen altitude). */

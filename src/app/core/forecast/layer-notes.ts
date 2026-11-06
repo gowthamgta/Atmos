@@ -1,4 +1,5 @@
 import type { ForecastLayerDef, Level } from './forecast-layers';
+import { LayerGuide, layerGuide } from './layer-meaning';
 import type { TerrainMode } from './terrain-correction';
 
 /**
@@ -82,6 +83,7 @@ export interface LayerFacts {
   time: string;
   gaps: string;
   ground: string;
+  userGuide?: LayerGuide | null;
 }
 
 /** The facts of a layer as drawn at an altitude (the ground when `level` is 'surface'). `shown` is the layer as resolved for that altitude. */
@@ -101,5 +103,6 @@ export function layerFacts(base: ForecastLayerDef, shown: ForecastLayerDef, leve
     time: note?.time ?? INSTANT,
     gaps: `Transparent too where the model has no value for it (a variable it does not publish, or outside its area). ${gaps}`.trim(),
     ground: shown.terrain ? GROUND[shown.terrain] : level === 'surface' ? 'The model\'s value as it is: no correction for the 90 m terrain is made.' : 'The model\'s value at the pressure level: the 90 m terrain does not apply up there.',
+    userGuide: layerGuide(base.id, level),
   };
 }

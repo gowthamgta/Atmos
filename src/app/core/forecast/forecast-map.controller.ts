@@ -177,10 +177,13 @@ export class ForecastMapController {
     if (this.pinLabel) {
       const row = point ? rowsForLayer(point.rows, layerId, level)[0] : undefined;
       // an out-of-date number (the new one is slow to arrive) is not shown as if it were current
-      const text = row && row.text.length <= 28 && !row.text.startsWith('–') ? (stale ? '…' : row.text) : '';
+      let text = row && row.text.length <= 28 && !row.text.startsWith('–') ? (stale ? '…' : row.text) : '';
+      if (text && row?.meaning && !stale) {
+        text = `${text} · ${row.meaning.split('·')[0].trim()}`;
+      }
       this.pinLabel.textContent = text;
       this.pinLabel.style.display = text ? '' : 'none';
-      const nearRight = this.map.project([sel.lon, sel.lat]).x > this.map.getCanvas().clientWidth - 160;
+      const nearRight = this.map.project([sel.lon, sel.lat]).x > this.map.getCanvas().clientWidth - 220;
       this.pinLabel.style.left = nearRight ? 'auto' : '20px';
       this.pinLabel.style.right = nearRight ? '20px' : 'auto';
     }
