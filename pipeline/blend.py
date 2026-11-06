@@ -420,13 +420,14 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
 
 
 def blend_axis(components: list[Component], step_hours: int = STEP_HOURS) -> tuple[datetime, list[datetime]]:
-    """Reference time (the newest model run) and forecast valid times to publish every `step_hours`."""
+    """Reference time (the newest model run) and forecast valid times to publish: 3-hourly to +120 h, then 6-hourly to +168 h (7 days)."""
     ref = max(c.run for c in components)
     last = max(max(c.steps) for c in components)
-    n = int((last - ref).total_seconds() // 3600 // step_hours)
-    # Map reach is capped at 120 h (or max available)
-    n = min(n, 120 // step_hours)
-    return ref, [ref + timedelta(hours=step_hours * i) for i in range(n + 1)]
+    max_h = min(168, int((last - ref).total_seconds() // 3600))
+    hours = [h for h in range(0, min(121, max_h + 1), step_hours)]
+    if max_h > 120:
+        hours.extend(range(126, max_h + 1, 6))
+    return ref, [ref + timedelta(hours=h) for h in hours]
 
 
 def write(path: str, data: bytes) -> None:
@@ -504,7 +505,8 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
 
     # Forward 24h accumulations and extremes
     if precip_dict:
-        rain_windows = {h: STEP_HOURS for h in precip_dict}
+        h_list = sorted(precip_dict.keys())
+        rain_windows = {h: (h_list[i] - h_list[i - 1] if i > 0 else (h_list[1] - h_list[0] if len(h_list) > 1 else STEP_HOURS)) for i, h in enumerate(h_list)}
         rain24_info = C.VARS["rain24"]
         accumulated = forward_accumulation(precip_dict, rain_windows)
         for h, field in accumulated.items():

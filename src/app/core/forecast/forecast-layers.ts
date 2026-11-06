@@ -73,8 +73,8 @@ const LEVEL_HUMIDITY = humidityStops(0, 100);
 const RAIN = WINDY_RAIN_RATE;
 const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
 const WIND = WINDY_WIND;
-/** Multi-model probability of rain over the next 24 h (0–100%), from light cyan to deep blue, purple, magenta and crimson. */
-const EXTREME = ['#38bdf8', '#0284c7', '#2563eb', '#6366f1', '#9333ea', '#db2777', '#dc2626'];
+/** Multi-model probability of rain over the next 24 h (0–100%): deep, vibrant, saturated tones (cyan to emerald, amber, orange, crimson and deep violet). */
+const EXTREME = ['#0284c7', '#0284c7', '#059669', '#10b981', '#f59e0b', '#ea580c', '#dc2626', '#7c3aed'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
 const DEW = tempStops(-20, 30); // Windy draws the dew point on its temperature scale
@@ -150,7 +150,7 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   },
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: RAIN_MAX, stops: RAIN, gamma: RAIN_GAMMA, clearBelow: 0.2, clearFade: 1.5, ticks: [1, 2, 5, 10, 20, 50], opacity: 1, terrain: 'rain' },
   { id: 'raintot', label: 'Rain accumulation, choose period', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm in the chosen period', min: 0, max: 300, stops: WINDY_RAIN_ACCUMULATION, gamma: RAIN_ACCUMULATION_GAMMA, clearBelow: 1.0, clearFade: 2.5, ticks: [3, 10, 25, 100, 300], opacity: 1, terrain: 'rain' },
-  { id: 'extreme', label: 'Probability of rain, next 24 h', icon: '🌧', group: 'Rain and humidity', varId: 'extreme', unit: '%', min: 0, max: 100, stops: EXTREME, gamma: 1, clearBelow: 20, ticks: [20, 40, 60, 80, 100], opacity: 0.9, terrain: null },
+  { id: 'extreme', label: 'Probability of rain, next 24 h', icon: '🌧', group: 'Rain and humidity', varId: 'extreme', unit: '%', min: 0, max: 100, stops: EXTREME, gamma: 1, clearBelow: 20, clearFade: 1.15, ticks: [20, 40, 60, 80, 100], opacity: 1, terrain: null },
   { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {
