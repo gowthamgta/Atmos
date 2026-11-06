@@ -22,7 +22,13 @@ import scipy.ndimage as ndi
 from PIL import Image
 
 import config as C
-from derive import cumulative_accumulation, forward_accumulation, forward_extreme, rain_mm_to_probability
+from derive import (
+    cumulative_accumulation,
+    forward_accumulation,
+    forward_extreme,
+    rain_mm_to_probability,
+    vorticity_divergence,
+)
 from encode import decode_field, encode_field
 
 FULL_KM = 100.0
@@ -403,6 +409,12 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
         t, td = out["t2m"], out["dew"]
         rh_calc = 100.0 * np.exp((a * td) / (b + td) - (a * t) / (b + t))
         out["rh"] = np.clip(0.7 * rh_calc + 0.3 * out["rh"], 1.0, 100.0).astype(np.float32)
+
+    # 3. Kinematic consistency for upper air dynamics: re-derive vorticity & divergence directly from blended wind components
+    for lvl in C.LEVELS:
+        u_lvl, v_lvl = f"u{lvl}", f"v{lvl}"
+        if u_lvl in out and v_lvl in out and not np.isnan(out[u_lvl]).all() and not np.isnan(out[v_lvl]).all():
+            out[f"vo{lvl}"], out[f"dv{lvl}"] = vorticity_divergence(out[u_lvl], out[v_lvl])
 
     return out
 
