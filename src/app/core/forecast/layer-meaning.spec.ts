@@ -39,7 +39,11 @@ describe('layer-meaning', () => {
   it('interprets divergence correctly', () => {
     expect(layerMeaning('divergence', 10)).toBe('Strong divergence · storm exhaust');
     expect(layerMeaning('divergence', 4)).toBe('Divergence · air spreading aloft');
+    expect(layerMeaning('divergence', 2)).toBe('Divergence · air spreading aloft');
     expect(layerMeaning('divergence', 0)).toBe('Neutral horizontal flow');
+    expect(layerMeaning('divergence', 1.0)).toBe('Neutral horizontal flow');
+    expect(layerMeaning('divergence', -1.0)).toBe('Neutral horizontal flow');
+    expect(layerMeaning('divergence', -2)).toBe('Convergence · air gathering');
     expect(layerMeaning('divergence', -5)).toBe('Convergence · air gathering');
     expect(layerMeaning('divergence', -12)).toBe('Strong convergence · low-level inflow');
   });

@@ -203,7 +203,7 @@ export class ForecastMapController {
     // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It goes to every field whatever
     // its grid (0.1 degrees, or 0.25 for GFS, AIGFS and AIFS): the shader reads the terrain by latitude and longitude, takes the ground
     // the field stands on at the field's own nodes, and leaves the pixels outside the terrain's box alone
-    const consensusLayer = def.id === 'extreme';           // drawn from every model, on the India grid of ECMWF IFS
+    const consensusLayer = def.id === 'extreme' && !manifest.vars['extreme']; // multi-model consensus when the model lacks extreme
     const rangeLayer = def.id === 'raintot';               // the rain between two chosen times
     const rangeStart = this.state.rangeStartMs();          // read here so the layer redraws when the slider moves
     const rangeEnd = this.state.rangeEndMs();
@@ -273,7 +273,7 @@ export class ForecastMapController {
     const key = `${manifest.model}/${manifest.run}/${steps.join(',')}`;
     if (key === this.prefetchedFor) return;
     this.prefetchedFor = key;
-    const varIds = [...new Set(FORECAST_LAYERS.filter(l => l.id !== 'raintot' && l.id !== 'extreme').flatMap(l => (l.varId2 ? [l.varId, l.varId2] : [l.varId])))]
+    const varIds = [...new Set(FORECAST_LAYERS.filter(l => l.id !== 'raintot' && (l.id !== 'extreme' || manifest.vars['extreme'])).flatMap(l => (l.varId2 ? [l.varId, l.varId2] : [l.varId])))]
       .filter(v => manifest.vars[v]);
     const idle = (cb: () => void) => {
       const ric = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;

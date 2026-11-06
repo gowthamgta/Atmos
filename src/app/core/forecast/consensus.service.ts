@@ -88,14 +88,20 @@ export class ConsensusService {
     const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
     const raw = decodeFieldBitmap(bitmap, info.min, info.max);
     bitmap.close();
-    if (model.id === 'ens' && varId === 'pop24' && !(p.manifest as unknown as { notes?: Record<string, unknown> }).notes?.['calibrated']) {
-      // Calibrate legacy uncalibrated ensemble runs that used naive 8-period multiplication
+    if (model.id === 'ens' && varId === 'pop24') {
+      // Calibrate raw ensemble probability (which counts trace 0.1 mm drizzle) to true measurable rain probability
       for (let i = 0; i < raw.length; i++) {
         const v = raw[i];
         if (Number.isNaN(v)) continue;
-        const pOld = Math.min(0.9999, Math.max(0, v / 100));
-        const p3h = 1 - Math.pow(1 - pOld, 0.125);
-        raw[i] = Math.min(100, Math.max(0, 100 * (p3h + 0.4 * p3h * (1 - p3h))));
+        if (v <= 20) {
+          raw[i] = 0;
+        } else if (v <= 60) {
+          raw[i] = ((v - 20) / 40) * 30;
+        } else if (v <= 85) {
+          raw[i] = 30 + ((v - 60) / 25) * 35;
+        } else {
+          raw[i] = Math.min(100, 65 + ((v - 85) / 15) * 30);
+        }
       }
     }
     const onIndia = resampleField(raw, p.manifest.grid, INDIA_GRID);

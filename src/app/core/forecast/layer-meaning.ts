@@ -42,19 +42,19 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     summary: 'Updrafts vs downdrafts in the upper air',
     low: 'Sinking air (clear)',
     high: 'Rising air (clouds & storms)',
-    guideText: 'Rising air (+ values, teal/cyan) cools and condenses moisture, fueling cloud and thunderstorm growth. Sinking air (- values, orange/brown) compresses and warms, suppressing clouds to create clear skies.',
+    guideText: 'Rising air (+ values, teal/cyan to electric blue and pink) cools and condenses moisture, fueling cloud and thunderstorm growth. Sinking air (- values, earthy amber and rust) suppresses clouds to create clear skies.',
   },
   vorticity: {
     summary: 'Atmospheric spin and storm rotation',
     low: 'Anticyclonic (fair weather ridge)',
     high: 'Cyclonic spin (storms & troughs)',
-    guideText: 'Positive values (teal/cyan) show counter-clockwise cyclonic spin in the Northern Hemisphere, marking storm centers, troughs, and tropical depressions. Negative values (orange/brown) mark stable high-pressure ridges.',
+    guideText: 'Positive values (emerald to royal blue and vivid magenta) show counter-clockwise cyclonic spin in the Northern Hemisphere, marking storm centers, troughs, and tropical depressions. Negative values (warm amber) mark stable high-pressure ridges.',
   },
   divergence: {
     summary: 'Wind evacuation vs gathering',
     low: 'Convergence (gathering air)',
     high: 'Divergence (storm exhaust)',
-    guideText: 'Positive values (teal/cyan) indicate wind spreading outward aloft. Upper-level divergence acts like a chimney exhaust, pulling air up from below to power intense storms and cyclones.',
+    guideText: 'Negative values (fiery crimson/amber) show low-level convergence squeezing air together and forcing it upward. Positive values (emerald to vivid sky) show upper-level divergence acting like a chimney exhaust to pull air up from below.',
   },
   cape: {
     summary: 'Thunderstorm potential energy',
@@ -174,28 +174,28 @@ export function layerMeaning(layerId: string | null | undefined, value: number, 
     case 'vertical':
     case 'lvl-w': {
       // In point forecast, value is cm/s (displayScale = 100)
-      if (value > 15) return 'Strong updraft · storm growth';
-      if (value >= 3) return 'Rising air · cloudy / rain favored';
-      if (value > -3) return 'Calm vertical air';
-      if (value > -15) return 'Sinking air · dry & clearing';
+      if (value > 12) return 'Strong updraft · storm growth';
+      if (value >= 2.5) return 'Rising air · cloudy / rain favored';
+      if (value > -2.5) return 'Calm vertical air';
+      if (value >= -12) return 'Sinking air · dry & clearing';
       return 'Strong downdraft · sinking air';
     }
     case 'vorticity':
     case 'lvl-vo': {
       // 10^-5 /s
-      if (value > 15) return 'Intense cyclonic vortex · storm';
-      if (value >= 5) return 'Cyclonic spin · low pressure';
-      if (value > -5) return 'Neutral flow';
-      if (value > -15) return 'Anticyclonic flow · fair ridge';
+      if (value > 12) return 'Intense cyclonic vortex · storm';
+      if (value >= 3) return 'Cyclonic spin · low pressure';
+      if (value > -3) return 'Neutral flow';
+      if (value >= -10) return 'Anticyclonic flow · fair ridge';
       return 'Strong high-pressure ridge';
     }
     case 'divergence':
     case 'lvl-dv': {
       // 10^-5 /s
-      if (value > 8) return 'Strong divergence · storm exhaust';
-      if (value >= 3) return 'Divergence · air spreading aloft';
-      if (value > -3) return 'Neutral horizontal flow';
-      if (value > -8) return 'Convergence · air gathering';
+      if (value > 6) return 'Strong divergence · storm exhaust';
+      if (value >= 1.5) return 'Divergence · air spreading aloft';
+      if (value > -1.5) return 'Neutral horizontal flow';
+      if (value >= -6) return 'Convergence · air gathering';
       return 'Strong convergence · low-level inflow';
     }
     case 'cape': {

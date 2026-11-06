@@ -221,7 +221,7 @@ export class ForecastInspectorService {
         const diff = atEnd - atStart;
         values['rainrange'] = diff < 0.15 ? 0 : Math.max(0, diff);
       }
-      if (layerId === 'extreme' || detailed) {
+      if ((layerId === 'extreme' || detailed) && !manifest.vars['extreme']) {
         const agreed = await this.consensus.compute(time);
         if (agreed) values['extreme'] = sampleGrid(agreed.values, INDIA_GRID, lat, lon);
       }

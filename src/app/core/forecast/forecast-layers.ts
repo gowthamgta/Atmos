@@ -73,16 +73,20 @@ const LEVEL_HUMIDITY = humidityStops(0, 100);
 const RAIN = WINDY_RAIN_RATE;
 const CAPE = ['#2a3550', '#1f6f8f', '#2a9d6b', '#c2a31f', '#d9731f', '#c92a3a', '#a03bd0'];
 const WIND = WINDY_WIND;
-/** Multi-model probability of rain over the next 24 h (0–100%), from cool teal-blue at low chance to gold, orange, crimson and violet at high confidence. */
-const EXTREME = ['#4a94a9', '#39619f', '#2563eb', '#1d4ed8', '#1e3a8a', '#172554'];
+/** Multi-model probability of rain over the next 24 h (0–100%), from light cyan to deep blue, purple, magenta and crimson. */
+const EXTREME = ['#38bdf8', '#0284c7', '#2563eb', '#6366f1', '#9333ea', '#db2777', '#dc2626'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
 const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
 const DEW = tempStops(-20, 30); // Windy draws the dew point on its temperature scale
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
 const STABILITY = ['#b3262f', '#e0652a', '#e0b02a', '#4fae6a', '#1f8fa8', '#2a56b0'];
-// air moving down / calm / up (vertical velocity), and clockwise / calm / anticlockwise (vorticity), spreading / calm / converging
-const DIVERGING = ['#b3262f', '#e0762a', '#3a3f55', '#1f8fa8', '#2a56b0'];
+// air moving down / calm / up (vertical velocity), downdrafts (earth/amber) vs calm vs updrafts (teal/cyan/blue/pink)
+const VERTICAL_STOPS = ['#451a03', '#991b1b', '#ea580c', '#f59e0b', '#1e2230', '#0f766e', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef'];
+// relative vorticity: anticyclonic/clockwise (warm amber) vs neutral vs cyclonic (emerald to royal blue to electric purple/magenta)
+const VORTICITY_STOPS = ['#78350f', '#b45309', '#d97706', '#f59e0b', '#182030', '#059669', '#06b6d4', '#2563eb', '#7c3aed', '#c026d3'];
+// divergence: convergence (inflow/convective trigger, red-orange) vs neutral vs divergence (upper outflow/exhaust, emerald to vivid sky)
+const DIVERGENCE_STOPS = ['#991b1b', '#dc2626', '#ea580c', '#f59e0b', '#1e293b', '#10b981', '#06b6d4', '#0ea5e9', '#38bdf8'];
 const INHIBITION = ['#1c2330', '#2a4a8a', '#1f8fa8', '#4fae6a', '#e0b02a', '#e0652a'];
 
 // --- what changes with altitude -------------------------------------------------------------------------------
@@ -159,19 +163,19 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'cape', label: 'Thunderstorm energy', icon: '⚡', group: 'Pressure and storms', varId: 'cape', unit: 'J/kg', min: 0, max: 4000, stops: CAPE, gamma: 0.7, clearBelow: 100, ticks: [500, 1000, 2000, 3000, 4000], opacity: 0.85, terrain: null },
   // layers that only exist aloft; the variable at the ground is a placeholder (the layer is never drawn there)
   {
-    id: 'vertical', label: 'Vertical air motion', icon: '↕', group: 'Upper air', varId: 'w850', unit: 'cm/s (+ rising)', displayScale: 100, min: -0.6, max: 0.6, stops: DIVERGING,
-    gamma: 1, clearBelow: 0, ticks: [-50, -25, 0, 25, 50], opacity: 0.85, terrain: null, levelOnly: true,
-    atLevel: l => ({ varId: `w${l}`, min: -0.6, max: 0.6, ticks: [-50, -25, 0, 25, 50] }),
+    id: 'vertical', label: 'Vertical air motion', icon: '↕', group: 'Upper air', varId: 'w850', unit: 'cm/s (+ rising)', displayScale: 100, min: -0.4, max: 0.4, stops: VERTICAL_STOPS,
+    gamma: 1, clearBelow: 0, ticks: [-30, -15, 0, 15, 30], opacity: 0.85, terrain: null, levelOnly: true,
+    atLevel: l => ({ varId: `w${l}`, min: -0.4, max: 0.4, ticks: [-30, -15, 0, 15, 30] }),
   },
   {
-    id: 'vorticity', label: 'Vorticity', icon: '🌀', group: 'Upper air', varId: 'vo850', unit: '10⁻⁵ s⁻¹ (+ anticlockwise)', min: -30, max: 30, stops: DIVERGING,
-    gamma: 1, clearBelow: 0, ticks: [-20, -10, 0, 10, 20], opacity: 0.85, terrain: null, levelOnly: true,
-    atLevel: l => ({ varId: `vo${l}`, min: -30, max: 30, ticks: [-20, -10, 0, 10, 20] }),
+    id: 'vorticity', label: 'Vorticity', icon: '🌀', group: 'Upper air', varId: 'vo850', unit: '10⁻⁵ s⁻¹ (+ anticlockwise)', min: -20, max: 20, stops: VORTICITY_STOPS,
+    gamma: 1, clearBelow: 0, ticks: [-15, -8, 0, 8, 15], opacity: 0.85, terrain: null, levelOnly: true,
+    atLevel: l => ({ varId: `vo${l}`, min: -20, max: 20, ticks: [-15, -8, 0, 8, 15] }),
   },
   {
-    id: 'divergence', label: 'Divergence', icon: '⇆', group: 'Upper air', varId: 'dv850', unit: '10⁻⁵ s⁻¹ (+ spreading out)', min: -15, max: 15, stops: DIVERGING,
-    gamma: 1, clearBelow: 0, ticks: [-10, -5, 0, 5, 10], opacity: 0.85, terrain: null, levelOnly: true,
-    atLevel: l => ({ varId: `dv${l}`, min: -15, max: 15, ticks: [-10, -5, 0, 5, 10] }),
+    id: 'divergence', label: 'Divergence', icon: '⇆', group: 'Upper air', varId: 'dv850', unit: '10⁻⁵ s⁻¹ (+ spreading out)', min: -10, max: 10, stops: DIVERGENCE_STOPS,
+    gamma: 1, clearBelow: 0, ticks: [-8, -4, 0, 4, 8], opacity: 0.85, terrain: null, levelOnly: true,
+    atLevel: l => ({ varId: `dv${l}`, min: -10, max: 10, ticks: [-8, -4, 0, 4, 8] }),
   },
 ];
 

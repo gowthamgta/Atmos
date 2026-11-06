@@ -28,7 +28,7 @@ export const SUMMARY_VARS = ['t2m', 'feels', 'rh', 'u10', 'v10', 'precip', 'clou
 export function summaryVars(layer: { varId: string; varId2?: string; terrain: string | null } | null): string[] {
   const vars: string[] = [...SUMMARY_VARS];
   if (layer) {
-    if (layer.varId !== 'extreme') vars.push(layer.varId);
+    vars.push(layer.varId);
     if (layer.varId2) vars.push(layer.varId2);
     if (layer.terrain === 'rain') vars.push('u850', 'v850');
   }
