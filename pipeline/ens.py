@@ -28,7 +28,7 @@ VAR_ID = "pop24"
 WINDOW_STEPS = 8                  # 8 x 3 h = the next 24 hours
 STEP_H = 3
 RUN_HOURS = (0, 6, 12, 18)
-FORMAT = 1                        # bump when the way a run is built changes, so a live run built the old way is built again
+FORMAT = 2                        # bump when the way a run is built changes, so a live run built the old way is built again
 
 
 def next_24h(steps: dict[int, np.ndarray]) -> dict[int, np.ndarray]:
@@ -129,7 +129,7 @@ def main() -> int:
         "vars": {VAR_ID: {"unit": "%", "min": 0, "max": 100, "encoding": "rg16"}},
         "levels": [],
         "path": "{var}/{h:03d}.png",
-        "notes": {VAR_ID: "chance of rain at some time in the 24 hours after the step: the ECMWF ensemble's 3-hourly chance of rain, combined"},
+        "notes": {VAR_ID: "chance of rain at some time in the 24 hours after the step: persistence-calibrated temporal aggregation (Nkuiate et al. 2026)", "calibrated": True},
         "build": build,
         "domain": COARSE_GRID.domain,
     }

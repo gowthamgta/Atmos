@@ -86,8 +86,19 @@ export class ConsensusService {
     const res = await fetch(url);
     if (!res.ok) return null;
     const bitmap = await createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
-    const onIndia = resampleField(decodeFieldBitmap(bitmap, info.min, info.max), p.manifest.grid, INDIA_GRID);
+    const raw = decodeFieldBitmap(bitmap, info.min, info.max);
     bitmap.close();
+    if (model.id === 'ens' && varId === 'pop24' && !(p.manifest as unknown as { notes?: Record<string, unknown> }).notes?.['calibrated']) {
+      // Calibrate legacy uncalibrated ensemble runs that used naive 8-period multiplication
+      for (let i = 0; i < raw.length; i++) {
+        const v = raw[i];
+        if (Number.isNaN(v)) continue;
+        const pOld = Math.min(0.9999, Math.max(0, v / 100));
+        const p3h = 1 - Math.pow(1 - pOld, 0.125);
+        raw[i] = Math.min(100, Math.max(0, 100 * (p3h + 0.4 * p3h * (1 - p3h))));
+      }
+    }
+    const onIndia = resampleField(raw, p.manifest.grid, INDIA_GRID);
     this.fields.set(key, onIndia);
     while (this.fields.size > MAX_CACHED_FIELDS) this.fields.delete(this.fields.keys().next().value!);
     return onIndia;
