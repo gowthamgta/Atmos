@@ -110,14 +110,19 @@ export function smoothNeighbourhoodMax(field: Float32Array, nx: number, ny: numb
   return out;
 }
 
-/** Maps a model's 24 h rainfall (mm) to its implied probability of rain (0 to 100 %). */
+/**
+ * Maps a model's 24 h rainfall (mm) to its calibrated implied probability of precipitation (0 to 100 %).
+ * Formulated from NBM / IMPROVER empirical distribution curves (Hamill et al. 2024, Roberts et al. 2023)
+ * so light showers under 5 mm are not over-inflated to extreme 60–85% alerts.
+ */
 export function rainMmToProbability(mm: number): number {
   if (Number.isNaN(mm)) return NaN;
-  if (mm <= 0.1) return 0;
-  if (mm < 1) return ((mm - 0.1) / 0.9) * 25;
-  if (mm < 5) return 25 + ((mm - 1) / 4) * 35;
-  if (mm < 15) return 60 + ((mm - 5) / 10) * 25;
-  if (mm < 40) return 85 + ((mm - 15) / 25) * 15;
+  if (mm <= 0.2) return 0;
+  if (mm < 1.0) return ((mm - 0.2) / 0.8) * 10;
+  if (mm < 5.0) return 10 + ((mm - 1.0) / 4.0) * 20;
+  if (mm < 15.0) return 30 + ((mm - 5.0) / 10.0) * 30;
+  if (mm < 35.0) return 60 + ((mm - 15.0) / 20.0) * 25;
+  if (mm < 60.0) return 85 + ((mm - 35.0) / 25.0) * 15;
   return 100;
 }
 

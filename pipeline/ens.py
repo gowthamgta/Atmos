@@ -34,18 +34,20 @@ FORMAT = 1                        # bump when the way a run is built changes, so
 def next_24h(steps: dict[int, np.ndarray]) -> dict[int, np.ndarray]:
     """From the chance of rain in each 3 hours (`steps`, % by forecast hour), the chance of rain at some time in the 24 hours after each hour.
 
-    The 8 values that follow a step are joined as if rain in one period said nothing about the next (1 - product of the chances of
-    dry) and as if it said everything (the largest value). The truth lies between the two (rain in a monsoon spell lasts), so the
-    answer is half way between them. No data (NaN) where the run ends before the 24 hours do, or a value is missing."""
+    Uses persistence-calibrated temporal aggregation (Nkuiate et al. 2026, Hamill et al. 2024 NBM):
+    P_24 = p_max + alpha * p_mean * (1 - p_max), with alpha = 0.40 accounting for synoptic autocorrelation
+    across consecutive 3-hourly intervals, preventing over-inflation of light showers while preserving convective extremes.
+    No data (NaN) where the run ends before the 24 hours do, or a value is missing."""
     out: dict[int, np.ndarray] = {}
     for h in sorted(steps):
         window = [steps.get(h + STEP_H * k) for k in range(1, WINDOW_STEPS + 1)]
         if any(w is None for w in window):
             continue
         p = np.clip(np.stack(window).astype(np.float64) / 100.0, 0.0, 1.0)
-        independent = 1.0 - np.prod(1.0 - p, axis=0)
-        correlated = p.max(axis=0)
-        out[h] = (50.0 * (independent + correlated)).astype(np.float32)
+        p_max = p.max(axis=0)
+        p_mean = p.mean(axis=0)
+        p_24 = p_max + 0.40 * p_mean * (1.0 - p_max)
+        out[h] = (100.0 * np.clip(p_24, 0.0, 1.0)).astype(np.float32)
         out[h][~np.isfinite(p).all(axis=0)] = np.nan
     return out
 

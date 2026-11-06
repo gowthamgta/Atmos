@@ -17,7 +17,7 @@ import config as C
 import fetch_ifs
 import models_regular
 from fetch_regular import INDIA
-from derive import cumulative_accumulation, derive, forward_accumulation, forward_extreme
+from derive import cumulative_accumulation, derive, forward_accumulation, forward_extreme, rain_mm_to_probability
 from encode import encode_field
 import correction
 
@@ -175,12 +175,11 @@ def main() -> int:
         accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
         for h, field in accumulated.items():
             write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(field, rain24.lo, rain24.hi, rain24.bits))
-        # IMD rain categories of the next 24 h (0 below heavy rain; NaN where the 24 h total is not known)
+        # Calibrated probability of precipitation of the next 24 h (0 to 100 %)
         extreme = C.VARS["extreme"]
         for h, field in accumulated.items():
-            level = np.select([field >= 204.5, field >= 115.6, field >= 64.5], [3, 2, 1], 0).astype(np.float32)
-            level[np.isnan(field)] = np.nan
-            write(os.path.join(run_dir, "extreme", f"{h:03d}.png"), encode_field(level, extreme.lo, extreme.hi, extreme.bits))
+            prob = rain_mm_to_probability(field)
+            write(os.path.join(run_dir, "extreme", f"{h:03d}.png"), encode_field(prob, extreme.lo, extreme.hi, extreme.bits))
         # total rain from the start of the run to each step
         raintot = C.VARS["raintot"]
         for h, field in cumulative_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates}).items():

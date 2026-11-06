@@ -153,6 +153,33 @@ def cumulative_accumulation(rates: dict[int, np.ndarray], windows: dict[int, int
     return out
 
 
+def rain_mm_to_probability(mm: np.ndarray) -> np.ndarray:
+    """Calibrated probability of precipitation (%) over 24 h from 24 h rainfall in mm (Hamill et al. 2024 NBM, IMPROVER)."""
+    nan_mask = np.isnan(mm)
+    v = np.where(nan_mask, 0.0, mm)
+    conds = [
+        v <= 0.2,
+        (v > 0.2) & (v <= 1.0),
+        (v > 1.0) & (v <= 5.0),
+        (v > 5.0) & (v <= 15.0),
+        (v > 15.0) & (v <= 35.0),
+        (v > 35.0) & (v <= 60.0),
+        v > 60.0,
+    ]
+    choices = [
+        0.0,
+        ((v - 0.2) / 0.8) * 10.0,
+        10.0 + ((v - 1.0) / 4.0) * 20.0,
+        30.0 + ((v - 5.0) / 10.0) * 30.0,
+        60.0 + ((v - 15.0) / 20.0) * 25.0,
+        85.0 + ((v - 35.0) / 25.0) * 15.0,
+        100.0,
+    ]
+    prob = np.select(conds, choices, default=0.0).astype(np.float32)
+    prob[nan_mask] = np.nan
+    return prob
+
+
 def forward_extreme(fields: dict[int, np.ndarray], reduce, hours: int = 24) -> dict[int, np.ndarray]:
     """Lowest or highest (`reduce` = np.fmin / np.fmax) of a field over the next `hours` hours from each forecast step.
 

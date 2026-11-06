@@ -34,10 +34,10 @@ describe('derived fields', () => {
     expect(agreed[4]).toBeGreaterThanOrEqual(80);
     expect(agreed[4]).toBeLessThanOrEqual(100);
     expect(rainMmToProbability(0)).toBe(0);
-    expect(rainMmToProbability(1)).toBeCloseTo(25, 5);
-    expect(rainMmToProbability(5)).toBeCloseTo(60, 5);
-    expect(rainMmToProbability(15)).toBeCloseTo(85, 5);
-    expect(rainMmToProbability(45)).toBe(100);
+    expect(rainMmToProbability(1)).toBeCloseTo(10, 5);
+    expect(rainMmToProbability(5)).toBeCloseTo(30, 5);
+    expect(rainMmToProbability(15)).toBeCloseTo(60, 5);
+    expect(rainMmToProbability(60)).toBe(100);
   });
 
   it('puts a coarse model on the finer grid', () => {

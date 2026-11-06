@@ -9,9 +9,9 @@ def field(v):
 def test_next_24h_is_between_the_largest_chance_and_independent_periods():
     steps = {h: field(20.0) for h in range(0, 49, 3)}
     out = ens.next_24h(steps)
-    independent = 100 * (1 - 0.8 ** 8)
-    assert abs(float(out[0][0, 0]) - 0.5 * (independent + 20.0)) < 1e-3
-    assert 20.0 < out[0][0, 0] < independent
+    expected = 100.0 * (0.20 + 0.40 * 0.20 * (1.0 - 0.20))
+    assert abs(float(out[0][0, 0]) - expected) < 1e-3
+    assert 20.0 < out[0][0, 0] < 100 * (1 - 0.8 ** 8)
 
 
 def test_next_24h_has_no_answer_where_the_run_ends_inside_the_window():

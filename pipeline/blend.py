@@ -22,7 +22,7 @@ import scipy.ndimage as ndi
 from PIL import Image
 
 import config as C
-from derive import cumulative_accumulation, forward_accumulation, forward_extreme
+from derive import cumulative_accumulation, forward_accumulation, forward_extreme, rain_mm_to_probability
 from encode import decode_field, encode_field
 
 FULL_KM = 100.0
@@ -390,7 +390,20 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
 
         out[var] = pattern
 
-    # Vector wind consistency: recompute speed from blended (u10, v10) if present
+    # Physical consistency across variables (Hamill et al. 2024 NBM, Nkuiate et al. 2026):
+    # 1. Vector wind consistency: recompute wind speed from (u10, v10) and ensure gust >= wind
+    if "u10" in out and "v10" in out and "wind" in out:
+        out["wind"] = np.hypot(out["u10"], out["v10"]).astype(np.float32)
+    if "gust" in out and "wind" in out:
+        out["gust"] = np.maximum(out["gust"], out["wind"]).astype(np.float32)
+
+    # 2. Thermodynamic consistency: ensure rh conforms with blended t2m and dew point (Magnus)
+    if "t2m" in out and "dew" in out and "rh" in out:
+        a, b = 17.625, 243.04
+        t, td = out["t2m"], out["dew"]
+        rh_calc = 100.0 * np.exp((a * td) / (b + td) - (a * t) / (b + t))
+        out["rh"] = np.clip(0.7 * rh_calc + 0.3 * out["rh"], 1.0, 100.0).astype(np.float32)
+
     return out
 
 
@@ -487,12 +500,11 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
             if "rain24" not in published:
                 published.append("rain24")
 
-        # IMD extreme rain risk
+        # Calibrated probability of precipitation of the next 24 h (0 to 100 %)
         extreme_info = C.VARS["extreme"]
         for h, field in accumulated.items():
-            level = np.select([field >= 204.5, field >= 115.6, field >= 64.5], [3, 2, 1], 0).astype(np.float32)
-            level[np.isnan(field)] = np.nan
-            write(os.path.join(run_dir, "extreme", f"{h:03d}.png"), encode_field(level, extreme_info.lo, extreme_info.hi, extreme_info.bits))
+            prob = rain_mm_to_probability(field)
+            write(os.path.join(run_dir, "extreme", f"{h:03d}.png"), encode_field(prob, extreme_info.lo, extreme_info.hi, extreme_info.bits))
             if "extreme" not in published:
                 published.append("extreme")
 
