@@ -1,11 +1,12 @@
 name: nwp
 
 # Fetch the newest runs of every model listed by `python run.py --list-models` from Open-Meteo's public data (ECMWF IFS for all of
-# India, UK Met Office for South India), encode them and deploy the result to Backblaze B2 via S3 sync and Cloudflare Worker.
+# India, UK Met Office for South India), encode them and deploy the result to GitHub Pages (free, CORS-open).
 # Six times a day, at 05:00, 10:00, 13:30, 17:30, 21:00 and 00:00 IST (started by cron-job.org). Each model is built on the four cycles (00Z, 06Z, 12Z, 18Z), which
 # Open-Meteo publishes 6 to 7.5 hours after they start, so a scheduled run builds the newest cycle that is surely out by now (one that
 # began at least 7 hours ago); a run that finds that cycle already live exits at once. A cycle that is late is tried again after 20 minutes, twice at most; any other failure is not retried. A change to the
 # pipeline also rebuilds at once.
+# A Pages deploy replaces the whole site, so models that were not rebuilt are copied over from the live site.
 # Started by cron-job.org at those times (pipeline/README.md); GitHub's own schedule is not used (it started runs late or not at all).
 # IST is UTC + 5:30. 05:00 IST (23:30 UTC, the 12Z cycle), 10:00 (04:30, 18Z), 13:30 (08:00, 00Z), 17:30 (12:00, 00Z again unless
 # 06Z is early), 21:00 (15:30, 06Z), 00:00 (18:30, 06Z again unless 12Z is early)
@@ -28,7 +29,6 @@ on:
       - "pipeline/cyclones.py"
       - "pipeline/ens.py"
       - "pipeline/blend.py"
-      - "pipeline/prune_b2.py"
       - "pipeline/tests/**"
   workflow_dispatch:
     inputs:
@@ -64,7 +64,7 @@ jobs:
         run: |
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           repo="${GITHUB_REPOSITORY#*/}"
-          base="https://data.kralveth.workers.dev"
+          base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
           models=$(python run.py --list-models)
           # a run started on time (by cron-job.org, or by hand) builds the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 7
@@ -115,26 +115,45 @@ jobs:
             || echo "::warning::cyclones failed; the live file stays in place"
           # the chance of rain from the ECMWF ensemble (a small folder in the same format as a model; the live one is kept when there is nothing new)
           python ens.py --out site --live-url "$base/ens/latest.json" $force             || echo "::warning::ens failed; the live copy stays in place"
+          # models that were not rebuilt come over from the live site (always: a deploy replaces the whole site)
+          if ! python mirror.py --site site --base-url "$base" --models $models ens blend; then
+            echo "::warning::a live model could not be copied; not deploying, so that it is not dropped from the site"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # the 90 m terrain of India (built once, kept in the repository; see pipeline/build_terrain.py)
           # Kralveth Blend: 1 km high-accuracy multi-model blend synthesized from active models
           python blend.py --site site $force || echo "::warning::blend failed; live copy stays in place"
           cp -r data/terrain site/terrain
           # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
+          # GitHub Pages takes a site of at most 1 GB: say so plainly when it is over (the deploy may then be refused)
           size=$(du -sb site | cut -f1)
           echo "site size: $size bytes"
+          if [ "$size" -gt 1000000000 ]; then echo "::warning::the site is $size bytes, over GitHub Pages' 1 GB: the deploy may be refused"; fi
           if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Deploy to Backblaze B2 via S3 sync
-        if: steps.build.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APP_KEY }}
-        run: |
-          aws s3 sync site s3://${{ secrets.B2_BUCKET }}/ \
-            --endpoint-url ${{ secrets.B2_ENDPOINT }} \
-            --no-progress
-          python prune_b2.py --bucket ${{ secrets.B2_BUCKET }} --endpoint ${{ secrets.B2_ENDPOINT }} --keep 2
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.build.outputs.deploy == 'true'
+        with:
+          path: pipeline/site
+
+  deploy:
+    needs: build
+    # only main deploys to the live site (a run started by hand on another branch builds, as a check, but does not deploy)
+    if: needs.build.outputs.deploy == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+        with:
+          timeout: 1800000

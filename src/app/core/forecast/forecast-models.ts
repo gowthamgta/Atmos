@@ -34,7 +34,7 @@ export interface ForecastModelDef {
   reachHours: number;
 }
 
-export const PAGES = 'https://data.kralveth.workers.dev';
+export const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {

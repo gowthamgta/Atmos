@@ -1,7 +1,7 @@
 /** Tropical-cyclone tracks near South India: ECMWF's forecast tracks, published by the pipeline (pipeline/cyclones.py). */
 import { contourLines } from './contours';
 
-export const CYCLONE_URL = 'https://data.kralveth.workers.dev/cyclones/tracks.json';
+export const CYCLONE_URL = 'https://gowthamgta.github.io/Atmos/cyclones/tracks.json';
 
 export interface TrackPoint {
   h: number;
