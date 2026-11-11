@@ -11,7 +11,6 @@ export interface GeoBounds {
   readonly north: number;
 }
 
-/** The satellite pictures' box: all of India (the forecast domain covers the same box). */
 /** The satellite pictures' box: the forecast box (FORECAST_BOX; the owner, 6 Nov 2026: "lets change the satellite also to cover only this region"). */
 export const SATELLITE_BOUNDS: GeoBounds = { west: 70, east: 99, south: 2, north: 20 };
 

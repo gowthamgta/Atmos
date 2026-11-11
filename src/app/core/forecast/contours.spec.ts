@@ -131,7 +131,7 @@ describe('isobarGeoJson', () => {
   });
 
   it('contours a full-size domain field fast enough to redo on every time step', () => {
-    const g: ForecastGrid = { latMax: 37.5, latMin: 5, lonMin: 68, lonMax: 97.5, step: 0.1, nx: 296, ny: 326 };   // all of India, as published
+    const g: ForecastGrid = { latMax: 37.5, latMin: 5, lonMin: 68, lonMax: 97.5, step: 0.1, nx: 296, ny: 326 };   // the old all-India box, larger than the current 291 x 181 forecast box: a stress case
     // pressure-like field: a broad gradient with a few lows and ridges, 960 to 1030 hPa
     const msl = new Float32Array(g.nx * g.ny);
     for (let y = 0; y < g.ny; y++) {

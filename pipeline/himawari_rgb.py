@@ -210,7 +210,7 @@ def make_scan(files: list[str], t: datetime, folder: str) -> dict:
 # 10.8 um brightness temperature from 323 K (0) to 203 K (255). Checked on 23 Oct 01:30 UTC against EUMETView's rgb_eview over India: its blue
 # matches this to a pixel value or two at every temperature (correlation 0.98), so the app's agreed Windy colouring (satellite-image.ts), tuned
 # on EUMETView's picture, takes this picture as it is, but uncompressed and at the satellite's own resolution. Made on the app's satellite box
-# (68-97.5 E, 5-37.5 N, latitude rows as EUMETView's) at two sizes: full (about 1.25 km) and a lighter one for phones (about 2.5 km).
+# (latitude rows as EUMETView's) at two sizes: full (about 1.25 km) and a lighter one for phones (about 2.5 km).
 # the satellite box is the forecast box, 2-20 N, 70-99 E (the owner, 6 Nov 2026: "lets change the satellite also to cover only this region")
 APP_BOX = (70.0, 99.0, 2.0, 20.0)
 HRV_STEP_DEG = {"rgb": 0.0125, "rgb_lo": 0.025}

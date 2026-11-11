@@ -59,7 +59,7 @@ export class SatelliteService {
   private picked: OwnKind | null = null;
   /** The custom RGB's recipe (own-products.ts), remembered between visits. */
   readonly custom = signal<readonly CustomChannel[]>(readCustom());
-  /** Whose raw data our own pictures come from: Meteosat-9 (all of India) or Himawari-9 (the east). */
+  /** Whose raw data our own pictures come from: Meteosat-9 (the forecast box) or Himawari-9 (the east). */
   readonly ownSatellite = signal<OwnSatellite>(readOwnSatellite());
   /** Why our own source shows nothing: a daytime picture at night, or nothing published yet. */
   readonly ownEmpty = signal<'night' | 'none' | null>(null);

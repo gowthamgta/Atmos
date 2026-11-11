@@ -203,7 +203,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
     this.map?.triggerRepaint();
   }
 
-  /** The ground the pictures cover (all of India unless this is a closer window). */
+  /** The ground the pictures cover (the forecast box unless this is a closer window). */
   setBounds(bounds: GeoBounds): void {
     if (bounds === this.bounds) return;
     this.bounds = bounds;

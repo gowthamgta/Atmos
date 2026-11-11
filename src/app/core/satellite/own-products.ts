@@ -1,6 +1,6 @@
 /**
  * Our own satellite pictures, made from the raw data of two satellites by the satellite workflow (published by gowthamgta/atmos-satellite
- * with GitHub Pages): Meteosat-9 (pipeline/meteosat_rgb.py: all of India, the HRV at 1.25 km) and Himawari-9 (pipeline/himawari_rgb.py: the
+ * with GitHub Pages): Meteosat-9 (pipeline/meteosat_rgb.py: the forecast box, the HRV at 1.25 km) and Himawari-9 (pipeline/himawari_rgb.py: the
  * east only, true colour at 1 km). Some pictures are made in the pipeline, three are drawn in the browser from the frame's data pack
  * (brightness temperatures; see rendering/satellite-data.layer.ts). EUMETView's pictures (the agreed look) stay the default source.
  */
@@ -17,7 +17,7 @@ export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; 
   msg: {
     name: 'Meteosat-9', base: SITE + 'rgb-msg/', ir: '10.8',
     kinds: ['rgb', 'infrared', 'natural', 'hrv', 'sandwich', 'convection', 'nightmicro', 'wvdiff', 'custom'],
-    note: 'From Meteosat-9\'s raw SEVIRI data (EUMETSAT Data Store), 1.25 km, parallax-corrected, all of India.',
+    note: 'From Meteosat-9\'s raw SEVIRI data (EUMETSAT Data Store), 1.25 km, parallax-corrected, the forecast box.',
   },
   h9: {
     name: 'Himawari-9', base: SITE + 'rgb-h9/', ir: '10.4',

@@ -13,8 +13,8 @@ from o1280 import OFFSETS, band_rows, regrid_band
 
 MODEL_ID = "ecmwf_ifs"
 LABEL = "ECMWF IFS"
-RUN_HOURS = (0, 6, 12, 18)                 # all four cycles (the 06Z and 18Z runs reach +144 h too; we use +144 h)
-STEP_HOURS = list(range(0, 145, 3))      # 3-hourly: the 1-hourly part is subsampled to keep downloads small
+RUN_HOURS = (0, 6, 12, 18)                 # all four cycles (5 days: +120 h)
+STEP_HOURS = list(range(0, 121, 3))      # 3-hourly to +120 h (5 days): subsampled to keep downloads small
 # IFS precipitation is mm in the preceding hour up to +90 h, then mm in the preceding 3 h (verified against
 # Open-Meteo's hourly API, which divides the 3 h totals by 3). We publish mm/h throughout.
 PRECIP_NOTE = "mm/h: rain in the hour before the valid time (<= +90 h) or the mean rate over the 3 h before it (> +90 h)"

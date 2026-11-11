@@ -43,7 +43,7 @@ def level_speed_dir() -> tuple[tuple[str, str, str, str], ...]:
 
 STEPS_3H_144 = list(range(0, 145, 3))
 
-# all of India on the 0.1 degree grid (the same box as ECMWF IFS, so the two models line up and share the terrain's model ground)
+# the forecast box on the 0.1 degree grid (the same box as ECMWF IFS, so the two models line up and share the terrain's model ground)
 INDIA_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, C.STEP_DEG, C.IFS_DOMAIN)
 
 # UK Met Office global deterministic, ~10 km, on the 0.1 degree grid (back on the map: the owner, 6 Nov 2026, "add ukmo back"; the smaller
@@ -66,7 +66,7 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
 MAP_REACH_H = 240
 GFS_STEPS = list(range(0, 121, 3)) + list(range(126, MAP_REACH_H + 1, 6))
-AIFS_STEPS = list(range(0, MAP_REACH_H + 1, 6))
+AIFS_STEPS = list(range(0, 121, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
 # NOAA GFS: 13 km surface fields (ncep_gfs013) and the pressure levels, gusts, CAPE and pressure at 25 km (ncep_gfs025).
@@ -80,7 +80,7 @@ GFS = RegularModel(
     ],
 )
 
-# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours (the map to +240 h).
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours (the map to +120 h, 5 days).
 AIFS = RegularModel(
     model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(

@@ -10,10 +10,10 @@ export function isPhone(): boolean {
   return screen.innerWidth < 700 || ('ontouchstart' in screen && screen.innerWidth < 900);
 }
 
-/** Largest side of the radar mosaic (pixels): 0.5 km per pixel where it fits, coarser over all of India. */
+/** Largest side of the radar mosaic (pixels): a desktop gets a finer mosaic, a phone a smaller texture for its memory. */
 export function radarMosaicMaxPx(phone: boolean): number {
-  // the radars span all of India (about 3,500 km with their 500 km pictures): 4096 (a texture size desktop GPUs take) keeps a desktop
-  // near 0.85 km a pixel; a phone stays at 2300 for its memory
+  // Karaikal and Chennai's 500-600 km pictures span about 1,300 km: 4096 (a texture size desktop GPUs take) is well under a km a pixel;
+  // a phone stays at 2300 for its memory
   return phone ? 2300 : 4096;
 }
 

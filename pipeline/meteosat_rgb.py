@@ -1,8 +1,8 @@
 """Our own satellite pictures from Meteosat's raw SEVIRI data (Indian Ocean service, over 45.5 E), for the app's satellite panel.
 
 The same idea as himawari_rgb.py, from the High Rate SEVIRI Level 1.5 file satellite_bt.py already downloads for the temperatures (so the
-~250 MB file is fetched once). Meteosat sees all of India from the west at a moderate angle, so the box is the app's whole satellite box
-(68-97.5 E, 5-37.5 N), on a Web Mercator grid at 1.25 km (the HRV's own pixel over India: finer only repeats pixels):
+~250 MB file is fetched once). Meteosat sees the forecast box from the west at a moderate angle, so the box is the app's satellite box
+(70-99 E, 2-20 N), on a Web Mercator grid at 1.25 km (the HRV's own pixel over the box: finer only repeats pixels):
 
 - hrv         the High Resolution Visible channel itself, uncompressed and with its full brightness range (EUMETView's pictures are 8-bit
               JPEGs), sun-normalised, in grey, by day

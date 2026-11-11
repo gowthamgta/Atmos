@@ -12,7 +12,7 @@ Bengal, 70 over Tamil Nadu, more over the Arabian Sea. Two consequences, handled
 - Past MAX_VIEW_DEG the view is too slanted to use (pixels many km long, tops hiding each other): those cells are left empty, and the app
   falls back to its own estimate there (most of western India).
 
-Only the four segments of the full disk that cover 5-37.5 N are downloaded (about 25 MB a scan, every 10 minutes).
+Only the four segments of the full disk that cover the forecast box (2-20 N) are downloaded (about 25 MB a scan, every 10 minutes).
 
   python himawari_bt.py --out bt-site [--max-new 2] [--files <local .DAT.bz2 files>]
 """
@@ -28,7 +28,7 @@ from net import download
 BUCKET = "https://noaa-himawari9.s3.amazonaws.com"
 PREFIX = "AHI-L1b-FLDK"
 SUB_LON = 140.7
-SEGMENTS = ("02", "03", "04", "05")       # the full disk's 10 segments run north to south: 5-37.5 N lies in these
+SEGMENTS = ("02", "03", "04", "05")       # the full disk's 10 segments run north to south: the forecast box (2-20 N) lies in these
 BANDS = {"B13": "IR_108", "B07": "IR_039"}  # Himawari's 10.4 and 3.9 um channels play the parts of SEVIRI's 10.8 and 3.9
 MAX_VIEW_DEG = 72.0
 FOLDER = "bt-h9"

@@ -2,12 +2,12 @@
 
 The app draws the forecast fields adjusted to the ground (lapse rate, humidity, slopes, coast). The ground is stored as:
 
-  public/data/terrain/L0/<tile>.webp   90 m: every 1 x 1 degree tile is 1200 x 1200 cells (the full resolution)
-  public/data/terrain/L1/<tile>.webp   270 m: the same tiles averaged 3 x 3 (400 x 400)
-  public/data/terrain/L2/<tile>.webp   1.08 km: averaged 12 x 12 (100 x 100)
-  public/data/terrain/smooth.png       the ground smoothed over ~4 km, on the 0.05 degree grid
-  public/data/terrain/model-<K>km.png  the ground as a K km model sees it (box mean over K km), on the forecast grid
-  public/data/terrain/index.json       domain, tile list (a tile without a file is open sea), grids and value ranges
+  pipeline/data/terrain/L0/<tile>.webp   90 m: every 1 x 1 degree tile is 1200 x 1200 cells (the full resolution)
+  pipeline/data/terrain/L1/<tile>.webp   270 m: the same tiles averaged 3 x 3 (400 x 400)
+  pipeline/data/terrain/L2/<tile>.webp   1.08 km: averaged 12 x 12 (100 x 100)
+  pipeline/data/terrain/smooth.png       the ground smoothed over ~4 km, on the 0.05 degree grid
+  pipeline/data/terrain/model-<K>km.png  the ground as a K km model sees it (box mean over K km), on the forecast grid
+  pipeline/data/terrain/index.json       domain, tile list (a tile without a file is open sea), grids and value ranges
 
 Each tile covers [lat, lat+1) x [lon, lon+1) and is named by its south-west corner, e.g. N11E078.
 Tile pixels are cell centres: pixel (r, c) of a tile is at lat = lat + 1 - (r + 0.5) / n, lon = lon + (c + 0.5) / n.
@@ -20,7 +20,7 @@ The tiles are lossless WebP, so every value is kept exactly. The grids are 16-bi
 Sources: Copernicus DEM GLO-30, downloaded from the public bucket (copernicus-dem-30m, CC BY 4.0; "© DLR and Airbus").
 Tiles are cached in --cache, so re-running does not download them again. A tile the bucket does not have is open sea.
 
-  python pipeline/build_terrain.py --cache C:/Temp/dem
+  python pipeline/build_terrain.py --india --cache C:/Temp/dem
 Needs: numpy, Pillow, tifffile, imagecodecs, scipy
 """
 from __future__ import annotations
@@ -237,7 +237,7 @@ if __name__ == "__main__":
     ap.add_argument("--cache", default=os.path.join(HERE, "..", ".dem-cache"), help="downloaded DEM tiles (git-ignored)")
     ap.add_argument("--out", default=OUT_DIR)
     ap.add_argument("--workers", type=int, default=6)
-    ap.add_argument("--india", action="store_true", help="the whole of India on the ECMWF IFS grid (the default is the South India box)")
+    ap.add_argument("--india", action="store_true", help="the forecast box (2-20 N, 70-99 E) on the ECMWF IFS grid (the default is the legacy South India box)")
     args = ap.parse_args()
     if args.india:
         # the terrain, its smooth and model grids follow the ECMWF India box (config.IFS_*), which contains the South India box

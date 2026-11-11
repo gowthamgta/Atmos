@@ -1,10 +1,11 @@
-"""Real cloud-top temperatures over India from Meteosat's raw SEVIRI data (EUMETSAT Data Store), for the app's 3D clouds.
+"""Real cloud-top temperatures over India from Meteosat's raw SEVIRI data (EUMETSAT Data Store), for the app's hover readout and the
+pictures it draws from the data packs.
 
-The app's satellite pictures come from EUMETView's WMS as finished images, whose grey levels are not documented as temperatures, so the
-app had to assume one (30 - 115 x brightness, in degrees C). This script gets the calibrated brightness temperatures themselves: it
-downloads the newest High Rate SEVIRI Level 1.5 file of the Indian Ocean service (Meteosat at 45.5 E), reads the 10.8 and 3.9 micrometre
-channels with Satpy (calibrated to brightness temperature, kelvin), puts them on a regular latitude/longitude grid over the box the app's
-satellite pictures cover (68-97.5 E, 5-37.5 N, the same box, so the two line up by position), and writes each frame as a small PNG:
+The app's finished satellite pictures have grey levels that are not documented as temperatures (the app once assumed 30 - 115 x brightness,
+in degrees C). This script gets the calibrated brightness temperatures themselves: it downloads the newest High Rate SEVIRI Level 1.5 file
+of the Indian Ocean service (Meteosat at 45.5 E), reads the 10.8 and 3.9 micrometre channels with Satpy (calibrated to brightness
+temperature, kelvin), puts them on a regular latitude/longitude grid over the forecast box (2-20 N, 70-99 E, the same box the pictures
+cover, so the two line up by position), and writes each frame as a small PNG:
 
   red   10.8 um brightness temperature, kelvin = OFFSET_K + value x STEP_K (0 = no data)
   green  3.9 um brightness temperature, the same scale

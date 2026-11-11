@@ -28,7 +28,7 @@ def test_a_run_is_not_started_before_the_025_degree_levels_are_published(monkeyp
         raise AssertionError("should have waited for the levels")
     except RuntimeError as e:
         assert "pressure-level" in str(e)
-    assert "ecmwf_ifs025" in seen[0] and "2026-10-13T0000" in seen[0]          # the last step (+144 h) of the 0.25 degree dataset
+    assert "ecmwf_ifs025" in seen[0] and "2026-10-12T0000" in seen[0]          # the last step (+120 h) of the 0.25 degree dataset
     monkeypatch.setattr(fetch_ifs.requests, "head", lambda url, **k: _Resp(200))
     assert fetch_ifs.latest_run() == RUN
 

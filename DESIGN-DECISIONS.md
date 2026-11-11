@@ -15,7 +15,7 @@ fingerprint only together with this file, on the owner's request.
   brightness on a warm ramp (slate, sand, cream) and blended toward lavender-white by how cold its top is (`WARM_STOPS`, `COLD_STOPS`,
   `windyCloudColor` in `core/satellite/satellite-image.ts`), fitted to Windy's picture of the same frame.
 - **The satellite panel shows our own pictures** (owner, 22 Oct: "i dont want our own and eumetview, lets show meteosat 9 and himawari"):
-  a Meteosat-9 / Himawari-9 switch (Meteosat first: all of India), made by gowthamgta/atmos-satellite from raw data (pipeline/meteosat_rgb.py,
+  a Meteosat-9 / Himawari-9 switch (Meteosat first; the pictures now cover the forecast box), made by gowthamgta/atmos-satellite from raw data (pipeline/meteosat_rgb.py,
   himawari_rgb.py). Unless the viewer picks a kind, **infrared at night, our natural colour (Meteosat) / true colour (Himawari) by day**.
   **Infrared in Windy's colours** for both: CLOUD_TOP_STOPS applied to the measured temperature through greyScaleTempFromMeasured (the grey-
   level scale read cold tops 10-20 C too cold; measured 22 Oct, r = 0.99). Also HRV, sandwich, convection, night micro, WV difference and a
@@ -42,9 +42,9 @@ fingerprint only together with this file, on the owner's request.
 ## Radar (IMD Karaikal and Chennai)
 
 - **Only Karaikal and Chennai** (the owner, 3 Nov 2026: "remove radar related code for other stations except chennai and karaikal"): the
-  other IMD radars (the measured network of imd-radar-network.ts, Kochi, Thiruvananthapuram, Mangaluru and their legends) are gone from
-  the app, the radar workflow and the coverage map (baked again for the two). Entries below that name other radars record how the
-  generic filters were found.
+  other IMD radars (the measured network once kept in `core/domain/models/imd-radar-network.ts`, since deleted, with Kochi,
+  Thiruvananthapuram, Mangaluru and their legends) are gone from the app, the radar workflow and the coverage map (baked again for the
+  two). Entries below that name other radars record how the generic filters were found.
 - **Radar switch: Both / Karaikal / Chennai** (the owner, 4 Nov 2026: "keep switch for radars for either turning karaikal or chennai alone"): a three-way switch in the radar panel. Both shows the workflow's merged picture; one radar alone is built in the app from that radar's IMD pictures. The choice is remembered. This brings back a station choice after the 25 Oct removal below, on the owner's request.
 
 - **The echoes are drawn as IMD's own pictures have them**: no filtering of echoes at all (789e9a3; the spoke remover and the far-range
@@ -89,22 +89,23 @@ fingerprint only together with this file, on the owner's request.
   is removed, cloud or no cloud; in a patch only when steady cells are at least half of it (the whole patch from 80%), so moving rain with a
   steady spot in it stays. Checked on IMD's 3-hour loops of Karaikal and Chennai: only the clutter at Chennai's radar and on the hills west
   of Karaikal is that steady; no rain band came near.
-- **The radars are fetched only while the radar is on the map**: with 45 radars, fetching
-  and composing them every minute slowed the forecast maps down while the radar was not shown (the owner, 24 Oct 2026).
+- **The radars are fetched only while the radar is on the map** (the owner, 24 Oct 2026): when the network was 45 radars, fetching
+  and composing them every minute slowed the forecast maps down while the radar was not shown. Only Karaikal and Chennai remain, but the
+  rule stays.
 - **Scan times are read from the time printed on the pictures**, not IMD's file time (9d25f79).
-- **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the unified all-India composite served directly, station chips and product mode buttons are no longer displayed in the radar menu. The All/CAZ/PPZ/PPI buttons were back; removed again with the radar's
+- **Individual radar stations and product buttons removed from the radar panel** (owner request, 25 Oct 2026: "remove this options from radar menu", "dont show the radars in the menu"): with the workflow's merged composite served directly, station chips and product mode buttons are no longer displayed in the radar menu. The All/CAZ/PPZ/PPI buttons were back; removed again with the radar's
   opacity slider (the owner, 1 Nov 2026: "no need the radar menus as we are by default merging all those, and remove the opacity"): the
   radar is always the merged stack at full opacity.
 - **Clicking shows the radar tooltip** (the owner, 25 Oct 2026; trimmed 3 Nov: "remove the unwanted tooltip data from radar layer"): the
   dBZ, the rain rate (and the last hour's rain) and the kind of rain ("Rain aloft" where only a high beam sees it); no coordinates and no
   table of each radar's beam heights. Hidden when clicking again anywhere; not on hover.
 - Radar positions: Karaikal 10.91294 N 79.84175 E, Chennai 13.0839 N 80.2901 E (as given by the owner).
-- **Every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar stations"): 45
-  radars (Sriharikota removed on owner request, 25 Oct 2026; Pallikaranai, 1 Nov 2026: "remove the pallikaranai radar"), Karaikal and Chennai first. Kochi, Thiruvananthapuram and Mangaluru as measured before; every other
-  one from its own pictures of 23 Oct (`core/domain/models/imd-radar-network.ts`, copies kept by the radar-pictures workflow on the
-  imd-radar-samples branch): the map square, the range printed on the picture, the legend's colours with their values. A product whose
-  picture could not be measured (the radar down, no range printed) is never fetched. Machilipatnam is left out (shut down, nothing to
-  measure). Only Karaikal, Chennai and Kochi download the loop's animations; the others join the loop with their live pictures.
+- **Superseded: every IMD radar, read the way Karaikal and Chennai are** (the owner, 23 Oct 2026: "i want data from all the radar
+  stations"). 45 radars were measured from their own pictures (Sriharikota removed on owner request, 25 Oct 2026; Pallikaranai, 1 Nov
+  2026): the map square, the range printed on the picture and the legend's colours with their values. The owner removed every station
+  except Karaikal and Chennai on 3 Nov 2026 (see the first bullet), so the app, the radar workflow and the coverage map now carry only
+  those two, and `core/domain/models/imd-radar-network.ts` is gone. The by-hand radar-pictures workflow still samples every IMD station,
+  to measure a new station's layout before it is added to `radar.model.ts`.
 - **Where no working radar reaches, the map is a little grey** (the owner, 23 Oct 2026), so the radars' coverage shows: outside every
   working radar's range for the product on the map (`features/map/radar-reach-overlay.ts`), under the echoes; a radar down, too old or
   turned off leaves its ground grey; with no radar picture on the map at all, all of it is grey.
@@ -129,8 +130,9 @@ fingerprint only together with this file, on the owner's request.
   velocity a moment ago, TRAIL_MEMORY_S) as a smooth curve of six pieces, its sides softened over a pixel.
 - **Rain probability (PoP24): calibrated multi-model probability** (the owner, 6 Nov 2026: "also the rain probability i think its too much broken", "use all published papers and implement our blend and fix the rain from option a", and "also change the probability of rain color pallete currently it looked washed out"): calibrated temporal aggregation in `pipeline/ens.py` (`p_max + 0.40 * p_mean * (1 - p_max)`) preventing over-inflation of light showers from naive time multiplication; `pipeline/derive.py` and `pipeline/blend.py` encode calibrated 0..100% probabilities from 24 h rain amounts; frontend fallback in `derived-fields.ts` uses calibrated empirical distribution mapping (0.2–1 mm: 0–10%, 1–5 mm: 10–30%, 5–15 mm: 30–60%, 15–35 mm: 60–85%, 35–60 mm: 85–100%); rendered with rich saturated high-visibility palette (electric cyan, emerald green, amber gold, fiery orange, crimson red, deep electric purple), `opacity: 1`, `clearBelow: 20` and `clearFade: 1.15` leaving unlikely rain transparent without washed-out edges, and icon `🌧`.
 - **No weather stations, airports or rain gauges in the app** (15128ce): the owner asked for them removed.
-- **UK Met Office on map; CMA GRAPES removed; Kralveth Blend added as 1 km HD map model and default, reaching 7 days** (the owner, 6 Nov 2026: "no need cma lets remove it . also i need my own model from these models blend, named kralveth blend in 1km resolution...", then "make the kralveth blend to display default followed by ecwmf, icon, gfs, ukmo, ecwmf aifs", and "can we make my blend to extend upto 7 days"): CMA GRAPES was removed. Kralveth Blend is synthesized as an in-house model on the 0.1° grid (2-20 N, 70-99 E) combining ECMWF IFS, UKMO, GFS, AIFS, and ICON, drawn at 1 km effective resolution on the map with 90 m DEM terrain downscaling, extended to 7 days (+168 h: 3-hourly to +120 h, then 6-hourly to +168 h to preserve storage under GitHub Pages' 1 GB). It is the default forecast model across the app, followed in menus and lists by ECMWF IFS, DWD ICON, NOAA GFS, UK Met Office, and ECMWF AIFS.
-- **GFS and AIFS maps reach 10 days** (the owner, 4 Nov 2026: "reduce the atmos data size"): the forecast site was 838 MB of GitHub Pages' 1 GB (ECMWF IFS 360 MB, GFS 127, ICON 62, AIFS 55, terrain 132; only the newest run of each model is kept). Days 11 to 16 were about 95 MB, so the map stops at +240 h (`MAP_REACH_H` in models_regular.py). The place forecast already shows 10 days, so the two now match.
+- **UK Met Office on map; CMA GRAPES removed; Kralveth Blend added as 1 km HD map model and default** (the owner, 6 Nov 2026): CMA GRAPES was removed. Kralveth Blend is synthesized as an in-house model on the 0.1° grid (2-20 N, 70-99 E) combining ECMWF IFS, UKMO, GFS, AIFS, and ICON, drawn at 1 km effective resolution on the map with 90 m DEM terrain downscaling. It is the default forecast model across the app, followed in menus and lists by ECMWF IFS, DWD ICON, NOAA GFS, UK Met Office, and ECMWF AIFS.
+- **Model horizons: GFS reaches 10 days; ECMWF IFS, DWD ICON, UKMO and ECMWF AIFS reach 5 days; Kralveth Blend reaches 3 days** (the owner, 11 Nov 2026: "except gfs model i want other model to run only for five days and blend for only 3 days"): NOAA GFS keeps its 10-day reach (+240 h: 3-hourly to +120 h then 6-hourly to +240 h). ECMWF IFS is shortened from 6 days (+144 h) to 5 days (+120 h, 3-hourly); ECMWF AIFS from 10 days (+240 h) to 5 days (+120 h, 6-hourly); DWD ICON and UK Met Office continue at 5 days (+120 h, 3-hourly). The Kralveth Blend is shortened from 7 days (+168 h) to 3 days (+72 h, 3-hourly) to prioritize high-accuracy near-term multi-model synthesis and minimize pipeline build time and storage footprint under GitHub Pages' 1 GB limit.
+- **IMD EWRF 3km comparison and assimilation with Kralveth Blend** (the owner, 11 Nov 2026: "check this website for rain accumulation and lightning density which we can use for us ewrf and wrf models i think both are 3km resolution ... can we make it with our blend each time we build the blend ? like comparing and merging with our blend"): IMD EWRF (Electric WRF) 3km publishes Day-1 24-hour total rainfall accumulation and Flash Origin Density (FOD) / wind gusts from the 12 UTC GFS cycle as 1024x1024 PNG plots. Kralveth Blend's build pipeline (`pipeline/blend.py`) automatically triggers `run_ewrf_assimilation(...)` from `pipeline/compare_ewrf.py` on each build cycle. It checks IMD EWRF availability, synchronizes Day-1 24h accumulation and thermodynamic convective risk (CAPE / LI) against EWRF peak patterns, generates `ewrf_comparison.json`, and records the EWRF metadata in `manifest.json` and `latest.json`. External request timeouts (10-15s) and safe error handling ensure zero build disruption if IMD's servers are slow or offline.
 - The Clouds layer was left out on purpose (6cddf45).
 - **Clouds in 3D** (public/clouds/, linked from Settings > Map): the owner asked for a realistic 3D presentation of the cloud types. It is
   a standalone WebGL 2 page outside the Angular bundle (the service worker leaves /clouds alone). Heights are the WMO Cloud Atlas tropical
@@ -177,9 +179,6 @@ fingerprint only together with this file, on the owner's request.
 
 ## Pipeline
 
-- **The map's ECMWF IFS rain factor is learned daily from the Tamil Nadu gauges** (learn_bias.py; 0.57 on 22 Oct, replacing the fixed
-  0.785), applied only when it lowers the error on held-back days.
-- Actions run on Node 24 actions, pinned to ubuntu-24.04.
 - **The map's ECMWF IFS rain factor is learned daily from the Tamil Nadu gauges** (learn_bias.py; 0.57 on 22 Oct, replacing the fixed
   0.785), applied only when it lowers the error on held-back days.
 - Actions run on Node 24 actions, pinned to ubuntu-24.04.

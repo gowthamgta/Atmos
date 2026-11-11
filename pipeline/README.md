@@ -1,9 +1,9 @@
-# AtmosIQ forecast pipeline
+# Kralveth Weather forecast pipeline
 
-Fetches ECMWF IFS (about 9 km, O1280 grid) from Open-Meteo's public bucket, cuts out South India
-(5.5-14.5°N, 73-89.5°E, the box in `config.py`), regrids to 0.1°, derives RH and feels-like, encodes every variable and forecast hour
-as a 16-bit RG PNG, and writes a static site folder. GitHub Actions deploys that folder to **GitHub Pages**:
-free, no card, no external bucket, and Pages serves `Access-Control-Allow-Origin: *`.
+Fetches ECMWF IFS (about 9 km, O1280 grid) and the regular-grid models from Open-Meteo's public bucket, cuts them to the forecast box
+(2-20°N, 70-99°E, the `IFS_*` values in `config.py`), regrids to 0.1° (or 0.25° for the coarser models), derives RH, feels-like, rain
+totals and probabilities, encodes every variable and forecast hour as a 16-bit RG PNG, and writes a static site folder. GitHub Actions
+deploys that folder to **GitHub Pages**: free, no card, no external bucket, and Pages serves `Access-Control-Allow-Origin: *`.
 
 ```
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows
@@ -17,7 +17,8 @@ python run.py --out site --force                 # full run into ./site
 - Open-Meteo republishes the full O1280 IFS as `.om` files. Each hourly file is ~129 MB for the whole
   globe, and reading the band over the network is far too slow with `omfiles`, so the pipeline downloads
   each file, reads the band and deletes it. A run is 49 files (3-hourly to +144 h) ≈ 6.3 GB.
-- Only the 00Z and 12Z runs are used, to keep the load on Open-Meteo's bucket modest.
+- Each model uses the cycles its source publishes: 00Z, 06Z, 12Z and 18Z for ECMWF IFS, GFS and AIFS; 00Z and 12Z for ICON and the UK
+  Met Office. A run that is already live is not rebuilt.
 
 ## Output (served from `https://<user>.github.io/<repo>/`)
 ```
@@ -25,18 +26,20 @@ python run.py --out site --force                 # full run into ./site
 <model>/<run>/manifest.json                 grid, steps, per-variable range/unit
 <model>/<run>/<var>/<hhh>.png               value = min + (R*256+G)/65535*(max-min); B=255 means no data
 ```
-`latest.json` also names the box (`domain`, the `DOMAIN` id in `config.py`). A run built for another box is not treated as live, so changing `DOMAIN` rebuilds every model on the next run.
+`latest.json` also names the box (`domain`, `IFS_DOMAIN` in `config.py`). A run built for another box is not treated as live, so changing
+the box rebuilds every model on the next run. (`DOMAIN` is the legacy South India box, kept only for the terrain helper and as a fallback.)
 
 Variables (see `config.py`):
 - surface: `t2m`, `rh`, `feels`, `dew` (dew point), `u10`/`v10`, `gust`, `msl`, `precip`, `cloud`, `cloud_low`/`cloud_mid`/`cloud_high`,
-  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`, `li` (lifted index, GFS only), `cin` (convective inhibition, magnitude;
-  IFS, GFS and UKMO), `rain24` (mm over the next 24 h from each step, see below)
-- pressure levels 925, 850, 700, 500, 300 and 200 hPa (about 0.8, 1.5, 3, 5.6, 9.2 and 12 km up), five fields each:
-  `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height). These are stored with 12 significant bits (error far below
-  anything visible: 0.003 degC, 0.02 m/s), which makes them about 25% smaller.
+  `vis` (visibility, km), `solar` (W/m2), `cape`, `tcwv`, `li` (lifted index), `cin` (convective inhibition, magnitude), `tmin24`/`tmax24`
+  (the next 24 h's extremes from each step), `rain24` (mm over the next 24 h from each step, see below), `raintot` (mm from the run's
+  start) and `extreme` (the calibrated probability of rain over the next 24 h).
+- pressure levels 925, 850, 800, 700, 600, 500, 300, 250 and 200 hPa, with `u<L>`, `v<L>`, `t<L>`, `rh<L>`, `gh<L>` (geopotential height),
+  `w<L>` (vertical velocity) and the derived `vo<L>`/`dv<L>` (vorticity and divergence). Smooth upper-air fields are stored with 12
+  significant bits, which makes them about 25% smaller.
 A model only publishes what it can supply; the manifest lists exactly those variables and the app greys out the rest.
-The box is 91 × 166 cells (about 40% of the earlier 181 × 221), so a run is about 40% of the earlier ~200 MB for all seven models.
-Step 0 is the analysis hour, so gust, precip and CAPE are no-data there.
+The 0.1° grid is 181 × 291 cells; the coarser models use 0.25° (73 × 117). Step 0 is the analysis hour, so gust, precip and CAPE are
+no-data there.
 Each deploy replaces the previous one, so only the newest run exists. A client that still holds the old
 `latest.json` gets a 404; it should re-fetch `latest.json` and retry.
 
@@ -70,9 +73,10 @@ write** only, and one cron job per workflow, each a **POST** with the same four 
 and a run "Manually run by …" under Actions.
 
 ## Models published
-Two models: ECMWF IFS (all of India, 9 km) and the UK Met Office (all of India, 10 km). The workflow order is: the models,
-`cyclones.py`, `mirror.py` (copies a model that was not rebuilt from the live site). The all-model blend and the FY-4B
-pictures were removed; the Meteosat-9 picture is fetched by the app from EUMETView, so nothing is published for it.
+ECMWF IFS (9 km), DWD ICON (13 km), NOAA GFS (13 km), UK Met Office (10 km), ECMWF AIFS (25 km) and the Kralveth Blend (a 1 km
+effective multi-model blend, `blend.py`). The workflow order is: the models, `cyclones.py`, `ens.py` (the ECMWF ensemble's rain
+probability), `mirror.py` (copies a model that was not rebuilt from the live site), then `blend.py`. The satellite pictures and their
+brightness temperatures are published by the separate `atmos-satellite` repository, not here.
 
 ## Rain units
 `precip` is published as mm/h. The source value is mm in the preceding hour up to +90 h and mm in the preceding
@@ -80,10 +84,11 @@ pictures were removed; the Meteosat-9 picture is fetched by the app from EUMETVi
 
 ## Terrain (`build_terrain.py`)
 The ground under the forecast comes from Copernicus DEM GLO-30 (30 m), averaged to 90 m, 270 m and 1.08 km.
-`build_terrain.py` writes it into `public/data/terrain/`, which the app serves from Netlify (not Pages). The result is
-committed and the workflow does not rebuild it, so run the script only when the box or the source changes:
+`build_terrain.py --india` writes it into `pipeline/data/terrain/` for the forecast box (2-20 N, 70-99 E); the workflow copies that
+folder into the deployed site. The result is committed and the workflow does not rebuild it, so run the script only when the box or the
+source changes:
 ```
-python pipeline/build_terrain.py --cache C:/Temp/dem
+python pipeline/build_terrain.py --india --cache C:/Temp/dem
 ```
 Downloaded DEM tiles stay in `--cache` (`.dem-cache/` by default, git-ignored), so a second run does not download them
 again. A tile the bucket does not have is open sea.
@@ -97,22 +102,27 @@ again. A tile the bucket does not have is open sea.
 The app picks the level by zoom: 90 m from zoom 9.5, 270 m from 7.5, 1.08 km below (`src/app/core/forecast/terrain-tiles.ts`).
 
 ## Models
-Both are resampled onto their own 0.1° grid (ECMWF IFS: all of India, 5-37.5 N, 68-97.5 E; UK Met Office: the same box) and
-published in the same format, so the app treats them alike. Sources are Open-Meteo's public `data_spatial` datasets.
+All are cut to the forecast box and published in the same format, so the app treats them alike. Sources are Open-Meteo's public
+`data_spatial` datasets.
 
-| id | model | grid / range | runs | rain value covers | not provided |
-|---|---|---|---|---|---|
-| `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | O1280 cut to all of India, +144 h, 3-hourly | 00Z 12Z | 1 h to +90 h, then 3 h | - |
-| `ukmo` | UK Met Office global 10 km | ~10 km, all India, +60 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h | sunshine, moisture |
+| id | model | grid / range | runs | rain value covers |
+|---|---|---|---|---|
+| `ecmwf_ifs` | ECMWF IFS (9 km; winds aloft from the 0.25° IFS dataset) | 0.1°, +144 h, 3-hourly | 00Z 06Z 12Z 18Z | 1 h to +90 h, then 3 h |
+| `ukmo` | UK Met Office global 10 km | 0.1°, +120 h, 3-hourly | 00Z 12Z | 1 h to +54 h, then 3 h |
+| `gfs` | NOAA GFS (13 km surface, 25 km levels) | 0.25°, +240 h, 3-hourly to +120 h then 6-hourly | 00Z 06Z 12Z 18Z | the model's own output interval |
+| `aifs` | ECMWF AIFS (25 km, AI model) | 0.25°, +240 h, 6-hourly | 00Z 06Z 12Z 18Z | 6 h |
+| `icon` | DWD ICON global (13 km) | 0.25°, +120 h, 3-hourly | 00Z 12Z | 1 h, then 3 h |
+| `blend` | Kralveth Blend (`blend.py`) | 0.1° grid, 1 km effective, +168 h | built from the runs above | derived |
 
 How each was checked (one forecast time each): temperature, humidity, wind and pressure against live ECMWF; the rain
 accumulation window against Open-Meteo's hourly API (a model's rain value covers the gap between its output times);
 850/500 hPa winds against the API (all within about 0.15 m/s). Models without a variable simply do not publish it and
 the app greys the matching layer out.
 
-`python run.py --model <id> ...` (`--list-models` prints the ids; the workflow uses it). The workflow runs both every hour; each exits early when its
-newest run is not ready, is not one it uses, or is already live. A Pages deploy replaces the whole site, so `mirror.py`
-copies any model that was not rebuilt from the live site into the artifact (otherwise a GFS update would delete IFS).
+`python run.py --model <id> ...` (`--list-models` prints the ids; the workflow uses it). The workflow runs six times a day (05:00,
+10:00, 13:30, 17:30, 21:00 and 00:00 IST); each model exits early when its newest run is not ready, is not one it uses, or is already
+live. A Pages deploy replaces the whole site, so `mirror.py` copies any model that was not rebuilt from the live site into the artifact
+(otherwise a GFS update would delete IFS).
 
 ## Adding another model
 Most global models in Open-Meteo's bucket are regular-grid datasets: add a `RegularModel` entry to `models_regular.py`
@@ -120,14 +130,14 @@ Most global models in Open-Meteo's bucket are regular-grid datasets: add a `Regu
 given as speed and direction is converted to u/v; the rain window comes from the model's own output spacing.
 Then add one entry to `FORECAST_MODELS` in `src/app/core/forecast/forecast-models.ts` (the folder name must equal the
 model id). The workflow picks the model up from `run.py --list-models`.
-Models on other grids (such as ICON's native icosahedral grid) need their own `fetch_<name>.py` with the same interface
-as `fetch_ifs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`, `STEP_HOURS`, `PRECIP_NOTE`, `UNAVAILABLE_VARS`,
-`precip_window_hours(step)`, `latest_run()`, `read_step(run, h)`, and register it in `MODELS` in `run.py`.
+A model that Open-Meteo does not publish as a regular grid (like the O1280 IFS files that `fetch_ifs.py` reads) needs its own
+`fetch_<name>.py` with the same interface as `fetch_ifs.py`: `MODEL_ID`, `LABEL`, `RUN_HOURS`, `STEP_HOURS`, `PRECIP_NOTE`,
+`UNAVAILABLE_VARS`, `precip_window_hours(step)`, `latest_run()`, `read_step(run, h)`, and register it in `MODELS` in `run.py`.
 Check the rain window and the winds against Open-Meteo's API as was done for the models above.
 
 ## Satellite temperatures (`satellite_bt.py`, `himawari_bt.py`) and starting them on time
 
-The workflow of the repository [gowthamgta/atmos-satellite](https://github.com/gowthamgta/atmos-satellite) runs these scripts (checked out from here) and publishes measured cloud-top temperatures for the app's 3D clouds with GitHub Pages at https://gowthamgta.github.io/atmos-satellite/ (a deployment keeps nothing in git, so no repository grows): Himawari-9
+The workflow of the repository [gowthamgta/atmos-satellite](https://github.com/gowthamgta/atmos-satellite) runs these scripts (checked out from here) and publishes measured cloud-top temperatures for the app's hover readout and the pictures it draws from the data packs, with GitHub Pages at https://gowthamgta.github.io/atmos-satellite/ (a deployment keeps nothing in git, so no repository grows): Himawari-9
 (`bt-h9/`, no key) and Meteosat (`bt/`, needs the secrets, set in atmos-satellite, `EUMETSAT_CONSUMER_KEY` and `EUMETSAT_CONSUMER_SECRET`). Each run keeps
 the last hour. GitHub's own schedule (`cron` in the workflow) starts runs late or skips them when GitHub is busy, so an outside scheduler
 starts it every 10 minutes instead (the workflow has no GitHub schedule; two runs at once just queue, see `concurrency`).

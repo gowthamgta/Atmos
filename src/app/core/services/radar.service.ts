@@ -512,7 +512,7 @@ export class RadarService implements OnDestroy {
   private static readonly PREPROCESSED_SOURCES = ['https://gowthamgta.github.io/atmos-radar/'];
 
   /**
-   * Fetches the preprocessed All-India composite published by the background workflow (gowthamgta/atmos-radar).
+   * Fetches the preprocessed composite of Karaikal and Chennai published by the background workflow (gowthamgta/atmos-radar).
    * Returns true when the manifest and binary intensity field were loaded and displayed.
    */
   private async tryFetchPreprocessedComposite(requestId: number): Promise<boolean> {
@@ -611,7 +611,7 @@ export class RadarService implements OnDestroy {
     const requestId = ++this.currentRequestId;
     this.isRefreshing.set(true);
 
-    // Fetch the preprocessed all-India composite published by the background workflow
+    // Fetch the preprocessed Karaikal and Chennai composite published by the background workflow
     try {
       // the workflow publishes the All view only (each radar's PPI inside, CAZ around, PPZ outside): a single product is read here
       // (only with both radars on: the workflow's picture has both, so with one turned off the app builds its own from that radar's pictures)

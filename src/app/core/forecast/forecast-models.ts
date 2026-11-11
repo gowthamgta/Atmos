@@ -39,11 +39,11 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
     id: 'blend', label: 'Kralveth Blend', short: 'Blend', resolution: '1 km high definition, South India and its seas', gridKm: 1, groundKm: 9, baseUrl: `${PAGES}/blend`,
-    centre: 'Kralveth', ai: false, datasets: ['ecmwf_ifs', 'ukmo_global_deterministic_10km', 'ncep_gfs013', 'ecmwf_aifs025_single', 'dwd_icon'], apiId: 'blend', reachHours: 168,
+    centre: 'Kralveth', ai: false, datasets: ['ecmwf_ifs', 'ukmo_global_deterministic_10km', 'ncep_gfs013', 'ecmwf_aifs025_single', 'dwd_icon'], apiId: 'blend', reachHours: 72,
   },
   {
     id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, South India and its seas', gridKm: 9, groundKm: 9, baseUrl: `${PAGES}/ecmwf_ifs`,
-    centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 144,
+    centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 120,
   },
   {
     id: 'icon', label: 'DWD ICON', short: 'ICON', resolution: '13 km, drawn at 25 km, South India and its seas', gridKm: 13, groundKm: 28, baseUrl: `${PAGES}/icon`,
@@ -59,7 +59,7 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   },
   {
     id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, South India and its seas', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
-    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 240,
+    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 120,
   },
 ];
 

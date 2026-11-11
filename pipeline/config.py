@@ -5,8 +5,9 @@ from dataclasses import dataclass
 BUCKET_URL = "https://openmeteo.s3.amazonaws.com"
 LATEST_URL = f"{BUCKET_URL}/data_spatial/ecmwf_ifs/latest.json"  # ECMWF IFS
 
-# The region the app covers: South India, Sri Lanka and the seas around them. Every data set (model fields, terrain,
-# satellite overlays) is cut to this box. A regular lat/lon grid at 0.1 degrees (~11 km).
+# Legacy South India box (5.5-14.5 N, 73-89.5 E). It is no longer the app's domain: every model, terrain tile and satellite
+# overlay is cut to the forecast box below (IFS_*). It remains only as the default of build_terrain.py without --india and as the
+# fallback in run.py for a fetcher that declares no GRID of its own; do not use it for new data. A regular 0.1 degree grid (~11 km).
 LAT_MAX, LAT_MIN = 14.5, 5.5
 LON_MIN, LON_MAX = 73.0, 89.5
 # Changing the domain (or anything that makes the published grids differ) changes this id: every live model is then built again
@@ -15,7 +16,7 @@ STEP_DEG = 0.1
 NY = round((LAT_MAX - LAT_MIN) / STEP_DEG) + 1      # 91 rows, north to south
 NX = round((LON_MAX - LON_MIN) / STEP_DEG) + 1      # 166 columns, west to east
 
-# ECMWF IFS (9 km) covers all of India, on the same 0.1 degree lattice (so the South India terrain sits inside it).
+# ECMWF IFS (9 km) is cut to the forecast box on a 0.1 degree lattice (the grid the 0.1 degree models and the terrain use).
 # the forecast box: South India, the Arabian Sea's east, the Bay of Bengal and the sea south of Sri Lanka, 2-20 N, 70-99 E (the owner,
 # 6 Nov 2026, a cropped screenshot: "i want this region alone, for all models", then "why u missed the below region": the crop reached
 # 2 N and 99 E; was all of India, 5-37.5 N, 68-97.5 E). The app's FORECAST_BOX is the same.

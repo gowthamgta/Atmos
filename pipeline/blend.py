@@ -420,13 +420,13 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
 
 
 def blend_axis(components: list[Component], step_hours: int = STEP_HOURS) -> tuple[datetime, list[datetime]]:
-    """Reference time (the newest model run) and forecast valid times to publish: 3-hourly to +120 h, then 6-hourly to +168 h (7 days)."""
+    """Reference time (the newest model run) and forecast valid times to publish: 3-hourly to +72 h (3 days)."""
     ref = max(c.run for c in components)
     last = max(max(c.steps) for c in components)
-    max_h = min(168, int((last - ref).total_seconds() // 3600))
-    hours = [h for h in range(0, min(121, max_h + 1), step_hours)]
-    if max_h > 120:
-        hours.extend(range(126, max_h + 1, 6))
+    max_h = min(72, int((last - ref).total_seconds() // 3600))
+    hours = [h for h in range(0, max_h + 1, step_hours)]
+
+
     return ref, [ref + timedelta(hours=h) for h in hours]
 
 
@@ -488,6 +488,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
     steps = []
     precip_dict: dict[int, np.ndarray] = {}
     temps_dict: dict[int, np.ndarray] = {}
+    cape_dict: dict[int, np.ndarray] = {}
     h_of: list[int] = []
 
     with ThreadPoolExecutor(workers) as pool:
@@ -500,6 +501,8 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
                 precip_dict[h] = fields["precip"]
             if "t2m" in fields:
                 temps_dict[h] = fields["t2m"]
+            if "cape" in fields:
+                cape_dict[h] = fields["cape"]
             h_of.append(h)
             steps.append({"h": h, "valid": f"{axis[i]:%Y-%m-%dT%H:%M:%SZ}"})
 
@@ -538,12 +541,23 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
                 if vid not in published:
                     published.append(vid)
 
+    # Check, compare, and assimilate IMD EWRF Day-1 data
+    day1_rain = accumulated.get(0) if precip_dict else None
+    day1_cape = cape_dict.get(0) if cape_dict else None
+    ewrf_info = None
+    try:
+        import compare_ewrf
+        ewrf_info = compare_ewrf.run_ewrf_assimilation(run_dir, day1_rain, day1_cape)
+    except Exception as e:
+        print(f"blend: EWRF assimilation check notice: {e}", flush=True)
+
     manifest = {
         "model": BLEND_ID,
         "run": run_id,
         "build": run_id,
         "reference": f"{ref:%Y%m%dT%HZ}",
         "components": runs,
+        "ewrf": ewrf_info,
         "grid": {
             "latMax": C.IFS_LAT_MAX, "latMin": C.IFS_LAT_MIN,
             "lonMin": C.IFS_LON_MIN, "lonMax": C.IFS_LON_MAX,
@@ -575,6 +589,7 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
         "build": run_id,
         "domain": C.IFS_DOMAIN,
         "components": runs,
+        "ewrf": ewrf_info,
         "inputs": inputs_of(components),
         "version": VERSION,
     }

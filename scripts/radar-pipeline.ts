@@ -2,7 +2,7 @@
  * Kralveth Weather Radar Pipeline (Node.js Runner)
  *
  * Directly executes the exact same TypeScript radar processing pipeline as the frontend application:
- * 1. Parallel fetch of 44 IMD station sweeps (CAZ, PPI, PPZ).
+ * 1. Parallel fetch of the configured IMD station sweeps (CAZ, PPI, PPZ): Karaikal and Chennai.
  * 2. OCR timestamp extraction (radar-stamp.ts) and binary metadata inspection.
  * 3. 10-step heuristic classification & map removal (radar-process.ts).
  * 4. Bilinear resampling to standard 1024x1024 grid with peak intensity preservation.
@@ -485,7 +485,7 @@ async function main() {
   }
 
   // Compose concentric stacked mosaic (PPI inside, CAZ around, PPZ outside)
-  console.log(`[RadarPipeline] Composing all-India concentric multi-ring mosaic...`);
+  console.log(`[RadarPipeline] Composing the Karaikal and Chennai concentric multi-ring mosaic...`);
   const sources: [string, ProcessedRadarResult][] = [];
   const rings: [string, MosaicRing][] = [];
 
@@ -604,7 +604,7 @@ async function main() {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Kralveth Weather Preprocessed All-India Radar</title>
+  <title>Kralveth Weather Preprocessed Radar</title>
   <style>
     body { margin: 0; background: #0f1318; color: #e2e8f0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 24px; }
     h1 { margin: 0 0 8px 0; font-size: 22px; color: #38bdf8; }
@@ -625,7 +625,7 @@ async function main() {
     <span class="badge">${manifest.activeStationCount} / ${manifest.totalStationCount} Radars Active</span>
   </div>
   <div class="img-box">
-    <img src="composite.png" alt="All-India Radar Composite" />
+    <img src="composite.png" alt="Karaikal and Chennai Radar Composite" />
   </div>
   <div class="grid">
     ${manifest.stations.map(s => `
