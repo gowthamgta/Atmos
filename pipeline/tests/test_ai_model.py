@@ -62,3 +62,42 @@ def test_meteorological_loss_computes_finite_gradient():
 
     total_loss.backward()
     assert pred.grad is not None and torch.isfinite(pred.grad).all()
+
+
+def test_airport_and_tn_station_assimilation():
+    from ai_model.data.obs_feed import (
+        AIRPORT_COORDS,
+        barnes_objective_analysis_2d,
+        assimilate_hourly_observations,
+    )
+
+    # 1. Airports coverage
+    assert "VOMM" in AIRPORT_COORDS  # Chennai
+    assert "VOCB" in AIRPORT_COORDS  # Coimbatore
+    assert "VOMD" in AIRPORT_COORDS  # Madurai
+    assert "VOTR" in AIRPORT_COORDS  # Trichy
+
+    # 2. Objective analysis test: flat 30°C grid nudged by an airport observing 27°C
+    flat_grid = np.full((181, 291), 30.0, dtype=np.float32)
+    obs = [(12.994, 80.180, 27.0)]  # Chennai Airport reports 27°C
+    nudged = barnes_objective_analysis_2d(flat_grid, obs, radius_km=40.0)
+
+    # Near Chennai: temperature should be nudged down toward 27°C
+    r_chennai = int(round((20.0 - 12.994) / 18.0 * 180))
+    c_chennai = int(round((80.180 - 70.0) / 29.0 * 290))
+    assert nudged[r_chennai, c_chennai] < 29.0
+
+    # Far away (e.g. Arabian Sea or Lakshadweep): should remain undisturbed at 30°C
+    assert nudged[0, 0] == 30.0
+
+    # 3. Assimilate dictionary test
+    syn_fields = {
+        "t2m": np.full((181, 291), 28.0, dtype=np.float32),
+        "rh": np.full((181, 291), 70.0, dtype=np.float32),
+        "precip": np.full((181, 291), 0.05, dtype=np.float32),  # trace drizzle
+    }
+    assimilated = assimilate_hourly_observations(syn_fields, hour_utc=12)
+    assert "t2m" in assimilated
+    assert "rh" in assimilated
+    # Trace drizzle under 0.1 mm/h is clamped to 0
+    assert (assimilated["precip"] == 0.0).all()

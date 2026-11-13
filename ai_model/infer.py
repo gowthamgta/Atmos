@@ -145,6 +145,13 @@ def build_kralveth_ai(site: str, steps_limit: int | None = None) -> str | None:
         # 1. Gather synoptic multi-model consensus
         synoptic_fields = legacy_blend.blend_step(components, ["precip", "t2m", "u10", "v10", "wind", "cape", "mslp", "rh"], valid, corr)
 
+        # 1b. Assimilate hourly airport METARs and Tamil Nadu station ground observations
+        try:
+            from ai_model.data.obs_feed import assimilate_hourly_observations
+            synoptic_fields = assimilate_hourly_observations(synoptic_fields, hour_utc=valid.hour)
+        except Exception as e:
+            print(f"ai_model: observation assimilation notice: {e}", flush=True)
+
         # 2. Run 1km AI Neural Operator
         fields_1km = engine.predict_step_1km(synoptic_fields)
 
