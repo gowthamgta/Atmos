@@ -58,6 +58,11 @@ __pycache__/
 pipeline/data/observations/
 pipeline/data/rain_history/
 
+# AI Model Cache & Weights
+ai_model/data/*.npz
+ai_model/data/raw_era5/
+ai_model/weights/*.pt
+
 # The nowcast bot (bot/): its dependencies, and what a local run writes
 /bot/node_modules
 /bot/out

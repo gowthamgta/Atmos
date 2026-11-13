@@ -461,6 +461,19 @@ def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | 
         print(f"blend: only {len(components)} model(s) available; need at least 2 models to blend")
         return None
 
+    # Try Kralveth AI 1km Deep Neural Weather Model first
+    try:
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if root_dir not in sys.path:
+            sys.path.insert(0, root_dir)
+        import ai_model.infer as ai_infer
+        print("blend: executing Kralveth AI 1km Neural Operator...", flush=True)
+        ai_res = ai_infer.build_kralveth_ai(site, steps_limit=steps_limit)
+        if ai_res:
+            return ai_res
+    except Exception as e:
+        print(f"blend: Kralveth AI neural operator fallback ({e}); using baseline blend", flush=True)
+
     ref, axis = blend_axis(components)
     if steps_limit:
         axis = axis[:steps_limit]
