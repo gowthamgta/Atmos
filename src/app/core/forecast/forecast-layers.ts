@@ -204,6 +204,8 @@ export function resolveLayer(def: ForecastLayerDef, level: Level): ForecastLayer
 /** True when the model's manifest publishes every variable the layer needs (null manifest: assume yes). */
 export function layerAvailable(def: ForecastLayerDef, vars: Record<string, unknown> | null | undefined): boolean {
   if (!vars) return true;
+  if (def.id === 'temp' && def.varId === 't2m' && ('t2m' in vars || 'temp' in vars)) return true;
+  if (def.id === 'wind' && (def.varId === 'u10' || def.varId2 === 'v10') && (('u10' in vars && 'v10' in vars) || 'wind' in vars)) return true;
   return def.varId in vars && (def.varId2 === undefined || def.varId2 in vars);
 }
 

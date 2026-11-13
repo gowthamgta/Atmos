@@ -17,6 +17,9 @@ export function decodeFieldBitmap(bitmap: ImageBitmap, min: number, max: number)
   const hit = cache.get(bitmap);
   if (hit) return hit;
 
+  const effectiveMin = Number.isFinite(min) ? min : 0;
+  const effectiveMax = Number.isFinite(max) ? max : 100;
+
   const { width, height } = bitmap;
   canvas ??= typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(width, height) : document.createElement('canvas');
   canvas.width = width;
@@ -28,7 +31,7 @@ export function decodeFieldBitmap(bitmap: ImageBitmap, min: number, max: number)
 
   const out = new Float32Array(width * height);
   for (let i = 0; i < out.length; i++) {
-    out[i] = decodeRg16(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], min, max);
+    out[i] = decodeRg16(px[i * 4], px[i * 4 + 1], px[i * 4 + 2], effectiveMin, effectiveMax);
   }
   cache.set(bitmap, out);
   return out;

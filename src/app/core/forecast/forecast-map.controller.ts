@@ -298,15 +298,17 @@ export class ForecastMapController {
       return;
     }
     const validTimes = this.catalog.validTimes();
+    const minVal = info.min ?? (info as any)?.lo ?? 0;
+    const maxVal = info.max ?? (info as any)?.hi ?? 100;
     const totalAt = async (t: number): Promise<Float32Array> => {
       const { a, b, mix } = bracketSteps(validTimes, t);
       const [bmpA, bmpB] = await Promise.all([this.loader.get('raintot', manifest.steps[a].h), this.loader.get('raintot', manifest.steps[b].h)]);
-      return blendFields(decodeFieldBitmap(bmpA, info.min, info.max), decodeFieldBitmap(bmpB, info.min, info.max), mix);
+      return blendFields(decodeFieldBitmap(bmpA, minVal, maxVal), decodeFieldBitmap(bmpB, minVal, maxVal), mix);
     };
     try {
       const [atEnd, atStart] = await Promise.all([totalAt(end), totalAt(start)]);
       if (my !== this.token || !this.layer) return;
-      const bitmap = await encodeFieldBitmap(differenceField(atEnd, atStart), manifest.grid, info.min, info.max);
+      const bitmap = await encodeFieldBitmap(differenceField(atEnd, atStart), manifest.grid, minVal, maxVal);
       if (my !== this.token || !this.layer) return;
       const frame = { key: `${manifest.model}/${manifest.run}.${manifest.build ?? ''}/raintot-range/${start}-${end}`, bitmap };
       layer.setGrid(manifest.grid);
@@ -628,11 +630,13 @@ export class ForecastMapController {
 
     const my = ++this.isobarToken;
     const { a, b, mix } = bracketSteps(validTimes, time);
+    const minVal = info.min ?? (info as any)?.lo ?? 0;
+    const maxVal = info.max ?? (info as any)?.hi ?? 100;
     void Promise.all([this.loader.get(spec.varId, manifest.steps[a].h), this.loader.get(spec.varId, manifest.steps[b].h)])
       .then(([bmpA, bmpB]) => {
         if (my !== this.isobarToken || !this.map) return;
-        const fa = decodeFieldBitmap(bmpA, info.min, info.max);
-        const fb = decodeFieldBitmap(bmpB, info.min, info.max);
+        const fa = decodeFieldBitmap(bmpA, minVal, maxVal);
+        const fb = decodeFieldBitmap(bmpB, minVal, maxVal);
         const blended = new Float32Array(fa.length);
         for (let i = 0; i < fa.length; i++) blended[i] = fa[i] * (1 - mix) + fb[i] * mix;
         const geojson = isobarGeoJson(blended, manifest.grid, spec.step);
@@ -676,16 +680,20 @@ export class ForecastMapController {
     const hB = manifest.steps[b].h;
     const u = manifest.vars[uVar];
     const v = manifest.vars[vVar];
+    const uMin = u.min ?? (u as any)?.lo ?? -30;
+    const uMax = u.max ?? (u as any)?.hi ?? 30;
+    const vMin = v.min ?? (v as any)?.lo ?? -30;
+    const vMax = v.max ?? (v as any)?.hi ?? 30;
 
     void Promise.all([this.loader.get(uVar, hA), this.loader.get(uVar, hB), this.loader.get(vVar, hA), this.loader.get(vVar, hB)])
       .then(([uA, uB, vA, vB]) => {
         if (my !== this.windToken || !this.windLayer) return;
         wind.setWind({
           grid: manifest.grid,
-          uA: decodeFieldBitmap(uA, u.min, u.max),
-          uB: decodeFieldBitmap(uB, u.min, u.max),
-          vA: decodeFieldBitmap(vA, v.min, v.max),
-          vB: decodeFieldBitmap(vB, v.min, v.max),
+          uA: decodeFieldBitmap(uA, uMin, uMax),
+          uB: decodeFieldBitmap(uB, uMin, uMax),
+          vA: decodeFieldBitmap(vA, vMin, vMax),
+          vB: decodeFieldBitmap(vB, vMin, vMax),
           mix,
         });
         wind.setVisible(true);

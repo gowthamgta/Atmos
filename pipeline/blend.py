@@ -38,7 +38,7 @@ CORRECTED = ("temp", "rh")
 BLEND_ID = "blend"
 LABEL = "Kralveth AI 1km"
 STEP_HOURS = 3
-VERSION = 7
+VERSION = 8
 
 # Physical lapse rate for standardizing elevation differences across models (-6.5 °C/km)
 LAPSE_RATE_C_PER_M = -0.0065
@@ -580,7 +580,7 @@ def build_multimodel_grid(site: str, workers: int = 4, steps_limit: int | None =
             "step": C.STEP_DEG, "nx": C.IFS_NX, "ny": C.IFS_NY,
         },
         "steps": steps,
-        "vars": {v: {"unit": C.VARS[v].unit, "min": C.VARS[v].lo, "max": C.VARS[v].hi, "encoding": "rg16"} for v in published if v in C.VARS},
+        "vars": {v: {"unit": C.VARS[v].unit, "min": C.VARS[v].lo, "max": C.VARS[v].hi, "lo": C.VARS[v].lo, "hi": C.VARS[v].hi, "encoding": "rg16"} for v in published if v in C.VARS},
         "levels": list(C.LEVELS),
         "path": "{var}/{h:03d}.png",
         "domain": C.IFS_DOMAIN,
@@ -590,6 +590,8 @@ def build_multimodel_grid(site: str, workers: int = 4, steps_limit: int | None =
             "calibration": "Elevation lapse-rate standardization & Trotta (2024) probability matching",
         },
     }
+    if "t2m" in manifest["vars"] and "temp" not in manifest["vars"]:
+        manifest["vars"]["temp"] = dict(manifest["vars"]["t2m"])
     write(os.path.join(run_dir, "manifest.json"), json.dumps(manifest, indent=2).encode())
 
     # Keep only newest assembly in BLEND_ID directory

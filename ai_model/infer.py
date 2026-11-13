@@ -340,6 +340,8 @@ class KralvethAIInferenceEngine:
                     "unit": C.VARS[v].unit,
                     "min": C.VARS[v].lo,
                     "max": C.VARS[v].hi,
+                    "lo": C.VARS[v].lo,
+                    "hi": C.VARS[v].hi,
                     "encoding": "rg16",
                 }
                 for v in published
@@ -353,6 +355,8 @@ class KralvethAIInferenceEngine:
                 "assimilation": "IMD EWRF Day-1 Convective Calibration & Real-time WINDS/WeatherUnion Ground-Truth Assimilation",
             },
         }
+        if "t2m" in manifest["vars"] and "temp" not in manifest["vars"]:
+            manifest["vars"]["temp"] = dict(manifest["vars"]["t2m"])
         with open(os.path.join(run_dir, "manifest.json"), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
 

@@ -10,8 +10,29 @@ import argparse, json, os, shutil, sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 PUBLISHED_VARS_FILE = "manifest.json"
+
+
+def get_default_session() -> requests.Session:
+    session = requests.Session()
+    retries = Retry(total=5, backoff_factor=0.3, status_forcelist=[429, 500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retries, pool_connections=32, pool_maxsize=32)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
+
+
+_GLOBAL_SESSION: requests.Session | None = None
+
+
+def session_get(url: str, **kwargs) -> requests.Response:
+    global _GLOBAL_SESSION
+    if _GLOBAL_SESSION is None:
+        _GLOBAL_SESSION = get_default_session()
+    return _GLOBAL_SESSION.get(url, **kwargs)
 
 
 class NotLive(Exception):
@@ -33,13 +54,15 @@ def _fetch(get: Callable, url: str, retries: int = 3) -> bytes:
     raise last  # type: ignore[misc]
 
 
-def mirror_status(site: str, base_url: str, model: str, get: Callable = requests.get, workers: int = 16) -> str:
+def mirror_status(site: str, base_url: str, model: str, get: Callable = session_get, workers: int = 16) -> str:
     """Download the live run of `model` into site/<model>. Returns "mirrored", "absent" (the model is not live yet: nothing to
     carry over) or "failed" (it is live but could not be copied completely; nothing is left behind)."""
+    if model == "blend":
+        return "mirrored"  # blend is built locally, never mirror from live site
     root = os.path.join(site, model)
     try:
         try:
-            latest_raw = _fetch(get, f"{base_url}/{model}/latest.json", retries=1)
+            latest_raw = _fetch(get, f"{base_url}/{model}/latest.json", retries=2)
         except NotLive:
             print(f"{model} is not live yet: nothing to mirror")
             return "absent"
@@ -70,7 +93,7 @@ def mirror_status(site: str, base_url: str, model: str, get: Callable = requests
         return "failed"
 
 
-def mirror_model(site: str, base_url: str, model: str, get: Callable = requests.get, workers: int = 16) -> bool:
+def mirror_model(site: str, base_url: str, model: str, get: Callable = session_get, workers: int = 16) -> bool:
     """True when the live run of `model` was copied into site/<model>."""
     return mirror_status(site, base_url, model, get, workers) == "mirrored"
 
@@ -82,6 +105,8 @@ def main() -> int:
     args = ap.parse_args()
     failed = []
     for model in args.models:
+        if model == "blend":
+            continue
         if os.path.exists(os.path.join(args.site, model, "latest.json")):
             continue  # built in this run
         if mirror_status(args.site, args.base_url.rstrip("/"), model) == "failed":
