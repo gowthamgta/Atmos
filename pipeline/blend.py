@@ -43,8 +43,8 @@ VERSION = 6
 # Physical lapse rate for standardizing elevation differences across models (-6.5 °C/km)
 LAPSE_RATE_C_PER_M = -0.0065
 
-# Relative hierarchy of native resolution (finest first: 9 km IFS, 10 km UKMO, 13 km ICON, 13 km GFS, 25 km AIFS)
-RESOLUTION_ORDER = ["ecmwf_ifs", "ukmo", "icon", "gfs", "aifs"]
+# Relative hierarchy of native resolution (finest first: 9 km IFS, 25 km AIFS)
+RESOLUTION_ORDER = ["ecmwf_ifs", "aifs"]
 PROBABILITY_MATCHED = {"precip"}
 DETAIL_SIGMA_PX = 2.5       # scale (~28 km) below which high-resolution physics models supply realistic detail
 DETAIL_GAIN = 0.5          # detail gain preserving structure without inventing artificial peaks
@@ -150,16 +150,16 @@ def rain_chance(corr: dict, amounts: dict[str, float | None]) -> float | None:
 
 def lead_time_weights(lead_h: float) -> dict[str, float]:
     """Lead-time dependent base weights derived from CRPS and diversity decomposition (Nkuiate et al. 2026, Trotta 2024).
-    Short lead times (0-48h) favor high-resolution convective physics (ECMWF IFS, UKMO).
+    Short lead times (0-48h) favor high-resolution convective physics (ECMWF IFS).
     Medium to extended lead times (48-120h+) smoothly transition weight to AI models (AIFS) whose error growth is lower."""
     if lead_h <= 48.0:
-        return {"ecmwf_ifs": 0.38, "ukmo": 0.32, "icon": 0.12, "gfs": 0.10, "aifs": 0.08}
+        return {"ecmwf_ifs": 0.70, "aifs": 0.30}
     elif lead_h >= 120.0:
-        return {"ecmwf_ifs": 0.35, "ukmo": 0.15, "aifs": 0.28, "icon": 0.11, "gfs": 0.11}
+        return {"ecmwf_ifs": 0.40, "aifs": 0.60}
     else:
         f = (lead_h - 48.0) / (120.0 - 48.0)
-        w48 = {"ecmwf_ifs": 0.38, "ukmo": 0.32, "icon": 0.12, "gfs": 0.10, "aifs": 0.08}
-        w120 = {"ecmwf_ifs": 0.35, "ukmo": 0.15, "aifs": 0.28, "icon": 0.11, "gfs": 0.11}
+        w48 = {"ecmwf_ifs": 0.70, "aifs": 0.30}
+        w120 = {"ecmwf_ifs": 0.40, "aifs": 0.60}
         return {m: (1.0 - f) * w48[m] + f * w120[m] for m in w48}
 
 
@@ -456,23 +456,21 @@ def components_of(site: str) -> list[Component]:
 # ======================================================================================================================
 
 def build(site: str, workers: int = 4, steps_limit: int | None = None) -> str | None:
+    """Executes Kralveth AI 1km: the user's autonomous deep neural weather forecasting model."""
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if root_dir not in sys.path:
+        sys.path.insert(0, root_dir)
+    import ai_model.infer as ai_infer
+    import ai_model.config as AIC
+    print("blend: executing Kralveth AI 1km Autonomous Neural Model...", flush=True)
+    return ai_infer.build_kralveth_ai(site, reach_hours=AIC.REACH_HOURS, steps_limit=steps_limit)
+
+
+def build_multimodel_grid(site: str, workers: int = 4, steps_limit: int | None = None) -> str | None:
     components = components_of(site)
     if len(components) < 2:
         print(f"blend: only {len(components)} model(s) available; need at least 2 models to blend")
         return None
-
-    # Try Kralveth AI 1km Deep Neural Weather Model first
-    try:
-        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if root_dir not in sys.path:
-            sys.path.insert(0, root_dir)
-        import ai_model.infer as ai_infer
-        print("blend: executing Kralveth AI 1km Neural Operator...", flush=True)
-        ai_res = ai_infer.build_kralveth_ai(site, steps_limit=steps_limit)
-        if ai_res:
-            return ai_res
-    except Exception as e:
-        print(f"blend: Kralveth AI neural operator fallback ({e}); using baseline blend", flush=True)
 
     ref, axis = blend_axis(components)
     if steps_limit:
@@ -634,7 +632,7 @@ def main() -> int:
             pass
 
     res = build(args.site, args.workers, args.steps)
-    return 0 if res or len(comps) < 2 else 1
+    return 0 if res else 1
 
 
 if __name__ == "__main__":

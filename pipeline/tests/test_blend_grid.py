@@ -16,12 +16,11 @@ from encode import decode_field, encode_field
 def test_lead_time_weights_and_normalization():
     w0 = blend.lead_time_weights(0)
     assert w0["ecmwf_ifs"] > w0["aifs"]
-    assert w0["ukmo"] > w0["aifs"]
 
     w120 = blend.lead_time_weights(120)
     assert w120["aifs"] > w0["aifs"]  # AI model weight grows with lead time
 
-    norm = blend.normalized_weights(["ecmwf_ifs", "ukmo", "aifs"], 24)
+    norm = blend.normalized_weights(["ecmwf_ifs", "aifs"], 24)
     assert pytest.approx(sum(norm.values()), 1e-5) == 1.0
 
     # Single model takes all weight

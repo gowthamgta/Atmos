@@ -60,6 +60,7 @@ pipeline/data/rain_history/
 
 # AI Model Cache & Weights
 ai_model/data/*.npz
+!ai_model/data/static_1km.npz
 ai_model/data/raw_era5/
 ai_model/weights/*.pt
 

@@ -1,7 +1,12 @@
 """Unit tests for near-realtime satellite ingestion and convective proxy."""
+import os
+import sys
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from ai_model.data.satellite_feed import (
     parse_iso_time,

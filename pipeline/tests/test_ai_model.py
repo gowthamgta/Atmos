@@ -20,7 +20,7 @@ def test_ai_model_config():
     assert AIC.LON_MAX == 99.0
     assert AIC.NY_SYNOPTIC == 181
     assert AIC.NX_SYNOPTIC == 291
-    assert AIC.REACH_HOURS == 72
+    assert AIC.REACH_HOURS == 240
     assert "precip" in AIC.TARGET_VARIABLES
     assert "elevation" in AIC.STATIC_CHANNELS
 

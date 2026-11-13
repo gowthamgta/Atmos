@@ -142,12 +142,12 @@ class KralvethAIInferenceEngine:
     def run_model(
         self,
         site: str,
-        reach_hours: int = 72,
+        reach_hours: int = AIC.REACH_HOURS,
         step_hours: int = 3,
         steps_limit: int | None = None,
         now: datetime | None = None,
     ) -> str:
-        """Executes full 72-hour autonomous forecast rollout and writes output to site/blend/."""
+        """Executes full 10-day (240-hour) autonomous forecast rollout and writes output to site/blend/."""
         now = now or datetime.now(timezone.utc)
         # Determine newest 6-hourly cycle (00Z, 06Z, 12Z, 18Z)
         cycle_hour = (now.hour // 6) * 6
@@ -292,10 +292,11 @@ class KralvethAIInferenceEngine:
         return run_id
 
 
-def build_kralveth_ai(site: str, steps_limit: int | None = None) -> str | None:
+def build_kralveth_ai(site: str, reach_hours: int | None = None, steps_limit: int | None = None) -> str | None:
     """Primary pipeline entrypoint to execute Kralveth AI 1km Weather Model."""
     engine = KralvethAIInferenceEngine()
-    return engine.run_model(site, reach_hours=AIC.REACH_HOURS, step_hours=3, steps_limit=steps_limit)
+    reach = reach_hours if reach_hours is not None else AIC.REACH_HOURS
+    return engine.run_model(site, reach_hours=reach, step_hours=3, steps_limit=steps_limit)
 
 
 if __name__ == "__main__":

@@ -169,10 +169,9 @@ describe('the model list', () => {
       expect(m.apiId).toBeTruthy();
       expect(m.reachHours).toBeGreaterThan(0);
     }
-    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id).sort()).toEqual(['aifs']);
+    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id).sort()).toEqual(['aifs', 'blend']);
     expect(forecastModelById('aifs').centre).toBe('ECMWF');
-    expect(forecastModelById('gfs').centre).toBe('NOAA');
-    expect(forecastModelById('ukmo').centre).toBe('Met Office');
+    expect(forecastModelById('ecmwf_ifs').centre).toBe('ECMWF');
     expect(forecastModelById('blend').centre).toBe('Kralveth');
   });
 });

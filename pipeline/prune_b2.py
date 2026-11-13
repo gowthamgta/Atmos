@@ -13,7 +13,7 @@ import re
 import subprocess
 import sys
 
-DEFAULT_MODELS = ("blend", "ecmwf_ifs", "gfs", "icon", "ukmo", "aifs")
+DEFAULT_MODELS = ("blend", "ecmwf_ifs", "aifs")
 CYCLE_RE = re.compile(r"PRE\s+(\d{8}T\d{2}Z)/")
 
 

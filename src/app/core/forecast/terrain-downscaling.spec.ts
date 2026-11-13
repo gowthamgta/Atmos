@@ -34,7 +34,7 @@ describe('90 m downscaling registry', () => {
     // pipeline/build_terrain.py writes these (MODEL_KMS); the published terrain/index.json lists the same four
     const published = [9, 10, 13, 28];
     const ground = Object.fromEntries(FORECAST_MODELS.map(m => [m.id, nearestModelKm(published, m.groundKm)]));
-    expect(ground).toEqual({ ecmwf_ifs: 9, ukmo: 10, gfs: 28, aifs: 28, icon: 28, blend: 9 });   // Kralveth Blend published on 0.1 deg: 9 km ground
+    expect(ground).toEqual({ blend: 9, ecmwf_ifs: 9, aifs: 28 });   // Kralveth AI published on high-res domain: 9 km base ground
     for (const m of FORECAST_MODELS) expect(m.groundKm).toBeGreaterThanOrEqual(m.gridKm);  // a picture is never finer than its model
   });
 });

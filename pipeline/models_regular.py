@@ -65,22 +65,12 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
 MAP_REACH_H = 240
-GFS_STEPS = list(range(0, 121, 3)) + list(range(126, MAP_REACH_H + 1, 6))
-AIFS_STEPS = list(range(0, 121, 6))
+# ECMWF AIFS publishes up to +360 h (15 days) every 6 hours; fetch all available forecast steps
+AIFS_FULL_REACH_H = 360
+AIFS_STEPS = list(range(0, AIFS_FULL_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
-# NOAA GFS: 13 km surface fields (ncep_gfs013) and the pressure levels, gusts, CAPE and pressure at 25 km (ncep_gfs025).
-# The 00Z and 12Z runs, every 3 hours to +120 h.
-GFS = RegularModel(
-    model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=GFS_STEPS, grid=COARSE_GRID,
-    sources=[
-        Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"] + SURFACE_UV)),
-        Source("ncep_gfs025", _SAME(["pressure_msl", "wind_gusts_10m", "cape", "convective_inhibition", "lifted_index", "visibility"]
-                                    + LEVEL_SCALARS + level_w() + level_uv())),
-    ],
-)
-
-# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours (the map to +120 h, 5 days).
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +360 h (full 15 days).
 AIFS = RegularModel(
     model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
@@ -90,17 +80,31 @@ AIFS = RegularModel(
     )],
 )
 
+# Active regular models: only ECMWF AIFS is active (GFS, UKMO, ICON removed on user request)
+ALL: tuple[RegularModel, ...] = (AIFS,)
 
-# DWD ICON global (13 km): among the best at the South Indian airports and the Tamil Nadu gauges (verify.py, verify_gauges.py). Each output
-# hour is a 171 MB file of the whole globe, so only the 00Z and 12Z runs, every 3 hours to +120 h (about 7 GB read a run), drawn on the
-# 0.25 degree grid (about 80 MB published: the site stays under GitHub Pages' 1 GB). It has no vertical velocity, CIN, lifted index,
-# visibility or sunshine: those layers are greyed out for it.
+# Legacy models kept only for backward compatibility / reference tests:
+UKMO = RegularModel(
+    model_id="ukmo", label="UK Met Office", run_hours=(0, 12), step_hours=list(range(0, 121, 3)), grid=INDIA_GRID,
+    sources=[Source(
+        "ukmo_global_deterministic_10km",
+        _SAME(SURFACE_CORE + GUST_CAPE + CIN + CLOUD_LAYERS + ["visibility"] + level_scalars() + level_w()),
+        winds=(speed_dir("10m", "wind_u_component_10m", "wind_v_component_10m"), *level_speed_dir()),
+    )],
+)
+
+GFS_STEPS = list(range(0, 121, 3)) + list(range(126, MAP_REACH_H + 1, 6))
+GFS = RegularModel(
+    model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=GFS_STEPS, grid=COARSE_GRID,
+    sources=[
+        Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"] + SURFACE_UV)),
+        Source("ncep_gfs025", _SAME(["pressure_msl", "wind_gusts_10m", "cape", "convective_inhibition", "lifted_index", "visibility"]
+                                    + LEVEL_SCALARS + level_w() + level_uv())),
+    ],
+)
+
 ICON_STEPS = list(range(0, 121, 3))
 ICON = RegularModel(
     model_id="icon", label="DWD ICON", run_hours=(0, 12), step_hours=ICON_STEPS, grid=COARSE_GRID,
     sources=[Source("dwd_icon", _SAME(SURFACE_CORE + SURFACE_UV + GUST_CAPE + CLOUD_LAYERS + LEVEL_SCALARS + level_uv()))],
 )
-
-
-# CMA GRAPES removed on owner request (the owner, 6 Nov 2026: "no need cma lets remove it")
-ALL: tuple[RegularModel, ...] = (UKMO, GFS, AIFS, ICON)

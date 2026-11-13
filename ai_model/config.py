@@ -27,7 +27,7 @@ NY_1KM = round((LAT_MAX - LAT_MIN) / STEP_1KM) + 1  # 1801
 NX_1KM = round((LON_MAX - LON_MIN) / STEP_1KM) + 1  # 2901
 
 # Forecast Reach & Frequency
-REACH_HOURS = 72  # 3 days
+REACH_HOURS = 240  # 10 days (80 steps @ 3h intervals)
 STEP_HOURS = 3    # 3-hourly time steps
 
 # Atmospheric Variables
