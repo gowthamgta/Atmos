@@ -190,30 +190,36 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def barnes_objective_analysis_2d(
     grid: np.ndarray,
     obs_points: list[tuple[float, float, float]],
-    radius_km: float = 35.0,
+    radius_km: float = 65.0,
     max_adj: float = 4.0,
 ) -> np.ndarray:
-    """Nudges a 2D atmospheric grid using Barnes objective analysis from point observations.
+    """Performs continuous, normalized 2D Barnes objective analysis to assimilate station observations.
 
-    grid: (NY, NX) field covering 2-20°N, 70-99°E
-    obs_points: list of (lat, lon, observed_value)
-    radius_km: influence radius (e-folding distance)
-    max_adj: maximum allowed deviation to prevent overfitting
+    Eliminates all gridded square patches, local checkerboards, and discontinuities by:
+    1. Using a continuous 3-sigma Gaussian kernel that smoothly decays to zero.
+    2. Normalizing innovation weights by sum(w_i) so clustered stations do not overamplify.
+    3. Blending smoothly with the background model based on observation network density.
+    4. Anti-aliasing with a gentle spatial filter for silky-smooth weather gradients.
     """
     if not obs_points:
         return grid
 
+    import scipy.ndimage as ndi
     ny, nx = grid.shape
     lats = np.linspace(AIC.LAT_MAX, AIC.LAT_MIN, ny)
     lons = np.linspace(AIC.LON_MIN, AIC.LON_MAX, nx)
 
-    nudged = grid.copy()
+    num_accum = np.zeros((ny, nx), dtype=np.float32)
+    denom_accum = np.zeros((ny, nx), dtype=np.float32)
+
+    deg_rad = (3.0 * radius_km) / 111.0
+    r_radius = int(np.ceil(deg_rad / (AIC.LAT_MAX - AIC.LAT_MIN) * ny))
+    c_radius = int(np.ceil(deg_rad / (AIC.LON_MAX - AIC.LON_MIN) * nx))
 
     for lat_obs, lon_obs, val_obs in obs_points:
         if not (AIC.LAT_MIN <= lat_obs <= AIC.LAT_MAX and AIC.LON_MIN <= lon_obs <= AIC.LON_MAX):
             continue
 
-        # Find closest grid indices
         r_idx = int(round((AIC.LAT_MAX - lat_obs) / (AIC.LAT_MAX - AIC.LAT_MIN) * (ny - 1)))
         c_idx = int(round((lon_obs - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (nx - 1)))
 
@@ -222,11 +228,6 @@ def barnes_objective_analysis_2d(
             continue
 
         innovation = float(np.clip(val_obs - model_val, -max_adj, max_adj))
-
-        # Apply spatial Gaussian influence
-        deg_rad = radius_km / 111.0
-        r_radius = max(1, int(round(deg_rad / (AIC.LAT_MAX - AIC.LAT_MIN) * ny)))
-        c_radius = max(1, int(round(deg_rad / (AIC.LON_MAX - AIC.LON_MIN) * nx)))
 
         r_min = max(0, r_idx - r_radius)
         r_max = min(ny, r_idx + r_radius + 1)
@@ -237,15 +238,21 @@ def barnes_objective_analysis_2d(
         sub_lons = lons[c_min:c_max]
         sub_lon_grid, sub_lat_grid = np.meshgrid(sub_lons, sub_lats)
 
-        # Approximate distance in km
         dy_km = (sub_lat_grid - lat_obs) * 111.13
-        dx_km = (sub_lon_grid - lon_obs) * 111.13 * np.cos(np.radians(lat_obs))
+        dx_km = (sub_lon_grid - lon_obs) * 111.13 * math.cos(math.radians(lat_obs))
         dist_sq = dy_km**2 + dx_km**2
 
         weights = np.exp(-dist_sq / (2.0 * (radius_km ** 2)))
-        nudged[r_min:r_max, c_min:c_max] += innovation * weights
+        num_accum[r_min:r_max, c_min:c_max] += weights * innovation
+        denom_accum[r_min:r_max, c_min:c_max] += weights
 
-    return nudged.astype(np.float32)
+    w_0 = 0.05
+    alpha = denom_accum / (denom_accum + w_0)
+    delta = np.where(denom_accum > 1e-4, num_accum / (denom_accum + 1e-5), 0.0)
+    nudged = grid + alpha * delta
+
+    nudged = ndi.gaussian_filter(nudged, sigma=0.6).astype(np.float32)
+    return nudged
 
 
 def assimilate_hourly_observations(
@@ -357,32 +364,34 @@ def assimilate_hourly_observations(
         temp_biases = m_bias.get("temp", {})
         rh_biases = m_bias.get("rh", {})
 
+        ny_grid, nx_grid = synoptic_fields["t2m"].shape
         for code, (lat, lon) in AIRPORT_COORDS.items():
             if code in temp_biases and len(temp_biases[code]) == 24:
                 bias = temp_biases[code][hour_utc % 24]
-                r_idx = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (C.NY - 1)))
-                c_idx = int(round((lon - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (C.NX - 1)))
-                if 0 <= r_idx < C.NY and 0 <= c_idx < C.NX:
+                r_idx = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (ny_grid - 1)))
+                c_idx = int(round((lon - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (nx_grid - 1)))
+                if 0 <= r_idx < ny_grid and 0 <= c_idx < nx_grid:
                     target_temp = float(synoptic_fields["t2m"][r_idx, c_idx] - bias)
                     temp_obs_points.append((lat, lon, target_temp))
 
             if code in rh_biases and len(rh_biases[code]) == 24:
                 bias = rh_biases[code][hour_utc % 24]
-                r_idx = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (C.NY - 1)))
-                c_idx = int(round((lon - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (C.NX - 1)))
-                if 0 <= r_idx < C.NY and 0 <= c_idx < C.NX:
+                r_idx = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (ny_grid - 1)))
+                c_idx = int(round((lon - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (nx_grid - 1)))
+                if 0 <= r_idx < ny_grid and 0 <= c_idx < nx_grid:
                     target_rh = float(synoptic_fields.get("rh", np.full_like(synoptic_fields["t2m"], 75.0))[r_idx, c_idx] - bias)
                     rh_obs_points.append((lat, lon, np.clip(target_rh, 5.0, 100.0)))
 
     # 4. Perform Barnes 2D Objective Analysis Correction across Grids
+    ny_grid, nx_grid = assimilated["t2m"].shape
     if temp_obs_points and "t2m" in assimilated:
         orig_t = assimilated["t2m"].copy()
-        assimilated["t2m"] = barnes_objective_analysis_2d(assimilated["t2m"], temp_obs_points, radius_km=30.0, max_adj=4.5)
+        assimilated["t2m"] = barnes_objective_analysis_2d(assimilated["t2m"], temp_obs_points, radius_km=65.0, max_adj=4.5)
         # Record sample corrections
         for lat, lon, obs_t in temp_obs_points[:10]:
-            r = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (C.NY - 1)))
-            c = int(round((lon - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (C.NX - 1)))
-            if 0 <= r < C.NY and 0 <= c < C.NX:
+            r = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (ny_grid - 1)))
+            c = int(round((lon - AIC.LON_MIN) / (AIC.LON_MAX - AIC.LON_MIN) * (nx_grid - 1)))
+            if 0 <= r < ny_grid and 0 <= c < nx_grid:
                 corrections_log.append({
                     "type": "temperature",
                     "lat": round(lat, 4), "lon": round(lon, 4),
@@ -393,21 +402,21 @@ def assimilate_hourly_observations(
                 })
 
     if rh_obs_points and "rh" in assimilated:
-        assimilated["rh"] = barnes_objective_analysis_2d(assimilated["rh"], rh_obs_points, radius_km=30.0, max_adj=18.0)
+        assimilated["rh"] = barnes_objective_analysis_2d(assimilated["rh"], rh_obs_points, radius_km=60.0, max_adj=18.0)
         assimilated["rh"] = np.clip(assimilated["rh"], 5.0, 100.0)
 
     if wind_obs_points and "wind" in assimilated:
-        assimilated["wind"] = barnes_objective_analysis_2d(assimilated["wind"], wind_obs_points, radius_km=25.0, max_adj=6.0)
+        assimilated["wind"] = barnes_objective_analysis_2d(assimilated["wind"], wind_obs_points, radius_km=50.0, max_adj=6.0)
         assimilated["wind"] = np.maximum(0.0, assimilated["wind"])
 
     if u10_obs_points and "u10" in assimilated:
-        assimilated["u10"] = barnes_objective_analysis_2d(assimilated["u10"], u10_obs_points, radius_km=25.0, max_adj=6.0)
+        assimilated["u10"] = barnes_objective_analysis_2d(assimilated["u10"], u10_obs_points, radius_km=50.0, max_adj=6.0)
 
     if v10_obs_points and "v10" in assimilated:
-        assimilated["v10"] = barnes_objective_analysis_2d(assimilated["v10"], v10_obs_points, radius_km=25.0, max_adj=6.0)
+        assimilated["v10"] = barnes_objective_analysis_2d(assimilated["v10"], v10_obs_points, radius_km=50.0, max_adj=6.0)
 
     if precip_obs_points and "precip" in assimilated:
-        assimilated["precip"] = barnes_objective_analysis_2d(assimilated["precip"], precip_obs_points, radius_km=25.0, max_adj=12.0)
+        assimilated["precip"] = barnes_objective_analysis_2d(assimilated["precip"], precip_obs_points, radius_km=45.0, max_adj=12.0)
         assimilated["precip"] = np.maximum(0.0, assimilated["precip"])
 
     # 5. Near-Realtime Satellite Convection & Cloud Cover Assimilation (Himawari-9 / Meteosat)

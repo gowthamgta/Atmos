@@ -174,7 +174,7 @@ def normalized_weights(available_models: list[str], lead_h: float) -> dict[str, 
 
 
 def regrid_to_fine(field: np.ndarray, ny_fine: int = C.IFS_NY, nx_fine: int = C.IFS_NX) -> np.ndarray:
-    """Regrids coarse 0.25° grid (73 x 117) to the 0.1° target grid (181 x 291) covering 2-20°N, 70-99°E."""
+    """Regrids coarse 0.25° grid (73 x 117) to the 0.1° target grid (181 x 291) using smooth bicubic spline interpolation."""
     if field.shape == (ny_fine, nx_fine):
         return field
     ny_coarse, nx_coarse = field.shape
@@ -182,7 +182,12 @@ def regrid_to_fine(field: np.ndarray, ny_fine: int = C.IFS_NY, nx_fine: int = C.
     c = np.linspace(0, nx_coarse - 1, nx_fine)
     rr, cc = np.meshgrid(r, c, indexing="ij")
     coords = np.array([rr, cc])
-    return ndi.map_coordinates(field, coords, order=1, mode="nearest").astype(np.float32)
+    # Bicubic spline interpolation (order=3) removes all faceted diamond grid artifacts
+    fine = ndi.map_coordinates(field, coords, order=3, mode="nearest", prefilter=True).astype(np.float32)
+    # Anti-aliasing filter to ensure silky-smooth continuous contours
+    if not np.allclose(field, field.flat[0], atol=1e-4):
+        fine = ndi.gaussian_filter(fine, sigma=0.6).astype(np.float32)
+    return fine
 
 
 def gaussian_blur(field: np.ndarray, sigma: float = DETAIL_SIGMA_PX) -> np.ndarray:

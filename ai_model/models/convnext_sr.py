@@ -265,7 +265,7 @@ class KralvethAI1km(nn.Module):
         mask_syn: np.ndarray,
     ) -> dict[str, np.ndarray]:
         """Physical terrain downscaling directly at the published forecast grid (181 x 291)."""
-        from scipy.ndimage import uniform_filter
+        from scipy.ndimage import gaussian_filter
         p_up = np.maximum(synoptic_state[0], 0.0)
         t_up = synoptic_state[1]
         u_up = synoptic_state[2]
@@ -276,7 +276,7 @@ class KralvethAI1km(nn.Module):
         rh_up = np.clip(synoptic_state[7], 2.0, 100.0)
 
         # Environmental Lapse Rate: -6.5 °C / km (-0.0065 °C/m)
-        elev_base = uniform_filter(elev_syn, size=5)
+        elev_base = gaussian_filter(elev_syn, sigma=2.0)
         dz = elev_syn - elev_base
         LAPSE_RATE = -0.0065
         t_sfc = t_up + LAPSE_RATE * dz
@@ -298,21 +298,34 @@ class KralvethAI1km(nn.Module):
         wind_sfc = w_up * (1.0 + np.clip(slope_mag * 0.35, 0.0, 0.75))
         gust_sfc = wind_sfc * 1.35 + np.sqrt(np.maximum(c_up, 0.0)) * 0.12
 
-        # Probability of precipitation (PoP24): convective + RH thresholding
-        pop_sfc = np.clip((p_sfc * 15.0) + (c_up / 6000.0 * 40.0) + np.maximum(0.0, (rh_sfc - 70.0) * 1.5), 0.0, 100.0)
+        from pipeline.derive import apparent_temperature
+        feels_sfc = apparent_temperature(t_sfc, rh_sfc, wind_sfc)
+
+        # Smooth continuous anti-aliasing to remove all grid facets and stair-stepping
+        smooth_t2m = gaussian_filter(t_sfc, sigma=0.5)
+        smooth_dew = gaussian_filter(dew_sfc, sigma=0.5)
+        smooth_rh = np.clip(gaussian_filter(rh_sfc, sigma=0.5), 2.0, 100.0)
+        smooth_msl = gaussian_filter(m_up, sigma=0.5)
+        smooth_feels = gaussian_filter(feels_sfc, sigma=0.5)
+        smooth_wind = gaussian_filter(wind_sfc, sigma=0.5)
+        smooth_gust = gaussian_filter(gust_sfc, sigma=0.5)
+        smooth_u10 = gaussian_filter(u_up, sigma=0.5)
+        smooth_v10 = gaussian_filter(v_up, sigma=0.5)
+        smooth_cape = np.maximum(0.0, gaussian_filter(c_up, sigma=0.5))
+        smooth_precip = np.maximum(0.0, p_sfc)
 
         return {
-            "precip": p_sfc.astype(np.float32),
-            "t2m": t_sfc.astype(np.float32),
-            "u10": u_up.astype(np.float32),
-            "v10": v_up.astype(np.float32),
-            "wind": wind_sfc.astype(np.float32),
-            "cape": c_up.astype(np.float32),
-            "mslp": m_up.astype(np.float32),
-            "rh": rh_sfc.astype(np.float32),
-            "dew": dew_sfc.astype(np.float32),
-            "gust": gust_sfc.astype(np.float32),
-            "pop24": pop_sfc.astype(np.float32),
+            "precip": smooth_precip.astype(np.float32),
+            "t2m": smooth_t2m.astype(np.float32),
+            "u10": smooth_u10.astype(np.float32),
+            "v10": smooth_v10.astype(np.float32),
+            "wind": smooth_wind.astype(np.float32),
+            "cape": smooth_cape.astype(np.float32),
+            "msl": smooth_msl.astype(np.float32),
+            "rh": smooth_rh.astype(np.float32),
+            "dew": smooth_dew.astype(np.float32),
+            "gust": smooth_gust.astype(np.float32),
+            "feels": smooth_feels.astype(np.float32),
         }
 
 
