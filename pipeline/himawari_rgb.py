@@ -28,7 +28,7 @@ import numpy as np
 
 import himawari_bt as H
 import satellite_bt as S
-from net import download
+from net import download, download_parallel
 
 FOLDER = "rgb-h9"
 WEST, EAST, SOUTH, NORTH = 75.0, 99.0, 2.0, 20.0   # Himawari's own data box: the satellite box east of 75 E (it sees further west too slantwise)
@@ -298,6 +298,14 @@ def update_index(folder: str, new: list[tuple[datetime, dict]], now: datetime, b
             files = {k: v for k, v in files.items() if k in OLD_KINDS}
         if now - when <= timedelta(minutes=S.KEEP_MINUTES) and files and all(os.path.exists(os.path.join(folder, f)) for f in files.values()):
             keep[time] = files
+    if not keep and frames:
+        # Preserve newest valid frame so map never goes blank during upstream delays
+        sorted_times = sorted(frames.keys())
+        for time in reversed(sorted_times):
+            files = frames[time]
+            if files and all(os.path.exists(os.path.join(folder, f)) for f in files.values()):
+                keep[time] = files
+                break
     used = {f for files in keep.values() for f in files.values()}
     for name in os.listdir(folder):
         if name != "index.json" and name not in used:
@@ -335,21 +343,25 @@ def scan_keys(t: datetime) -> list[str]:
 def fetch_new(folder: str, max_new: int, now: datetime) -> list[tuple[datetime, dict]]:
     done = set(os.listdir(folder))
     new = []
-    t = now.replace(minute=now.minute - now.minute % 10, second=0, microsecond=0)
+    # Himawari-9 scans take ~15-20 min to be processed and uploaded to AWS S3.
+    # Start at now - 15 minutes to avoid guaranteed misses on the unreleased current slot.
+    start_t = now - timedelta(minutes=15)
+    t = start_t.replace(minute=start_t.minute - start_t.minute % 10, second=0, microsecond=0)
     oldest = now - timedelta(minutes=S.KEEP_MINUTES)
     while t >= oldest and len(new) < max_new:
         if f"nightmicro-{t:%Y%m%dT%H%MZ}.webp" not in done:
-            keys = scan_keys(t)
-            if keys:
-                with tempfile.TemporaryDirectory() as tmp:
-                    paths = []
-                    for k in keys:
-                        p = os.path.join(tmp, os.path.basename(k))
-                        download(f"{H.BUCKET}/{k}", p)
-                        paths.append(p)
-                    files = make_scan(paths, t, folder)
-                new.append((t, files))
-                print(f"{t:%Y-%m-%d %H:%M}Z: {', '.join(sorted(files))}")
+            try:
+                keys = scan_keys(t)
+                if keys:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        items = [(f"{H.BUCKET}/{k}", os.path.join(tmp, os.path.basename(k))) for k in keys]
+                        download_parallel(items, max_workers=8)
+                        paths = [dest for _, dest in items]
+                        files = make_scan(paths, t, folder)
+                    new.append((t, files))
+                    print(f"{t:%Y-%m-%d %H:%M}Z: {', '.join(sorted(files))}")
+            except Exception as e:
+                print(f"::warning::Himawari RGB fetch failed for {t:%Y-%m-%d %H:%M}Z ({type(e).__name__}: {e}); trying earlier scan...")
         t -= timedelta(minutes=10)
     return new
 
@@ -375,8 +387,8 @@ def main() -> int:
     except Exception as e:
         import traceback
         where = traceback.extract_tb(e.__traceback__)[-1]
-        print(f"::error::Himawari RGB: {type(e).__name__}: {e} (at {os.path.basename(where.filename)}:{where.lineno} {where.name})")
-        raise
+        print(f"::warning::Himawari RGB: {type(e).__name__}: {e} (at {os.path.basename(where.filename)}:{where.lineno} {where.name})")
+        new = []
     index = update_index(folder, new, now)
     print(f"{len(new)} new, {len(index['frames'])} kept")
     return 0

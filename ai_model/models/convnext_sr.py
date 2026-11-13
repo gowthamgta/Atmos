@@ -256,6 +256,65 @@ class KralvethAI1km(nn.Module):
             "gust": gust_1km.astype(np.float32),
         }
 
+    def downscale_physics_synoptic(
+        self,
+        synoptic_state: np.ndarray,
+        elev_syn: np.ndarray,
+        slope_x_syn: np.ndarray,
+        slope_y_syn: np.ndarray,
+        mask_syn: np.ndarray,
+    ) -> dict[str, np.ndarray]:
+        """Physical terrain downscaling directly at the published forecast grid (181 x 291)."""
+        from scipy.ndimage import uniform_filter
+        p_up = np.maximum(synoptic_state[0], 0.0)
+        t_up = synoptic_state[1]
+        u_up = synoptic_state[2]
+        v_up = synoptic_state[3]
+        w_up = np.maximum(synoptic_state[4], 0.0)
+        c_up = np.maximum(synoptic_state[5], 0.0)
+        m_up = synoptic_state[6]
+        rh_up = np.clip(synoptic_state[7], 2.0, 100.0)
+
+        # Environmental Lapse Rate: -6.5 °C / km (-0.0065 °C/m)
+        elev_base = uniform_filter(elev_syn, size=5)
+        dz = elev_syn - elev_base
+        LAPSE_RATE = -0.0065
+        t_sfc = t_up + LAPSE_RATE * dz
+
+        # Orographic lift: W_orog = u * (∂z/∂x) + v * (∂z/∂y)
+        w_orog = u_up * slope_x_syn + v_up * slope_y_syn
+        orog_boost = np.maximum(0.0, w_orog * 0.4)
+        p_sfc = np.maximum(0.0, p_up * (1.0 + orog_boost))
+
+        # Thermodynamic relative humidity and dew point (Magnus equation)
+        a, b = 17.625, 243.04
+        alpha = (a * t_up) / (b + t_up) + np.log(np.maximum(rh_up, 1.0) / 100.0)
+        td_up = (b * alpha) / (a - alpha)
+        dew_sfc = td_up + LAPSE_RATE * 0.5 * dz
+        rh_sfc = np.clip(100.0 * np.exp((a * dew_sfc) / (b + dew_sfc) - (a * t_sfc) / (b + t_sfc)), 2.0, 100.0)
+
+        # Mountain ridge wind acceleration
+        slope_mag = np.sqrt(slope_x_syn**2 + slope_y_syn**2)
+        wind_sfc = w_up * (1.0 + np.clip(slope_mag * 0.35, 0.0, 0.75))
+        gust_sfc = wind_sfc * 1.35 + np.sqrt(np.maximum(c_up, 0.0)) * 0.12
+
+        # Probability of precipitation (PoP24): convective + RH thresholding
+        pop_sfc = np.clip((p_sfc * 15.0) + (c_up / 6000.0 * 40.0) + np.maximum(0.0, (rh_sfc - 70.0) * 1.5), 0.0, 100.0)
+
+        return {
+            "precip": p_sfc.astype(np.float32),
+            "t2m": t_sfc.astype(np.float32),
+            "u10": u_up.astype(np.float32),
+            "v10": v_up.astype(np.float32),
+            "wind": wind_sfc.astype(np.float32),
+            "cape": c_up.astype(np.float32),
+            "mslp": m_up.astype(np.float32),
+            "rh": rh_sfc.astype(np.float32),
+            "dew": dew_sfc.astype(np.float32),
+            "gust": gust_sfc.astype(np.float32),
+            "pop24": pop_sfc.astype(np.float32),
+        }
+
 
 def build_model(pretrained_path: str | None = None) -> KralvethAI1km:
     model = KralvethAI1km()

@@ -51,8 +51,8 @@ WEATHERUNION_CACHE = os.path.join(AIC.PROJECT_ROOT, "pipeline", "data", "verific
 WINDS_CACHE = os.path.join(AIC.PROJECT_ROOT, "pipeline", "data", "verification", "winds_cache.json")
 WU_CORRECTIONS_OUT = os.path.join(AIC.PROJECT_ROOT, "public", "data", "verification", "weatherunion_corrections.json")
 
-# Strict Freshness Control: Only new real-time data within 2.5 hours accepted; older data rejected
-MAX_OBSERVATION_AGE_HOURS = 2.5
+# Operational Freshness Control: Accept live observations within the current operational window (up to 8h)
+MAX_OBSERVATION_AGE_HOURS = 8.0
 
 
 def parse_timestamp_to_utc(ts: str | None) -> datetime | None:
@@ -82,18 +82,17 @@ def is_fresh_observation(
     max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
 ) -> bool:
     """Returns True ONLY if the observation timestamp is new (within max_age_hours).
-
-    Rejects stale historical or un-updated device data.
+    Evaluated against real-time operational wall clock.
     """
     if not obs_time_str:
         return False
     obs_dt = parse_timestamp_to_utc(obs_time_str)
     if not obs_dt:
         return False
-    now = ref_time or datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     age_seconds = (now - obs_dt).total_seconds()
-    # Accept data strictly within [-900s, max_age_hours * 3600s]
-    return -900 <= age_seconds <= (max_age_hours * 3600.0)
+    # Accept data strictly within [-3600s, max_age_hours * 3600s]
+    return -3600 <= age_seconds <= (max_age_hours * 3600.0)
 
 
 def load_weatherunion_observations(

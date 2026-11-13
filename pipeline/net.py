@@ -18,3 +18,15 @@ def download(url: str, dest: str, retries: int = 4) -> None:
             if attempt == retries - 1:
                 raise
             time.sleep(2 ** attempt * 3)
+
+
+def download_parallel(items: list[tuple[str, str]], max_workers: int = 8, retries: int = 4) -> None:
+    """Download multiple (url, dest) pairs concurrently using ThreadPoolExecutor."""
+    if not items:
+        return
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(max_workers, len(items))) as pool:
+        futures = {pool.submit(download, url, dest, retries): (url, dest) for url, dest in items}
+        for fut in concurrent.futures.as_completed(futures):
+            fut.result()
+

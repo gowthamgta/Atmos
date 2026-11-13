@@ -67,13 +67,13 @@ class KralvethAIInferenceEngine:
         scale_x = nx_syn / self.elev_1km.shape[1]
 
         self.elev_syn = zoom(self.elev_1km, (scale_y, scale_x), order=1)
-        mask_syn = zoom(self.mask_1km, (scale_y, scale_x), order=0)
-        sx_syn = zoom(self.slope_x_1km, (scale_y, scale_x), order=1)
-        sy_syn = zoom(self.slope_y_1km, (scale_y, scale_x), order=1)
+        self.mask_syn = zoom(self.mask_1km, (scale_y, scale_x), order=0)
+        self.sx_syn = zoom(self.slope_x_1km, (scale_y, scale_x), order=1)
+        self.sy_syn = zoom(self.slope_y_1km, (scale_y, scale_x), order=1)
         sin_lat_syn = zoom(self.sin_lat_1km, (scale_y, scale_x), order=1)
         cos_lon_syn = zoom(self.cos_lon_1km, (scale_y, scale_x), order=1)
 
-        static_syn_stack = np.stack([self.elev_syn / 4000.0, mask_syn, sx_syn, sy_syn, sin_lat_syn, cos_lon_syn], axis=0)
+        static_syn_stack = np.stack([self.elev_syn / 4000.0, self.mask_syn, self.sx_syn, self.sy_syn, sin_lat_syn, cos_lon_syn], axis=0)
         self.static_syn = torch.from_numpy(static_syn_stack).unsqueeze(0).to(self.device).float()
         print(f"Loaded static terrain: 1km grid ({self.elev_1km.shape}) and synoptic grid ({self.elev_syn.shape})", flush=True)
 
@@ -122,7 +122,8 @@ class KralvethAIInferenceEngine:
         }
         try:
             from ai_model.data.obs_feed import assimilate_hourly_observations
-            syn_dict = assimilate_hourly_observations(syn_dict, hour_utc=ref_run.hour, ref_datetime=ref_run)
+            now_wall = datetime.now(timezone.utc)
+            syn_dict = assimilate_hourly_observations(syn_dict, hour_utc=now_wall.hour, ref_datetime=now_wall)
             print("ai_model: real-time fresh station ground observations assimilated successfully into T=0 state.", flush=True)
         except Exception as e:
             print(f"ai_model: observation assimilation notice ({e}); using analysis initialization", flush=True)
@@ -190,22 +191,21 @@ class KralvethAIInferenceEngine:
                     )
                 state_np = state_tensor.squeeze(0).cpu().numpy()
 
-            # High-definition 1km physical downscaling
-            fields_1km = self.model.downscale_1km_physics(
+            # Physics terrain downscaling directly at forecast domain resolution (181 x 291)
+            fields_syn = self.model.downscale_physics_synoptic(
                 state_np,
-                self.elev_1km,
                 self.elev_syn,
-                self.slope_x_1km,
-                self.slope_y_1km,
-                self.mask_1km,
+                self.sx_syn,
+                self.sy_syn,
+                self.mask_syn,
             )
 
-            precip_dict[h] = fields_1km["precip"]
-            cape_dict[h] = fields_1km["cape"]
+            precip_dict[h] = fields_syn["precip"]
+            cape_dict[h] = fields_syn["cape"]
 
             # Save quantized RG16 PNGs for each meteorological layer
             step_str = f"{h:03d}"
-            for var_name, arr in fields_1km.items():
+            for var_name, arr in fields_syn.items():
                 enc_name = "wind_speed" if var_name == "wind" else "rh2m" if var_name == "rh" else var_name
                 if enc_name not in VARS_ENCODING:
                     continue

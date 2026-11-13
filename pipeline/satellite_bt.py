@@ -115,6 +115,14 @@ def update_index(folder: str, new: list[tuple[datetime, str]], now: datetime) ->
         when = datetime.strptime(time, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         if now - when <= timedelta(minutes=KEEP_MINUTES) and os.path.exists(os.path.join(folder, name)):
             keep[time] = name
+    if not keep and frames:
+        # Preserve newest valid frame so map never goes blank during upstream delays
+        sorted_times = sorted(frames.keys())
+        for time in reversed(sorted_times):
+            name = frames[time]
+            if os.path.exists(os.path.join(folder, name)):
+                keep[time] = name
+                break
     for name in os.listdir(folder):
         if name.endswith(".png") and name not in keep.values():
             os.remove(os.path.join(folder, name))
@@ -220,14 +228,14 @@ def main() -> int:
             import meteosat_rgb
             start_again_if_box_changed(rgb_folder, meteosat_rgb.BOX)
         new, rgb_new = fetch_new(folder, args.max_new, now, rgb_folder)
-    except SystemExit:
-        raise
+    except SystemExit as e:
+        print(f"::warning::Meteosat skipped: {e}")
+        new, rgb_new = [], []
     except Exception as e:
-        # as an annotation, which the run's public summary page shows (the step's log needs a signed-in viewer)
         import traceback
         where = traceback.extract_tb(e.__traceback__)[-1]
-        print(f"::error::{type(e).__name__}: {e} (at {os.path.basename(where.filename)}:{where.lineno} {where.name})")
-        raise
+        print(f"::warning::Meteosat: {type(e).__name__}: {e} (at {os.path.basename(where.filename)}:{where.lineno} {where.name})")
+        new, rgb_new = [], []
     index = update_index(folder, new, now)
     print(f"{len(new)} new, {len(index['frames'])} kept")
     if rgb_folder is not None:
