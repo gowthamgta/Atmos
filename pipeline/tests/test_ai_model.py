@@ -98,7 +98,7 @@ def test_airport_and_tn_station_assimilation():
         "rh": np.full((181, 291), 70.0, dtype=np.float32),
         "precip": np.full((181, 291), 0.05, dtype=np.float32),  # trace drizzle
     }
-    assimilated = assimilate_hourly_observations(syn_fields, hour_utc=12)
+    assimilated = assimilate_hourly_observations(syn_fields, hour_utc=12, live_obs_data={})
     assert "t2m" in assimilated
     assert "rh" in assimilated
     # Trace drizzle under 0.1 mm/h is clamped to 0

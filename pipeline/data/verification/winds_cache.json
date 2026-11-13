@@ -1,0 +1,138 @@
+{
+  "last_updated": "2026-11-13T18:30:00Z",
+  "source": "PMFBY WINDS (Ministry of Agriculture & Farmers Welfare, GoI)",
+  "stations": {
+    "CHENNAI": {
+      "name": "Chennai",
+      "lat": 13.0827,
+      "lon": 80.2707,
+      "provider": "IMD",
+      "temperature": 27.4,
+      "relative_humidity": 90.0,
+      "wind_speed": 1.67,
+      "wind_direction": 62.0,
+      "rainfall_cumulative": 0.0
+    },
+    "COIMBATORE_AMFU": {
+      "name": "Coimbatore AMFU",
+      "lat": 11.0168,
+      "lon": 76.9558,
+      "provider": "IMD",
+      "temperature": 27.7,
+      "relative_humidity": 31.0,
+      "wind_speed": 2.78,
+      "wind_direction": 89.0,
+      "rainfall_cumulative": 0.0
+    },
+    "TIRUNELVELI": {
+      "name": "Tirunelveli",
+      "lat": 8.7139,
+      "lon": 77.7567,
+      "provider": "IMD",
+      "temperature": 28.0,
+      "relative_humidity": 63.0,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rainfall_cumulative": 0.0
+    },
+    "BANGALORE": {
+      "name": "Bengaluru",
+      "lat": 12.9716,
+      "lon": 77.5946,
+      "provider": "IMD",
+      "temperature": 25.3,
+      "relative_humidity": 63.0,
+      "wind_speed": 1.67,
+      "wind_direction": 63.0,
+      "rainfall_cumulative": 0.0
+    },
+    "PALLURUTHY": {
+      "name": "Kochi Palluruthy",
+      "lat": 9.9312,
+      "lon": 76.2673,
+      "provider": "IMD",
+      "temperature": 28.8,
+      "relative_humidity": 100.0,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rainfall_cumulative": 0.0
+    },
+    "SATTANKULAM": {
+      "name": "Thoothukudi Sattankulam",
+      "lat": 8.4410,
+      "lon": 77.9120,
+      "provider": "IMD",
+      "temperature": 35.3,
+      "relative_humidity": 55.0,
+      "wind_speed": 11.38,
+      "wind_direction": 355.0,
+      "rainfall_cumulative": 0.0
+    },
+    "SENTHURAI": {
+      "name": "Ariyalur Sendurai",
+      "lat": 11.2330,
+      "lon": 79.1760,
+      "provider": "IMD",
+      "temperature": 34.2,
+      "relative_humidity": 60.0,
+      "wind_speed": 4.72,
+      "wind_direction": 358.0,
+      "rainfall_cumulative": 0.2
+    },
+    "KALLAKURICHI": {
+      "name": "Kallakurichi",
+      "lat": 11.7383,
+      "lon": 78.9639,
+      "provider": "IMD",
+      "temperature": 34.1,
+      "relative_humidity": 58.0,
+      "wind_speed": 5.83,
+      "wind_direction": 357.0,
+      "rainfall_cumulative": 0.0
+    },
+    "SALEM_METTUR": {
+      "name": "Salem Mettur",
+      "lat": 11.7960,
+      "lon": 77.8010,
+      "provider": "IMD",
+      "temperature": 33.0,
+      "relative_humidity": 52.0,
+      "wind_speed": 3.89,
+      "wind_direction": 327.0,
+      "rainfall_cumulative": 0.0
+    },
+    "CHIDAMBARAM": {
+      "name": "Cuddalore Chidambaram",
+      "lat": 11.3990,
+      "lon": 79.6930,
+      "provider": "IMD",
+      "temperature": 32.9,
+      "relative_humidity": 65.0,
+      "wind_speed": 13.33,
+      "wind_direction": 359.0,
+      "rainfall_cumulative": 0.0
+    },
+    "THIRUPATHISARAM": {
+      "name": "Kanyakumari Thirupathisaram",
+      "lat": 8.2120,
+      "lon": 77.4470,
+      "provider": "IMD",
+      "temperature": 32.8,
+      "relative_humidity": 68.0,
+      "wind_speed": 2.78,
+      "wind_direction": 330.0,
+      "rainfall_cumulative": 0.0
+    },
+    "VIRINJIPURAM": {
+      "name": "Vellore Virinjipuram",
+      "lat": 12.8980,
+      "lon": 79.0320,
+      "provider": "IMD",
+      "temperature": 32.2,
+      "relative_humidity": 62.0,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rainfall_cumulative": 0.0
+    }
+  }
+}

@@ -36,7 +36,7 @@ FADE_KM = 200.0
 CORRECTED = ("temp", "rh")
 
 BLEND_ID = "blend"
-LABEL = "Kralveth Blend"
+LABEL = "Kralveth AI 1km"
 STEP_HOURS = 3
 VERSION = 6
 

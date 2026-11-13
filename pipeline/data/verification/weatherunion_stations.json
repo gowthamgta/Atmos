@@ -1,0 +1,1857 @@
+[
+  {
+    "loc_id": "ZWL006536",
+    "name": "Mumbai Mira Road East",
+    "lat": 19.27813,
+    "lon": 72.874722,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004934",
+    "name": "Mumbai Kandivali West",
+    "lat": 19.212156,
+    "lon": 72.82885,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004821",
+    "name": "Mumbai Boisar, Mumbai",
+    "lat": 19.804797,
+    "lon": 72.745805,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007249",
+    "name": "Mumbai Bhiwandi",
+    "lat": 19.25179,
+    "lon": 73.087318,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001164",
+    "name": "Mumbai Panvel",
+    "lat": 18.998845,
+    "lon": 73.108933,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009537",
+    "name": "Mumbai Kopar Khairane (Navi Mumbai)",
+    "lat": 19.113909,
+    "lon": 73.012598,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007275",
+    "name": "Mumbai Vashi",
+    "lat": 19.067662,
+    "lon": 73.004987,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002556",
+    "name": "Mumbai Titwala, Mumbai",
+    "lat": 19.292555,
+    "lon": 73.205899,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006937",
+    "name": "Mumbai Kandivali East",
+    "lat": 19.20073,
+    "lon": 72.865461,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008636",
+    "name": "Mumbai Nalasopara",
+    "lat": 19.424433,
+    "lon": 72.817134,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003995",
+    "name": "Mumbai Lower Parel",
+    "lat": 19.005114,
+    "lon": 72.820143,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006938",
+    "name": "Mumbai Goregaon East",
+    "lat": 19.163093,
+    "lon": 72.872277,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008550",
+    "name": "Mumbai Santacruz East",
+    "lat": 19.076131,
+    "lon": 72.858715,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004494",
+    "name": "Mumbai Ghatkopar East, Mumbai",
+    "lat": 19.080794,
+    "lon": 72.92228,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003708",
+    "name": "Mumbai Palava",
+    "lat": 19.168067,
+    "lon": 73.074612,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008711",
+    "name": "Mumbai Malad West",
+    "lat": 19.187022,
+    "lon": 72.827076,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005991",
+    "name": "Mumbai Borivali East",
+    "lat": 19.241003,
+    "lon": 72.86597,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002865",
+    "name": "Mumbai Kalyan,West,Mumbai",
+    "lat": 19.255127,
+    "lon": 73.128176,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004749",
+    "name": "Mumbai Santacruz West",
+    "lat": 19.08261,
+    "lon": 72.835608,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001274",
+    "name": "Mumbai Badlapur, Mumbai",
+    "lat": 19.174156,
+    "lon": 73.225767,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007699",
+    "name": "Mumbai Ambernath",
+    "lat": 19.199776,
+    "lon": 73.181176,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001764",
+    "name": "Mumbai Marine lines",
+    "lat": 18.952178,
+    "lon": 72.825198,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002921",
+    "name": "Mumbai Mulund West",
+    "lat": 19.170765,
+    "lon": 72.942239,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001410",
+    "name": "Mumbai Airoli",
+    "lat": 19.170339,
+    "lon": 72.995114,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009757",
+    "name": "Mumbai Kharghar (Navi Mumbai)",
+    "lat": 19.069735,
+    "lon": 73.055883,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002059",
+    "name": "Mumbai Ulhasnagar (Mumbai)",
+    "lat": 19.224136,
+    "lon": 73.16934,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001058",
+    "name": "Mumbai Ghatkopar West, Mumbai",
+    "lat": 19.09674,
+    "lon": 72.904562,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006995",
+    "name": "Mumbai Bandra West",
+    "lat": 19.068857,
+    "lon": 72.833,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004692",
+    "name": "Mumbai Dadar West",
+    "lat": 19.021199,
+    "lon": 72.835378,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007667",
+    "name": "Mumbai Andheri West",
+    "lat": 19.137106,
+    "lon": 72.834828,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009338",
+    "name": "Mumbai Vile Parle West",
+    "lat": 19.10956,
+    "lon": 72.832194,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009167",
+    "name": "Mumbai Byculla",
+    "lat": 18.974283,
+    "lon": 72.833712,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006032",
+    "name": "Mumbai Vasai",
+    "lat": 19.364358,
+    "lon": 72.836612,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007397",
+    "name": "Mumbai Kalyan,East (Mumbai)",
+    "lat": 19.221503,
+    "lon": 73.138111,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009360",
+    "name": "Mumbai Ulwe, Mumbai",
+    "lat": 18.974217,
+    "lon": 73.024914,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002205",
+    "name": "Mumbai Fort",
+    "lat": 18.940613,
+    "lon": 72.834235,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008975",
+    "name": "Mumbai Andheri East",
+    "lat": 19.108639,
+    "lon": 72.874437,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009252",
+    "name": "Mumbai Chembur",
+    "lat": 19.04984,
+    "lon": 72.907847,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002558",
+    "name": "Mumbai Palghar, Mumbai",
+    "lat": 19.700631,
+    "lon": 72.763031,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002742",
+    "name": "Mumbai Mumbra, Mumbai",
+    "lat": 19.172636,
+    "lon": 73.023715,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004971",
+    "name": "Mumbai Mulund East",
+    "lat": 19.154253,
+    "lon": 72.962493,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008348",
+    "name": "Mumbai Shirdhon, Mumbai",
+    "lat": 19.195881,
+    "lon": 73.128886,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001344",
+    "name": "Mumbai Virar",
+    "lat": 19.461784,
+    "lon": 72.799199,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007606",
+    "name": "Mumbai Tardeo",
+    "lat": 18.961317,
+    "lon": 72.805513,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005697",
+    "name": "Mumbai Bandra East",
+    "lat": 19.064138,
+    "lon": 72.852737,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005442",
+    "name": "Mumbai Thane West",
+    "lat": 19.227309,
+    "lon": 72.972736,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004189",
+    "name": "Mumbai Kurla West",
+    "lat": 19.079972,
+    "lon": 72.881537,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005000",
+    "name": "Mumbai Goregaon West",
+    "lat": 19.162722,
+    "lon": 72.84161,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002056",
+    "name": "Mumbai Hiranandani Estate",
+    "lat": 19.267411,
+    "lon": 72.967074,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009826",
+    "name": "Mumbai Dombivli",
+    "lat": 19.210229,
+    "lon": 73.102272,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007889",
+    "name": "Mumbai Bhandup West",
+    "lat": 19.151889,
+    "lon": 72.934553,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008977",
+    "name": "Mumbai Kamothe",
+    "lat": 19.023359,
+    "lon": 73.091814,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006622",
+    "name": "Mumbai Powai, Mumbai",
+    "lat": 19.115248,
+    "lon": 72.908952,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002074",
+    "name": "Mumbai Naupada",
+    "lat": 19.188451,
+    "lon": 72.968001,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008874",
+    "name": "Mumbai Bhayandar West",
+    "lat": 19.257869,
+    "lon": 72.804743,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001334",
+    "name": "Mumbai Vileparle East",
+    "lat": 19.09843,
+    "lon": 72.864947,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008378",
+    "name": "Mumbai Sion",
+    "lat": 19.045271,
+    "lon": 72.864631,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007690",
+    "name": "Mumbai Nerul (Navi Mumbai)",
+    "lat": 19.031072,
+    "lon": 73.026647,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007706",
+    "name": "Mumbai Dahisar West",
+    "lat": 19.255014,
+    "lon": 72.848267,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005320",
+    "name": "Mumbai Colaba",
+    "lat": 18.919405,
+    "lon": 72.824376,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006544",
+    "name": "Mumbai Mahim",
+    "lat": 19.039256,
+    "lon": 72.843913,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002686",
+    "name": "Mumbai Wadala",
+    "lat": 19.017538,
+    "lon": 72.867138,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001089",
+    "name": "Mumbai Borivali West",
+    "lat": 19.229714,
+    "lon": 72.83971,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008360",
+    "name": "Mumbai Palava Lakeshore,Mumbai",
+    "lat": 19.165716,
+    "lon": 73.105733,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003467",
+    "name": "Bengaluru Banashankari",
+    "lat": 12.936787,
+    "lon": 77.556079,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004900",
+    "name": "Bengaluru Rajarajeshwari Nagar",
+    "lat": 12.918637,
+    "lon": 77.505467,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005530",
+    "name": "Bengaluru JP Nagar",
+    "lat": 12.893441,
+    "lon": 77.560436,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007643",
+    "name": "Bengaluru Mahadevapura",
+    "lat": 12.985322,
+    "lon": 77.687578,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003159",
+    "name": "Bengaluru Jalahalli",
+    "lat": 13.031518,
+    "lon": 77.530986,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002736",
+    "name": "Bengaluru RT Nagar",
+    "lat": 13.021267,
+    "lon": 77.601234,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006369",
+    "name": "Bengaluru KR Puram",
+    "lat": 13.016987,
+    "lon": 77.706819,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006274",
+    "name": "Bengaluru Electronic City",
+    "lat": 12.833101,
+    "lon": 77.673182,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005375",
+    "name": "Bengaluru Vijayanagar",
+    "lat": 12.973219,
+    "lon": 77.519303,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008600",
+    "name": "Bengaluru Marathahalli",
+    "lat": 12.955103,
+    "lon": 77.696507,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002292",
+    "name": "Bengaluru Sarjapur road",
+    "lat": 12.900225,
+    "lon": 77.697451,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004341",
+    "name": "Bengaluru Brookefields",
+    "lat": 12.96742,
+    "lon": 77.717851,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007633",
+    "name": "Bengaluru Whitefield",
+    "lat": 12.975224,
+    "lon": 77.740422,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009212",
+    "name": "Bengaluru Nagavara",
+    "lat": 13.04837,
+    "lon": 77.625534,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007628",
+    "name": "Bengaluru New BEL Road",
+    "lat": 13.040495,
+    "lon": 77.56942,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001156",
+    "name": "Bengaluru Koramangala",
+    "lat": 12.933756,
+    "lon": 77.625825,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004924",
+    "name": "Bengaluru Bannerghatta Road, Bangalore",
+    "lat": 12.891397,
+    "lon": 77.608176,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009229",
+    "name": "Bengaluru Aavalahalli",
+    "lat": 13.034488,
+    "lon": 77.712241,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005576",
+    "name": "Bengaluru BIAL Airport Road",
+    "lat": 13.178996,
+    "lon": 77.630005,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006658",
+    "name": "Bengaluru Yelahanka",
+    "lat": 13.111809,
+    "lon": 77.589276,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002882",
+    "name": "Bengaluru Kadugodi",
+    "lat": 13.007511,
+    "lon": 77.763209,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006631",
+    "name": "Bengaluru Kammanahalli",
+    "lat": 13.01605,
+    "lon": 77.661735,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001196",
+    "name": "Bengaluru HSR Layout",
+    "lat": 12.908482,
+    "lon": 77.641773,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006600",
+    "name": "Bengaluru BTM Layout",
+    "lat": 12.916931,
+    "lon": 77.608897,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006854",
+    "name": "Bengaluru Varthur",
+    "lat": 12.936055,
+    "lon": 77.723415,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001273",
+    "name": "Bengaluru Indiranagar",
+    "lat": 12.952636,
+    "lon": 77.653059,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008105",
+    "name": "Bengaluru Jayanagar",
+    "lat": 12.944441,
+    "lon": 77.581003,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005206",
+    "name": "Bengaluru Sahakaranagar",
+    "lat": 13.059918,
+    "lon": 77.591344,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008797",
+    "name": "Bengaluru Devanahalli, Bangalore",
+    "lat": 13.258381,
+    "lon": 77.716183,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001962",
+    "name": "Bengaluru MG Road",
+    "lat": 12.982689,
+    "lon": 77.608075,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006844",
+    "name": "Bengaluru Rajajinagar",
+    "lat": 12.993217,
+    "lon": 77.557903,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004164",
+    "name": "Bengaluru Bellandur",
+    "lat": 12.936225,
+    "lon": 77.665059,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007698",
+    "name": "Pune NIGDI(Pune)",
+    "lat": 18.646511,
+    "lon": 73.775411,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005773",
+    "name": "Pune Bibvewadi (Pune)",
+    "lat": 18.492332,
+    "lon": 73.861939,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009577",
+    "name": "Pune Nanded-Nahre",
+    "lat": 18.453179,
+    "lon": 73.811077,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002253",
+    "name": "Pune Bhosari (Pune)",
+    "lat": 18.643893,
+    "lon": 73.858653,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003498",
+    "name": "Pune Camp Area",
+    "lat": 18.513693,
+    "lon": 73.877293,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004311",
+    "name": "Pune Magarpatta",
+    "lat": 18.519482,
+    "lon": 73.93436,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007801",
+    "name": "Pune Pimpri",
+    "lat": 18.625381,
+    "lon": 73.791194,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008134",
+    "name": "Pune Yerwada",
+    "lat": 18.544659,
+    "lon": 73.869499,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009625",
+    "name": "Pune Kalyani Nagar (Pune)",
+    "lat": 18.546538,
+    "lon": 73.906594,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001627",
+    "name": "Pune Sus, Pune",
+    "lat": 18.564293,
+    "lon": 73.753879,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006236",
+    "name": "Pune Bavdhan",
+    "lat": 18.51473,
+    "lon": 73.777922,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006743",
+    "name": "Pune Viman nagar",
+    "lat": 18.564998,
+    "lon": 73.911551,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004927",
+    "name": "Pune Aundh (Pune)",
+    "lat": 18.559795,
+    "lon": 73.807123,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008370",
+    "name": "Pune Katraj (Pune)",
+    "lat": 18.451394,
+    "lon": 73.847642,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004523",
+    "name": "Pune Pimple Saudagar_Pune",
+    "lat": 18.600897,
+    "lon": 73.798441,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001778",
+    "name": "Pune Dhanori",
+    "lat": 18.588936,
+    "lon": 73.907711,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003386",
+    "name": "Pune Dehu Road",
+    "lat": 18.695874,
+    "lon": 73.740365,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009157",
+    "name": "Pune Koregaon Park (Pune)",
+    "lat": 18.535326,
+    "lon": 73.883976,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004962",
+    "name": "Pune Hinjewadi - Phase 2",
+    "lat": 18.585004,
+    "lon": 73.706319,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005340",
+    "name": "Pune Wakad_Pune",
+    "lat": 18.599555,
+    "lon": 73.774652,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009671",
+    "name": "Pune Manas Lake, Pune",
+    "lat": 18.491382,
+    "lon": 73.748953,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008921",
+    "name": "Pune Sadashiv Peth",
+    "lat": 18.511357,
+    "lon": 73.856996,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008940",
+    "name": "Pune Ghorpadi (Pune)",
+    "lat": 18.519767,
+    "lon": 73.897269,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009874",
+    "name": "Pune Pashan (Pune)",
+    "lat": 18.527587,
+    "lon": 73.789459,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006660",
+    "name": "Pune SP Infocity, Pune",
+    "lat": 18.487813,
+    "lon": 73.947187,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003813",
+    "name": "Pune Manjri,Pune",
+    "lat": 18.509232,
+    "lon": 73.978364,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007471",
+    "name": "Pune Khadki, Pune",
+    "lat": 18.563289,
+    "lon": 73.835023,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009602",
+    "name": "Pune Kothrud (Pune)",
+    "lat": 18.504984,
+    "lon": 73.811587,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002208",
+    "name": "Pune Sinhagad Road(Pune)",
+    "lat": 18.477264,
+    "lon": 73.826437,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007895",
+    "name": "Pune New Sangvi, Pune",
+    "lat": 18.578959,
+    "lon": 73.823437,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003099",
+    "name": "Pune Nimgaon, Pune",
+    "lat": 18.794589,
+    "lon": 73.910016,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004575",
+    "name": "Pune Wagholi",
+    "lat": 18.57931,
+    "lon": 73.972122,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004513",
+    "name": "Pune Keshavnagar, Pune",
+    "lat": 18.537273,
+    "lon": 73.944521,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008983",
+    "name": "Pune Baner (Pune)",
+    "lat": 18.567954,
+    "lon": 73.783475,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005520",
+    "name": "Pune Warje (Pune)",
+    "lat": 18.472703,
+    "lon": 73.7884,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003300",
+    "name": "Pune Mundwa, Pune",
+    "lat": 18.53522,
+    "lon": 73.918549,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL001963",
+    "name": "Pune Chakan",
+    "lat": 18.752436,
+    "lon": 73.837484,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002422",
+    "name": "Pune Shivaji Nagar (Pune)",
+    "lat": 18.526724,
+    "lon": 73.841658,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005088",
+    "name": "Pune Yewalewadi, Pune",
+    "lat": 18.439804,
+    "lon": 73.902433,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003014",
+    "name": "Pune Bopkhel, Pune",
+    "lat": 18.586306,
+    "lon": 73.859602,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001472",
+    "name": "Pune Kharadi",
+    "lat": 18.55239,
+    "lon": 73.941901,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004339",
+    "name": "Pune Talegaon Dabhade",
+    "lat": 18.738724,
+    "lon": 73.675701,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003817",
+    "name": "Pune Hinjewadi - Phase 1",
+    "lat": 18.596583,
+    "lon": 73.733312,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007925",
+    "name": "Pune Wanowrie-Kondhwa",
+    "lat": 18.477085,
+    "lon": 73.900966,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003370",
+    "name": "Hyderabad Nagole",
+    "lat": 17.359969,
+    "lon": 78.565724,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002088",
+    "name": "Hyderabad Attapur",
+    "lat": 17.380875,
+    "lon": 78.415717,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006702",
+    "name": "Hyderabad Peerzadiguda",
+    "lat": 17.411644,
+    "lon": 78.57822,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008776",
+    "name": "Hyderabad Begumpet",
+    "lat": 17.442659,
+    "lon": 78.482009,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003918",
+    "name": "Hyderabad Suraram, Hyderabad",
+    "lat": 17.559752,
+    "lon": 78.437467,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004079",
+    "name": "Hyderabad Banjara Hills",
+    "lat": 17.419238,
+    "lon": 78.438474,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008309",
+    "name": "Hyderabad Alwal",
+    "lat": 17.508852,
+    "lon": 78.507402,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002433",
+    "name": "Hyderabad Sainikpuri",
+    "lat": 17.489079,
+    "lon": 78.55891,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007390",
+    "name": "Hyderabad Saroor Nagar",
+    "lat": 17.348264,
+    "lon": 78.530476,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004767",
+    "name": "Hyderabad Karkhana",
+    "lat": 17.467142,
+    "lon": 78.496696,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006016",
+    "name": "Hyderabad Kompally",
+    "lat": 17.533309,
+    "lon": 78.489965,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003283",
+    "name": "Hyderabad Himayatnagar",
+    "lat": 17.402602,
+    "lon": 78.487229,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007311",
+    "name": "Hyderabad Medchal Road",
+    "lat": 17.637191,
+    "lon": 78.480392,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005919",
+    "name": "Hyderabad Kukatpally",
+    "lat": 17.495894,
+    "lon": 78.416259,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001822",
+    "name": "Hyderabad Amberpet",
+    "lat": 17.407658,
+    "lon": 78.521703,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008208",
+    "name": "Hyderabad Jeedimetla",
+    "lat": 17.495621,
+    "lon": 78.450281,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001362",
+    "name": "Hyderabad Gachibowli",
+    "lat": 17.452114,
+    "lon": 78.351486,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL002162",
+    "name": "Hyderabad LB Nagar",
+    "lat": 17.345727,
+    "lon": 78.557062,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009712",
+    "name": "Hyderabad Dilsukhnagar",
+    "lat": 17.370431,
+    "lon": 78.536184,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005963",
+    "name": "Hyderabad Masab Tank",
+    "lat": 17.398217,
+    "lon": 78.462258,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008297",
+    "name": "Hyderabad Bachupally",
+    "lat": 17.544887,
+    "lon": 78.359975,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005424",
+    "name": "Hyderabad Manikonda",
+    "lat": 17.40593,
+    "lon": 78.38838,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008585",
+    "name": "Hyderabad Shamshabad",
+    "lat": 17.257432,
+    "lon": 78.38792,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008599",
+    "name": "Hyderabad Miyapur",
+    "lat": 17.500034,
+    "lon": 78.34267,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006535",
+    "name": "Hyderabad Hayath Nagar, Hyderabad",
+    "lat": 17.32662,
+    "lon": 78.609288,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006545",
+    "name": "Hyderabad Sangareddy, Hyderabad",
+    "lat": 17.598038,
+    "lon": 78.091346,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009719",
+    "name": "Hyderabad JNTU",
+    "lat": 17.485166,
+    "lon": 78.389775,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008890",
+    "name": "Hyderabad Serilingampally",
+    "lat": 17.485245,
+    "lon": 78.313916,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007119",
+    "name": "Hyderabad Nizampet",
+    "lat": 17.509398,
+    "lon": 78.390364,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004747",
+    "name": "Hyderabad Q City, Hyderabad",
+    "lat": 17.421788,
+    "lon": 78.318868,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004802",
+    "name": "Hyderabad Madhapur",
+    "lat": 17.441185,
+    "lon": 78.398416,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004665",
+    "name": "Hyderabad Narayanguda",
+    "lat": 17.39212,
+    "lon": 78.494443,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005999",
+    "name": "Hyderabad ECIL",
+    "lat": 17.460327,
+    "lon": 78.567924,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003360",
+    "name": "Hyderabad Toli Chowki",
+    "lat": 17.398121,
+    "lon": 78.421238,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007187",
+    "name": "Hyderabad Kondapur",
+    "lat": 17.472485,
+    "lon": 78.367854,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007344",
+    "name": "Hyderabad Charminar",
+    "lat": 17.375037,
+    "lon": 78.454499,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008438",
+    "name": "Hyderabad Sivarampalli",
+    "lat": 17.345995,
+    "lon": 78.439283,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005494",
+    "name": "Hyderabad Tarnaka",
+    "lat": 17.431829,
+    "lon": 78.55094,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009519",
+    "name": "Hyderabad Moosapet",
+    "lat": 17.453292,
+    "lon": 78.421126,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001687",
+    "name": "Hyderabad Patancheru, Hyderabad",
+    "lat": 17.542613,
+    "lon": 78.276529,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005569",
+    "name": "Hyderabad Vanasthali Puram",
+    "lat": 17.318241,
+    "lon": 78.544989,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003027",
+    "name": "Hyderabad Ameerpet",
+    "lat": 17.434737,
+    "lon": 78.446618,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001337",
+    "name": "Hyderabad Uppal",
+    "lat": 17.403149,
+    "lon": 78.554106,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001579",
+    "name": "Hyderabad Malakpet",
+    "lat": 17.371621,
+    "lon": 78.502672,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006699",
+    "name": "Hyderabad Hafiz Baba Nagar",
+    "lat": 17.338717,
+    "lon": 78.49759,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008512",
+    "name": "Hyderabad Mokila, Hyderabad",
+    "lat": 17.436228,
+    "lon": 78.190072,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006789",
+    "name": "Chennai Potheri",
+    "lat": 12.799983,
+    "lon": 80.029865,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004297",
+    "name": "Chennai Pallavaram",
+    "lat": 12.973055,
+    "lon": 80.151271,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005190",
+    "name": "Chennai Nungambakkam",
+    "lat": 13.060471,
+    "lon": 80.255887,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003967",
+    "name": "Chennai Anna Nagar, Chennai",
+    "lat": 13.086884,
+    "lon": 80.206602,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008996",
+    "name": "Chennai Perambur",
+    "lat": 13.121741,
+    "lon": 80.225058,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL005857",
+    "name": "Chennai Mogappair, Chennai",
+    "lat": 13.080365,
+    "lon": 80.175724,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006232",
+    "name": "Chennai Royapuram",
+    "lat": 13.136635,
+    "lon": 80.289535,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008548",
+    "name": "Chennai Mugalivakkam",
+    "lat": 13.014886,
+    "lon": 80.152455,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006053",
+    "name": "Chennai Porur",
+    "lat": 13.048069,
+    "lon": 80.158163,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001398",
+    "name": "Chennai Redhills",
+    "lat": 13.191443,
+    "lon": 80.181225,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001701",
+    "name": "Chennai Tambaram",
+    "lat": 12.934834,
+    "lon": 80.101824,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL008876",
+    "name": "Chennai Avadi",
+    "lat": 13.125301,
+    "lon": 80.069776,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL003387",
+    "name": "Chennai Kilpauk",
+    "lat": 13.080772,
+    "lon": 80.248018,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007059",
+    "name": "Chennai Ashok Nagar (CHENNAI)",
+    "lat": 13.02268,
+    "lon": 80.200286,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006520",
+    "name": "Chennai Adyar",
+    "lat": 12.993947,
+    "lon": 80.247174,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001210",
+    "name": "Chennai Alwarpet",
+    "lat": 13.032366,
+    "lon": 80.257625,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007171",
+    "name": "Chennai Selaiyur",
+    "lat": 12.91657,
+    "lon": 80.134348,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006329",
+    "name": "Chennai Thandalam, Chennai",
+    "lat": 12.863785,
+    "lon": 79.947886,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004233",
+    "name": "Chennai Sholinganallur",
+    "lat": 12.921608,
+    "lon": 80.233727,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007209",
+    "name": "Chennai Ambattur",
+    "lat": 13.117566,
+    "lon": 80.146667,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003452",
+    "name": "Chennai Medavakkam",
+    "lat": 12.931197,
+    "lon": 80.182327,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL007176",
+    "name": "Chennai Poonamallee",
+    "lat": 13.052763,
+    "lon": 80.090763,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL009897",
+    "name": "Chennai Minjur, Chennai",
+    "lat": 13.282298,
+    "lon": 80.266616,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL004882",
+    "name": "Chennai Urapakkam",
+    "lat": 12.878957,
+    "lon": 80.070307,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL006156",
+    "name": "Chennai Velachery",
+    "lat": 12.9893,
+    "lon": 80.199988,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL001141",
+    "name": "Chennai Navallur",
+    "lat": 12.841923,
+    "lon": 80.209025,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004431",
+    "name": "Chennai Vadapalani",
+    "lat": 13.06516,
+    "lon": 80.207917,
+    "dev_type": 1
+  },
+  {
+    "loc_id": "ZWL001516",
+    "name": "Chennai T Nagar",
+    "lat": 13.026256,
+    "lon": 80.22812,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003768",
+    "name": "Kochi Eroor",
+    "lat": 9.929826,
+    "lon": 76.332369,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005555",
+    "name": "Kochi Kakkanad",
+    "lat": 10.014153,
+    "lon": 76.358626,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002986",
+    "name": "Kochi Nedumbassery,Kochi",
+    "lat": 10.178008,
+    "lon": 76.386636,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004273",
+    "name": "Kochi North Paravur, Kochi",
+    "lat": 10.162441,
+    "lon": 76.216317,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005425",
+    "name": "Kochi Aluva, Kochi",
+    "lat": 10.106615,
+    "lon": 76.348843,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004691",
+    "name": "Kochi Ambalamugal",
+    "lat": 9.980241,
+    "lon": 76.397987,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL001981",
+    "name": "Kochi Kalamassery",
+    "lat": 10.046034,
+    "lon": 76.308117,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003786",
+    "name": "Kochi Kaloor",
+    "lat": 10.000143,
+    "lon": 76.298744,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009487",
+    "name": "Kochi Perumbavoor,Kochi",
+    "lat": 10.117563,
+    "lon": 76.46032,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007216",
+    "name": "Kochi Thiruvankulam",
+    "lat": 9.932264,
+    "lon": 76.38574,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002327",
+    "name": "Kochi Vypin, Kochi",
+    "lat": 10.019731,
+    "lon": 76.245595,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006873",
+    "name": "Kochi Ernakulam",
+    "lat": 9.969514,
+    "lon": 76.288288,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004591",
+    "name": "Kochi Fort Kochi",
+    "lat": 9.931564,
+    "lon": 76.268065,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002150",
+    "name": "Goa Verna, Goa",
+    "lat": 15.38064,
+    "lon": 73.909304,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008519",
+    "name": "Goa Mapusa, Goa",
+    "lat": 15.599556,
+    "lon": 73.791137,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004452",
+    "name": "Goa Calangute, Goa",
+    "lat": 15.532704,
+    "lon": 73.762608,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006556",
+    "name": "Goa Majorda, Goa",
+    "lat": 15.255895,
+    "lon": 73.937616,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002137",
+    "name": "Goa Upper panaji, Goa",
+    "lat": 15.460913,
+    "lon": 73.835391,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005093",
+    "name": "Goa Ponda, Goa",
+    "lat": 15.398953,
+    "lon": 74.002377,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002142",
+    "name": "Goa Margao, Goa",
+    "lat": 15.231363,
+    "lon": 73.997689,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004621",
+    "name": "Goa Vasco, Goa",
+    "lat": 15.387592,
+    "lon": 73.829979,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006403",
+    "name": "Goa Morjim, Goa",
+    "lat": 15.653757,
+    "lon": 73.747022,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005568",
+    "name": "Goa Porvorim, Goa",
+    "lat": 15.535007,
+    "lon": 73.827229,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL001466",
+    "name": "Visakhapatnam NAD, Vizag",
+    "lat": 17.749616,
+    "lon": 83.230677,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003024",
+    "name": "Visakhapatnam Gajuwaka",
+    "lat": 17.681004,
+    "lon": 83.207459,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004755",
+    "name": "Visakhapatnam Dwaraka Nagar",
+    "lat": 17.739116,
+    "lon": 83.324672,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009959",
+    "name": "Visakhapatnam Madhurawada",
+    "lat": 17.789823,
+    "lon": 83.373031,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003661",
+    "name": "Coimbatore Gandhipuram, Coimbatore",
+    "lat": 11.019095,
+    "lon": 76.968472,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005742",
+    "name": "Coimbatore Vadavalli",
+    "lat": 11.02482,
+    "lon": 76.900648,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008653",
+    "name": "Coimbatore RS Puram, Coimbatore",
+    "lat": 11.000355,
+    "lon": 76.941985,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002703",
+    "name": "Coimbatore Racecourse, Coimbatore",
+    "lat": 10.999272,
+    "lon": 76.975662,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009668",
+    "name": "Coimbatore Saibaba Colony, Coimbatore",
+    "lat": 11.032946,
+    "lon": 76.944253,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007527",
+    "name": "Coimbatore Peelamedu, Coimbatore",
+    "lat": 11.026179,
+    "lon": 77.005899,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005468",
+    "name": "Coimbatore Podanur, Coimbatore",
+    "lat": 10.977206,
+    "lon": 76.981702,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004408",
+    "name": "Coimbatore Kunniamuthur, Coimbatore",
+    "lat": 10.937589,
+    "lon": 76.933705,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL008265",
+    "name": "Coimbatore Ondipudur, Coimbatore",
+    "lat": 10.99767,
+    "lon": 77.042986,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007600",
+    "name": "Coimbatore Koundampalayam",
+    "lat": 11.068353,
+    "lon": 76.937962,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002147",
+    "name": "Coimbatore Saravanampatty",
+    "lat": 11.070812,
+    "lon": 76.998053,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009595",
+    "name": "Coimbatore Ganapathypudur, Coimbatore",
+    "lat": 11.042698,
+    "lon": 76.984477,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL001279",
+    "name": "Coimbatore Sitra, and Singanallur, Coimbatore",
+    "lat": 11.042569,
+    "lon": 77.054996,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL006449",
+    "name": "Mangalore South Mangalore",
+    "lat": 12.87903,
+    "lon": 74.854593,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009478",
+    "name": "Mangalore Thokkattu, Mangalore",
+    "lat": 12.82046,
+    "lon": 74.865765,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002458",
+    "name": "Mysore Central Mysore",
+    "lat": 12.326689,
+    "lon": 76.633539,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL009343",
+    "name": "Trivandrum Kazhakoottam, Thiruvananthapuram",
+    "lat": 8.57517,
+    "lon": 76.904888,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL007746",
+    "name": "Trivandrum Tvm Central",
+    "lat": 8.490977,
+    "lon": 76.96925,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002223",
+    "name": "Trivandrum Nemom, Thiruvananthapuram",
+    "lat": 8.430376,
+    "lon": 77.027424,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005308",
+    "name": "Vijayawada Governorpet, Vijayawada",
+    "lat": 16.520989,
+    "lon": 80.63634,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL004428",
+    "name": "Vijayawada Gunadala, Vijayawada",
+    "lat": 16.515748,
+    "lon": 80.690025,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL002106",
+    "name": "Vijayawada Gollapudi, Vijayawada",
+    "lat": 16.541337,
+    "lon": 80.585061,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL005858",
+    "name": "Vijayawada Auto Nagar, Vijayawada",
+    "lat": 16.487591,
+    "lon": 80.68556,
+    "dev_type": 2
+  },
+  {
+    "loc_id": "ZWL003905",
+    "name": "Vijayawada Labbipet, Vijayawada",
+    "lat": 16.510686,
+    "lon": 80.648812,
+    "dev_type": 2
+  }
+]
