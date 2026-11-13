@@ -82,14 +82,14 @@ def is_fresh_observation(
     max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
 ) -> bool:
     """Returns True ONLY if the observation timestamp is new (within max_age_hours).
-    Evaluated against real-time operational wall clock.
+    Evaluated against operational reference time or wall clock.
     """
     if not obs_time_str:
         return False
     obs_dt = parse_timestamp_to_utc(obs_time_str)
     if not obs_dt:
         return False
-    now = datetime.now(timezone.utc)
+    now = ref_time or datetime.now(timezone.utc)
     age_seconds = (now - obs_dt).total_seconds()
     # Accept data strictly within [-3600s, max_age_hours * 3600s]
     return -3600 <= age_seconds <= (max_age_hours * 3600.0)
@@ -101,27 +101,42 @@ def load_weatherunion_observations(
 ) -> tuple[list[dict], int]:
     """Loads hyperlocal station observations from WeatherUnion by Zomato.
 
-    Strictly discards old data older than max_age_hours.
+    If cached data is missing or stale, automatically triggers a live batch fetch.
+    Strictly discards data older than max_age_hours.
     Returns: (fresh_stations, stale_discarded_count)
     """
+    def _parse_cache(doc: dict) -> tuple[list[dict], int]:
+        stations = doc.get("stations", {})
+        cache_updated = doc.get("last_updated")
+        fresh = []
+        stale_count = 0
+        for st in stations.values():
+            ts = st.get("timestamp") or cache_updated
+            if is_fresh_observation(ts, ref_time=ref_time, max_age_hours=max_age_hours):
+                fresh.append(st)
+            else:
+                stale_count += 1
+        return fresh, stale_count
+
     if os.path.exists(WEATHERUNION_CACHE):
         try:
             with open(WEATHERUNION_CACHE, "r", encoding="utf-8") as f:
                 doc = json.load(f)
-                stations = doc.get("stations", {})
-                cache_updated = doc.get("last_updated")
-
-                fresh = []
-                stale_count = 0
-                for st in stations.values():
-                    ts = st.get("timestamp") or cache_updated
-                    if is_fresh_observation(ts, ref_time=ref_time, max_age_hours=max_age_hours):
-                        fresh.append(st)
-                    else:
-                        stale_count += 1
-                return fresh, stale_count
+                fresh, stale = _parse_cache(doc)
+                if fresh:
+                    return fresh, stale
         except Exception:
             pass
+
+    # If no fresh cached data exists, auto-fetch live observations
+    try:
+        from pipeline.obs_weatherunion import fetch_hourly_batch
+        new_doc = fetch_hourly_batch(limit=40)
+        if new_doc:
+            return _parse_cache(new_doc)
+    except Exception:
+        pass
+
     return [], 0
 
 
@@ -131,27 +146,42 @@ def load_pmfby_winds_observations(
 ) -> tuple[list[dict], int]:
     """Loads district agricultural weather station observations from PMFBY WINDS.
 
-    Strictly discards old data older than max_age_hours.
+    If cached data is missing or stale, automatically triggers a live fetch.
+    Strictly discards data older than max_age_hours.
     Returns: (fresh_stations, stale_discarded_count)
     """
+    def _parse_cache(doc: dict) -> tuple[list[dict], int]:
+        stations = doc.get("stations", {})
+        cache_updated = doc.get("last_updated")
+        fresh = []
+        stale_count = 0
+        for st in stations.values():
+            ts = st.get("timestamp") or st.get("time_stamp") or cache_updated
+            if is_fresh_observation(ts, ref_time=ref_time, max_age_hours=max_age_hours):
+                fresh.append(st)
+            else:
+                stale_count += 1
+        return fresh, stale_count
+
     if os.path.exists(WINDS_CACHE):
         try:
             with open(WINDS_CACHE, "r", encoding="utf-8") as f:
                 doc = json.load(f)
-                stations = doc.get("stations", {})
-                cache_updated = doc.get("last_updated")
-
-                fresh = []
-                stale_count = 0
-                for st in stations.values():
-                    ts = st.get("timestamp") or st.get("time_stamp") or cache_updated
-                    if is_fresh_observation(ts, ref_time=ref_time, max_age_hours=max_age_hours):
-                        fresh.append(st)
-                    else:
-                        stale_count += 1
-                return fresh, stale_count
+                fresh, stale = _parse_cache(doc)
+                if fresh:
+                    return fresh, stale
         except Exception:
             pass
+
+    # If no fresh cached data exists, auto-fetch live observations
+    try:
+        from pipeline.obs_winds import fetch_all_south_india_winds
+        new_doc = fetch_all_south_india_winds()
+        if new_doc:
+            return _parse_cache(new_doc)
+    except Exception:
+        pass
+
     return [], 0
 
 

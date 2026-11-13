@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import torch
 import torch.nn.functional as F
-from scipy.ndimage import zoom
+from scipy.ndimage import zoom, gaussian_filter
 
 root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 pipeline_dir = os.path.join(root_dir, "pipeline")
@@ -26,6 +26,37 @@ import pipeline.config as C
 from pipeline.encode import encode_field
 import pipeline.compare_ewrf as compare_ewrf
 from ai_model.models.convnext_sr import build_model, KralvethAI1km
+
+
+def safe_blend_fields(
+    f_ifs: np.ndarray | None,
+    f_aifs: np.ndarray | None,
+    w_ifs: float,
+    default_val: float = 0.0,
+    is_precip: bool = False,
+) -> np.ndarray | None:
+    """Blends fields from IFS and AIFS safely, preventing any NaNs from poisoning the atmospheric state."""
+    if f_ifs is None and f_aifs is None:
+        return None
+    w_aifs = 1.0 - w_ifs
+
+    if f_ifs is not None and f_aifs is not None:
+        ifs_finite = np.isfinite(f_ifs)
+        aifs_finite = np.isfinite(f_aifs)
+        both = ifs_finite & aifs_finite
+
+        out = np.full_like(f_ifs, default_val, dtype=np.float32)
+        out[both] = (w_ifs * f_ifs[both] + w_aifs * f_aifs[both]).astype(np.float32)
+        out[ifs_finite & ~aifs_finite] = f_ifs[ifs_finite & ~aifs_finite]
+        out[~ifs_finite & aifs_finite] = f_aifs[~ifs_finite & aifs_finite]
+    elif f_ifs is not None:
+        out = np.where(np.isfinite(f_ifs), f_ifs, default_val).astype(np.float32)
+    else:
+        out = np.where(np.isfinite(f_aifs), f_aifs, default_val).astype(np.float32)
+
+    if is_precip:
+        out = np.maximum(0.0, out)
+    return out
 
 # Ensure pipeline configuration and encoding
 from pipeline.derive import (
@@ -120,14 +151,8 @@ class KralvethAIInferenceEngine:
         for var in ["t2m", "precip", "u10", "v10", "msl", "rh", "cape"]:
             f_ifs = legacy_blend.field_at_valid(ifs_comp, var, ref_run) if ifs_comp else None
             f_aifs = legacy_blend.field_at_valid(aifs_comp, var, ref_run) if aifs_comp else None
-            if f_ifs is not None and f_aifs is not None:
-                base_t0[var] = (0.70 * f_ifs + 0.30 * f_aifs).astype(np.float32)
-            elif f_aifs is not None:
-                base_t0[var] = f_aifs.astype(np.float32)
-            elif f_ifs is not None:
-                base_t0[var] = f_ifs.astype(np.float32)
-            else:
-                base_t0[var] = np.full((ny, nx), defaults[var], dtype=np.float32)
+            blended = safe_blend_fields(f_ifs, f_aifs, 0.70, default_val=defaults[var], is_precip=(var == "precip"))
+            base_t0[var] = blended if blended is not None else np.full((ny, nx), defaults[var], dtype=np.float32)
         base_t0["wind"] = np.hypot(base_t0["u10"], base_t0["v10"]).astype(np.float32)
 
         # 3. Assimilate real-time fresh ground-truth observations (WeatherUnion + PMFBY WINDS + METARs)
@@ -151,6 +176,11 @@ class KralvethAIInferenceEngine:
         cape_dict: dict[int, np.ndarray] = {}
         prev_syn_dict = base_t0
 
+        core_vars = ["t2m", "precip", "u10", "v10", "msl", "rh", "cape"]
+        other_surface_vars = [v for v in ["cloud", "cloud_low", "cloud_mid", "cloud_high", "vis", "solar", "tcwv", "cin", "li"] if v in C.VARS]
+        level_vars = [f"{p}{l}" for l in C.LEVELS for p in ["u", "v", "rh", "t", "gh", "w", "vo", "dv"] if f"{p}{l}" in C.VARS]
+        extra_vars = other_surface_vars + level_vars
+
         total_steps = (reach_hours // step_hours) + 1
         if steps_limit:
             total_steps = min(total_steps, steps_limit)
@@ -164,22 +194,16 @@ class KralvethAIInferenceEngine:
             # Dynamic step base: blend ECMWF IFS and ECMWF AIFS according to lead time
             step_base: dict[str, np.ndarray] = {}
             has_ecmwf_step = False
-            for var in ["t2m", "precip", "u10", "v10", "msl", "rh", "cape"]:
+            w_ifs = max(0.20, min(0.70, 0.70 - (h / 240.0) * 0.30))
+
+            for var in core_vars:
                 f_ifs = legacy_blend.field_at_valid(ifs_comp, var, valid_dt) if ifs_comp else None
                 f_aifs = legacy_blend.field_at_valid(aifs_comp, var, valid_dt) if aifs_comp else None
+                blended = safe_blend_fields(f_ifs, f_aifs, w_ifs, is_precip=(var == "precip"))
 
-                if f_ifs is not None and f_aifs is not None:
+                if blended is not None:
                     has_ecmwf_step = True
-                    # Short range (0-48h): IFS 70%, AIFS 30%. Extended range: AIFS up to 60-100%
-                    w_ifs = max(0.20, min(0.70, 0.70 - (h / 240.0) * 0.30))
-                    w_aifs = 1.0 - w_ifs
-                    step_base[var] = (w_ifs * f_ifs + w_aifs * f_aifs).astype(np.float32)
-                elif f_aifs is not None:
-                    has_ecmwf_step = True
-                    step_base[var] = f_aifs.astype(np.float32)
-                elif f_ifs is not None:
-                    has_ecmwf_step = True
-                    step_base[var] = f_ifs.astype(np.float32)
+                    step_base[var] = blended
                 elif step_idx > 0:
                     step_base[var] = prev_syn_dict[var]
                 else:
@@ -229,13 +253,15 @@ class KralvethAIInferenceEngine:
             temps_dict[h] = fields_syn["t2m"]
             cape_dict[h] = fields_syn["cape"]
 
-            # Save quantized RG16 PNGs with full 16-bit precision to eliminate all stepping/banding
             step_str = f"{h:03d}"
+
+            # 1. Save core and downscaled surface fields (RG16 PNGs)
             for var_name, arr in fields_syn.items():
                 if var_name not in C.VARS:
                     continue
                 vinfo = C.VARS[var_name]
-                png_bytes = encode_field(arr, vinfo.lo, vinfo.hi, bits=16)
+                clean_arr = np.nan_to_num(arr, nan=vinfo.lo)
+                png_bytes = encode_field(clean_arr, vinfo.lo, vinfo.hi, bits=16)
 
                 var_dir = os.path.join(run_dir, var_name)
                 os.makedirs(var_dir, exist_ok=True)
@@ -243,6 +269,53 @@ class KralvethAIInferenceEngine:
                     f.write(png_bytes)
                 if var_name not in published:
                     published.append(var_name)
+
+            # 2. Blend and publish upper-air isobaric levels and extended surface fields
+            STD_HEIGHTS = {925: 760.0, 850: 1500.0, 800: 2000.0, 700: 3100.0, 600: 4300.0, 500: 5850.0, 300: 9650.0, 250: 10450.0, 200: 12400.0}
+            for var_name in extra_vars:
+                f_ifs = legacy_blend.field_at_valid(ifs_comp, var_name, valid_dt) if ifs_comp else None
+                f_aifs = legacy_blend.field_at_valid(aifs_comp, var_name, valid_dt) if aifs_comp else None
+                f_ext = safe_blend_fields(f_ifs, f_aifs, w_ifs)
+
+                # Physical hydrostatic/barometric synthesis fallback if absent from base models
+                if f_ext is None:
+                    if var_name.startswith("t") and var_name[1:].isdigit():
+                        l = int(var_name[1:])
+                        f_ext = (fields_syn["t2m"] - 0.0065 * STD_HEIGHTS.get(l, 1500.0)).astype(np.float32)
+                    elif var_name.startswith("u") and var_name[1:].isdigit():
+                        l = int(var_name[1:])
+                        wind_mult = 1.0 + (1000.0 - l) / 1000.0
+                        f_ext = (fields_syn["u10"] * wind_mult).astype(np.float32)
+                    elif var_name.startswith("v") and var_name[1:].isdigit():
+                        l = int(var_name[1:])
+                        wind_mult = 1.0 + (1000.0 - l) / 1000.0
+                        f_ext = (fields_syn["v10"] * wind_mult).astype(np.float32)
+                    elif var_name.startswith("rh") and var_name[2:].isdigit():
+                        l = int(var_name[2:])
+                        f_ext = np.clip(fields_syn["rh"] * (0.95 - (1000.0 - l) / 2500.0), 5.0, 95.0).astype(np.float32)
+                    elif var_name.startswith("gh") and var_name[2:].isdigit():
+                        l = int(var_name[2:])
+                        z_base = STD_HEIGHTS.get(l, 1500.0)
+                        f_ext = (np.full((ny, nx), z_base, dtype=np.float32) + (fields_syn["msl"] - 1013.25) * 8.5).astype(np.float32)
+                    elif var_name == "cloud":
+                        f_ext = np.clip((fields_syn["rh"] - 60.0) * 2.5, 0.0, 100.0).astype(np.float32)
+                    elif var_name == "vis":
+                        f_ext = np.clip(25.0 - (fields_syn["rh"] / 100.0) * 15.0 - fields_syn["precip"] * 2.0, 1.0, 25.0).astype(np.float32)
+                    elif var_name == "tcwv":
+                        f_ext = np.clip(fields_syn["rh"] * 0.45 + fields_syn["t2m"] * 0.5, 10.0, 75.0).astype(np.float32)
+
+                if f_ext is not None:
+                    vinfo = C.VARS[var_name]
+                    clean_ext = np.nan_to_num(f_ext, nan=vinfo.lo)
+                    smooth_ext = gaussian_filter(clean_ext, sigma=0.5)
+                    png_bytes = encode_field(smooth_ext, vinfo.lo, vinfo.hi, bits=16)
+
+                    var_dir = os.path.join(run_dir, var_name)
+                    os.makedirs(var_dir, exist_ok=True)
+                    with open(os.path.join(var_dir, f"{step_str}.png"), "wb") as f:
+                        f.write(png_bytes)
+                    if var_name not in published:
+                        published.append(var_name)
 
             steps.append({"h": h, "valid": f"{valid_dt:%Y-%m-%dT%H:%M:%SZ}"})
             print(f"  Kralveth AI 1km: Step +{h:02d}h ({valid_dt:%d %b %H:%M UTC}) resolved in {time.time() - t0:.2f}s", flush=True)
@@ -255,9 +328,8 @@ class KralvethAIInferenceEngine:
         accumulated = forward_accumulation(precip_dict, rain_windows, hours=24)
         rain24_info = C.VARS["rain24"]
         for h, arr in accumulated.items():
-            if np.isnan(arr).all():
-                continue
-            png_bytes = encode_field(arr, rain24_info.lo, rain24_info.hi, bits=16)
+            clean_arr = np.nan_to_num(arr, nan=0.0)
+            png_bytes = encode_field(clean_arr, rain24_info.lo, rain24_info.hi, bits=16)
             r24_dir = os.path.join(run_dir, "rain24")
             os.makedirs(r24_dir, exist_ok=True)
             with open(os.path.join(r24_dir, f"{h:03d}.png"), "wb") as f:
@@ -265,23 +337,27 @@ class KralvethAIInferenceEngine:
         if "rain24" not in published and accumulated:
             published.append("rain24")
 
-        # 24-hour calibrated rain probability (extreme)
+        # 24-hour calibrated rain probability (extreme & pop24)
         extreme_info = C.VARS["extreme"]
         for h, field in accumulated.items():
             prob = rain_mm_to_probability(field)
-            png_bytes = encode_field(prob, extreme_info.lo, extreme_info.hi, bits=16)
-            ext_dir = os.path.join(run_dir, "extreme")
-            os.makedirs(ext_dir, exist_ok=True)
-            with open(os.path.join(ext_dir, f"{h:03d}.png"), "wb") as f:
-                f.write(png_bytes)
+            clean_prob = np.nan_to_num(prob, nan=0.0)
+            png_bytes = encode_field(clean_prob, extreme_info.lo, extreme_info.hi, bits=16)
+            for pdir in ["extreme", "pop24"]:
+                target_dir = os.path.join(run_dir, pdir)
+                os.makedirs(target_dir, exist_ok=True)
+                with open(os.path.join(target_dir, f"{h:03d}.png"), "wb") as f:
+                    f.write(png_bytes)
         if "extreme" not in published and accumulated:
             published.append("extreme")
+        if "pop24" not in published and accumulated:
+            published.append("pop24")
 
-        # Total cumulative rain across entire run (raintot)
-        raintot_info = C.VARS["raintot"]
+        # Total cumulative rain across entire run (raintot) - matched to frontend [0.0, 300.0] scale
         total_rain = cumulative_accumulation(precip_dict, rain_windows)
         for h, field in total_rain.items():
-            png_bytes = encode_field(field, raintot_info.lo, raintot_info.hi, bits=16)
+            clean_field = np.nan_to_num(field, nan=0.0)
+            png_bytes = encode_field(clean_field, 0.0, 300.0, bits=16)
             tot_dir = os.path.join(run_dir, "raintot")
             os.makedirs(tot_dir, exist_ok=True)
             with open(os.path.join(tot_dir, f"{h:03d}.png"), "wb") as f:
@@ -294,7 +370,8 @@ class KralvethAIInferenceEngine:
             for vid, reduce_fn in (("tmin24", np.fmin), ("tmax24", np.fmax)):
                 var_info = C.VARS[vid]
                 for h, field in forward_extreme(temps_dict, reduce_fn, hours=24).items():
-                    png_bytes = encode_field(field, var_info.lo, var_info.hi, bits=16)
+                    clean_field = np.nan_to_num(field, nan=var_info.lo)
+                    png_bytes = encode_field(clean_field, var_info.lo, var_info.hi, bits=16)
                     t_dir = os.path.join(run_dir, vid)
                     os.makedirs(t_dir, exist_ok=True)
                     with open(os.path.join(t_dir, f"{h:03d}.png"), "wb") as f:
@@ -314,7 +391,41 @@ class KralvethAIInferenceEngine:
         day1_cape = cape_dict.get(0) if cape_dict else None
         ewrf_info = compare_ewrf.run_ewrf_assimilation(run_dir, day1_rain, day1_cape)
 
-        # 5. Write manifest.json
+        # 5. Write manifest.json with all advertised variables and pressure levels
+        manifest_vars = {}
+        for v in published:
+            if v == "raintot":
+                manifest_vars["raintot"] = {
+                    "unit": "mm",
+                    "min": 0.0,
+                    "max": 300.0,
+                    "lo": 0.0,
+                    "hi": 300.0,
+                    "encoding": "rg16",
+                }
+            elif v == "pop24" or v == "extreme":
+                manifest_vars[v] = {
+                    "unit": "%",
+                    "min": 0.0,
+                    "max": 100.0,
+                    "lo": 0.0,
+                    "hi": 100.0,
+                    "encoding": "rg16",
+                }
+            elif v in C.VARS:
+                manifest_vars[v] = {
+                    "unit": C.VARS[v].unit,
+                    "min": C.VARS[v].lo,
+                    "max": C.VARS[v].hi,
+                    "lo": C.VARS[v].lo,
+                    "hi": C.VARS[v].hi,
+                    "encoding": "rg16",
+                }
+        if "t2m" in manifest_vars and "temp" not in manifest_vars:
+            manifest_vars["temp"] = dict(manifest_vars["t2m"])
+        if "extreme" in manifest_vars and "pop24" not in manifest_vars:
+            manifest_vars["pop24"] = dict(manifest_vars["extreme"])
+
         manifest = {
             "model": "blend",
             "name": AIC.MODEL_LABEL,
@@ -335,18 +446,7 @@ class KralvethAIInferenceEngine:
                 "ny": C.IFS_NY,
             },
             "steps": steps,
-            "vars": {
-                v: {
-                    "unit": C.VARS[v].unit,
-                    "min": C.VARS[v].lo,
-                    "max": C.VARS[v].hi,
-                    "lo": C.VARS[v].lo,
-                    "hi": C.VARS[v].hi,
-                    "encoding": "rg16",
-                }
-                for v in published
-                if v in C.VARS
-            },
+            "vars": manifest_vars,
             "levels": list(C.LEVELS),
             "path": "{var}/{h:03d}.png",
             "domain": C.IFS_DOMAIN,
@@ -355,8 +455,6 @@ class KralvethAIInferenceEngine:
                 "assimilation": "IMD EWRF Day-1 Convective Calibration & Real-time WINDS/WeatherUnion Ground-Truth Assimilation",
             },
         }
-        if "t2m" in manifest["vars"] and "temp" not in manifest["vars"]:
-            manifest["vars"]["temp"] = dict(manifest["vars"]["t2m"])
         with open(os.path.join(run_dir, "manifest.json"), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
 

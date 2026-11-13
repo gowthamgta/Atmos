@@ -1,106 +1,106 @@
 {
-  "timestamp": "2026-11-13T17:50:39.443095+00:00",
-  "hour_utc": 17,
+  "timestamp": "2026-11-13T18:26:27.095140+00:00",
+  "hour_utc": 18,
   "freshness_policy": "STRICT_REALTIME_ONLY",
   "max_allowed_age_hours": 8.0,
-  "weatherunion_fresh_count": 35,
+  "weatherunion_fresh_count": 40,
   "weatherunion_stale_dropped": 0,
   "pmfby_winds_fresh_count": 93,
   "pmfby_winds_stale_dropped": 0,
   "temp_obs_count": 76,
   "rh_obs_count": 73,
-  "wind_obs_count": 53,
-  "precip_obs_count": 27,
+  "wind_obs_count": 52,
+  "precip_obs_count": 30,
   "sample_corrections": [
     {
       "type": "temperature",
       "lat": 13.1217,
       "lon": 80.2251,
-      "original_obs": 27.83,
+      "original_obs": 26.87,
       "model_before": 28.5,
-      "model_after": 27.96,
-      "delta": -0.54
+      "model_after": 27.09,
+      "delta": -1.41
     },
     {
       "type": "temperature",
       "lat": 12.9348,
       "lon": 80.1018,
-      "original_obs": 28.69,
+      "original_obs": 27.37,
       "model_before": 28.5,
-      "model_after": 27.89,
-      "delta": -0.61
+      "model_after": 27.07,
+      "delta": -1.43
     },
     {
       "type": "temperature",
       "lat": 13.0481,
       "lon": 80.1582,
-      "original_obs": 27.95,
+      "original_obs": 26.59,
       "model_before": 28.5,
-      "model_after": 27.94,
-      "delta": -0.56
+      "model_after": 27.09,
+      "delta": -1.41
     },
     {
       "type": "temperature",
       "lat": 13.0808,
       "lon": 80.248,
-      "original_obs": 28.74,
+      "original_obs": 28.04,
       "model_before": 28.5,
-      "model_after": 27.96,
-      "delta": -0.54
+      "model_after": 27.09,
+      "delta": -1.41
     },
     {
       "type": "temperature",
       "lat": 13.0528,
       "lon": 80.0908,
-      "original_obs": 27.87,
+      "original_obs": 25.68,
       "model_before": 28.5,
-      "model_after": 27.94,
-      "delta": -0.56
+      "model_after": 27.09,
+      "delta": -1.41
     },
     {
       "type": "temperature",
       "lat": 12.9368,
       "lon": 77.5561,
-      "original_obs": 25.02,
+      "original_obs": 21.66,
       "model_before": 28.5,
-      "model_after": 24.57,
-      "delta": -3.93
+      "model_after": 24.16,
+      "delta": -4.34
     },
     {
       "type": "temperature",
       "lat": 12.8934,
       "lon": 77.5604,
-      "original_obs": 24.71,
+      "original_obs": 21.55,
       "model_before": 28.5,
-      "model_after": 24.57,
-      "delta": -3.93
+      "model_after": 24.16,
+      "delta": -4.34
     },
     {
       "type": "temperature",
       "lat": 13.0315,
       "lon": 77.531,
-      "original_obs": 24.33,
+      "original_obs": 21.65,
       "model_before": 28.5,
-      "model_after": 24.55,
-      "delta": -3.95
+      "model_after": 24.11,
+      "delta": -4.39
     },
     {
       "type": "temperature",
       "lat": 13.017,
       "lon": 77.7068,
-      "original_obs": 24.6,
+      "original_obs": 21.57,
       "model_before": 28.5,
-      "model_after": 24.55,
-      "delta": -3.95
+      "model_after": 24.14,
+      "delta": -4.36
     },
     {
       "type": "temperature",
       "lat": 12.8331,
       "lon": 77.6732,
-      "original_obs": 23.92,
+      "original_obs": 20.62,
       "model_before": 28.5,
-      "model_after": 24.62,
-      "delta": -3.88
+      "model_after": 24.23,
+      "delta": -4.27
     }
   ]
 }

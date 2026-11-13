@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-11-13T14:09:40.923203+00:00",
+  "last_updated": "2026-11-13T18:13:42.938509+00:00",
   "stations": {
     "ZWL008996": {
       "loc_id": "ZWL008996",
@@ -7,15 +7,15 @@
       "lat": 13.121741,
       "lon": 80.225058,
       "dev_type": 1,
-      "temperature": 27.83,
-      "humidity": 85.57,
-      "wind_speed": 0.87,
-      "wind_direction": 342.5,
+      "temperature": 26.87,
+      "humidity": 88.19,
+      "wind_speed": 0,
+      "wind_direction": 323.1,
       "rain_intensity": 0,
       "rain_accumulation": 4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:35.826738+00:00"
+      "timestamp": "2026-11-13T18:13:42.938064+00:00"
     },
     "ZWL005190": {
       "loc_id": "ZWL005190",
@@ -31,7 +31,7 @@
       "rain_accumulation": 0.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:40.922123+00:00"
+      "timestamp": "2026-11-13T18:13:39.914325+00:00"
     },
     "ZWL001398": {
       "loc_id": "ZWL001398",
@@ -47,7 +47,7 @@
       "rain_accumulation": 1.6,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:35.999224+00:00"
+      "timestamp": "2026-11-13T18:13:38.148282+00:00"
     },
     "ZWL004297": {
       "loc_id": "ZWL004297",
@@ -63,7 +63,7 @@
       "rain_accumulation": 2.2,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.315661+00:00"
+      "timestamp": "2026-11-13T18:13:40.329716+00:00"
     },
     "ZWL001701": {
       "loc_id": "ZWL001701",
@@ -71,15 +71,15 @@
       "lat": 12.934834,
       "lon": 80.101824,
       "dev_type": 1,
-      "temperature": 28.69,
-      "humidity": 79.7,
-      "wind_speed": 0.42,
-      "wind_direction": 25.3,
+      "temperature": 27.37,
+      "humidity": 81.56,
+      "wind_speed": 0.19,
+      "wind_direction": 191.4,
       "rain_intensity": 0,
       "rain_accumulation": 1.8,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.100309+00:00"
+      "timestamp": "2026-11-13T18:13:38.440414+00:00"
     },
     "ZWL003967": {
       "loc_id": "ZWL003967",
@@ -95,7 +95,7 @@
       "rain_accumulation": 4.6,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.310766+00:00"
+      "timestamp": "2026-11-13T18:13:40.416361+00:00"
     },
     "ZWL006232": {
       "loc_id": "ZWL006232",
@@ -111,7 +111,7 @@
       "rain_accumulation": 0.8,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.415310+00:00"
+      "timestamp": "2026-11-13T18:13:40.491596+00:00"
     },
     "ZWL006053": {
       "loc_id": "ZWL006053",
@@ -119,15 +119,15 @@
       "lat": 13.048069,
       "lon": 80.158163,
       "dev_type": 1,
-      "temperature": 27.95,
-      "humidity": 77.61,
-      "wind_speed": 0.5,
-      "wind_direction": 74.9,
+      "temperature": 26.59,
+      "humidity": 81.37,
+      "wind_speed": 0.18,
+      "wind_direction": 271.6,
       "rain_intensity": 0,
       "rain_accumulation": 2.2,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.840706+00:00"
+      "timestamp": "2026-11-13T18:13:37.995140+00:00"
     },
     "ZWL005857": {
       "loc_id": "ZWL005857",
@@ -143,7 +143,7 @@
       "rain_accumulation": null,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:38.831594+00:00"
+      "timestamp": "2026-11-13T18:13:40.888908+00:00"
     },
     "ZWL006789": {
       "loc_id": "ZWL006789",
@@ -159,7 +159,7 @@
       "rain_accumulation": 0.2,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:35.969294+00:00"
+      "timestamp": "2026-11-13T18:13:38.870796+00:00"
     },
     "ZWL008876": {
       "loc_id": "ZWL008876",
@@ -175,7 +175,7 @@
       "rain_accumulation": 1.2,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.104691+00:00"
+      "timestamp": "2026-11-13T18:13:38.575252+00:00"
     },
     "ZWL007059": {
       "loc_id": "ZWL007059",
@@ -191,7 +191,7 @@
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.228570+00:00"
+      "timestamp": "2026-11-13T18:13:38.824333+00:00"
     },
     "ZWL003387": {
       "loc_id": "ZWL003387",
@@ -199,15 +199,15 @@
       "lat": 13.080772,
       "lon": 80.248018,
       "dev_type": 1,
-      "temperature": 28.74,
-      "humidity": 80.54,
-      "wind_speed": 0.5,
-      "wind_direction": 140.4,
+      "temperature": 28.04,
+      "humidity": 81.96,
+      "wind_speed": 0.77,
+      "wind_direction": 0.3,
       "rain_intensity": 0,
       "rain_accumulation": 3.2,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.228759+00:00"
+      "timestamp": "2026-11-13T18:13:38.692937+00:00"
     },
     "ZWL007171": {
       "loc_id": "ZWL007171",
@@ -223,7 +223,7 @@
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.364851+00:00"
+      "timestamp": "2026-11-13T18:13:38.994208+00:00"
     },
     "ZWL006520": {
       "loc_id": "ZWL006520",
@@ -239,7 +239,7 @@
       "rain_accumulation": 2.6,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.366955+00:00"
+      "timestamp": "2026-11-13T18:13:38.943852+00:00"
     },
     "ZWL003452": {
       "loc_id": "ZWL003452",
@@ -255,7 +255,7 @@
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.491053+00:00"
+      "timestamp": "2026-11-13T18:13:39.144651+00:00"
     },
     "ZWL004233": {
       "loc_id": "ZWL004233",
@@ -271,7 +271,7 @@
       "rain_accumulation": 1.6,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.494661+00:00"
+      "timestamp": "2026-11-13T18:13:39.216237+00:00"
     },
     "ZWL007176": {
       "loc_id": "ZWL007176",
@@ -279,15 +279,15 @@
       "lat": 13.052763,
       "lon": 80.090763,
       "dev_type": 1,
-      "temperature": 27.87,
-      "humidity": 83.92,
-      "wind_speed": 0.93,
-      "wind_direction": 308.9,
+      "temperature": 25.68,
+      "humidity": 95.73,
+      "wind_speed": 0.29,
+      "wind_direction": 305.1,
       "rain_intensity": 0,
       "rain_accumulation": 1.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.604697+00:00"
+      "timestamp": "2026-11-13T18:13:39.286962+00:00"
     },
     "ZWL009897": {
       "loc_id": "ZWL009897",
@@ -303,7 +303,7 @@
       "rain_accumulation": null,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.610563+00:00"
+      "timestamp": "2026-11-13T18:13:39.357832+00:00"
     },
     "ZWL004882": {
       "loc_id": "ZWL004882",
@@ -319,7 +319,7 @@
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.736559+00:00"
+      "timestamp": "2026-11-13T18:13:39.448361+00:00"
     },
     "ZWL004431": {
       "loc_id": "ZWL004431",
@@ -335,7 +335,7 @@
       "rain_accumulation": 1,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.738969+00:00"
+      "timestamp": "2026-11-13T18:13:39.493597+00:00"
     },
     "ZWL003467": {
       "loc_id": "ZWL003467",
@@ -343,15 +343,15 @@
       "lat": 12.936787,
       "lon": 77.556079,
       "dev_type": 1,
-      "temperature": 25.02,
-      "humidity": 62.81,
-      "wind_speed": 1.55,
-      "wind_direction": 56.6,
+      "temperature": 21.66,
+      "humidity": 78.99,
+      "wind_speed": 1.88,
+      "wind_direction": 123.4,
       "rain_intensity": 0,
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.854984+00:00"
+      "timestamp": "2026-11-13T18:13:39.622225+00:00"
     },
     "ZWL004900": {
       "loc_id": "ZWL004900",
@@ -367,7 +367,7 @@
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.862662+00:00"
+      "timestamp": "2026-11-13T18:13:39.627568+00:00"
     },
     "ZWL005530": {
       "loc_id": "ZWL005530",
@@ -375,15 +375,15 @@
       "lat": 12.893441,
       "lon": 77.560436,
       "dev_type": 1,
-      "temperature": 24.71,
-      "humidity": 65.08,
-      "wind_speed": 0.91,
-      "wind_direction": 33.2,
+      "temperature": 21.55,
+      "humidity": 83.24,
+      "wind_speed": 1.08,
+      "wind_direction": 133.8,
       "rain_intensity": 0,
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.960239+00:00"
+      "timestamp": "2026-11-13T18:13:39.789860+00:00"
     },
     "ZWL003159": {
       "loc_id": "ZWL003159",
@@ -391,15 +391,15 @@
       "lat": 13.031518,
       "lon": 77.530986,
       "dev_type": 1,
-      "temperature": 24.33,
-      "humidity": 66.63,
-      "wind_speed": 0.89,
-      "wind_direction": 42.3,
+      "temperature": 21.65,
+      "humidity": 79.96,
+      "wind_speed": 1.56,
+      "wind_direction": 87.7,
       "rain_intensity": 0,
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:36.995150+00:00"
+      "timestamp": "2026-11-13T18:13:39.928522+00:00"
     },
     "ZWL002736": {
       "loc_id": "ZWL002736",
@@ -415,7 +415,7 @@
       "rain_accumulation": null,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.072820+00:00"
+      "timestamp": "2026-11-13T18:13:39.986873+00:00"
     },
     "ZWL006369": {
       "loc_id": "ZWL006369",
@@ -423,15 +423,15 @@
       "lat": 13.016987,
       "lon": 77.706819,
       "dev_type": 1,
-      "temperature": 24.6,
-      "humidity": 66.89,
-      "wind_speed": 0.06,
-      "wind_direction": 310.7,
+      "temperature": 21.57,
+      "humidity": 82.47,
+      "wind_speed": 0.37,
+      "wind_direction": 281.7,
       "rain_intensity": 0,
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.124008+00:00"
+      "timestamp": "2026-11-13T18:13:40.039841+00:00"
     },
     "ZWL007643": {
       "loc_id": "ZWL007643",
@@ -447,7 +447,7 @@
       "rain_accumulation": null,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.189611+00:00"
+      "timestamp": "2026-11-13T18:13:39.872513+00:00"
     },
     "ZWL006274": {
       "loc_id": "ZWL006274",
@@ -455,15 +455,15 @@
       "lat": 12.833101,
       "lon": 77.673182,
       "dev_type": 1,
-      "temperature": 23.92,
-      "humidity": 73.92,
-      "wind_speed": 11.89,
-      "wind_direction": 152,
+      "temperature": 20.62,
+      "humidity": 84.16,
+      "wind_speed": null,
+      "wind_direction": 180.1,
       "rain_intensity": 0,
       "rain_accumulation": 0,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.198385+00:00"
+      "timestamp": "2026-11-13T18:13:40.063113+00:00"
     },
     "ZWL008548": {
       "loc_id": "ZWL008548",
@@ -471,15 +471,15 @@
       "lat": 13.014886,
       "lon": 80.152455,
       "dev_type": 2,
-      "temperature": 28.21,
-      "humidity": 82.98,
-      "wind_speed": 0.91,
-      "wind_direction": 15.8,
+      "temperature": 26.83,
+      "humidity": 88.32,
+      "wind_speed": 0.51,
+      "wind_direction": 297.9,
       "rain_intensity": 0,
       "rain_accumulation": 3.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.421004+00:00"
+      "timestamp": "2026-11-13T18:13:40.530080+00:00"
     },
     "ZWL001210": {
       "loc_id": "ZWL001210",
@@ -495,7 +495,7 @@
       "rain_accumulation": 0.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.490833+00:00"
+      "timestamp": "2026-11-13T18:13:40.553160+00:00"
     },
     "ZWL006329": {
       "loc_id": "ZWL006329",
@@ -511,7 +511,7 @@
       "rain_accumulation": 0.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.528490+00:00"
+      "timestamp": "2026-11-13T18:13:40.612539+00:00"
     },
     "ZWL007209": {
       "loc_id": "ZWL007209",
@@ -519,15 +519,15 @@
       "lat": 13.117566,
       "lon": 80.146667,
       "dev_type": 2,
-      "temperature": 28.4,
-      "humidity": 88.71,
-      "wind_speed": 1.53,
-      "wind_direction": 296.8,
+      "temperature": 26.59,
+      "humidity": 89.58,
+      "wind_speed": 0.66,
+      "wind_direction": 278.6,
       "rain_intensity": 0,
       "rain_accumulation": 1,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.555171+00:00"
+      "timestamp": "2026-11-13T18:13:40.666309+00:00"
     },
     "ZWL006156": {
       "loc_id": "ZWL006156",
@@ -535,15 +535,15 @@
       "lat": 12.9893,
       "lon": 80.199988,
       "dev_type": 2,
-      "temperature": 28.72,
-      "humidity": 72.72,
-      "wind_speed": 2.21,
-      "wind_direction": 11.5,
+      "temperature": null,
+      "humidity": null,
+      "wind_speed": null,
+      "wind_direction": null,
       "rain_intensity": 0,
-      "rain_accumulation": 1.8,
+      "rain_accumulation": 2.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.621392+00:00"
+      "timestamp": "2026-11-13T18:13:40.706225+00:00"
     },
     "ZWL001141": {
       "loc_id": "ZWL001141",
@@ -551,15 +551,95 @@
       "lat": 12.841923,
       "lon": 80.209025,
       "dev_type": 2,
-      "temperature": 27.93,
-      "humidity": 83.01,
-      "wind_speed": 0.11,
-      "wind_direction": 324.2,
+      "temperature": 26.92,
+      "humidity": 84.28,
+      "wind_speed": 0.18,
+      "wind_direction": 318.3,
       "rain_intensity": 0,
       "rain_accumulation": 2.4,
       "aqi_pm_10": null,
       "aqi_pm_2_point_5": null,
-      "timestamp": "2026-11-13T14:09:37.707669+00:00"
+      "timestamp": "2026-11-13T18:13:40.734081+00:00"
+    },
+    "ZWL005375": {
+      "loc_id": "ZWL005375",
+      "name": "Bengaluru Vijayanagar",
+      "lat": 12.973219,
+      "lon": 77.519303,
+      "dev_type": 1,
+      "temperature": null,
+      "humidity": null,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rain_intensity": 0,
+      "rain_accumulation": 0,
+      "aqi_pm_10": null,
+      "aqi_pm_2_point_5": null,
+      "timestamp": "2026-11-13T18:13:40.154784+00:00"
+    },
+    "ZWL008600": {
+      "loc_id": "ZWL008600",
+      "name": "Bengaluru Marathahalli",
+      "lat": 12.955103,
+      "lon": 77.696507,
+      "dev_type": 1,
+      "temperature": 20.99,
+      "humidity": 84.17,
+      "wind_speed": 2.32,
+      "wind_direction": 315.3,
+      "rain_intensity": 0,
+      "rain_accumulation": 0,
+      "aqi_pm_10": null,
+      "aqi_pm_2_point_5": null,
+      "timestamp": "2026-11-13T18:13:40.172272+00:00"
+    },
+    "ZWL004341": {
+      "loc_id": "ZWL004341",
+      "name": "Bengaluru Brookefields",
+      "lat": 12.96742,
+      "lon": 77.717851,
+      "dev_type": 1,
+      "temperature": null,
+      "humidity": null,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rain_intensity": 0,
+      "rain_accumulation": 0,
+      "aqi_pm_10": null,
+      "aqi_pm_2_point_5": null,
+      "timestamp": "2026-11-13T18:13:40.270839+00:00"
+    },
+    "ZWL002292": {
+      "loc_id": "ZWL002292",
+      "name": "Bengaluru Sarjapur road",
+      "lat": 12.900225,
+      "lon": 77.697451,
+      "dev_type": 1,
+      "temperature": null,
+      "humidity": null,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rain_intensity": 0,
+      "rain_accumulation": 0,
+      "aqi_pm_10": null,
+      "aqi_pm_2_point_5": null,
+      "timestamp": "2026-11-13T18:13:40.335347+00:00"
+    },
+    "ZWL001516": {
+      "loc_id": "ZWL001516",
+      "name": "Chennai T Nagar",
+      "lat": 13.026256,
+      "lon": 80.22812,
+      "dev_type": 2,
+      "temperature": null,
+      "humidity": null,
+      "wind_speed": null,
+      "wind_direction": null,
+      "rain_intensity": 0,
+      "rain_accumulation": 0.2,
+      "aqi_pm_10": null,
+      "aqi_pm_2_point_5": null,
+      "timestamp": "2026-11-13T18:13:40.791126+00:00"
     }
   }
 }

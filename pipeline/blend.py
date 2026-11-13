@@ -38,7 +38,7 @@ CORRECTED = ("temp", "rh")
 BLEND_ID = "blend"
 LABEL = "Kralveth AI 1km"
 STEP_HOURS = 3
-VERSION = 8
+VERSION = 9
 
 # Physical lapse rate for standardizing elevation differences across models (-6.5 °C/km)
 LAPSE_RATE_C_PER_M = -0.0065
