@@ -411,13 +411,36 @@ def assimilate_hourly_observations(
         assimilated["precip"] = barnes_objective_analysis_2d(assimilated["precip"], precip_obs_points, radius_km=25.0, max_adj=12.0)
         assimilated["precip"] = np.maximum(0.0, assimilated["precip"])
 
-    # 5. Tamil Nadu Rain Gauge Network Anchor
+    # 5. Near-Realtime Satellite Convection & Cloud Cover Assimilation (Himawari-9 / Meteosat)
+    try:
+        from ai_model.data.satellite_feed import get_near_realtime_satellite_observation
+        sat_obs = get_near_realtime_satellite_observation(ref_time=now_dt)
+        if sat_obs is not None:
+            sat_rain = sat_obs.get("syn_rain")
+            sat_cape = sat_obs.get("syn_cape")
+
+            if sat_rain is not None and "precip" in assimilated:
+                # Convective storm assimilation: where satellite sees deep convective cores (>1.0 mm/h),
+                # ensure precipitation is actively represented across land and sea
+                conv_mask = sat_rain > 1.0
+                assimilated["precip"] = np.where(conv_mask, np.maximum(assimilated["precip"], 0.75 * sat_rain), assimilated["precip"])
+
+            if sat_cape is not None and "cape" in assimilated:
+                # Convective instability: where satellite observes severe thunderheads, elevate CAPE
+                cape_mask = sat_cape > 500.0
+                assimilated["cape"] = np.where(cape_mask, np.maximum(assimilated["cape"], sat_cape), assimilated["cape"])
+
+            print(f"obs_feed: Satellite Convective Data Assimilated ({sat_obs.get('source')} {sat_obs.get('timestamp')}) - Max rain: {sat_obs.get('max_rain_rate', 0):.1f} mm/h.", flush=True)
+    except Exception as e:
+        pass
+
+    # 6. Tamil Nadu Rain Gauge Network Anchor
     tn_gauges = load_tn_gauge_positions()
     if tn_gauges and "precip" in assimilated:
         # Trace rain filter (<0.10 mm/h clamped to 0) across Tamil Nadu land gauge points
         assimilated["precip"] = np.where(assimilated["precip"] < 0.10, 0.0, assimilated["precip"])
 
-    # 6. Save Station Correction Audit Record
+    # 7. Save Station Correction Audit Record
     try:
         os.makedirs(os.path.dirname(WU_CORRECTIONS_OUT), exist_ok=True)
         summary_doc = {

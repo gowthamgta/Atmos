@@ -18,7 +18,7 @@ from ai_model.models.convnext_sr import KralvethAI1km
 from ai_model.models.loss import MeteorologicalLoss
 
 
-def train(epochs: int = 20, batch_size: int = 2, lr: float = 2e-4, device: str = "cpu"):
+def train(epochs: int = 20, batch_size: int = 2, lr: float = 2e-4, device: str = "cpu", use_satellite: bool = True):
     device_obj = torch.device(device if torch.cuda.is_available() and device == "cuda" else "cpu")
     print(f"Starting Kralveth AI 1km training on {device_obj}...")
 
@@ -40,7 +40,19 @@ def train(epochs: int = 20, batch_size: int = 2, lr: float = 2e-4, device: str =
     ], axis=0)
     static_tensor = torch.from_numpy(static_arr).unsqueeze(0).to(device_obj).float()
 
-    # 2. Instantiate Model, Loss & Optimizer
+    # 2. Near-Realtime Satellite Convection Supervision
+    sat_rain_tensor = None
+    if use_satellite:
+        try:
+            from ai_model.data.satellite_feed import get_near_realtime_satellite_observation
+            sat_obs = get_near_realtime_satellite_observation()
+            if sat_obs is not None and "syn_rain" in sat_obs:
+                sat_rain_tensor = torch.from_numpy(sat_obs["syn_rain"]).to(device_obj).float().unsqueeze(0).unsqueeze(0)
+                print(f"train: Satellite near-realtime convective training supervision active ({sat_obs.get('source')} - Max rain: {sat_obs.get('max_rain_rate', 0):.1f} mm/h).")
+        except Exception as e:
+            print(f"train: Satellite feed notice ({e}); proceeding with dynamics loss.")
+
+    # 3. Instantiate Model, Loss & Optimizer
     model = KralvethAI1km(hidden_dim=32, num_blocks=4).to(device_obj)
     criterion = MeteorologicalLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
@@ -53,6 +65,14 @@ def train(epochs: int = 20, batch_size: int = 2, lr: float = 2e-4, device: str =
     syn_dummy = torch.randn(batch_size, 8, C.NY_SYNOPTIC, C.NX_SYNOPTIC, device=device_obj)
     target_dummy = torch.randn(batch_size, 8, static_tensor.shape[2], static_tensor.shape[3], device=device_obj).abs()
 
+    # For fast and memory-efficient CPU training, train at synoptic resolution; on GPU, train full 1km resolution
+    if device_obj.type == "cpu" and (static_tensor.shape[2] > 300 or static_tensor.shape[3] > 400):
+        static_train = torch.nn.functional.interpolate(static_tensor, size=(C.NY_SYNOPTIC, C.NX_SYNOPTIC), mode="bilinear", align_corners=False)
+        target_train = torch.nn.functional.interpolate(target_dummy, size=(C.NY_SYNOPTIC, C.NX_SYNOPTIC), mode="bilinear", align_corners=False)
+    else:
+        static_train = static_tensor
+        target_train = target_dummy
+
     model.train()
     best_loss = float("inf")
 
@@ -61,12 +81,19 @@ def train(epochs: int = 20, batch_size: int = 2, lr: float = 2e-4, device: str =
         optimizer.zero_grad()
 
         # Static is broadcast to batch size
-        static_batch = static_tensor.expand(batch_size, -1, -1, -1)
+        static_batch = static_train.expand(batch_size, -1, -1, -1)
+        target_batch = target_train.expand(batch_size, -1, -1, -1)
 
         # Forward pass
         pred = model(syn_dummy, static_batch)
-        loss_dict = criterion(pred, target_dummy)
+        loss_dict = criterion(pred, target_batch)
         loss = loss_dict["loss"]
+
+        # Satellite Convective Supervision Loss (near-realtime cloud tops & rain cores)
+        if sat_rain_tensor is not None:
+            pred_rain_syn = torch.nn.functional.interpolate(pred[:, 0:1], size=(C.NY_SYNOPTIC, C.NX_SYNOPTIC), mode="bilinear", align_corners=False)
+            sat_loss = torch.nn.functional.l1_loss(pred_rain_syn, sat_rain_tensor.expand(batch_size, -1, -1, -1))
+            loss = loss + 0.30 * sat_loss
 
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -90,9 +117,10 @@ def main():
     parser.add_argument("--batch-size", type=int, default=1, help="Batch size")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
     parser.add_argument("--device", default="cpu", help="Device (cpu or cuda)")
+    parser.add_argument("--use-satellite", action="store_true", default=True, help="Supervise with live satellite infrared brightness temperature")
     args = parser.parse_args()
 
-    train(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, device=args.device)
+    train(epochs=args.epochs, batch_size=args.batch_size, lr=args.lr, device=args.device, use_satellite=args.use_satellite)
 
 
 if __name__ == "__main__":
