@@ -51,31 +51,109 @@ WEATHERUNION_CACHE = os.path.join(AIC.PROJECT_ROOT, "pipeline", "data", "verific
 WINDS_CACHE = os.path.join(AIC.PROJECT_ROOT, "pipeline", "data", "verification", "winds_cache.json")
 WU_CORRECTIONS_OUT = os.path.join(AIC.PROJECT_ROOT, "public", "data", "verification", "weatherunion_corrections.json")
 
+# Strict Freshness Control: Only new real-time data within 2.5 hours accepted; older data rejected
+MAX_OBSERVATION_AGE_HOURS = 2.5
 
-def load_weatherunion_observations() -> list[dict]:
-    """Loads cached hyperlocal station observations from WeatherUnion by Zomato."""
+
+def parse_timestamp_to_utc(ts: str | None) -> datetime | None:
+    """Parses ISO or SQL timestamp strings into UTC datetime."""
+    if not ts:
+        return None
+    try:
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        try:
+            # Handles 'YYYY-MM-DD HH:MM:SS' in IST (+05:30)
+            dt = datetime.strptime(ts[:19], "%Y-%m-%d %H:%M:%S")
+            ist = timezone(timedelta(hours=5, minutes=30))
+            return dt.replace(tzinfo=ist).astimezone(timezone.utc)
+        except Exception:
+            return None
+
+
+def is_fresh_observation(
+    obs_time_str: str | None,
+    ref_time: datetime | None = None,
+    max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
+) -> bool:
+    """Returns True ONLY if the observation timestamp is new (within max_age_hours).
+
+    Rejects stale historical or un-updated device data.
+    """
+    if not obs_time_str:
+        return False
+    obs_dt = parse_timestamp_to_utc(obs_time_str)
+    if not obs_dt:
+        return False
+    now = ref_time or datetime.now(timezone.utc)
+    age_seconds = (now - obs_dt).total_seconds()
+    # Accept data strictly within [-900s, max_age_hours * 3600s]
+    return -900 <= age_seconds <= (max_age_hours * 3600.0)
+
+
+def load_weatherunion_observations(
+    ref_time: datetime | None = None,
+    max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
+) -> tuple[list[dict], int]:
+    """Loads hyperlocal station observations from WeatherUnion by Zomato.
+
+    Strictly discards old data older than max_age_hours.
+    Returns: (fresh_stations, stale_discarded_count)
+    """
     if os.path.exists(WEATHERUNION_CACHE):
         try:
             with open(WEATHERUNION_CACHE, "r", encoding="utf-8") as f:
                 doc = json.load(f)
                 stations = doc.get("stations", {})
-                return list(stations.values())
+                cache_updated = doc.get("last_updated")
+
+                fresh = []
+                stale_count = 0
+                for st in stations.values():
+                    ts = st.get("timestamp") or cache_updated
+                    if is_fresh_observation(ts, ref_time=ref_time, max_age_hours=max_age_hours):
+                        fresh.append(st)
+                    else:
+                        stale_count += 1
+                return fresh, stale_count
         except Exception:
             pass
-    return []
+    return [], 0
 
 
-def load_pmfby_winds_observations() -> list[dict]:
-    """Loads cached district agricultural weather station observations from PMFBY WINDS."""
+def load_pmfby_winds_observations(
+    ref_time: datetime | None = None,
+    max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
+) -> tuple[list[dict], int]:
+    """Loads district agricultural weather station observations from PMFBY WINDS.
+
+    Strictly discards old data older than max_age_hours.
+    Returns: (fresh_stations, stale_discarded_count)
+    """
     if os.path.exists(WINDS_CACHE):
         try:
             with open(WINDS_CACHE, "r", encoding="utf-8") as f:
                 doc = json.load(f)
                 stations = doc.get("stations", {})
-                return list(stations.values())
+                cache_updated = doc.get("last_updated")
+
+                fresh = []
+                stale_count = 0
+                for st in stations.values():
+                    ts = st.get("timestamp") or st.get("time_stamp") or cache_updated
+                    if is_fresh_observation(ts, ref_time=ref_time, max_age_hours=max_age_hours):
+                        fresh.append(st)
+                    else:
+                        stale_count += 1
+                return fresh, stale_count
         except Exception:
             pass
-    return []
+    return [], 0
 
 
 def load_tn_gauge_positions() -> list[tuple[float, float]]:
@@ -174,11 +252,15 @@ def barnes_objective_analysis_2d(
 def assimilate_hourly_observations(
     synoptic_fields: dict[str, np.ndarray],
     hour_utc: int,
+    ref_datetime: datetime | None = None,
     live_obs_data: dict | None = None,
+    max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
 ) -> dict[str, np.ndarray]:
     """Assimilates real-time observations from WeatherUnion, PMFBY WINDS, airport METARs,
 
     and Tamil Nadu rain gauges into the model fields using Barnes objective analysis.
+    STRICT FRESHNESS: Only new observations within max_age_hours are accepted; older data discarded.
+
     Corrects:
     - Temperature (t2m)
     - Relative Humidity (rh2m)
@@ -200,9 +282,11 @@ def assimilate_hourly_observations(
     if live_obs_data is not None:
         wu_stations = live_obs_data.get("weatherunion", [])
         winds_stations = live_obs_data.get("winds", [])
+        stale_wu = stale_winds = 0
     else:
-        wu_stations = load_weatherunion_observations()
-        winds_stations = load_pmfby_winds_observations()
+        now_dt = ref_datetime or datetime.now(timezone.utc)
+        wu_stations, stale_wu = load_weatherunion_observations(ref_time=now_dt, max_age_hours=max_age_hours)
+        winds_stations, stale_winds = load_pmfby_winds_observations(ref_time=now_dt, max_age_hours=max_age_hours)
 
     wu_temp_count = 0
     wu_rh_count = 0
@@ -339,8 +423,12 @@ def assimilate_hourly_observations(
         summary_doc = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "hour_utc": hour_utc,
-            "weatherunion_stations_assimilated": len(wu_stations),
-            "pmfby_winds_stations_assimilated": len(winds_stations),
+            "freshness_policy": "STRICT_REALTIME_ONLY",
+            "max_allowed_age_hours": max_age_hours,
+            "weatherunion_fresh_count": len(wu_stations),
+            "weatherunion_stale_dropped": stale_wu,
+            "pmfby_winds_fresh_count": len(winds_stations),
+            "pmfby_winds_stale_dropped": stale_winds,
             "temp_obs_count": len(temp_obs_points),
             "rh_obs_count": len(rh_obs_points),
             "wind_obs_count": len(wind_obs_points),
@@ -353,7 +441,8 @@ def assimilate_hourly_observations(
         pass
 
     print(
-        f"obs_feed: Assimilated {len(temp_obs_points)} T, {len(rh_obs_points)} RH, {len(wind_obs_points)} Wind, {len(precip_obs_points)} Rain ground observations (WeatherUnion: {len(wu_stations)}, WINDS: {len(winds_stations)}).",
+        f"obs_feed: Real-time Freshness Verified: Assimilated {len(temp_obs_points)} T, {len(rh_obs_points)} RH, {len(wind_obs_points)} Wind, {len(precip_obs_points)} Rain observations "
+        f"(WeatherUnion: {len(wu_stations)} fresh / {stale_wu} old dropped; WINDS: {len(winds_stations)} fresh / {stale_winds} old dropped).",
         flush=True,
     )
     return assimilated

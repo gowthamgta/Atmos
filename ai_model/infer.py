@@ -122,8 +122,8 @@ class KralvethAIInferenceEngine:
         }
         try:
             from ai_model.data.obs_feed import assimilate_hourly_observations
-            syn_dict = assimilate_hourly_observations(syn_dict, hour_utc=ref_run.hour)
-            print("ai_model: real-time airport METAR and Tamil Nadu station ground observations assimilated successfully into T=0 state.", flush=True)
+            syn_dict = assimilate_hourly_observations(syn_dict, hour_utc=ref_run.hour, ref_datetime=ref_run)
+            print("ai_model: real-time fresh station ground observations assimilated successfully into T=0 state.", flush=True)
         except Exception as e:
             print(f"ai_model: observation assimilation notice ({e}); using analysis initialization", flush=True)
 
