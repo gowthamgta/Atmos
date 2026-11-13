@@ -1,12 +1,12 @@
 {
-  "timestamp": "2026-11-13T14:14:42.129747+00:00",
+  "timestamp": "2026-11-13T14:22:30.235711+00:00",
   "hour_utc": 12,
   "weatherunion_stations_assimilated": 35,
-  "pmfby_winds_stations_assimilated": 12,
-  "temp_obs_count": 38,
-  "rh_obs_count": 35,
-  "wind_obs_count": 23,
-  "precip_obs_count": 22,
+  "pmfby_winds_stations_assimilated": 93,
+  "temp_obs_count": 76,
+  "rh_obs_count": 73,
+  "wind_obs_count": 53,
+  "precip_obs_count": 27,
   "sample_corrections": [
     {
       "type": "temperature",
