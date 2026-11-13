@@ -1,7 +1,9 @@
 import os
 import sys
 import numpy as np
-import torch
+import pytest
+
+torch = pytest.importorskip("torch", reason="torch is required for Kralveth AI neural weather model tests")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
