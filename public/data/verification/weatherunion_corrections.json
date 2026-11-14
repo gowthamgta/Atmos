@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-14T04:37:58.018516+00:00",
-  "hour_utc": 4,
+  "timestamp": "2026-11-14T09:50:04.479259+00:00",
+  "hour_utc": 9,
   "freshness_policy": "STRICT_REALTIME_ONLY",
   "max_allowed_age_hours": 8.0,
   "weatherunion_fresh_count": 40,
@@ -18,8 +18,8 @@
       "lon": 80.2251,
       "original_obs": 30.68,
       "model_before": 28.5,
-      "model_after": 29.22,
-      "delta": 0.72
+      "model_after": 28.89,
+      "delta": 0.39
     },
     {
       "type": "temperature",
@@ -27,8 +27,8 @@
       "lon": 80.1018,
       "original_obs": 31.31,
       "model_before": 28.5,
-      "model_after": 29.13,
-      "delta": 0.63
+      "model_after": 29.03,
+      "delta": 0.53
     },
     {
       "type": "temperature",
@@ -36,8 +36,8 @@
       "lon": 80.1582,
       "original_obs": 30.18,
       "model_before": 28.5,
-      "model_after": 29.21,
-      "delta": 0.71
+      "model_after": 28.77,
+      "delta": 0.27
     },
     {
       "type": "temperature",
@@ -45,8 +45,8 @@
       "lon": 80.248,
       "original_obs": 30.4,
       "model_before": 28.5,
-      "model_after": 29.22,
-      "delta": 0.72
+      "model_after": 28.89,
+      "delta": 0.39
     },
     {
       "type": "temperature",
@@ -54,8 +54,8 @@
       "lon": 80.0908,
       "original_obs": 29.27,
       "model_before": 28.5,
-      "model_after": 29.17,
-      "delta": 0.67
+      "model_after": 29.18,
+      "delta": 0.68
     },
     {
       "type": "temperature",
@@ -63,8 +63,8 @@
       "lon": 77.5561,
       "original_obs": 24.17,
       "model_before": 28.5,
-      "model_after": 24.24,
-      "delta": -4.26
+      "model_after": 24.26,
+      "delta": -4.24
     },
     {
       "type": "temperature",
@@ -72,8 +72,8 @@
       "lon": 77.5604,
       "original_obs": 24.49,
       "model_before": 28.5,
-      "model_after": 24.24,
-      "delta": -4.26
+      "model_after": 24.26,
+      "delta": -4.24
     },
     {
       "type": "temperature",
@@ -81,8 +81,8 @@
       "lon": 77.531,
       "original_obs": 23.83,
       "model_before": 28.5,
-      "model_after": 24.2,
-      "delta": -4.3
+      "model_after": 24.21,
+      "delta": -4.29
     },
     {
       "type": "temperature",
@@ -90,8 +90,8 @@
       "lon": 77.7068,
       "original_obs": 22.63,
       "model_before": 28.5,
-      "model_after": 24.24,
-      "delta": -4.26
+      "model_after": 24.25,
+      "delta": -4.25
     },
     {
       "type": "temperature",
@@ -99,8 +99,8 @@
       "lon": 77.6732,
       "original_obs": 23.79,
       "model_before": 28.5,
-      "model_after": 24.3,
-      "delta": -4.2
+      "model_after": 24.32,
+      "delta": -4.18
     }
   ]
 }

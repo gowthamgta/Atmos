@@ -161,7 +161,7 @@ class KralvethAIInferenceEngine:
         try:
             from ai_model.data.obs_feed import assimilate_hourly_observations
             now_wall = datetime.now(timezone.utc)
-            assimilated_t0 = assimilate_hourly_observations(base_t0, hour_utc=now_wall.hour, ref_datetime=now_wall)
+            assimilated_t0 = assimilate_hourly_observations(base_t0, hour_utc=now_wall.hour, ref_datetime=now_wall, land_mask=self.mask_syn)
             for v, arr in assimilated_t0.items():
                 if v in base_t0:
                     obs_delta[v] = (arr - base_t0[v]).astype(np.float32)

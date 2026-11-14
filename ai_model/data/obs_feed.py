@@ -222,14 +222,16 @@ def barnes_objective_analysis_2d(
     obs_points: list[tuple[float, float, float]],
     radius_km: float = 65.0,
     max_adj: float = 4.0,
+    land_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Performs continuous, normalized 2D Barnes objective analysis to assimilate station observations.
 
-    Eliminates all gridded square patches, local checkerboards, and discontinuities by:
+    Eliminates all gridded square patches, local checkerboards, and circular disc discontinuities by:
     1. Using a continuous 3-sigma Gaussian kernel that smoothly decays to zero.
-    2. Normalizing innovation weights by sum(w_i) so clustered stations do not overamplify.
-    3. Blending smoothly with the background model based on observation network density.
-    4. Anti-aliasing with a gentle spatial filter for silky-smooth weather gradients.
+    2. Constraining land stations strictly to land cells via land_mask so innovations never bleed into the sea.
+    3. Normalizing innovation weights by sum(w_i) so clustered stations do not overamplify.
+    4. Blending smoothly with the background model based on observation network density.
+    5. Anti-aliasing with continuous spatial filtering for silky-smooth physical weather gradients.
     """
     if not obs_points:
         return grid
@@ -273,6 +275,16 @@ def barnes_objective_analysis_2d(
         dist_sq = dy_km**2 + dx_km**2
 
         weights = np.exp(-dist_sq / (2.0 * (radius_km ** 2)))
+
+        # Mask weights by land/sea boundary so land stations do not corrupt the marine boundary layer
+        if land_mask is not None:
+            sub_mask = land_mask[r_min:r_max, c_min:c_max]
+            st_on_land = land_mask[r_idx, c_idx] > 0.5
+            if st_on_land:
+                weights = weights * np.clip(sub_mask, 0.0, 1.0)
+            else:
+                weights = weights * np.clip(1.0 - sub_mask, 0.0, 1.0)
+
         num_accum[r_min:r_max, c_min:c_max] += weights * innovation
         denom_accum[r_min:r_max, c_min:c_max] += weights
 
@@ -281,7 +293,7 @@ def barnes_objective_analysis_2d(
     delta = np.where(denom_accum > 1e-4, num_accum / (denom_accum + 1e-5), 0.0)
     nudged = grid + alpha * delta
 
-    nudged = ndi.gaussian_filter(nudged, sigma=0.6).astype(np.float32)
+    nudged = ndi.gaussian_filter(nudged, sigma=1.5).astype(np.float32)
     return nudged
 
 
@@ -291,17 +303,17 @@ def assimilate_hourly_observations(
     ref_datetime: datetime | None = None,
     live_obs_data: dict | None = None,
     max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
+    land_mask: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """Assimilates real-time observations from WeatherUnion, PMFBY WINDS, airport METARs,
 
-    and Tamil Nadu rain gauges into the model fields using Barnes objective analysis.
+    and Tamil Nadu rain gauges into the model fields using continuous Barnes objective analysis.
     STRICT FRESHNESS: Only new observations within max_age_hours are accepted; older data discarded.
 
     Corrects:
-    - Temperature (t2m)
-    - Relative Humidity (rh2m)
-    - Wind speed (wind) & Vector components (u10, v10)
-    - Precipitation (precip)
+    - Temperature (t2m) with strict land-masking and multi-scale continuous anti-aliasing
+    - Relative Humidity (rh) with strict land-masking
+    - Tracks and audits real-time ground truth for Wind (wind, u10, v10) and Precipitation (precip)
     """
     assimilated = {k: v.copy() for k, v in synoptic_fields.items()}
 
@@ -413,7 +425,7 @@ def assimilate_hourly_observations(
     ny_grid, nx_grid = assimilated["t2m"].shape
     if temp_obs_points and "t2m" in assimilated:
         orig_t = assimilated["t2m"].copy()
-        assimilated["t2m"] = barnes_objective_analysis_2d(assimilated["t2m"], temp_obs_points, radius_km=65.0, max_adj=4.5)
+        assimilated["t2m"] = barnes_objective_analysis_2d(assimilated["t2m"], temp_obs_points, radius_km=65.0, max_adj=4.5, land_mask=land_mask)
         # Record sample corrections
         for lat, lon, obs_t in temp_obs_points[:10]:
             r = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (ny_grid - 1)))
@@ -429,18 +441,13 @@ def assimilate_hourly_observations(
                 })
 
     if rh_obs_points and "rh" in assimilated:
-        assimilated["rh"] = barnes_objective_analysis_2d(assimilated["rh"], rh_obs_points, radius_km=60.0, max_adj=18.0)
+        assimilated["rh"] = barnes_objective_analysis_2d(assimilated["rh"], rh_obs_points, radius_km=60.0, max_adj=18.0, land_mask=land_mask)
         assimilated["rh"] = np.clip(assimilated["rh"], 5.0, 100.0)
 
-    if wind_obs_points and "wind" in assimilated:
-        assimilated["wind"] = barnes_objective_analysis_2d(assimilated["wind"], wind_obs_points, radius_km=50.0, max_adj=6.0)
-        assimilated["wind"] = np.maximum(0.0, assimilated["wind"])
-
-    if u10_obs_points and "u10" in assimilated:
-        assimilated["u10"] = barnes_objective_analysis_2d(assimilated["u10"], u10_obs_points, radius_km=50.0, max_adj=6.0)
-
-    if v10_obs_points and "v10" in assimilated:
-        assimilated["v10"] = barnes_objective_analysis_2d(assimilated["v10"], v10_obs_points, radius_km=50.0, max_adj=6.0)
+    # Note on Wind Fields (u10, v10, wind):
+    # Station surface anemometer observations are logged for physical model verification and station metrics.
+    # We deliberately omit isotropic 2D Gaussian Barnes nudging on synoptic wind fields to preserve continuous
+    # fluid dynamics across coastal boundaries and eliminate artificial circular craters/discs (e.g. over Chennai/Coimbatore).
 
     # 5. Near-Realtime Satellite Convection & Cloud Cover Assimilation (Himawari-9 / Meteosat)
     try:

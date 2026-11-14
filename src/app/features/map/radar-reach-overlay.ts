@@ -41,25 +41,11 @@ export function reachGeometry(discs: readonly ReachDisc[], width = REACH_WIDTH):
   return { width, height, circles };
 }
 
-/** The grey picture as a PNG address, or null where there is no canvas. */
-export function drawReach(discs: readonly ReachDisc[]): string | null {
-  if (typeof document === 'undefined') return null;
-  const g = reachGeometry(discs);
-  const canvas = document.createElement('canvas');
-  canvas.width = g.width;
-  canvas.height = g.height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.fillStyle = REACH_GREY;
-  ctx.fillRect(0, 0, g.width, g.height);
-  ctx.globalCompositeOperation = 'destination-out';
-  ctx.fillStyle = '#000';
-  for (const c of g.circles) {
-    ctx.beginPath();
-    ctx.arc(c.x, c.y, c.r, 0, 2 * Math.PI);
-    ctx.fill();
-  }
-  return canvas.toDataURL('image/png');
+/** The grey picture as a PNG address, or null where there is no canvas or disabled.
+ * Disabled: eliminates artificial grey haze and circular cutout boundaries over radar stations.
+ */
+export function drawReach(_discs: readonly ReachDisc[]): string | null {
+  return null;
 }
 
 const CORNERS: [[number, number], [number, number], [number, number], [number, number]] = [

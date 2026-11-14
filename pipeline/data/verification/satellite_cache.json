@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-11-14T04:00:00Z",
-  "fetched_at": "2026-11-14T04:37:58.009435+00:00",
+  "timestamp": "2026-11-14T08:40:00Z",
+  "fetched_at": "2026-11-14T09:50:04.475122+00:00",
   "source": "bt-h9",
-  "max_rain_rate_mm_h": 61.45,
-  "convective_coverage_pct": 17.59
+  "max_rain_rate_mm_h": 63.15,
+  "convective_coverage_pct": 23.4
 }
