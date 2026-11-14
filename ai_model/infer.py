@@ -64,6 +64,7 @@ from pipeline.derive import (
     cumulative_accumulation,
     rain_mm_to_probability,
     forward_extreme,
+    vorticity_divergence,
 )
 
 
@@ -303,6 +304,33 @@ class KralvethAIInferenceEngine:
                         f_ext = np.clip(25.0 - (fields_syn["rh"] / 100.0) * 15.0 - fields_syn["precip"] * 2.0, 1.0, 25.0).astype(np.float32)
                     elif var_name == "tcwv":
                         f_ext = np.clip(fields_syn["rh"] * 0.45 + fields_syn["t2m"] * 0.5, 10.0, 75.0).astype(np.float32)
+                    elif var_name.startswith("w") and var_name[1:].isdigit():
+                        f_ext = np.zeros((ny, nx), dtype=np.float32)
+                    elif var_name.startswith("vo") and var_name[2:].isdigit():
+                        l = int(var_name[2:])
+                        u_f = legacy_blend.field_at_valid(ifs_comp, f"u{l}", valid_dt) if ifs_comp else None
+                        v_f = legacy_blend.field_at_valid(ifs_comp, f"v{l}", valid_dt) if ifs_comp else None
+                        if u_f is not None and v_f is not None:
+                            vo_f, _ = vorticity_divergence(u_f, v_f, lat_max=C.IFS_LAT_MAX)
+                            f_ext = vo_f.astype(np.float32)
+                        else:
+                            f_ext = np.zeros((ny, nx), dtype=np.float32)
+                    elif var_name.startswith("dv") and var_name[2:].isdigit():
+                        l = int(var_name[2:])
+                        u_f = legacy_blend.field_at_valid(ifs_comp, f"u{l}", valid_dt) if ifs_comp else None
+                        v_f = legacy_blend.field_at_valid(ifs_comp, f"v{l}", valid_dt) if ifs_comp else None
+                        if u_f is not None and v_f is not None:
+                            _, dv_f = vorticity_divergence(u_f, v_f, lat_max=C.IFS_LAT_MAX)
+                            f_ext = dv_f.astype(np.float32)
+                        else:
+                            f_ext = np.zeros((ny, nx), dtype=np.float32)
+                    elif var_name == "li":
+                        f_ext = np.clip(4.0 - np.sqrt(np.maximum(0.0, fields_syn["cape"])) * 0.15, -10.0, 10.0).astype(np.float32)
+                    elif var_name == "cin":
+                        f_ext = np.clip(50.0 - (fields_syn["rh"] - 60.0) * 1.5, 0.0, 300.0).astype(np.float32)
+                    elif var_name == "solar":
+                        ist_h = (hour_utc + 5.5) % 24.0
+                        f_ext = np.full((ny, nx), max(0.0, 950.0 * math.sin(math.pi * (ist_h - 6.0) / 12.0)) if 6.0 <= ist_h <= 18.0 else 0.0, dtype=np.float32)
 
                 if f_ext is not None:
                     vinfo = C.VARS[var_name]

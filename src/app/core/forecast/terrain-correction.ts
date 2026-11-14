@@ -67,13 +67,9 @@ export function adjustDewpoint(dewC: number, dz: number): number {
   return dewC - DEWPOINT_LAPSE_C_PER_M * dz;
 }
 
-/** Relative humidity (%) at height dz above the model's own ground, capped at saturation.
- * Orographic ascent on summits (dz > 0) cools air towards saturation.
- * In valleys (dz < 0), tropical air pools moisture and does not artificially desiccate.
- */
+/** Relative humidity (%) at height dz above the model's own ground, capped at saturation. */
 export function adjustHumidity(rhPercent: number, dz: number): number {
-  const effDz = Math.max(0, dz);
-  return Math.min(100, rhPercent * Math.exp(RH_LOG_PER_M * effDz));
+  return Math.min(100, rhPercent * Math.exp(RH_LOG_PER_M * dz));
 }
 
 /** Total moisture column over ground dz higher than the model's (less air above, so less water). */

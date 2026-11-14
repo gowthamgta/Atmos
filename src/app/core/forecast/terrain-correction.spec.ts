@@ -27,10 +27,11 @@ describe('height corrections', () => {
     expect(adjustDewpoint(24, -500)).toBeCloseTo(24.9, 9);
   });
 
-  it('increases humidity towards saturation on summits and preserves moisture in valleys', () => {
-    expect(adjustHumidity(80, 500)).toBeGreaterThan(80);
-    expect(adjustHumidity(80, -500)).toBe(80);
-    expect(adjustHumidity(98, 1000)).toBe(100);
+  it('raises humidity with height (capped at 100) and lowers it below the model ground', () => {
+    expect(adjustHumidity(60, 0)).toBe(60);
+    expect(adjustHumidity(60, 700)).toBeGreaterThan(60);
+    expect(adjustHumidity(95, 1000)).toBe(100);
+    expect(adjustHumidity(60, -500)).toBeLessThan(60);
   });
 
   it('thins the moisture column over higher ground', () => {

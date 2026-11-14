@@ -229,8 +229,7 @@ void main() {
     if (m == 1) {
       v -= ${f(LAPSE_RATE_C_PER_M)} * dz;
     } else if (m == 2) {
-      float effDz = max(0.0, dz);
-      v = min(100.0, v * exp(${f(RH_LOG_PER_M)} * effDz));
+      v = min(100.0, v * exp(${f(RH_LOG_PER_M)} * dz));
     } else if (m == 3) {
       v -= ${f(DEWPOINT_LAPSE_C_PER_M)} * dz;
     } else if (m == 7) {
