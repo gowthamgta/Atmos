@@ -359,10 +359,9 @@ def assimilate_hourly_observations(
                 u10_obs_points.append((lat, lon, u_val))
                 v10_obs_points.append((lat, lon, v_val))
 
-        # Rain accumulation / intensity
+        # Station rain metrics logged for verification and ground-truth audit
         rain_acc = st.get("rain_accumulation")
         if rain_acc is not None and float(rain_acc) > 0.0:
-            precip_obs_points.append((lat, lon, float(rain_acc)))
             wu_rain_count += 1
 
     # 2. PMFBY WINDS Stations (Ministry of Agriculture / IMD)
@@ -383,8 +382,6 @@ def assimilate_hourly_observations(
                 rad = math.radians(deg)
                 u10_obs_points.append((lat, lon, -w_val * math.sin(rad)))
                 v10_obs_points.append((lat, lon, -w_val * math.cos(rad)))
-        if st.get("rainfall_cumulative") is not None and float(st["rainfall_cumulative"]) > 0.0:
-            precip_obs_points.append((lat, lon, float(st["rainfall_cumulative"])))
 
     # 3. Airport Weather Stations (METAR bias calibration)
     corrections_doc = load_airport_diurnal_corrections()
@@ -444,10 +441,6 @@ def assimilate_hourly_observations(
 
     if v10_obs_points and "v10" in assimilated:
         assimilated["v10"] = barnes_objective_analysis_2d(assimilated["v10"], v10_obs_points, radius_km=50.0, max_adj=6.0)
-
-    if precip_obs_points and "precip" in assimilated:
-        assimilated["precip"] = barnes_objective_analysis_2d(assimilated["precip"], precip_obs_points, radius_km=45.0, max_adj=12.0)
-        assimilated["precip"] = np.maximum(0.0, assimilated["precip"])
 
     # 5. Near-Realtime Satellite Convection & Cloud Cover Assimilation (Himawari-9 / Meteosat)
     try:

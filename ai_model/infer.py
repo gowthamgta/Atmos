@@ -213,7 +213,7 @@ class KralvethAIInferenceEngine:
 
             # Apply real-time ground-truth observation correction with physical persistence relaxation
             persistence = math.exp(-h / 24.0)
-            for var in ["t2m", "rh", "precip", "u10", "v10", "wind"]:
+            for var in ["t2m", "rh", "u10", "v10", "wind"]:
                 if var in obs_delta:
                     step_base[var] = step_base[var] + (persistence * obs_delta[var])
 

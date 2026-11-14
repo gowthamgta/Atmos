@@ -8,6 +8,7 @@ import {
   SOLAR_FACTOR_MAX,
   WIND_FACTOR_MIN,
   adjustDewpoint,
+  adjustHumidity,
   adjustLowCloud,
   applyTerrain,
   columnFactor,
@@ -24,6 +25,12 @@ describe('height corrections', () => {
   it('lowers the dew point slowly with height', () => {
     expect(adjustDewpoint(24, 1000)).toBeCloseTo(22.2, 9);
     expect(adjustDewpoint(24, -500)).toBeCloseTo(24.9, 9);
+  });
+
+  it('increases humidity towards saturation on summits and preserves moisture in valleys', () => {
+    expect(adjustHumidity(80, 500)).toBeGreaterThan(80);
+    expect(adjustHumidity(80, -500)).toBe(80);
+    expect(adjustHumidity(98, 1000)).toBe(100);
   });
 
   it('thins the moisture column over higher ground', () => {

@@ -228,12 +228,12 @@ class KralvethAI1km(nn.Module):
         orog_boost = np.maximum(0.0, w_orog * 0.4)
         p_1km = np.maximum(0.0, p_up * (1.0 + orog_boost))
 
-        # 4. Thermodynamic relative humidity and dew point (Magnus equation)
+        # 4. Thermodynamic relative humidity and dew point
+        # Preserves physical boundary layer humidity from ECMWF/AIFS, with orographic cloud cap boost on summits
+        rh_1km = np.clip(rh_up * np.exp(np.maximum(0.0, dz) * 0.00029), 2.0, 100.0)
         a, b = 17.625, 243.04
-        alpha = (a * t_up) / (b + t_up) + np.log(np.maximum(rh_up, 1.0) / 100.0)
-        td_up = (b * alpha) / (a - alpha)
-        dew_1km = td_up + LAPSE_RATE * 0.5 * dz  # Dew point lapse rate ~ -3.2 °C/km
-        rh_1km = np.clip(100.0 * np.exp((a * dew_1km) / (b + dew_1km) - (a * t_1km) / (b + t_1km)), 2.0, 100.0)
+        alpha = (a * t_1km) / (b + t_1km) + np.log(np.maximum(rh_1km, 1.0) / 100.0)
+        dew_1km = (b * alpha) / (a - alpha)
 
         # 5. Mountain ridge wind acceleration
         slope_mag = np.sqrt(slope_x_1km**2 + slope_y_1km**2)
@@ -286,12 +286,12 @@ class KralvethAI1km(nn.Module):
         orog_boost = np.maximum(0.0, w_orog * 0.4)
         p_sfc = np.maximum(0.0, p_up * (1.0 + orog_boost))
 
-        # Thermodynamic relative humidity and dew point (Magnus equation)
+        # Thermodynamic relative humidity and dew point
+        # Preserves physical boundary layer humidity from ECMWF/AIFS, with orographic cloud cap boost on summits
+        rh_sfc = np.clip(rh_up * np.exp(np.maximum(0.0, dz) * 0.00029), 2.0, 100.0)
         a, b = 17.625, 243.04
-        alpha = (a * t_up) / (b + t_up) + np.log(np.maximum(rh_up, 1.0) / 100.0)
-        td_up = (b * alpha) / (a - alpha)
-        dew_sfc = td_up + LAPSE_RATE * 0.5 * dz
-        rh_sfc = np.clip(100.0 * np.exp((a * dew_sfc) / (b + dew_sfc) - (a * t_sfc) / (b + t_sfc)), 2.0, 100.0)
+        alpha = (a * t_sfc) / (b + t_sfc) + np.log(np.maximum(rh_sfc, 1.0) / 100.0)
+        dew_sfc = (b * alpha) / (a - alpha)
 
         # Mountain ridge wind acceleration
         slope_mag = np.sqrt(slope_x_syn**2 + slope_y_syn**2)
