@@ -83,16 +83,21 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 }
               </div>
               @if (amv.active()) {
+                <div class="amv-legend">
+                  <span class="leg-item"><span class="leg-color high"></span>&lt;400 hPa</span>
+                  <span class="leg-item"><span class="leg-color mid"></span>400-700</span>
+                  <span class="leg-item"><span class="leg-color low"></span>&gt;700 hPa</span>
+                </div>
                 <div class="amv-filters" role="group" aria-label="Altitude Level Filter">
                   <button type="button" [class.on]="amv.layerFilter() === 'all'" (click)="amv.setLayerFilter('all')">All</button>
-                  <button type="button" [class.on]="amv.layerFilter() === 'high'" (click)="amv.setLayerFilter('high')">High &lt;400hPa</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'high'" (click)="amv.setLayerFilter('high')">High</button>
                   <button type="button" [class.on]="amv.layerFilter() === 'mid'" (click)="amv.setLayerFilter('mid')">Mid</button>
-                  <button type="button" [class.on]="amv.layerFilter() === 'low'" (click)="amv.setLayerFilter('low')">Low &gt;700hPa</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'low'" (click)="amv.setLayerFilter('low')">Low</button>
                 </div>
                 @if (amv.hoveredVector(); as hv) {
                   <div class="amv-readout" aria-live="polite">
                     <span class="amv-spd">{{ hv.speed }} m/s ({{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
-                    <span class="amv-meta">{{ hv.p }} hPa ({{ (hv.z / 1000).toFixed(1) }} km) · {{ hv.sat }} · QI {{ hv.qi }}%</span>
+                    <span class="amv-meta">{{ hv.p }} hPa ({{ (hv.z / 1000).toFixed(1) }} km) · {{ hv.sat }} (Observed) · QI {{ hv.qi }}%</span>
                   </div>
                 }
               }
@@ -204,6 +209,12 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
     .amv-dot.active { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
     .amv-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--text-muted); }
+    .leg-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+    .leg-color { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .leg-color.high { background: #00e5ff; box-shadow: 0 0 4px #00e5ff; }
+    .leg-color.mid { background: #00e676; box-shadow: 0 0 4px #00e676; }
+    .leg-color.low { background: #ff9100; box-shadow: 0 0 4px #ff9100; }
     .amv-filters { display: flex; gap: 2px; margin-top: 6px; }
     .amv-filters button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: var(--surface-3); color: var(--text-muted); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
     .amv-filters button.on { background: var(--accent); color: #fff; }

@@ -22,7 +22,7 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
-import { syncAmvLayer } from '../../core/rendering/amv-vectors.layer';
+import { syncAmvLayer, ensureAmvOnTop } from '../../core/rendering/amv-vectors.layer';
 import { AmvService } from '../../core/satellite/amv.service';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM } from '../../core/satellite/satellite.config';
@@ -170,6 +170,9 @@ export class MapComponent implements OnInit, OnDestroy {
     this.updateSatelliteOverlay(on && !shader, frames, position, opacity);
     this.updateSatelliteData(on && shader, frames, position, opacity, custom);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
+    if (this.amvService.active()) {
+      ensureAmvOnTop(this.map);
+    }
   });
 
   // Reactive Effect: Dual-Satellite AMV Nowcast Vectors
@@ -177,8 +180,7 @@ export class MapComponent implements OnInit, OnDestroy {
     const active = this.amvService.active();
     const geoJson = this.amvService.filteredGeoJson();
     if (!this.map || !this.isMapLoaded()) return;
-    const before = this.observationAnchorId();
-    syncAmvLayer(this.map, geoJson, active, before, (props) => {
+    syncAmvLayer(this.map, geoJson, active, undefined, (props) => {
       this.amvService.setHoveredVector(props);
     });
   });
