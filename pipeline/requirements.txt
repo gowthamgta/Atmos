@@ -11,3 +11,4 @@ scipy>=1.13
 # the terrain builder (build_terrain.py) reads the Copernicus DEM with these
 tifffile>=2024.1
 imagecodecs>=2024.1
+pyproj>=3.6

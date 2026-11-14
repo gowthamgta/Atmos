@@ -21,8 +21,12 @@ import argparse, datetime as dt, glob, json, math, os, sys, tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import pyproj
 import requests
+
+try:
+    import pyproj
+except ImportError:
+    pyproj = None
 
 try:
     import cv2
@@ -125,7 +129,7 @@ class AMVTrackerEngine:
         self.max_fb_error_px = max_fb_error_px
         self.max_acceleration_mps = max_acceleration_mps
         self.max_flow_diff_mps = max_flow_diff_mps
-        self.geod = pyproj.Geod(ellps="WGS84")
+        self.geod = pyproj.Geod(ellps="WGS84") if pyproj is not None else None
 
     def track_patch_ncc(
         self,
@@ -230,6 +234,8 @@ def track_satellite_channel(
     nom_res_m = float(abs(area_def.resolution[0])) if hasattr(area_def, "resolution") else 3000.0
     x_coords = area_def.projection_x_coords
     y_coords = area_def.projection_y_coords
+    if pyproj is None:
+        return []
     p_proj = pyproj.Proj(area_def.crs)
     geod = pyproj.Geod(ellps="WGS84")
 
@@ -345,7 +351,7 @@ def assign_heights_and_qi(vectors: List[Dict[str, Any]], sounding: Dict[str, np.
     t_sorted = t_valid[sort_idx]
     p_sorted = p_valid[sort_idx]
 
-    geod = pyproj.Geod(ellps="WGS84")
+    geod = pyproj.Geod(ellps="WGS84") if pyproj is not None else None
     out = []
     for v in vectors:
         tb = v["tracer_temp_k"]
@@ -373,8 +379,11 @@ def assign_heights_and_qi(vectors: List[Dict[str, Any]], sounding: Dict[str, np.
         # Parallax correction along bearing toward satellite
         zen_rad = np.radians(v["zenith_deg"])
         parallax_dist_m = float(assigned_z * np.tan(zen_rad))
-        fwd_az, _, _ = geod.inv(v["original_lon"], v["original_lat"], sub_lon, 0.0)
-        corr_lon, corr_lat, _ = geod.fwd(v["original_lon"], v["original_lat"], fwd_az, parallax_dist_m)
+        if geod is not None:
+            fwd_az, _, _ = geod.inv(v["original_lon"], v["original_lat"], sub_lon, 0.0)
+            corr_lon, corr_lat, _ = geod.fwd(v["original_lon"], v["original_lat"], fwd_az, parallax_dist_m)
+        else:
+            corr_lon, corr_lat = v["original_lon"], v["original_lat"]
 
         # Observation-Only QI (strictly zero model circularity)
         w_ncc = 30.0 * min(1.0, max(0.0, (v["ncc_corr"] - 0.70) / 0.28))
