@@ -201,8 +201,8 @@ class AMVTrackerEngine:
         n2 = (v2 - mn) / rng
 
         v_sub, u_sub = optical_flow_tvl1(n1, n2, attachment=15, tightness=0.3, num_iter=25)
-        fv_crop = cv2.resize(v_sub * 2.0, (r_max - r_min, c_max - c_min), interpolation=cv2.INTER_LINEAR)
-        fu_crop = cv2.resize(u_sub * 2.0, (r_max - r_min, c_max - c_min), interpolation=cv2.INTER_LINEAR)
+        fv_crop = cv2.resize(v_sub * 2.0, (c_max - c_min, r_max - r_min), interpolation=cv2.INTER_LINEAR)
+        fu_crop = cv2.resize(u_sub * 2.0, (c_max - c_min, r_max - r_min), interpolation=cv2.INTER_LINEAR)
 
         flow_v = np.zeros((h, w), dtype=np.float32)
         flow_u = np.zeros((h, w), dtype=np.float32)
@@ -533,43 +533,310 @@ def update_amv_index(out_dir: str, new_frame: Dict[str, Any], keep_minutes: int 
     print(f"Updated {idx_path} with {len(pruned)} frames.")
 
 
+def load_triplet_frames(base_folder: str, subfolder: str, remote_base: str = "https://gowthamgta.github.io/atmos-satellite") -> Tuple[Optional[List[np.ndarray]], Optional[str], float]:
+    """Load the latest triplet of brightness temperature frames from local or remote."""
+    idx_path = os.path.join(base_folder, subfolder, "index.json")
+    frames = []
+    if os.path.exists(idx_path):
+        try:
+            with open(idx_path, "r", encoding="utf-8") as f:
+                frames = json.load(f).get("frames", [])
+        except Exception:
+            frames = []
+
+    if len(frames) < 3:
+        try:
+            r = requests.get(f"{remote_base}/{subfolder}/index.json", timeout=15)
+            if r.status_code == 200:
+                frames = r.json().get("frames", [])
+        except Exception:
+            pass
+
+    if len(frames) < 3:
+        return None, None, 600.0
+
+    triplet_meta = frames[-3:]
+    t_iso = triplet_meta[-1]["time"]
+
+    try:
+        t1 = dt.datetime.fromisoformat(triplet_meta[-3]["time"].replace("Z", "+00:00"))
+        t2 = dt.datetime.fromisoformat(triplet_meta[-2]["time"].replace("Z", "+00:00"))
+        dt_sec = max(60.0, abs((t2 - t1).total_seconds()))
+    except Exception:
+        dt_sec = 600.0 if "h9" in subfolder else 900.0
+
+    imgs = []
+    for meta in triplet_meta:
+        fname = meta["file"]
+        local_fpath = os.path.join(base_folder, subfolder, fname)
+        im = None
+        if os.path.exists(local_fpath):
+            try:
+                from PIL import Image
+                im = Image.open(local_fpath).convert("RGB")
+            except Exception:
+                im = None
+        if im is None:
+            try:
+                from PIL import Image
+                r_img = requests.get(f"{remote_base}/{subfolder}/{fname}", timeout=20)
+                if r_img.status_code == 200:
+                    import io
+                    im = Image.open(io.BytesIO(r_img.content)).convert("RGB")
+            except Exception:
+                im = None
+        if im is None:
+            return None, None, dt_sec
+
+        arr = np.array(im)[:, :, 0].astype(np.float32)
+        k = 180.0 + arr * 0.5
+        k[arr == 0] = np.nan
+        imgs.append(k)
+
+    return imgs, t_iso, dt_sec
+
+
+def track_regular_grid(
+    sat_name: str,
+    channel: str,
+    f1: np.ndarray,
+    f2: np.ndarray,
+    f3: np.ndarray,
+    dt_sec: float,
+    sub_lon: float,
+    grid_step: int = 16,
+    sounding: Optional[Dict[str, np.ndarray]] = None
+) -> List[Dict[str, Any]]:
+    """Track AMVs across a regular lat/lon grid triplet with TV-L1 cross-check, height assignment & QC."""
+    if sounding is None:
+        sounding = get_standard_tropical_profile()
+
+    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=1.2)
+    h, w = f2.shape
+    half_t = tracker.template_size // 2
+    margin = half_t + tracker.search_radius
+
+    rows_idx = np.arange(h)
+    cols_idx = np.arange(w)
+    step_lat = (ROI_LAT_MAX - ROI_LAT_MIN) / float(h)
+    step_lon = (ROI_LON_MAX - ROI_LON_MIN) / float(w)
+
+    lats_grid = ROI_LAT_MAX - (rows_idx + 0.5) * step_lat
+    lons_grid = ROI_LON_MIN + (cols_idx + 0.5) * step_lon
+    lons_2d, lats_2d = np.meshgrid(lons_grid, lats_grid)
+
+    zen_grid = viewing_zenith_angle(lons_2d, lats_2d, sub_lon)
+    valid_mask = np.isfinite(f2) & (zen_grid <= ZENITH_HARD_CUTOFF_DEG)
+
+    if not np.any(valid_mask):
+        return []
+
+    flow_v, flow_u = tracker.compute_tvl1_flow(f2, f3, valid_mask)
+    nom_res_m = 3300.0
+
+    candidates = []
+    for r in range(margin, h - margin, grid_step):
+        for c in range(margin, w - margin, grid_step):
+            if not valid_mask[r, c]:
+                continue
+            patch = f2[r - half_t : r + half_t, c - half_t : c + half_t]
+            if np.all(np.isfinite(patch)) and float(np.std(patch)) >= tracker.min_contrast_k:
+                candidates.append((r, c))
+
+    vectors = []
+    for idx, (r2, c2) in enumerate(candidates):
+        fwd = tracker.track_patch_ncc(f2, f3, r2, c2)
+        if fwd is None:
+            continue
+        dc_fwd, dr_fwd, corr_fwd = fwd
+        r3_int, c3_int = int(round(r2 + dr_fwd)), int(round(c2 + dc_fwd))
+        if not (margin <= r3_int < h - margin and margin <= c3_int < w - margin):
+            continue
+        bwd_loop = tracker.track_patch_ncc(f3, f2, r3_int, c3_int)
+        if bwd_loop is None:
+            continue
+        dc_loop, dr_loop, _ = bwd_loop
+        fb_err_px = float(np.hypot(r3_int + dr_loop - r2, c3_int + dc_loop - c2))
+        if fb_err_px > tracker.max_fb_error_px:
+            continue
+        bwd = tracker.track_patch_ncc(f2, f1, r2, c2)
+        if bwd is None:
+            continue
+        dc_bwd, dr_bwd, _ = bwd
+        spd_fwd_px = float(np.hypot(dc_fwd, dr_fwd))
+        spd_bwd_px = float(np.hypot(dc_bwd, dr_bwd))
+        accel_mps = abs(spd_fwd_px - spd_bwd_px) * (nom_res_m / dt_sec)
+        if accel_mps > tracker.max_acceleration_mps:
+            continue
+        tv_dc, tv_dr = float(flow_u[r2, c2]), float(flow_v[r2, c2])
+        flow_diff_px = float(np.hypot(dc_fwd - tv_dc, dr_fwd - tv_dr))
+        flow_diff_mps = (flow_diff_px * nom_res_m) / dt_sec
+        if flow_diff_mps > tracker.max_flow_diff_mps:
+            continue
+
+        r1_f, c1_f = r2 + dr_bwd, c2 + dc_bwd
+        r3_f, c3_f = r2 + dr_fwd, c2 + dc_fwd
+        lat1 = float(ROI_LAT_MAX - (r1_f + 0.5) * step_lat)
+        lon1 = float(ROI_LON_MIN + (c1_f + 0.5) * step_lon)
+        lat2 = float(ROI_LAT_MAX - (r2 + 0.5) * step_lat)
+        lon2 = float(ROI_LON_MIN + (c2 + 0.5) * step_lon)
+        lat3 = float(ROI_LAT_MAX - (r3_f + 0.5) * step_lat)
+        lon3 = float(ROI_LON_MIN + (c3_f + 0.5) * step_lon)
+
+        if pyproj is not None:
+            geod = pyproj.Geod(ellps="WGS84")
+            fwd_az, _, dist_total_m = geod.inv(lon1, lat1, lon3, lat3)
+        else:
+            phi1, phi3 = np.radians(lat1), np.radians(lat3)
+            dphi = np.radians(lat3 - lat1)
+            dlam = np.radians(lon3 - lon1)
+            a_sph = np.sin(dphi / 2.0) ** 2 + np.cos(phi1) * np.cos(phi3) * np.sin(dlam / 2.0) ** 2
+            c_sph = 2.0 * np.arctan2(np.sqrt(a_sph), np.sqrt(1.0 - a_sph))
+            dist_total_m = EARTH_R * 1000.0 * c_sph
+            y_az = np.sin(dlam) * np.cos(phi3)
+            x_az = np.cos(phi1) * np.sin(phi3) - np.sin(phi1) * np.cos(phi3) * np.cos(dlam)
+            fwd_az = np.degrees(np.arctan2(y_az, x_az))
+
+        az_rad = np.radians(fwd_az)
+        dt_total = 2.0 * dt_sec
+        u_mps = float((dist_total_m * np.sin(az_rad)) / dt_total)
+        v_mps = float((dist_total_m * np.cos(az_rad)) / dt_total)
+        speed_mps = float(np.hypot(u_mps, v_mps))
+        dir_deg = meteorological_direction(u_mps, v_mps)
+        tb_k = float(f2[r2, c2])
+        zen_deg = float(zen_grid[r2, c2])
+
+        vectors.append({
+            "tracer_id": idx, "lon": lon2, "lat": lat2,
+            "original_lon": lon2, "original_lat": lat2,
+            "u_mps": round(u_mps, 2), "v_mps": round(v_mps, 2),
+            "speed_mps": round(speed_mps, 2), "direction_deg": round(dir_deg, 1),
+            "tracer_temp_k": round(tb_k, 2), "zenith_deg": round(zen_deg, 1),
+            "satellite": sat_name, "channel": channel,
+            "ncc_corr": corr_fwd, "fb_err_px": fb_err_px,
+            "accel_mps": accel_mps, "flow_diff_mps": flow_diff_mps
+        })
+
+    vectors = assign_heights_and_qi(vectors, sounding, sub_lon)
+    return vectors
+
+
+def fuse_dual_satellite_amvs(
+    met_vectors: List[Dict[str, Any]],
+    him_vectors: List[Dict[str, Any]],
+    match_dist_deg: float = 0.20
+) -> List[Dict[str, Any]]:
+    """Fuse Meteosat and Himawari vectors, strictly selecting the smaller viewing zenith angle."""
+    met_valid = [v for v in met_vectors if v["zenith_deg"] <= ZENITH_HARD_CUTOFF_DEG]
+    him_valid = [v for v in him_vectors if v["zenith_deg"] <= ZENITH_HARD_CUTOFF_DEG]
+
+    if not met_valid:
+        return him_valid
+    if not him_valid:
+        return met_valid
+
+    him_lons = np.array([v["lon"] for v in him_valid])
+    him_lats = np.array([v["lat"] for v in him_valid])
+    him_used = set()
+    fused = []
+
+    for v_met in met_valid:
+        dists = np.hypot(him_lons - v_met["lon"], him_lats - v_met["lat"])
+        close = np.where(dists < match_dist_deg)[0]
+        if len(close) > 0:
+            best_him_idx = close[np.argmin([him_valid[k]["zenith_deg"] for k in close])]
+            v_him = him_valid[best_him_idx]
+            him_used.add(best_him_idx)
+            if v_him["zenith_deg"] < v_met["zenith_deg"]:
+                fused.append(v_him)
+            else:
+                fused.append(v_met)
+        else:
+            fused.append(v_met)
+
+    for idx, v_him in enumerate(him_valid):
+        if idx not in him_used:
+            fused.append(v_him)
+
+    return fused
+
+
 def run_pipeline(out_dir: str, keep_minutes: int = DEFAULT_KEEP_MINUTES) -> int:
     """Execute AMV retrieval, tracking, fusion and export."""
     amv_dir = os.path.join(out_dir, FOLDER)
     os.makedirs(amv_dir, exist_ok=True)
     now_utc = dt.datetime.now(dt.timezone.utc)
+    t_iso = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     sounding = get_standard_tropical_profile()
 
-    # Check if local pre-computed dual AMVs exist (e.g. from amv-nowcast)
-    dual_csv = r"C:\projects\amv-nowcast\dual_satellite_merged_amv.csv"
-    if os.path.exists(dual_csv):
-        import pandas as pd
-        df = pd.read_csv(dual_csv)
-        vectors = df.to_dict(orient="records")
-        t_iso = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-        fname = f"amv_{now_utc.strftime('%Y%m%d_%H%M%S')}.json"
-        fpath = os.path.join(amv_dir, fname)
+    him_vectors = []
+    met_vectors = []
 
-        geojson = export_geojson(vectors, t_iso)
-        with open(fpath, "w", encoding="utf-8") as f:
-            json.dump(geojson, f)
+    # 1. Attempt tracking on Himawari-9 (bt-h9)
+    try:
+        imgs_h, t_h, dt_h = load_triplet_frames(out_dir, "bt-h9")
+        if imgs_h is not None and len(imgs_h) == 3:
+            print(f"Tracking Himawari-9 AMVs on triplet ending at {t_h} (dt={dt_h}s)...")
+            him_vectors = track_regular_grid("Himawari-9", "IR_104", imgs_h[0], imgs_h[1], imgs_h[2], dt_h, 140.7, sounding=sounding)
+            print(f"Himawari-9 tracking yield: {len(him_vectors)} vectors (zenith <= 60 deg).")
+    except Exception as e:
+        print(f"::warning::Himawari AMV tracking failed ({type(e).__name__}: {e})")
 
-        met_count = sum(1 for v in vectors if v.get("satellite") == "Meteosat-9")
-        him_count = sum(1 for v in vectors if v.get("satellite") == "Himawari-9")
+    # 2. Attempt tracking on Meteosat-9 (bt)
+    try:
+        imgs_m, t_m, dt_m = load_triplet_frames(out_dir, "bt")
+        if imgs_m is not None and len(imgs_m) == 3:
+            print(f"Tracking Meteosat-9 AMVs on triplet ending at {t_m} (dt={dt_m}s)...")
+            met_vectors = track_regular_grid("Meteosat-9", "IR_108", imgs_m[0], imgs_m[1], imgs_m[2], dt_m, 45.5, sounding=sounding)
+            print(f"Meteosat-9 tracking yield: {len(met_vectors)} vectors (zenith <= 60 deg).")
+    except Exception as e:
+        print(f"::warning::Meteosat AMV tracking failed ({type(e).__name__}: {e})")
 
-        frame_meta = {
-            "time": t_iso,
-            "file": fname,
-            "count": len(vectors),
-            "meteosat_count": met_count,
-            "himawari_count": him_count
-        }
-        update_amv_index(out_dir, frame_meta, keep_minutes)
-        print(f"Successfully published {len(vectors)} AMV vectors to {fpath}")
-        return len(vectors)
+    # 3. Fuse vectors selecting smaller zenith angle in overlap
+    fused_vectors = fuse_dual_satellite_amvs(met_vectors, him_vectors)
 
-    print("No input data found; amv_nowcast engine ready.")
-    return 0
+    # 4. Fallback to precomputed seed if live tracking produced no vectors (e.g. cold start)
+    if not fused_vectors:
+        seed_path = os.path.join(os.path.dirname(__file__), "data", "amv_seed.json")
+        dual_csv = r"C:\projects\amv-nowcast\dual_satellite_merged_amv.csv"
+        if os.path.exists(seed_path):
+            try:
+                with open(seed_path, "r", encoding="utf-8") as f:
+                    fused_vectors = json.load(f)
+                print(f"Loaded {len(fused_vectors)} fallback seed AMV vectors from {seed_path}")
+            except Exception as e:
+                print(f"::warning::Failed reading {seed_path}: {e}")
+        elif os.path.exists(dual_csv):
+            try:
+                import pandas as pd
+                df = pd.read_csv(dual_csv)
+                fused_vectors = df.to_dict(orient="records")
+            except Exception as e:
+                print(f"::warning::Failed reading {dual_csv}: {e}")
+
+    if not fused_vectors:
+        print("No AMV vectors available to publish.")
+        return 0
+
+    fname = f"amv_{now_utc.strftime('%Y%m%d_%H%M%S')}.json"
+    fpath = os.path.join(amv_dir, fname)
+    geojson = export_geojson(fused_vectors, t_iso)
+    with open(fpath, "w", encoding="utf-8") as f:
+        json.dump(geojson, f)
+
+    met_count = sum(1 for v in fused_vectors if v.get("satellite") == "Meteosat-9")
+    him_count = sum(1 for v in fused_vectors if v.get("satellite") == "Himawari-9")
+
+    frame_meta = {
+        "time": t_iso,
+        "file": fname,
+        "count": len(fused_vectors),
+        "meteosat_count": met_count,
+        "himawari_count": him_count
+    }
+    update_amv_index(out_dir, frame_meta, keep_minutes)
+    print(f"Successfully published {len(fused_vectors)} AMV vectors to {fpath} (Meteosat: {met_count}, Himawari: {him_count})")
+    return len(fused_vectors)
 
 
 def main():
