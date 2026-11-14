@@ -8,7 +8,7 @@ A true autonomous deep learning weather prediction model for South India and its
 - Publishes quantized RG16 PNGs, manifest.json, and latest.json directly into site/blend/.
 """
 from __future__ import annotations
-import argparse, json, math, os, sys, time
+import argparse, json, math, os, re, sys, time
 from datetime import datetime, timedelta, timezone
 import numpy as np
 import torch
@@ -278,6 +278,28 @@ class KralvethAIInferenceEngine:
                 f_aifs = legacy_blend.field_at_valid(aifs_comp, var_name, valid_dt) if aifs_comp else None
                 f_ext = safe_blend_fields(f_ifs, f_aifs, w_ifs)
 
+                # Check if this is an intermediate isobaric level that should be interpolated from bounding levels
+                # (e.g. 800 hPa from 850 & 700 hPa, 600 hPa from 700 & 500 hPa)
+                LEVEL_PAIRS = {800: (850, 700), 600: (700, 500)}
+                if f_ext is None:
+                    m_lvl = re.match(r"^([a-z]+)(\d+)$", var_name)
+                    if m_lvl:
+                        prefix, l_str = m_lvl.group(1), m_lvl.group(2)
+                        l = int(l_str)
+                        if l in LEVEL_PAIRS:
+                            b_lo, b_hi = LEVEL_PAIRS[l]
+                            mix = math.log(b_lo / l) / math.log(b_lo / b_hi)
+                            f_lo_ifs = legacy_blend.field_at_valid(ifs_comp, f"{prefix}{b_lo}", valid_dt) if ifs_comp else None
+                            f_lo_aifs = legacy_blend.field_at_valid(aifs_comp, f"{prefix}{b_lo}", valid_dt) if aifs_comp else None
+                            f_lo = safe_blend_fields(f_lo_ifs, f_lo_aifs, w_ifs)
+
+                            f_hi_ifs = legacy_blend.field_at_valid(ifs_comp, f"{prefix}{b_hi}", valid_dt) if ifs_comp else None
+                            f_hi_aifs = legacy_blend.field_at_valid(aifs_comp, f"{prefix}{b_hi}", valid_dt) if aifs_comp else None
+                            f_hi = safe_blend_fields(f_hi_ifs, f_hi_aifs, w_ifs)
+
+                            if f_lo is not None and f_hi is not None:
+                                f_ext = ((1.0 - mix) * f_lo + mix * f_hi).astype(np.float32)
+
                 # Physical hydrostatic/barometric synthesis fallback if absent from base models
                 if f_ext is None:
                     if var_name.startswith("t") and var_name[1:].isdigit():
@@ -285,12 +307,16 @@ class KralvethAIInferenceEngine:
                         f_ext = (fields_syn["t2m"] - 0.0065 * STD_HEIGHTS.get(l, 1500.0)).astype(np.float32)
                     elif var_name.startswith("u") and var_name[1:].isdigit():
                         l = int(var_name[1:])
-                        wind_mult = 1.0 + (1000.0 - l) / 1000.0
-                        f_ext = (fields_syn["u10"] * wind_mult).astype(np.float32)
+                        z = STD_HEIGHTS.get(l, 2000.0)
+                        speed_gain = 1.0 + 1.2 * (1.0 - math.exp(-z / 1200.0))
+                        theta = math.radians(28.0 * (1.0 - math.exp(-z / 900.0)))
+                        f_ext = (speed_gain * (fields_syn["u10"] * math.cos(theta) - fields_syn["v10"] * math.sin(theta))).astype(np.float32)
                     elif var_name.startswith("v") and var_name[1:].isdigit():
                         l = int(var_name[1:])
-                        wind_mult = 1.0 + (1000.0 - l) / 1000.0
-                        f_ext = (fields_syn["v10"] * wind_mult).astype(np.float32)
+                        z = STD_HEIGHTS.get(l, 2000.0)
+                        speed_gain = 1.0 + 1.2 * (1.0 - math.exp(-z / 1200.0))
+                        theta = math.radians(28.0 * (1.0 - math.exp(-z / 900.0)))
+                        f_ext = (speed_gain * (fields_syn["u10"] * math.sin(theta) + fields_syn["v10"] * math.cos(theta))).astype(np.float32)
                     elif var_name.startswith("rh") and var_name[2:].isdigit():
                         l = int(var_name[2:])
                         f_ext = np.clip(fields_syn["rh"] * (0.95 - (1000.0 - l) / 2500.0), 5.0, 95.0).astype(np.float32)

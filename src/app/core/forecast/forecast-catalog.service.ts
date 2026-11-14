@@ -148,7 +148,8 @@ function synthesizeLevels(manifest: ForecastManifest): string[] {
       const varId = `${kind}${b.level}`;
       const belowInfo = manifest.vars[`${kind}${b.below}`];
       const aboveInfo = manifest.vars[`${kind}${b.above}`];
-      if (!manifest.vars[varId] && belowInfo && aboveInfo) {
+      const shouldSynthesize = (!manifest.vars[varId] || manifest.model === 'blend') && belowInfo && aboveInfo;
+      if (shouldSynthesize) {
         const [min, max] = kind === 't' ? b.t : kind === 'gh' ? b.gh : [belowInfo.min, belowInfo.max];
         manifest.vars[varId] = { unit: belowInfo.unit, min, max, encoding: 'rg16' };
         out.push(varId);
