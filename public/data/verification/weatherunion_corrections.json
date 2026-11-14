@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-14T03:44:56.754911+00:00",
-  "hour_utc": 3,
+  "timestamp": "2026-11-14T04:03:25.897049+00:00",
+  "hour_utc": 4,
   "freshness_policy": "STRICT_REALTIME_ONLY",
   "max_allowed_age_hours": 8.0,
   "weatherunion_fresh_count": 40,
@@ -18,8 +18,8 @@
       "lon": 80.2251,
       "original_obs": 30.68,
       "model_before": 28.5,
-      "model_after": 29.25,
-      "delta": 0.75
+      "model_after": 29.22,
+      "delta": 0.72
     },
     {
       "type": "temperature",
@@ -27,8 +27,8 @@
       "lon": 80.1018,
       "original_obs": 31.31,
       "model_before": 28.5,
-      "model_after": 29.16,
-      "delta": 0.66
+      "model_after": 29.13,
+      "delta": 0.63
     },
     {
       "type": "temperature",
@@ -36,8 +36,8 @@
       "lon": 80.1582,
       "original_obs": 30.18,
       "model_before": 28.5,
-      "model_after": 29.24,
-      "delta": 0.74
+      "model_after": 29.21,
+      "delta": 0.71
     },
     {
       "type": "temperature",
@@ -45,8 +45,8 @@
       "lon": 80.248,
       "original_obs": 30.4,
       "model_before": 28.5,
-      "model_after": 29.25,
-      "delta": 0.75
+      "model_after": 29.22,
+      "delta": 0.72
     },
     {
       "type": "temperature",
@@ -54,8 +54,8 @@
       "lon": 80.0908,
       "original_obs": 29.27,
       "model_before": 28.5,
-      "model_after": 29.19,
-      "delta": 0.69
+      "model_after": 29.17,
+      "delta": 0.67
     },
     {
       "type": "temperature",
