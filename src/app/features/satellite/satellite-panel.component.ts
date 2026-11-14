@@ -4,6 +4,7 @@ import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
 import { productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
+import { AmvService } from '../../core/satellite/amv.service';
 import { cloudTopGradient, greyScaleTempFromMeasured } from '../../core/satellite/satellite-image';
 import { CUSTOM_PRESETS, CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
 
@@ -69,6 +70,33 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
               <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow.</p>
             }
             <p class="hint3d full-only">{{ ownSat().note }}</p>
+
+            <!-- Dual-Satellite AMV Nowcast Section -->
+            <div class="amv-section full-only">
+              <div class="amv-toggle-row">
+                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Dual-Satellite Atmospheric Motion Vectors (AMVs) tracked across Meteosat-9 + Himawari-9">
+                  <span class="amv-dot" [class.active]="amv.active()"></span>
+                  <strong>Satellite Winds (AMV)</strong>
+                </button>
+                @if (amv.active() && amv.stats(); as st) {
+                  <span class="amv-badge">{{ st.total }} vectors · {{ st.avgSpeedMps }} m/s</span>
+                }
+              </div>
+              @if (amv.active()) {
+                <div class="amv-filters" role="group" aria-label="Altitude Level Filter">
+                  <button type="button" [class.on]="amv.layerFilter() === 'all'" (click)="amv.setLayerFilter('all')">All</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'high'" (click)="amv.setLayerFilter('high')">High &lt;400hPa</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'mid'" (click)="amv.setLayerFilter('mid')">Mid</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'low'" (click)="amv.setLayerFilter('low')">Low &gt;700hPa</button>
+                </div>
+                @if (amv.hoveredVector(); as hv) {
+                  <div class="amv-readout" aria-live="polite">
+                    <span class="amv-spd">{{ hv.speed }} m/s ({{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
+                    <span class="amv-meta">{{ hv.p }} hPa ({{ (hv.z / 1000).toFixed(1) }} km) · {{ hv.sat }} · QI {{ hv.qi }}%</span>
+                  </div>
+                }
+              }
+            </div>
           <div class="scan">
             <span>{{ timeLabel() }}</span>
             <span class="age">@if (sat.updatedAgoMinutes() !== null) { Updated {{ sat.updatedAgoMinutes()! < 1 ? 'just now' : sat.updatedAgoMinutes() + ' min ago' }} } @else if (sat.ageMinutes() !== null) { {{ sat.ageMinutes() }} min old } @else { Loading… }</span>
@@ -168,6 +196,20 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     input[type=range] { width: 100%; margin: 0; accent-color: var(--neon-cyan); cursor: pointer; }
     .note { margin: 10px 0 0; font-size: var(--fs-xs); color: var(--text-muted); }
     .presets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .amv-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--glass-border); }
+    .amv-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .btn-amv { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--glass-border); border-radius: 7px; background: var(--surface-3); color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+    .btn-amv:hover { background: var(--surface-4); color: var(--text-primary); }
+    .btn-amv.on { background: var(--surface-4); border-color: var(--neon-cyan); color: var(--neon-cyan); }
+    .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+    .amv-dot.active { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+    .amv-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .amv-filters { display: flex; gap: 2px; margin-top: 6px; }
+    .amv-filters button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: var(--surface-3); color: var(--text-muted); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .amv-filters button.on { background: var(--accent); color: #fff; }
+    .amv-readout { margin-top: 5px; padding: 4px 6px; border-radius: 6px; background: var(--surface-2); font-size: 11px; display: flex; flex-direction: column; gap: 1px; }
+    .amv-spd { font-weight: 700; color: var(--neon-cyan); }
+    .amv-meta { color: var(--text-secondary); }
     /* compact (phones by default): the satellite, the pictures in one row that scrolls, the time and the slider */
     .panel.compact .full-only { display: none; }
     .panel.compact .kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -197,6 +239,7 @@ export class SatellitePanelComponent {
     return recipe.every((r, i) => c[i] && r.source === c[i].source && r.min === c[i].min && r.max === c[i].max && r.gamma === c[i].gamma);
   }
   protected readonly sat = inject(SatelliteService);
+  protected readonly amv = inject(AmvService);
   private readonly layers = inject(MapLayerService);
   protected readonly Math = Math;
   protected readonly gradient = cloudTopGradient();

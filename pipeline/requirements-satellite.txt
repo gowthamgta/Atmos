@@ -1,4 +1,4 @@
-# the satellite workflow (gowthamgta/atmos-satellite) only: the EUMETSAT Data Store client, Satpy to read SEVIRI and AHI files, pyspectral for the Rayleigh correction of true colour
+# the satellite workflow (gowthamgta/atmos-satellite) only: the EUMETSAT Data Store client, Satpy to read SEVIRI and AHI files, pyspectral for the Rayleigh correction of true colour, OpenCV & scikit-image for AMV nowcast
 numpy>=2.0
 Pillow>=11
 pytest>=8
@@ -7,3 +7,7 @@ satpy>=0.56
 pyresample>=1.30
 requests>=2.32
 pyspectral>=0.13
+opencv-python-headless>=4.8
+scikit-image>=0.22
+scipy>=1.13
+pyproj>=3.6

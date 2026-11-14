@@ -11,7 +11,7 @@ import argparse, json, os, sys
 
 import requests
 
-FOLDERS = ("bt", "bt-h9", "rgb-h9", "rgb-msg")
+FOLDERS = ("bt", "bt-h9", "rgb-h9", "rgb-msg", "amv")
 
 
 def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:
@@ -30,7 +30,7 @@ def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:
         for frame in index.get("frames", []):
             # a frame is one file ("file") or several ("files": {product: file}); it is kept only when all of them come back
             names = [os.path.basename(n) for n in ([frame["file"]] if "file" in frame else list(frame.get("files", {}).values()))]
-            if not names or not all(n.endswith((".png", ".webp")) for n in names):
+            if not names or not all(n.endswith((".png", ".webp", ".json")) for n in names):
                 continue
             got = {}
             for name in names:
