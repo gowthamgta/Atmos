@@ -17,6 +17,7 @@ import { ThemeService } from '../../shared/theme.service';
 import { AltitudePickerComponent } from '../altitude/altitude-picker.component';
 import { ModelListComponent } from '../models/model-list.component';
 import { CYCLONE_CLASSES } from '../../core/forecast/cyclone-tracks';
+import { AmvService } from '../../core/satellite/amv.service';
 
 const TABS: readonly { id: MenuTab; label: string }[] = [
   { id: 'layers', label: 'Layers' },
@@ -63,6 +64,9 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                     </button>
                     <button type="button" class="tile" [class.active]="satelliteActive()" [attr.aria-pressed]="satelliteActive()" (click)="toggleSatellite()" title="Live satellite: Meteosat-9 over India, HRV by day, infrared at night">
                       <app-icon name="satellite" [size]="20" /><span class="tile-name">Satellite</span><span class="tile-sub">15 min</span>
+                    </button>
+                    <button type="button" class="tile" [class.active]="amv.active()" [attr.aria-pressed]="amv.active()" (click)="amv.toggleActive()" title="Dual-Satellite Atmospheric Motion Vectors (AMVs) tracked across Meteosat-9 + Himawari-9">
+                      <app-icon name="wind" [size]="20" /><span class="tile-name">Sat Winds</span><span class="tile-sub">AMV · live</span>
                     </button>
                   </div>
                 </section>
@@ -118,6 +122,9 @@ const TABS: readonly { id: MenuTab; label: string }[] = [
                     </button>
                     <button type="button" class="toggle" [attr.aria-pressed]="state.relief()" (click)="state.toggleRelief()" title="Shade the 90 m terrain into the colour layer">
                       <app-icon name="mountain" [size]="16" />Terrain relief
+                    </button>
+                    <button type="button" class="toggle" [attr.aria-pressed]="amv.active()" (click)="amv.toggleActive()" title="Dual-Satellite Atmospheric Motion Vectors (AMVs) tracked across Meteosat-9 + Himawari-9">
+                      <app-icon name="wind" [size]="16" />Satellite winds
                     </button>
                   </div>
                   @if (state.cyclones()) {
@@ -301,6 +308,7 @@ export class MenuPanelComponent {
   protected readonly theme = inject(ThemeService);
   protected readonly mapHost = inject(MapHostService);
   protected readonly perf = inject(PerfMeterService);
+  protected readonly amv = inject(AmvService);
   private readonly mapLayers = inject(MapLayerService);
   private readonly unitsService = inject(UnitsService);
 
