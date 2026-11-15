@@ -32,8 +32,8 @@ export const PX_PER_MS = 7;
 export const SPEED_KNEE_MS = 6;
 /** Zoomed out over all India (zoom 4 and less) the flow is drawn this much slower, rising to full speed at zoom 6. */
 export const ZOOMED_OUT_SPEED = 0.9;
-/** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha, earlier screen velocity x, y (px/s). */
-export const INSTANCE_FLOATS = 7;
+/** Floats per particle in the instance buffer: mercator x, y, screen velocity x, y (px/s), alpha, earlier screen velocity x, y (px/s), wind speed (m/s). */
+export const INSTANCE_FLOATS = 8;
 /**
  * The earlier velocity a particle's tail bends towards: its velocity smoothed over this long (s), so the tail follows the path it has come
  * along through a turn instead of sticking out straight (the owner, 2 Nov 2026: "smooth edges while curving or turning").
@@ -221,9 +221,10 @@ export class ParticleSystem {
       out[o + 1] = y;
       out[o + 2] = this.vx[i];
       out[o + 3] = this.vy[i];
-      out[o + 4] = Math.max(fadeIn * fadeOut, 0) * (0.3 + 0.7 * Math.min(speed / 12, 1));
+      out[o + 4] = Math.max(fadeIn * fadeOut, 0) * (0.42 + 0.58 * Math.min(speed / 10, 1));
       out[o + 5] = this.pvx[i];
       out[o + 6] = this.pvy[i];
+      out[o + 7] = speed;
       n++;
     }
     return n;
