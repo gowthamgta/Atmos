@@ -71,21 +71,43 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             }
             <p class="hint3d full-only">{{ ownSat().note }}</p>
 
-            <!-- Low-Level Winds (850 hPa / ~1.5 km) Section -->
+            <!-- Satellite Winds (AMV) Section with Height Level Selector -->
             <div class="amv-section full-only">
               <div class="amv-toggle-row">
-                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Low-Level Winds at 850 hPa (~1.5 km altitude)">
+                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Dual-Satellite Atmospheric Motion Vectors">
                   <span class="amv-dot" [class.active]="amv.active()"></span>
-                  <strong>Low-Level Winds (850 hPa · 1.5 km)</strong>
+                  <strong>Satellite Winds (AMV)</strong>
                 </button>
-                @if (amv.active() && amv.stats(); as st) {
-                  <span class="amv-badge">{{ st.low || st.total }} vectors · {{ st.avgSpeedMps }} m/s</span>
+                @if (amv.active()) {
+                  <span class="amv-badge">{{ activeVectorCount() }} vectors</span>
                 }
               </div>
-              <div class="amv-height-info">
-                <span>Altitude: <strong>~1.5 km</strong> (850 hPa Boundary Layer)</span>
-              </div>
+
               @if (amv.active()) {
+                <div class="amv-level-row" role="group" aria-label="Wind altitude level">
+                  <button type="button" [class.on]="amv.layerFilter() === 'low'" (click)="amv.setLayerFilter('low')" title="Surface to 700 hPa boundary layer flow">Low (&le;700)</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'mid'" (click)="amv.setLayerFilter('mid')" title="700 to 400 hPa mid-tropospheric flow">Mid (700–400)</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'high'" (click)="amv.setLayerFilter('high')" title="Upper-level jet stream and cirrus outflow (&lt;400 hPa)">High (&lt;400)</button>
+                  <button type="button" [class.on]="amv.layerFilter() === 'all'" (click)="amv.setLayerFilter('all')" title="All atmosphere levels combined">All</button>
+                </div>
+
+                <div class="amv-height-info">
+                  @switch (amv.layerFilter()) {
+                    @case ('low') {
+                      <span>Altitude: <strong>~1.5 km</strong> (Surface – 700 hPa Boundary Layer)</span>
+                    }
+                    @case ('mid') {
+                      <span>Altitude: <strong>~3–7 km</strong> (700 – 400 hPa Mid-Troposphere)</span>
+                    }
+                    @case ('high') {
+                      <span>Altitude: <strong>~7–14 km</strong> (400 – 150 hPa Cirrus Jet)</span>
+                    }
+                    @default {
+                      <span>Altitude: <strong>All Levels</strong> (Surface to 150 hPa)</span>
+                    }
+                  }
+                </div>
+
                 <div class="amv-legend">
                   <span class="leg-item"><span class="leg-color c-black"></span>&lt;10 kt</span>
                   <span class="leg-item"><span class="leg-color c-green"></span>10–20</span>
@@ -97,7 +119,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                   <div class="amv-readout" aria-live="polite">
                     <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
                     <span class="amv-meta">
-                      850 hPa (~1.5 km) · Low-Level Wind Flow
+                      {{ hv.p }} hPa (~{{ hv.z ? (hv.z / 1000).toFixed(1) : '1.5' }} km) · {{ hv.sat }}
                     </span>
                   </div>
                 }
@@ -210,7 +232,11 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
     .amv-dot.active { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
     .amv-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); }
-    .amv-height-info { font-size: 11px; color: var(--text-secondary); margin-top: 3px; display: flex; align-items: center; justify-content: space-between; }
+    .amv-level-row { display: flex; gap: 2px; margin-top: 6px; padding: 2px; border-radius: 7px; background: var(--surface-3); }
+    .amv-level-row button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; transition: background 0.15s, color 0.15s; }
+    .amv-level-row button:hover { background: var(--surface-4); color: var(--text-primary); }
+    .amv-level-row button.on { background: var(--accent); color: #fff; }
+    .amv-height-info { font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: flex; align-items: center; justify-content: space-between; }
     .amv-height-info strong { color: var(--neon-cyan); }
     .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
     .leg-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
@@ -260,6 +286,7 @@ export class SatellitePanelComponent {
 
   protected readonly active = computed(() => this.layers.layers().some(l => l.id === 'satellite' && l.active));
   protected readonly count = computed(() => this.sat.frames().length);
+  protected readonly activeVectorCount = computed(() => this.amv.filteredGeoJson()?.count ?? 0);
   protected readonly failed = this.sat.failed;
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
   /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */

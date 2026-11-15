@@ -195,6 +195,15 @@ export class ForecastStateService {
     this.mapLayers.selectSingleLayer('satellite');
   }
 
+  /** Satellite winds (AMV) is an observed motion vector layer. */
+  selectAmv(): void {
+    this.activeLayerId.set(null);
+    this.windParticles.set(false);
+    this.isobars.set(false);
+    this.pause();
+    this.mapLayers.selectSingleLayer('amv');
+  }
+
   private start(): void {
     void this.catalog.ensureLoaded().then(() => this.initialiseTime());
   }

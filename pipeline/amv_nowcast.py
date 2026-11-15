@@ -379,12 +379,13 @@ def assign_heights_and_qi(vectors: List[Dict[str, Any]], sounding: Dict[str, np.
             conf = "LOW"
             assigned_p = float(np.clip(assigned_p, 200.0, 600.0))
 
-        # Focus exclusively on low-level winds (>= 700 hPa)
-        if assigned_p < 700.0:
-            continue
-
         assigned_z = float(np.interp(assigned_p, p_prof[::-1], z_prof[::-1]))
-        layer = "low"
+        if assigned_p >= 700.0:
+            layer = "low"
+        elif assigned_p >= 400.0:
+            layer = "mid"
+        else:
+            layer = "high"
 
         # Parallax correction along bearing toward satellite
         zen_rad = np.radians(v["zenith_deg"])
@@ -484,14 +485,12 @@ def is_cirrus_contamination(v: Dict[str, Any]) -> bool:
 def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[str, Any]:
     """Convert AMV vectors to a standard GeoJSON FeatureCollection with wind barb properties."""
     features = []
-    # Filter strictly to pure low-level winds (>= 700 hPa, lower troposphere / marine boundary layer)
-    low_vectors = [
+    # Drop cirrus contamination misassigned to low-level vectors
+    valid_vectors = [
         v for v in vectors
-        if float(v.get("pressure_hpa", 850.0)) >= 700.0
-        and v.get("layer") not in ("high", "mid")
-        and not is_cirrus_contamination(v)
+        if not (v.get("layer") == "low" and is_cirrus_contamination(v))
     ]
-    for v in low_vectors:
+    for v in valid_vectors:
         spd_mps = float(v.get("speed_mps", 0.0))
         spd_kt = round(spd_mps * 1.94384, 1)
         barb_step = min(100, max(0, int(round(spd_kt / 5.0) * 5)))

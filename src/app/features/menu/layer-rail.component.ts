@@ -7,6 +7,7 @@ import { PanelService } from '../../core/ui/panel.service';
 import { IconComponent } from '../../shared/icon.component';
 import { IconName } from '../../shared/icons';
 import { AltitudePickerComponent } from '../altitude/altitude-picker.component';
+import { AmvService } from '../../core/satellite/amv.service';
 
 interface RailItem {
   id: string;
@@ -15,14 +16,15 @@ interface RailItem {
   /** The forecast layer it switches on (absent for the observed pictures). */
   layerId?: string;
   /** Radar and satellite are observed pictures with their own panels. */
-  observed?: 'radar' | 'satellite';
+  observed?: 'radar' | 'satellite' | 'amv';
 }
 
 /** The layers on the rail, the ones used most: the observed pictures first, then the main forecast layers. The rest are in the menu. */
 const RAIL: readonly RailItem[] = [
   { id: 'radar', label: 'Weather radar', icon: 'radar', observed: 'radar' },
   { id: 'satellite', label: 'Satellite', icon: 'satellite', observed: 'satellite' },
-  { id: 'wind', label: 'Wind', icon: 'wind', layerId: 'wind' },
+  { id: 'amv', label: 'Satellite winds (AMV)', icon: 'vortex', observed: 'amv' },
+  { id: 'wind', label: 'Forecast wind', icon: 'wind', layerId: 'wind' },
   { id: 'rain', label: 'Rain', icon: 'rain', layerId: 'rain' },
   { id: 'temp', label: 'Temperature', icon: 'thermometer', layerId: 'temp' },
   { id: 'humidity', label: 'Humidity', icon: 'humidity', layerId: 'humidity' },
@@ -114,13 +116,14 @@ export class LayerRailComponent {
   protected readonly panels = inject(PanelService);
   private readonly catalog = inject(ForecastCatalogService);
   private readonly mapLayers = inject(MapLayerService);
+  protected readonly amv = inject(AmvService);
 
   protected readonly items = RAIL;
   /** The altitude button is for the forecast layers (the observed pictures have no height) and for a model that has more than the ground. */
   protected readonly altitudeShown = computed(() => this.state.forecastActive() && this.state.levels().length > 1);
   private readonly observedOn = computed(() => {
     const on = (id: string) => this.mapLayers.layers().some(l => l.id === id && l.active);
-    return { radar: on('radar'), satellite: on('satellite') };
+    return { radar: on('radar'), satellite: on('satellite'), amv: this.amv.active() || on('amv') };
   });
 
   protected isActive(item: RailItem): boolean {
@@ -148,6 +151,12 @@ export class LayerRailComponent {
     } else if (item.observed === 'satellite') {
       if (this.observedOn().satellite) this.mapLayers.deactivateAll();
       else this.state.selectSatellite();
+    } else if (item.observed === 'amv') {
+      const willBeActive = !this.amv.active();
+      this.amv.toggleActive();
+      if (willBeActive && !this.observedOn().satellite) {
+        this.state.selectSatellite();
+      }
     } else if (item.layerId) {
       this.state.toggleLayer(item.layerId);
     }

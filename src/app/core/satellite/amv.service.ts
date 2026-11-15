@@ -69,57 +69,70 @@ export class AmvService {
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
 
-  /** Filtered GeoJSON: strictly low-level winds (surface–700 hPa), spatially thinned for clean display */
+  /** Filtered GeoJSON according to selected altitude level ('low' | 'mid' | 'high' | 'all') */
   readonly filteredGeoJson = computed<AmvGeoJson | null>(() => {
     const geo = this.currentGeoJson();
     if (!geo) return null;
     const srcFilter = this.sourceFilter();
+    const lFilter = this.layerFilter();
 
-    // ── Step 1: Keep only pure low-level vectors ──
-    const lowLevel = geo.features.filter(f => {
+    // ── Step 1: Filter by altitude level ──
+    const levelFiltered = geo.features.filter(f => {
       const { p, layer, sat, speed, dir } = f.properties;
       const [lon, lat] = f.geometry.coordinates;
 
-      // Drop mid/high labels
-      if (layer === 'high' || layer === 'mid') return false;
-      // Drop anything above 700 hPa
-      if (p != null && p < 700.0) return false;
+      if (lFilter === 'low') {
+        // Strict low-level: surface to 700 hPa (~1.5 km boundary layer)
+        if (layer === 'high' || layer === 'mid') return false;
+        if (p != null && p < 700.0) return false;
 
-      // Reject cirrus contamination in satellite vectors (not ECMWF):
-      // Semi-transparent cirrus over warm ground fools EBBT height assignment
-      if (!(sat || '').includes('ECMWF')) {
-        // Broad cirrus filter: any satellite vector > 15 m/s in the Indian domain is suspicious at low level
-        if (speed > 15.0) return false;
-        // Regional cirrus: SSE flow > 10 m/s in 70-85E, 8-22N is upper jet misassigned
-        if (lon >= 70.0 && lon <= 85.0 && lat >= 8.0 && lat <= 22.0 &&
-            speed > 10.0 && dir >= 100.0 && dir <= 220.0) return false;
+        // Reject cirrus contamination in satellite vectors:
+        if (!(sat || '').includes('ECMWF')) {
+          if (speed > 15.0) return false;
+          if (lon >= 70.0 && lon <= 85.0 && lat >= 8.0 && lat <= 22.0 &&
+              speed > 10.0 && dir >= 100.0 && dir <= 220.0) return false;
+        }
+      } else if (lFilter === 'mid') {
+        // Mid-level: 700 hPa to 400 hPa (~3–7 km mid-troposphere)
+        if (layer === 'high' || layer === 'low') return false;
+        if (p != null && (p < 400.0 || p >= 700.0)) return false;
+      } else if (lFilter === 'high') {
+        // High-level: < 400 hPa (~7–14 km cirrus / jet stream)
+        if (layer === 'low' || layer === 'mid') return false;
+        if (p != null && p >= 400.0) return false;
       }
+      // 'all': allow all levels
+
       return true;
     });
 
-    const ecmwfAll = lowLevel.filter(f => (f.properties.sat || '').includes('ECMWF'));
-    const satAll = lowLevel.filter(f => !(f.properties.sat || '').includes('ECMWF'));
+    const ecmwfAll = levelFiltered.filter(f => (f.properties.sat || '').includes('ECMWF'));
+    const satAll = levelFiltered.filter(f => !(f.properties.sat || '').includes('ECMWF'));
 
-    // ── Step 2: Synoptic QC — reject satellite vectors inconsistent with ECMWF 850 hPa ──
-    const refGrid = new Map<string, { u: number; v: number; spd: number }>();
-    const BUCKET = 0.5;
-    for (const ef of ecmwfAll) {
-      const [ex, ey] = ef.geometry.coordinates;
-      const key = `${Math.round(ex / BUCKET)}:${Math.round(ey / BUCKET)}`;
-      refGrid.set(key, { u: ef.properties.u, v: ef.properties.v, spd: ef.properties.speed });
-    }
-
-    const cleanSat: AmvFeature[] = [];
-    for (const sv of satAll) {
-      const [sx, sy] = sv.geometry.coordinates;
-      const key = `${Math.round(sx / BUCKET)}:${Math.round(sy / BUCKET)}`;
-      const ref = refGrid.get(key);
-      if (ref) {
-        const vecDiff = Math.hypot(sv.properties.u - ref.u, sv.properties.v - ref.v);
-        if (sv.properties.speed > 10.0 && sv.properties.speed > ref.spd + 4.0) continue;
-        if (vecDiff > 7.0) continue;
+    // ── Step 2: Synoptic QC against 850 hPa reference flow (for low level) ──
+    let cleanSat: AmvFeature[] = satAll;
+    if (lFilter === 'low') {
+      const refGrid = new Map<string, { u: number; v: number; spd: number }>();
+      const BUCKET = 0.5;
+      for (const ef of ecmwfAll) {
+        const [ex, ey] = ef.geometry.coordinates;
+        const key = `${Math.round(ex / BUCKET)}:${Math.round(ey / BUCKET)}`;
+        refGrid.set(key, { u: ef.properties.u, v: ef.properties.v, spd: ef.properties.speed });
       }
-      cleanSat.push(sv);
+
+      const verified: AmvFeature[] = [];
+      for (const sv of satAll) {
+        const [sx, sy] = sv.geometry.coordinates;
+        const key = `${Math.round(sx / BUCKET)}:${Math.round(sy / BUCKET)}`;
+        const ref = refGrid.get(key);
+        if (ref) {
+          const vecDiff = Math.hypot(sv.properties.u - ref.u, sv.properties.v - ref.v);
+          if (sv.properties.speed > 10.0 && sv.properties.speed > ref.spd + 4.0) continue;
+          if (vecDiff > 7.0) continue;
+        }
+        verified.push(sv);
+      }
+      cleanSat = verified;
     }
 
     // ── Step 3: Spatial thinning — one arrow per ~0.5° cell for comfortable density ──
