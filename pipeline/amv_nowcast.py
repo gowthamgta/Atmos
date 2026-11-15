@@ -504,20 +504,20 @@ def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[s
             "type": "Feature",
             "geometry": {
                 "type": "Point",
-                "coordinates": [v["lon"], v["lat"]]
+                "coordinates": [float(v.get("lon", 0.0)), float(v.get("lat", 0.0))]
             },
             "properties": {
-                "u": v["u_mps"],
-                "v": v["v_mps"],
-                "speed": v["speed_mps"],
-                "dir": v["direction_deg"],
-                "p": v["pressure_hpa"],
-                "z": v["height_m"],
-                "layer": v["layer"],
-                "sat": v["satellite"],
-                "ch": v["channel"],
-                "qi": v["quality_indicator"],
-                "zen": v["zenith_deg"],
+                "u": float(v.get("u_mps", v.get("u", 0.0))),
+                "v": float(v.get("v_mps", v.get("v", 0.0))),
+                "speed": float(v.get("speed_mps", v.get("speed", 0.0))),
+                "dir": float(v.get("direction_deg", v.get("dir", 0.0))),
+                "p": float(v.get("pressure_hpa", v.get("p", 850.0))),
+                "z": float(v.get("height_m", v.get("z", 1500.0))),
+                "layer": v.get("layer", "low"),
+                "sat": str(v.get("satellite", v.get("sat", "ECMWF IFS"))),
+                "ch": str(v.get("channel", v.get("ch", "850hPa"))),
+                "qi": float(v.get("quality_indicator", v.get("qi", 95.0))),
+                "zen": float(v.get("zenith_deg", v.get("zen", 0.0))),
                 "speed_kt": spd_kt,
                 "barb_id": barb_id,
                 "barb_color": barb_color,
@@ -984,8 +984,38 @@ def run_pipeline(out_dir: str, keep_minutes: int = DEFAULT_KEEP_MINUTES) -> int:
     except Exception as e:
         print(f"::notice::ECMWF 850hPa integration skipped: {e}")
 
+    # Synoptic QC: Reject satellite vectors differing significantly from 850 hPa flow (cirrus aloft)
+    raw_sat = [v for v in fused_vectors if "ECMWF" not in str(v.get("satellite", v.get("sat", ""))) and not is_cirrus_contamination(v)]
+    clean_sat_vectors = []
+
+    if ecmwf_vectors:
+        e_lons = np.array([float(ev.get("lon", ev.get("original_lon", 0.0))) for ev in ecmwf_vectors])
+        e_lats = np.array([float(ev.get("lat", ev.get("original_lat", 0.0))) for ev in ecmwf_vectors])
+        e_u = np.array([float(ev.get("u_mps", ev.get("u", 0.0))) for ev in ecmwf_vectors])
+        e_v = np.array([float(ev.get("v_mps", ev.get("v", 0.0))) for ev in ecmwf_vectors])
+        e_spd = np.hypot(e_u, e_v)
+
+        for sv in raw_sat:
+            slon = float(sv.get("lon", sv.get("original_lon", 0.0)))
+            slat = float(sv.get("lat", sv.get("original_lat", 0.0)))
+            su = float(sv.get("u_mps", sv.get("u", 0.0)))
+            sv_val = float(sv.get("v_mps", sv.get("v", 0.0)))
+            s_spd = float(sv.get("speed_mps", sv.get("speed", 0.0)))
+
+            dists = np.hypot(e_lons - slon, e_lats - slat)
+            nearest = int(np.argmin(dists))
+            if dists[nearest] < 1.0:
+                ref_spd = e_spd[nearest]
+                vec_diff = np.hypot(su - e_u[nearest], sv_val - e_v[nearest])
+                if s_spd > 12.0 and s_spd > ref_spd + 5.0:
+                    continue
+                if vec_diff > 8.0:
+                    continue
+            clean_sat_vectors.append(sv)
+    else:
+        clean_sat_vectors = raw_sat
+
     # Spatial deduplication: ECMWF vectors only where no satellite vector is within 0.35 deg
-    clean_sat_vectors = [v for v in fused_vectors if "ECMWF" not in str(v.get("satellite", v.get("sat", ""))) and not is_cirrus_contamination(v)]
     if ecmwf_vectors and clean_sat_vectors:
         sat_lons = np.array([float(v.get("lon", v.get("original_lon", 0.0))) for v in clean_sat_vectors])
         sat_lats = np.array([float(v.get("lat", v.get("original_lat", 0.0))) for v in clean_sat_vectors])
@@ -997,8 +1027,10 @@ def run_pipeline(out_dir: str, keep_minutes: int = DEFAULT_KEEP_MINUTES) -> int:
             if np.min(dists) >= 0.35:
                 gap_ecmwf.append(ev)
         all_vectors = list(clean_sat_vectors) + gap_ecmwf
+    elif clean_sat_vectors:
+        all_vectors = clean_sat_vectors
     else:
-        all_vectors = list(clean_sat_vectors) + ecmwf_vectors
+        all_vectors = ecmwf_vectors
 
     fname = f"amv_{now_utc.strftime('%Y%m%d_%H%M%S')}.json"
     fpath = os.path.join(amv_dir, fname)
