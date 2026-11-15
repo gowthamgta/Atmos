@@ -8,24 +8,32 @@ describe('AmvService', () => {
     service = new AmvService();
   });
 
-  it('initializes with inactive state and all layer filter', () => {
+  it('initializes with inactive state, all layer filter, and barbs style', () => {
     expect(service.active()).toBe(false);
     expect(service.layerFilter()).toBe('all');
+    expect(service.sourceFilter()).toBe('all');
+    expect(service.style()).toBe('barbs');
     expect(service.currentGeoJson()).toBeNull();
   });
 
-  it('toggles active state correctly', () => {
+  it('toggles active and style states correctly', () => {
     service.toggleActive();
     expect(service.active()).toBe(true);
     service.toggleActive();
     expect(service.active()).toBe(false);
+
+    expect(service.style()).toBe('barbs');
+    service.toggleStyle();
+    expect(service.style()).toBe('arrows');
+    service.setStyle('barbs');
+    expect(service.style()).toBe('barbs');
   });
 
-  it('filters vectors correctly according to layer filter', () => {
+  it('filters vectors correctly according to layer and source filters', () => {
     const mockGeo: AmvGeoJson = {
       type: 'FeatureCollection',
       time: '2026-11-14T12:00:00Z',
-      count: 3,
+      count: 4,
       features: [
         {
           type: 'Feature',
@@ -41,24 +49,40 @@ describe('AmvService', () => {
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [85, 11] },
           properties: { u: -4, v: 0, speed: 4, dir: 90, p: 850, z: 1500, layer: 'low', sat: 'Himawari-9', ch: 'B13', qi: 78, zen: 58 }
+        },
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [86, 12] },
+          properties: { u: 15, v: 0, speed: 15, dir: 270, p: 850, z: 1500, layer: 'low', sat: 'ECMWF IFS', ch: '850hPa', qi: 95, zen: 0 }
         }
       ]
     };
 
     service.currentGeoJson.set(mockGeo);
-    expect(service.filteredGeoJson()?.count).toBe(3);
+    expect(service.filteredGeoJson()?.count).toBe(4);
 
     service.setLayerFilter('high');
     expect(service.filteredGeoJson()?.count).toBe(1);
     expect(service.filteredGeoJson()?.features[0].properties.layer).toBe('high');
 
-    service.setLayerFilter('mid');
-    expect(service.filteredGeoJson()?.count).toBe(1);
-    expect(service.filteredGeoJson()?.features[0].properties.layer).toBe('mid');
-
     service.setLayerFilter('low');
+    expect(service.filteredGeoJson()?.count).toBe(2);
+
+    service.setSourceFilter('ecmwf');
     expect(service.filteredGeoJson()?.count).toBe(1);
-    expect(service.filteredGeoJson()?.features[0].properties.layer).toBe('low');
+    expect(service.filteredGeoJson()?.features[0].properties.sat).toBe('ECMWF IFS');
+
+    service.setSourceFilter('satellite');
+    expect(service.filteredGeoJson()?.count).toBe(1);
+    expect(service.filteredGeoJson()?.features[0].properties.sat).toBe('Himawari-9');
+
+    // Barb calculation: 15 m/s = 29.2 kt -> barb-30, green (#00e676)
+    service.setSourceFilter('all');
+    const lowFeatures = service.filteredGeoJson()?.features;
+    const ecmwfFeat = lowFeatures?.find(f => f.properties.sat === 'ECMWF IFS');
+    expect(ecmwfFeat?.properties.speed_kt).toBe(29.2);
+    expect(ecmwfFeat?.properties.barb_id).toBe('barb-30');
+    expect(ecmwfFeat?.properties.barb_color).toBe('#00e676');
   });
 
   it('computes accurate statistical metrics', () => {

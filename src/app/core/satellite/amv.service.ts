@@ -14,6 +14,10 @@ export interface AmvVectorProperties {
   ch: string;
   qi: number;
   zen: number;
+  speed_kt?: number;
+  barb_id?: string;
+  barb_color?: string;
+  source_type?: 'satellite_amv' | 'model_analysis';
 }
 
 export interface AmvFeature {
@@ -38,6 +42,7 @@ export interface AmvFrameMeta {
   count: number;
   meteosat_count?: number;
   himawari_count?: number;
+  ecmwf_count?: number;
 }
 
 export interface AmvIndex {
@@ -47,6 +52,8 @@ export interface AmvIndex {
 }
 
 export type AmvLayerFilter = 'all' | 'high' | 'mid' | 'low';
+export type AmvSourceFilter = 'all' | 'satellite' | 'ecmwf';
+export type AmvStyle = 'barbs' | 'arrows';
 
 @Injectable({ providedIn: 'root' })
 export class AmvService {
@@ -57,19 +64,50 @@ export class AmvService {
   readonly currentFrame = signal<AmvFrameMeta | null>(null);
   readonly currentGeoJson = signal<AmvGeoJson | null>(null);
   readonly layerFilter = signal<AmvLayerFilter>('all');
+  readonly sourceFilter = signal<AmvSourceFilter>('all');
+  readonly style = signal<AmvStyle>('barbs');
+  readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
 
-  /** Filtered GeoJSON features matching the active layer filter */
+  /** Filtered GeoJSON features matching active altitude and source filters */
   readonly filteredGeoJson = computed<AmvGeoJson | null>(() => {
     const geo = this.currentGeoJson();
     if (!geo) return null;
-    const filter = this.layerFilter();
-    if (filter === 'all') return geo;
-    const filteredFeatures = geo.features.filter(f => f.properties.layer === filter);
+    const lf = this.layerFilter();
+    const sf = this.sourceFilter();
+
+    let list = geo.features;
+    if (lf !== 'all') {
+      list = list.filter(f => f.properties.layer === lf);
+    }
+    if (sf === 'satellite') {
+      list = list.filter(f => f.properties.sat.includes('Meteosat') || f.properties.sat.includes('Himawari'));
+    } else if (sf === 'ecmwf') {
+      list = list.filter(f => f.properties.sat.includes('ECMWF'));
+    }
+
+    // Ensure barb_id and speed_kt exist for all features
+    const normalized = list.map(f => {
+      const spd = f.properties.speed;
+      const spdKt = f.properties.speed_kt ?? Math.round(spd * 1.94384 * 10) / 10;
+      const step = Math.min(100, Math.max(0, Math.round(spdKt / 5) * 5));
+      const barbId = f.properties.barb_id ?? `barb-${step}`;
+      const barbColor = f.properties.barb_color ?? (spdKt >= 20.0 ? '#00e676' : '#334155');
+      return {
+        ...f,
+        properties: {
+          ...f.properties,
+          speed_kt: spdKt,
+          barb_id: barbId,
+          barb_color: barbColor
+        }
+      };
+    });
+
     return {
       ...geo,
-      count: filteredFeatures.length,
-      features: filteredFeatures
+      count: normalized.length,
+      features: normalized
     };
   });
 
@@ -83,6 +121,11 @@ export class AmvService {
     const low = geo.features.filter(f => f.properties.layer === 'low').length;
     const met = geo.features.filter(f => f.properties.sat.includes('Meteosat')).length;
     const him = geo.features.filter(f => f.properties.sat.includes('Himawari')).length;
+    const ecmwf = geo.features.filter(f => f.properties.sat.includes('ECMWF')).length;
+    const gale = geo.features.filter(f => {
+      const kt = f.properties.speed_kt ?? (f.properties.speed * 1.94384);
+      return kt >= 20.0;
+    }).length;
     const avgSpd = geo.features.reduce((s, f) => s + f.properties.speed, 0) / total;
     const avgQi = geo.features.reduce((s, f) => s + f.properties.qi, 0) / total;
     return {
@@ -92,6 +135,8 @@ export class AmvService {
       low,
       met,
       him,
+      ecmwf,
+      gale,
       avgSpeedMps: Math.round(avgSpd * 10) / 10,
       avgQi: Math.round(avgQi * 10) / 10
     };
@@ -107,6 +152,22 @@ export class AmvService {
 
   setLayerFilter(filter: AmvLayerFilter): void {
     this.layerFilter.set(filter);
+  }
+
+  setSourceFilter(filter: AmvSourceFilter): void {
+    this.sourceFilter.set(filter);
+  }
+
+  setStyle(style: AmvStyle): void {
+    this.style.set(style);
+  }
+
+  toggleStyle(): void {
+    this.style.set(this.style() === 'barbs' ? 'arrows' : 'barbs');
+  }
+
+  toggleDimSatellite(): void {
+    this.dimSatellite.update(v => !v);
   }
 
   setHoveredVector(v: AmvVectorProperties | null): void {

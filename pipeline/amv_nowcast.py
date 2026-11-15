@@ -221,10 +221,10 @@ def track_satellite_channel(
     area_def: Any,
     valid_mask: np.ndarray,
     sub_lon: float,
-    grid_step: int = 16
+    grid_step: int = 12
 ) -> List[Dict[str, Any]]:
     """Track AMVs across image triplet with TV-L1 cross-check and full QC."""
-    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=1.2)
+    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=1.0)
     h, w = f2.shape
     half_t = 12
     margin = half_t + 32
@@ -239,14 +239,20 @@ def track_satellite_channel(
     p_proj = pyproj.Proj(area_def.crs)
     geod = pyproj.Geod(ellps="WGS84")
 
-    # Select candidates on grid within valid mask
+    # Select candidates on grid within valid mask with adaptive contrast
     candidates = []
     for r in range(margin, h - margin, grid_step):
         for c in range(margin, w - margin, grid_step):
             if not valid_mask[r, c]:
                 continue
             patch = f2[r - half_t : r + half_t, c - half_t : c + half_t]
-            if np.all(np.isfinite(patch)) and float(np.std(patch)) >= tracker.min_contrast_k:
+            if not np.all(np.isfinite(patch)):
+                continue
+            mean_tb = float(np.mean(patch))
+            # Boundary-layer marine cumulus over tropical oceans (Tb >= 275 K)
+            # has subtle thermal contrast against warm sea surface (0.4 - 0.9 K std dev).
+            min_std = 0.4 if mean_tb >= 275.0 else 1.0
+            if float(np.std(patch)) >= min_std:
                 candidates.append((r, c))
 
     vectors = []
@@ -453,9 +459,17 @@ def merge_unique_tracers(vectors: List[Dict[str, Any]], cluster_dist_deg: float 
 
 
 def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[str, Any]:
-    """Convert AMV vectors to a standard GeoJSON FeatureCollection."""
+    """Convert AMV vectors to a standard GeoJSON FeatureCollection with wind barb properties."""
     features = []
     for v in vectors:
+        spd_mps = float(v.get("speed_mps", 0.0))
+        spd_kt = round(spd_mps * 1.94384, 1)
+        barb_step = min(100, max(0, int(round(spd_kt / 5.0) * 5)))
+        barb_id = f"barb-{barb_step}"
+        # Gale / strong winds >= 20 kt are highlighted green matching operational charts
+        barb_color = "#00e676" if spd_kt >= 20.0 else "#334155"
+        source_type = v.get("source_type", "satellite_amv")
+
         f = {
             "type": "Feature",
             "geometry": {
@@ -473,7 +487,11 @@ def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[s
                 "sat": v["satellite"],
                 "ch": v["channel"],
                 "qi": v["quality_indicator"],
-                "zen": v["zenith_deg"]
+                "zen": v["zenith_deg"],
+                "speed_kt": spd_kt,
+                "barb_id": barb_id,
+                "barb_color": barb_color,
+                "source_type": source_type
             }
         }
         features.append(f)
@@ -483,6 +501,110 @@ def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[s
         "count": len(features),
         "features": features
     }
+
+
+def load_ecmwf_850_analysis(out_dir: str = "site", stride: int = 6) -> List[Dict[str, Any]]:
+    """Sample ECMWF IFS 850 hPa wind analysis over the domain [2-20N, 70-99E].
+    
+    Provides continuous, gap-free low-level cyclonic wind field matching operational
+    JTWC / CIMSS / IMD Deep-Layer and Low-Level Wind products under deep convective cloud canopies.
+    """
+    import urllib.request, io
+    from PIL import Image
+
+    u_img_data = None
+    v_img_data = None
+    local_ifs = os.path.join(out_dir, "ecmwf_ifs")
+    latest_path = os.path.join(local_ifs, "latest.json")
+
+    # 1. Check local site folder
+    if os.path.exists(latest_path):
+        try:
+            with open(latest_path, "r", encoding="utf-8") as f:
+                run_id = json.load(f).get("run")
+            if run_id:
+                u_local = os.path.join(local_ifs, run_id, "u850", "000.png")
+                v_local = os.path.join(local_ifs, run_id, "v850", "000.png")
+                if os.path.exists(u_local) and os.path.exists(v_local):
+                    with open(u_local, "rb") as f:
+                        u_img_data = f.read()
+                    with open(v_local, "rb") as f:
+                        v_img_data = f.read()
+        except Exception:
+            pass
+
+    # 2. Check live published Atmos ECMWF endpoint
+    if u_img_data is None:
+        try:
+            base_url = "https://gowthamgta.github.io/Atmos/ecmwf_ifs/"
+            req = urllib.request.Request(f"{base_url}latest.json", headers={"User-Agent": "Atmos-AMV/1.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                run_id = json.loads(resp.read()).get("run")
+            if run_id:
+                u_url = f"{base_url}{run_id}/u850/000.png"
+                v_url = f"{base_url}{run_id}/v850/000.png"
+                with urllib.request.urlopen(urllib.request.Request(u_url, headers={"User-Agent": "Atmos-AMV/1.0"}), timeout=8) as u_resp:
+                    u_img_data = u_resp.read()
+                with urllib.request.urlopen(urllib.request.Request(v_url, headers={"User-Agent": "Atmos-AMV/1.0"}), timeout=8) as v_resp:
+                    v_img_data = v_resp.read()
+        except Exception as e:
+            print(f"::notice::Could not load live ECMWF 850hPa field: {e}")
+            return []
+
+    if u_img_data is None or v_img_data is None:
+        return []
+
+    try:
+        u_img = Image.open(io.BytesIO(u_img_data))
+        v_img = Image.open(io.BytesIO(v_img_data))
+        u_arr = np.array(u_img)
+        v_arr = np.array(v_img)
+
+        # Decode rg16 from [-90, +90] m/s
+        u_raw = (u_arr[:, :, 0].astype(np.float32) * 256.0 + u_arr[:, :, 1].astype(np.float32)) / 65535.0
+        v_raw = (v_arr[:, :, 0].astype(np.float32) * 256.0 + v_arr[:, :, 1].astype(np.float32)) / 65535.0
+        u_mps = u_raw * 180.0 - 90.0
+        v_mps = v_raw * 180.0 - 90.0
+        spd_mps = np.hypot(u_mps, v_mps)
+        spd_kt = spd_mps * 1.94384
+
+        ny, nx = u_mps.shape
+        lats = 20.0 - 0.1 * np.arange(ny)
+        lons = 70.0 + 0.1 * np.arange(nx)
+
+        vecs = []
+        for r in range(0, ny, stride):
+            for c in range(0, nx, stride):
+                u_val = float(u_mps[r, c])
+                v_val = float(v_mps[r, c])
+                s_val = float(spd_mps[r, c])
+                skt_val = float(spd_kt[r, c])
+                d_val = meteorological_direction(u_val, v_val)
+                vecs.append({
+                    "lon": round(float(lons[c]), 3),
+                    "lat": round(float(lats[r]), 3),
+                    "original_lon": round(float(lons[c]), 3),
+                    "original_lat": round(float(lats[r]), 3),
+                    "u_mps": round(u_val, 2),
+                    "v_mps": round(v_val, 2),
+                    "speed_mps": round(s_val, 2),
+                    "direction_deg": round(d_val, 1),
+                    "pressure_hpa": 850.0,
+                    "height_m": 1500,
+                    "layer": "low",
+                    "satellite": "ECMWF IFS",
+                    "channel": "850hPa",
+                    "quality_indicator": 95.0,
+                    "zenith_deg": 0.0,
+                    "source_type": "model_analysis",
+                    "speed_kt": round(skt_val, 1),
+                    "barb_color": "#00e676" if skt_val >= 20.0 else "#334155"
+                })
+        print(f"Loaded {len(vecs)} ECMWF 850hPa low-level analysis vectors (stride={stride}).")
+        return vecs
+    except Exception as e:
+        print(f"::warning::Failed decoding ECMWF 850hPa field: {e}")
+        return []
 
 
 def update_amv_index(out_dir: str, new_frame: Dict[str, Any], keep_minutes: int = DEFAULT_KEEP_MINUTES, now: Optional[dt.datetime] = None) -> None:
@@ -818,25 +940,36 @@ def run_pipeline(out_dir: str, keep_minutes: int = DEFAULT_KEEP_MINUTES) -> int:
         print("No AMV vectors available to publish.")
         return 0
 
+    # 5. Integrate ECMWF 850 hPa Low-Level Wind Analysis (JTWC / CIMSS Deep-Layer analysis)
+    ecmwf_vectors = []
+    try:
+        ecmwf_vectors = load_ecmwf_850_analysis(out_dir, stride=6)
+    except Exception as e:
+        print(f"::notice::ECMWF 850hPa integration skipped: {e}")
+
+    all_vectors = list(fused_vectors) + ecmwf_vectors
+
     fname = f"amv_{now_utc.strftime('%Y%m%d_%H%M%S')}.json"
     fpath = os.path.join(amv_dir, fname)
-    geojson = export_geojson(fused_vectors, t_iso)
+    geojson = export_geojson(all_vectors, t_iso)
     with open(fpath, "w", encoding="utf-8") as f:
         json.dump(geojson, f)
 
-    met_count = sum(1 for v in fused_vectors if v.get("satellite") == "Meteosat-9")
-    him_count = sum(1 for v in fused_vectors if v.get("satellite") == "Himawari-9")
+    met_count = sum(1 for v in all_vectors if v.get("satellite") == "Meteosat-9")
+    him_count = sum(1 for v in all_vectors if v.get("satellite") == "Himawari-9")
+    ecmwf_count = sum(1 for v in all_vectors if "ECMWF" in str(v.get("satellite", "")))
 
     frame_meta = {
         "time": t_iso,
         "file": fname,
-        "count": len(fused_vectors),
+        "count": len(all_vectors),
         "meteosat_count": met_count,
-        "himawari_count": him_count
+        "himawari_count": him_count,
+        "ecmwf_count": ecmwf_count
     }
     update_amv_index(out_dir, frame_meta, keep_minutes)
-    print(f"Successfully published {len(fused_vectors)} AMV vectors to {fpath} (Meteosat: {met_count}, Himawari: {him_count})")
-    return len(fused_vectors)
+    print(f"Successfully published {len(all_vectors)} AMV vectors to {fpath} (Meteosat: {met_count}, Himawari: {him_count}, ECMWF: {ecmwf_count})")
+    return len(all_vectors)
 
 
 def main():

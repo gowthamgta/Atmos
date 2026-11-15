@@ -167,8 +167,11 @@ export class MapComponent implements OnInit, OnDestroy {
     // our own pictures (own-products.ts): the RGB as a picture, the infrared and the others drawn from the data pack in the shader
     const own = frames[0]?.own;
     const shader = !!own && isShaderKind(own.kind);
-    this.updateSatelliteOverlay(on && !shader, frames, position, opacity);
-    this.updateSatelliteData(on && shader, frames, position, opacity, custom);
+    const effOpacity = this.amvService.active() && this.amvService.dimSatellite()
+      ? Math.min(opacity, 0.40)
+      : opacity;
+    this.updateSatelliteOverlay(on && !shader, frames, position, effOpacity);
+    this.updateSatelliteData(on && shader, frames, position, effOpacity, custom);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
     if (this.amvService.active()) {
       ensureAmvOnTop(this.map);
@@ -179,8 +182,9 @@ export class MapComponent implements OnInit, OnDestroy {
   private amvEffect = effect(() => {
     const active = this.amvService.active();
     const geoJson = this.amvService.filteredGeoJson();
+    const style = this.amvService.style();
     if (!this.map || !this.isMapLoaded()) return;
-    syncAmvLayer(this.map, geoJson, active, undefined, (props) => {
+    syncAmvLayer(this.map, geoJson, active, style, undefined, (props) => {
       this.amvService.setHoveredVector(props);
     });
   });
