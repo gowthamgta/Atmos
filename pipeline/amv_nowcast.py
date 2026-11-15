@@ -465,8 +465,12 @@ def merge_unique_tracers(vectors: List[Dict[str, Any]], cluster_dist_deg: float 
 def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[str, Any]:
     """Convert AMV vectors to a standard GeoJSON FeatureCollection with wind barb properties."""
     features = []
-    # Filter strictly to low-level winds (>= 700 hPa, lower troposphere / marine boundary layer)
-    low_vectors = [v for v in vectors if v.get("pressure_hpa", 850.0) >= 700.0 or v.get("layer") == "low"]
+    # Filter strictly to pure low-level winds (>= 700 hPa, lower troposphere / marine boundary layer)
+    low_vectors = [
+        v for v in vectors
+        if float(v.get("pressure_hpa", 850.0)) >= 700.0
+        and v.get("layer") not in ("high", "mid")
+    ]
     for v in low_vectors:
         spd_mps = float(v.get("speed_mps", 0.0))
         spd_kt = round(spd_mps * 1.94384, 1)
@@ -509,7 +513,7 @@ def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[s
     }
 
 
-def load_ecmwf_850_analysis(out_dir: str = "site", stride: int = 6) -> List[Dict[str, Any]]:
+def load_ecmwf_850_analysis(out_dir: str = "site", stride: int = 3) -> List[Dict[str, Any]]:
     """Sample ECMWF IFS 850 hPa wind analysis over the domain [2-20N, 70-99E].
     
     Provides continuous, gap-free low-level cyclonic wind field matching operational
@@ -732,14 +736,14 @@ def track_regular_grid(
     f3: np.ndarray,
     dt_sec: float,
     sub_lon: float,
-    grid_step: int = 8,
+    grid_step: int = 6,
     sounding: Optional[Dict[str, np.ndarray]] = None
 ) -> List[Dict[str, Any]]:
     """Track AMVs across a regular lat/lon grid triplet optimized for dense Low-Level clouds."""
     if sounding is None:
         sounding = get_standard_tropical_profile()
 
-    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=0.20)
+    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=0.15)
     h, w = f2.shape
     half_t = tracker.template_size // 2
     margin = half_t + tracker.search_radius
@@ -774,7 +778,7 @@ def track_regular_grid(
             # Focus strictly on low-level clouds (Tb >= 270 K, corresponding to >= 700 hPa)
             if mean_tb < 270.0:
                 continue
-            if float(np.std(patch)) >= 0.20:
+            if float(np.std(patch)) >= 0.15:
                 candidates.append((r, c))
 
     vectors = []
@@ -956,7 +960,7 @@ def run_pipeline(out_dir: str, keep_minutes: int = DEFAULT_KEEP_MINUTES) -> int:
     # 5. Integrate ECMWF 850 hPa Low-Level Wind Analysis (JTWC / CIMSS Deep-Layer analysis)
     ecmwf_vectors = []
     try:
-        ecmwf_vectors = load_ecmwf_850_analysis(out_dir, stride=6)
+        ecmwf_vectors = load_ecmwf_850_analysis(out_dir, stride=3)
     except Exception as e:
         print(f"::notice::ECMWF 850hPa integration skipped: {e}")
 

@@ -4,36 +4,91 @@ import type { AmvGeoJson, AmvVectorProperties, AmvStyle } from '../satellite/amv
 export const AMV_SOURCE_ID = 'amv-vectors-source';
 export const AMV_SYMBOLS_LAYER_ID = 'amv-vectors-symbols';
 
-/** Generate clean, thin directional wind arrow (slender shaft + aerodynamic arrowhead) */
-function createArrowImageData(): ImageData {
-  const size = 32;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
+/**
+ * Animated wind arrow implementing MapLibre's StyleImageInterface.
+ * Animates a continuous flow pattern: moving dashes along the shaft and a traveling flow chevron downwind.
+ */
+class AnimatedArrowImage {
+  readonly width = 32;
+  readonly height = 32;
+  data: Uint8ClampedArray = new Uint8ClampedArray(32 * 32 * 4);
+  private context: CanvasRenderingContext2D | null = null;
+  private map: MapLibreMap | null = null;
+  private phase = 0;
+  private lastRender = 0;
+  active = true;
 
-  const cx = 16;
-  ctx.strokeStyle = '#ffffff';
-  ctx.fillStyle = '#ffffff';
-  ctx.lineWidth = 1.6;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
+  onAdd(map: MapLibreMap): void {
+    this.map = map;
+    const canvas = document.createElement('canvas');
+    canvas.width = this.width;
+    canvas.height = this.height;
+    this.context = canvas.getContext('2d', { willReadFrequently: true });
+    this.drawFrame();
+  }
 
-  // 1. Thin, straight shaft
-  ctx.beginPath();
-  ctx.moveTo(cx, 27);
-  ctx.lineTo(cx, 6);
-  ctx.stroke();
+  private drawFrame(): void {
+    if (!this.context) return;
+    const ctx = this.context;
+    ctx.clearRect(0, 0, this.width, this.height);
 
-  // 2. Slender arrowhead wings pointing in flow direction
-  ctx.beginPath();
-  ctx.moveTo(cx - 5, 13);
-  ctx.lineTo(cx, 5);
-  ctx.lineTo(cx + 5, 13);
-  ctx.stroke();
+    const cx = 16;
+    ctx.strokeStyle = '#ffffff';
+    ctx.fillStyle = '#ffffff';
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-  return ctx.getImageData(0, 0, size, size);
+    // 1. Moving dashed shaft (flow dashes continuously moving downwind toward arrowhead tip)
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = -this.phase * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx, 26);
+    ctx.lineTo(cx, 6);
+    ctx.stroke();
+    ctx.restore();
+
+    // 2. Slender aerodynamic arrowhead wings
+    ctx.beginPath();
+    ctx.moveTo(cx - 4.5, 12);
+    ctx.lineTo(cx, 5.5);
+    ctx.lineTo(cx + 4.5, 12);
+    ctx.stroke();
+
+    // 3. Traveling flow chevron (glides downwind along the shaft)
+    const pulseFrac = (this.phase % 12) / 12.0;
+    const pulseY = 24.0 - pulseFrac * 17.0; // travels from y=24 to y=7
+    const pulseAlpha = Math.sin(pulseFrac * Math.PI); // fades in at base, fades out at tip
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1.0, pulseAlpha * 0.95)})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(cx - 3.2, pulseY + 3.0);
+    ctx.lineTo(cx, pulseY);
+    ctx.lineTo(cx + 3.2, pulseY + 3.0);
+    ctx.stroke();
+    ctx.restore();
+
+    const imgData = ctx.getImageData(0, 0, this.width, this.height);
+    this.data = imgData.data;
+  }
+
+  render(): boolean {
+    if (!this.active) return false;
+    const now = performance.now();
+    if (now - this.lastRender < 40) { // ~25 FPS smooth flow rate
+      return false;
+    }
+    this.lastRender = now;
+    this.phase = (this.phase + 1) % 12;
+    this.drawFrame();
+    this.map?.triggerRepaint();
+    return true;
+  }
 }
+
+const animatedArrowInstance = new AnimatedArrowImage();
 
 /**
  * Generate standard meteorological wind barb with 5-kt half-barb, 10-kt full-barb, 50-kt pennant.
@@ -113,19 +168,20 @@ function createBarbImageData(speedKt: number): ImageData {
   return ctx.getImageData(0, 0, size, size);
 }
 
-/** Register all barb icons (barb-0 through barb-100) and arrow in MapLibre */
+/** Register all barb icons (barb-0 through barb-100) and animated arrow in MapLibre */
 function ensureAmvIcons(map: MapLibreMap): void {
-  // Always update icons to ensure latest thin geometry
   try {
-    if (map.hasImage('amv-arrow')) map.removeImage('amv-arrow');
-    map.addImage('amv-arrow', createArrowImageData(), { sdf: true });
+    if (!map.hasImage('amv-arrow')) {
+      map.addImage('amv-arrow', animatedArrowInstance as any, { sdf: true });
+    }
   } catch {}
 
   for (let kt = 0; kt <= 100; kt += 5) {
     const id = `barb-${kt}`;
     try {
-      if (map.hasImage(id)) map.removeImage(id);
-      map.addImage(id, createBarbImageData(kt), { sdf: true });
+      if (!map.hasImage(id)) {
+        map.addImage(id, createBarbImageData(kt), { sdf: true });
+      }
     } catch {}
   }
 }
@@ -177,6 +233,11 @@ export function syncAmvLayer(
 
   const isBarbs = style === 'barbs';
 
+  animatedArrowInstance.active = visible && !isBarbs;
+  if (visible && !isBarbs) {
+    map.triggerRepaint();
+  }
+
   const iconImageExpr: any = isBarbs
     ? ['coalesce', ['get', 'barb_id'], 'barb-10']
     : 'amv-arrow';
@@ -189,10 +250,11 @@ export function syncAmvLayer(
   const iconSizeExpr: any = isBarbs
     ? 0.85
     : [
-        'interpolate', ['linear'], ['get', 'speed'],
-        3, 0.65,
-        15, 0.85,
-        35, 1.05
+        'interpolate', ['linear'], ['zoom'],
+        3, 0.40,
+        5, 0.55,
+        7, 0.75,
+        10, 1.00
       ];
 
   const speedKtExpr: any = ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]];
@@ -233,12 +295,12 @@ export function syncAmvLayer(
         'icon-size': iconSizeExpr,
         'icon-rotate': iconRotateExpr,
         'icon-rotation-alignment': 'map',
-        // Collision prevention: keeps barbs cleanly spaced and simple without chaotic overlapping
-        'icon-allow-overlap': false,
-        'icon-ignore-placement': false,
-        'icon-padding': 3,
-        // Sort key: gale and strong winds get display placement priority
-        'symbol-sort-key': ['-', 1000, ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]]]
+        // In Arrows mode: allow all arrows to display densely without collision culling
+        'icon-allow-overlap': !isBarbs,
+        'icon-ignore-placement': !isBarbs,
+        'icon-padding': isBarbs ? 3 : 0,
+        // Sort key: higher wind speeds get display placement priority
+        'symbol-sort-key': ['-', 1000, speedKtExpr]
       },
       paint: {
         'icon-color': iconColorExpr,
@@ -268,9 +330,9 @@ export function syncAmvLayer(
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-image', iconImageExpr);
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-rotate', iconRotateExpr);
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-size', iconSizeExpr);
-    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-allow-overlap', false);
-    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-ignore-placement', false);
-    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-padding', 3);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-allow-overlap', !isBarbs);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-ignore-placement', !isBarbs);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-padding', isBarbs ? 3 : 0);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-color', iconColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-color', iconHaloColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-width', iconHaloWidth);

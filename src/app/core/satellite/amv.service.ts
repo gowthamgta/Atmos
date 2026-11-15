@@ -69,19 +69,21 @@ export class AmvService {
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
 
-  /** Filtered GeoJSON features matching active altitude and source filters (defaults to low-level p >= 700 hPa) */
+  /** Filtered GeoJSON features strictly focused on low-level winds (p >= 700 hPa), discarding middle and high clouds */
   readonly filteredGeoJson = computed<AmvGeoJson | null>(() => {
     const geo = this.currentGeoJson();
     if (!geo) return null;
-    const lf = this.layerFilter();
     const sf = this.sourceFilter();
 
-    let list = geo.features;
-    if (lf === 'low') {
-      list = list.filter(f => f.properties.layer === 'low' || f.properties.p >= 700.0);
-    } else if (lf !== 'all') {
-      list = list.filter(f => f.properties.layer === lf);
-    }
+    // Exclusively low-level winds (p >= 700 hPa). Discard ALL middle and high clouds.
+    let list = geo.features.filter(f => {
+      const p = f.properties.p;
+      const layer = f.properties.layer;
+      if (layer === 'high' || layer === 'mid') return false;
+      if (p !== undefined && p !== null && p < 700.0) return false;
+      return true;
+    });
+
     if (sf === 'satellite') {
       list = list.filter(f => f.properties.sat.includes('Meteosat') || f.properties.sat.includes('Himawari'));
     } else if (sf === 'ecmwf') {
