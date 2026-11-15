@@ -462,6 +462,24 @@ def merge_unique_tracers(vectors: List[Dict[str, Any]], cluster_dist_deg: float 
     return merged
 
 
+def is_cirrus_contamination(v: Dict[str, Any]) -> bool:
+    """Reject semi-transparent cirrus contamination misassigned to low-level pressure.
+    
+    In the tropics/India, upper-level jet/cirrus blows SSE (110-210 deg) at high speed (> 12 m/s).
+    Genuine low-level (850 hPa) winds over land are gentle Easterlies/Northeasterlies (< 10 m/s).
+    Any satellite vector over the inland peninsula with speed > 12 m/s and SSE flow is cirrus aloft.
+    """
+    sat = str(v.get("satellite", ""))
+    if "ECMWF" in sat:
+        return False
+    lon = float(v.get("lon", v.get("original_lon", 0.0)))
+    lat = float(v.get("lat", v.get("original_lat", 0.0)))
+    spd = float(v.get("speed_mps", 0.0))
+    d = float(v.get("direction_deg", 0.0))
+    is_peninsula_land = 74.0 <= lon <= 79.5 and 10.5 <= lat <= 19.0
+    return is_peninsula_land and spd > 12.0 and 110.0 <= d <= 210.0
+
+
 def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[str, Any]:
     """Convert AMV vectors to a standard GeoJSON FeatureCollection with wind barb properties."""
     features = []
@@ -470,6 +488,7 @@ def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[s
         v for v in vectors
         if float(v.get("pressure_hpa", 850.0)) >= 700.0
         and v.get("layer") not in ("high", "mid")
+        and not is_cirrus_contamination(v)
     ]
     for v in low_vectors:
         spd_mps = float(v.get("speed_mps", 0.0))

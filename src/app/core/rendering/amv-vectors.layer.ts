@@ -5,8 +5,9 @@ export const AMV_SOURCE_ID = 'amv-vectors-source';
 export const AMV_SYMBOLS_LAYER_ID = 'amv-vectors-symbols';
 
 /**
- * Animated wind arrow implementing MapLibre's StyleImageInterface.
- * Animates a continuous flow pattern: moving dashes along the shaft and a traveling flow chevron downwind.
+ * Smooth, eye-friendly wind arrow implementing MapLibre's StyleImageInterface.
+ * Renders a delicate, non-straining solid needle shaft with a gentle, slow-moving flow shimmer.
+ * No flickering line dashes or harsh strobe pulses.
  */
 class AnimatedArrowImage {
   readonly width = 32;
@@ -35,38 +36,33 @@ class AnimatedArrowImage {
     const cx = 16;
     ctx.strokeStyle = '#ffffff';
     ctx.fillStyle = '#ffffff';
-    ctx.lineWidth = 1.4;
+    ctx.lineWidth = 1.1; // delicate, thin, high-precision needle
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 1. Moving dashed shaft (flow dashes continuously moving downwind toward arrowhead tip)
-    ctx.save();
-    ctx.setLineDash([4, 4]);
-    ctx.lineDashOffset = -this.phase * 0.8;
+    // 1. Solid slender shaft (unbroken line - no strobing or eye-fatiguing dashes)
     ctx.beginPath();
     ctx.moveTo(cx, 26);
-    ctx.lineTo(cx, 6);
+    ctx.lineTo(cx, 6.5);
     ctx.stroke();
-    ctx.restore();
 
-    // 2. Slender aerodynamic arrowhead wings
+    // 2. Sleek aerodynamic arrowhead wings
     ctx.beginPath();
-    ctx.moveTo(cx - 4.5, 12);
-    ctx.lineTo(cx, 5.5);
-    ctx.lineTo(cx + 4.5, 12);
+    ctx.moveTo(cx - 3.8, 11.5);
+    ctx.lineTo(cx, 6.0);
+    ctx.lineTo(cx + 3.8, 11.5);
     ctx.stroke();
 
-    // 3. Traveling flow chevron (glides downwind along the shaft)
-    const pulseFrac = (this.phase % 12) / 12.0;
-    const pulseY = 24.0 - pulseFrac * 17.0; // travels from y=24 to y=7
-    const pulseAlpha = Math.sin(pulseFrac * Math.PI); // fades in at base, fades out at tip
+    // 3. Calm, gentle flow shimmer (slowly glides downwind along the shaft)
+    const t = (this.phase % 24) / 24.0;
+    const shimmerY = 24.0 - t * 16.0; // travels from y=24 to y=8
+    const shimmerAlpha = Math.sin(t * Math.PI) * 0.45; // soft, subtle glow (never blinding)
     ctx.save();
-    ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1.0, pulseAlpha * 0.95)})`;
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${shimmerAlpha})`;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.moveTo(cx - 3.2, pulseY + 3.0);
-    ctx.lineTo(cx, pulseY);
-    ctx.lineTo(cx + 3.2, pulseY + 3.0);
+    ctx.moveTo(cx, Math.min(26, shimmerY + 4));
+    ctx.lineTo(cx, Math.max(6.5, shimmerY - 2));
     ctx.stroke();
     ctx.restore();
 
@@ -77,11 +73,12 @@ class AnimatedArrowImage {
   render(): boolean {
     if (!this.active) return false;
     const now = performance.now();
-    if (now - this.lastRender < 40) { // ~25 FPS smooth flow rate
+    // Smooth, slow 20 FPS refresh rate for calm, majestic flow (no high-frequency strobe)
+    if (now - this.lastRender < 50) {
       return false;
     }
     this.lastRender = now;
-    this.phase = (this.phase + 1) % 12;
+    this.phase = (this.phase + 1) % 24;
     this.drawFrame();
     this.map?.triggerRepaint();
     return true;
@@ -259,30 +256,29 @@ export function syncAmvLayer(
 
   const speedKtExpr: any = ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]];
 
-  // Speed-based color gradient: Black (<10 kt) -> Green (10-20 kt) -> Yellow (20-30 kt) -> Orange (30-40 kt) -> Red (>=40 kt)
+  // Eye-friendly, soft, harmonious palette (eliminates eye strain and harsh contrast):
+  // <10 kt: Soft Slate (#94a3b8) - calm, gentle, readable without white rim
+  // 10-20 kt: Soft Mint (#34d399)
+  // 20-30 kt: Warm Honey Amber (#fbbf24)
+  // 30-40 kt: Soft Coral (#fb923c)
+  // >=40 kt: Soft Rose (#f43f5e)
   const arrowSpeedColorExpr: any = [
     'step',
     speedKtExpr,
-    '#0f172a',       // < 10 kt: Black / deep charcoal
-    10.0, '#00e676', // 10-20 kt: Green
-    20.0, '#ffea00', // 20-30 kt: Yellow
-    30.0, '#ff9100', // 30-40 kt: Orange
-    40.0, '#ff1744'  // >= 40 kt: Red
+    '#94a3b8',       // < 10 kt: Soft Slate (comfortable, non-fatiguing)
+    10.0, '#34d399', // 10-20 kt: Soft Mint
+    20.0, '#fbbf24', // 20-30 kt: Warm Amber
+    30.0, '#fb923c', // 30-40 kt: Soft Coral
+    40.0, '#f43f5e'  // >= 40 kt: Soft Rose
   ];
 
   const iconColorExpr: any = isBarbs
-    ? ['case', ['>=', speedKtExpr, 20.0], '#00e676', '#cbd5e1']
+    ? ['case', ['>=', speedKtExpr, 20.0], '#34d399', '#94a3b8']
     : arrowSpeedColorExpr;
 
-  // Halo: white halo for black arrows (<10 kt) so they stay crisp on dark ocean/night map;
-  // dark halo (#000000) for bright colored arrows to pop against white satellite clouds.
-  const iconHaloColorExpr: any = [
-    'case',
-    ['<', speedKtExpr, 10.0],
-    'rgba(255, 255, 255, 0.90)',
-    '#000000'
-  ];
-  const iconHaloWidth: number = 1.2;
+  // Subtle, soft dark halo for clean definition without harsh visual noise or glare
+  const iconHaloColorExpr: any = 'rgba(0, 0, 0, 0.40)';
+  const iconHaloWidth: number = 0.6;
 
   if (!map.getLayer(AMV_SYMBOLS_LAYER_ID)) {
     const symbolSpec: any = {
@@ -295,10 +291,10 @@ export function syncAmvLayer(
         'icon-size': iconSizeExpr,
         'icon-rotate': iconRotateExpr,
         'icon-rotation-alignment': 'map',
-        // In Arrows mode: allow all arrows to display densely without collision culling
-        'icon-allow-overlap': !isBarbs,
-        'icon-ignore-placement': !isBarbs,
-        'icon-padding': isBarbs ? 3 : 0,
+        // Clean dense spacing with 1px padding to avoid chaotic clumping
+        'icon-allow-overlap': false,
+        'icon-ignore-placement': false,
+        'icon-padding': isBarbs ? 3 : 1.0,
         // Sort key: higher wind speeds get display placement priority
         'symbol-sort-key': ['-', 1000, speedKtExpr]
       },
@@ -306,7 +302,7 @@ export function syncAmvLayer(
         'icon-color': iconColorExpr,
         'icon-halo-color': iconHaloColorExpr,
         'icon-halo-width': iconHaloWidth,
-        'icon-opacity': 0.95
+        'icon-opacity': 0.82
       }
     };
 
@@ -330,12 +326,13 @@ export function syncAmvLayer(
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-image', iconImageExpr);
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-rotate', iconRotateExpr);
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-size', iconSizeExpr);
-    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-allow-overlap', !isBarbs);
-    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-ignore-placement', !isBarbs);
-    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-padding', isBarbs ? 3 : 0);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-allow-overlap', false);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-ignore-placement', false);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-padding', isBarbs ? 3 : 1.0);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-color', iconColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-color', iconHaloColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-width', iconHaloWidth);
+    map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-opacity', 0.82);
   }
 
   if (visible) {

@@ -69,18 +69,41 @@ export class AmvService {
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
 
-  /** Filtered GeoJSON features strictly focused on low-level winds (p >= 700 hPa), discarding middle and high clouds */
+  /** Filtered GeoJSON features strictly focused on low-level winds (p >= 700 hPa), discarding middle/high clouds and cirrus contamination */
   readonly filteredGeoJson = computed<AmvGeoJson | null>(() => {
     const geo = this.currentGeoJson();
     if (!geo) return null;
     const sf = this.sourceFilter();
 
-    // Exclusively low-level winds (p >= 700 hPa). Discard ALL middle and high clouds.
+    // Exclusively low-level winds (p >= 700 hPa). Discard ALL middle and high clouds,
+    // and filter out semi-transparent cirrus contamination misassigned to low levels.
     let list = geo.features.filter(f => {
       const p = f.properties.p;
       const layer = f.properties.layer;
+      const sat = f.properties.sat || '';
+      const coords = f.geometry.coordinates;
+      const lon = coords[0];
+      const lat = coords[1];
+      const spd = f.properties.speed;
+      const dir = f.properties.dir;
+
+      // 1. Drop any vector labeled as high or mid level
       if (layer === 'high' || layer === 'mid') return false;
+
+      // 2. Drop any vector with pressure less than 700 hPa
       if (p !== undefined && p !== null && p < 700.0) return false;
+
+      // 3. Reject semi-transparent cirrus contamination over inland peninsula:
+      // In the tropics, upper-level jet/cirrus blows SSE (110-210 deg) at high speed (> 12 m/s).
+      // Genuine low-level (850 hPa) winds over land are gentle Easterlies/Northeasterlies (< 10 m/s).
+      // Any satellite vector over the inland plateau with speed > 12 m/s and SSE flow is cirrus aloft.
+      if (!sat.includes('ECMWF')) {
+        const isPeninsulaLand = lon >= 74.0 && lon <= 79.5 && lat >= 10.5 && lat <= 19.0;
+        if (isPeninsulaLand && spd > 12.0 && dir >= 110.0 && dir <= 210.0) {
+          return false;
+        }
+      }
+
       return true;
     });
 
