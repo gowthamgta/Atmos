@@ -71,16 +71,19 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             }
             <p class="hint3d full-only">{{ ownSat().note }}</p>
 
-            <!-- Dual-Satellite AMV Nowcast Section -->
+            <!-- Low-Level Winds (850 hPa / ~1.5 km) Section -->
             <div class="amv-section full-only">
               <div class="amv-toggle-row">
-                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Low-Level Cloud Motion Vectors (AMVs, &ge;700 hPa)">
+                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Low-Level Winds at 850 hPa (~1.5 km altitude)">
                   <span class="amv-dot" [class.active]="amv.active()"></span>
-                  <strong>Satellite Winds (AMV)</strong>
+                  <strong>Low-Level Winds (850 hPa · 1.5 km)</strong>
                 </button>
                 @if (amv.active() && amv.stats(); as st) {
                   <span class="amv-badge">{{ st.low || st.total }} vectors · {{ st.avgSpeedMps }} m/s</span>
                 }
+              </div>
+              <div class="amv-height-info">
+                <span>Altitude: <strong>~1.5 km</strong> (850 hPa Boundary Layer)</span>
               </div>
               @if (amv.active()) {
                 <div class="amv-legend">
@@ -94,11 +97,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                   <div class="amv-readout" aria-live="polite">
                     <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
                     <span class="amv-meta">
-                      @if (hv.sat.includes('ECMWF')) {
-                        {{ hv.p }} hPa · ECMWF IFS (850 hPa Analysis)
-                      } @else {
-                        {{ hv.p }} hPa ({{ (hv.z / 1000).toFixed(1) }} km) · {{ hv.sat }} (Observed AMV) · QI {{ hv.qi }}%
-                      }
+                      850 hPa (~1.5 km) · Low-Level Wind Flow
                     </span>
                   </div>
                 }
@@ -211,6 +210,8 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
     .amv-dot.active { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
     .amv-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .amv-height-info { font-size: 11px; color: var(--text-secondary); margin-top: 3px; display: flex; align-items: center; justify-content: space-between; }
+    .amv-height-info strong { color: var(--neon-cyan); }
     .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
     .leg-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
     .leg-color { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
