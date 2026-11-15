@@ -191,7 +191,6 @@ export class MapComponent implements OnInit, OnDestroy {
 
     if (!this.amvParticlesLayer) {
       this.amvParticlesLayer = new WindParticlesLayer('amv-wind-particles', isPhone() ? 2600 : 12000);
-      this.amvParticlesLayer.setColored(true);
       try {
         this.map.addLayer(this.amvParticlesLayer);
       } catch (err) {

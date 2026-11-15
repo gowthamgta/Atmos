@@ -16,36 +16,8 @@ in vec2 a_pos;            // mercator position of the head (per instance)
 in vec2 a_vel;            // screen velocity in px/s, y down (per instance)
 in float a_alpha;         // (per instance)
 in vec2 a_prev;           // the earlier screen velocity (per instance)
-in float a_spd;           // wind speed in m/s (per instance)
 out float v_alpha;
 out float v_side;         // distance from the middle of the line, in CSS pixels
-out vec3 v_color;
-
-vec3 speedColor(float spdKt) {
-  // Atmospheric wind speed color scale:
-  // <10 kt: Soft cyan / sky blue
-  // 10-20 kt: Crisp emerald green
-  // 20-30 kt: Vibrant golden yellow
-  // 30-40 kt: Bright orange
-  // >=40 kt: Vivid red / storm core
-  if (spdKt < 10.0) {
-    float t = clamp(spdKt / 10.0, 0.0, 1.0);
-    return mix(vec3(0.22, 0.74, 0.97), vec3(0.29, 0.87, 0.50), t);
-  } else if (spdKt < 20.0) {
-    float t = clamp((spdKt - 10.0) / 10.0, 0.0, 1.0);
-    return mix(vec3(0.29, 0.87, 0.50), vec3(0.98, 0.75, 0.14), t);
-  } else if (spdKt < 30.0) {
-    float t = clamp((spdKt - 20.0) / 10.0, 0.0, 1.0);
-    return mix(vec3(0.98, 0.75, 0.14), vec3(0.98, 0.57, 0.24), t);
-  } else if (spdKt < 45.0) {
-    float t = clamp((spdKt - 30.0) / 15.0, 0.0, 1.0);
-    return mix(vec3(0.98, 0.57, 0.24), vec3(0.97, 0.22, 0.26), t);
-  } else {
-    float t = clamp((spdKt - 45.0) / 20.0, 0.0, 1.0);
-    return mix(vec3(0.97, 0.22, 0.26), vec3(0.90, 0.15, 0.80), t);
-  }
-}
-
 void main() {
   vec4 clip = u_matrix * vec4(a_pos, 0.0, 1.0);
   float t = a_corner.x;
@@ -60,22 +32,18 @@ void main() {
   gl_Position = clip + vec4(ndc * clip.w, 0.0, 0.0);
   v_alpha = a_alpha * (1.0 - t);   // opaque head fading to a transparent tail
   v_side = u_half * a_corner.y;
-  v_color = speedColor(a_spd * 1.94384);
 }`;
 
 const FRAGMENT = `#version 300 es
 precision mediump float;
 uniform highp float u_half;   // the same precision as in the vertex shader (shared uniforms must match)
-uniform float u_colored;      // 1.0 for speed color, 0.0 for pure white
 in float v_alpha;
 in float v_side;
-in vec3 v_color;
 out vec4 outColor;
 void main() {
   float edge = 1.0 - smoothstep(u_half - 1.2, u_half, abs(v_side));   // a soft edge a pixel wide
   float a = v_alpha * edge;
-  vec3 rgb = mix(vec3(1.0), v_color, u_colored);
-  outColor = vec4(rgb * a, a);   // premultiplied color
+  outColor = vec4(vec3(1.0) * a, a);   // premultiplied white
 }`;
 
 /** Pieces of each tail (enough for a smooth curve). */
@@ -106,7 +74,6 @@ export class WindParticlesLayer implements CustomLayerInterface {
   private visible = false;
   private needsReset = true;
   private lastTime = 0;
-  private colored = 1.0;
 
   constructor(idOrCount: string | number = 'forecast-wind-particles', maxCount = 16000) {
     if (typeof idOrCount === 'number') {
@@ -130,11 +97,6 @@ export class WindParticlesLayer implements CustomLayerInterface {
     return this.system.count;
   }
 
-  setColored(colored: boolean): void {
-    this.colored = colored ? 1.0 : 0.0;
-    this.map?.triggerRepaint();
-  }
-
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.lastTime = 0;
@@ -153,7 +115,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
   onAdd(map: MapLibreMap, gl: WebGL2RenderingContext): void {
     this.map = map;
     this.program = this.link(gl, VERTEX, FRAGMENT);
-    for (const name of ['u_matrix', 'u_css', 'u_tail', 'u_half', 'u_colored']) this.uniforms[name] = gl.getUniformLocation(this.program, name);
+    for (const name of ['u_matrix', 'u_css', 'u_tail', 'u_half']) this.uniforms[name] = gl.getUniformLocation(this.program, name);
 
     this.vao = gl.createVertexArray();
     gl.bindVertexArray(this.vao);
@@ -169,20 +131,12 @@ export class WindParticlesLayer implements CustomLayerInterface {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuf);
     gl.bufferData(gl.ARRAY_BUFFER, this.instances.byteLength, gl.DYNAMIC_DRAW);
     const stride = INSTANCE_FLOATS * 4;
-    const layout: [string, number, number][] = [
-      ['a_pos', 2, 0],
-      ['a_vel', 2, 8],
-      ['a_alpha', 1, 16],
-      ['a_prev', 2, 20],
-      ['a_spd', 1, 28]
-    ];
+    const layout: [string, number, number][] = [['a_pos', 2, 0], ['a_vel', 2, 8], ['a_alpha', 1, 16], ['a_prev', 2, 20]];
     for (const [name, size, offset] of layout) {
       const loc = gl.getAttribLocation(this.program, name);
-      if (loc !== null && loc >= 0) {
-        gl.enableVertexAttribArray(loc);
-        gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
-        gl.vertexAttribDivisor(loc, 1);
-      }
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
+      gl.vertexAttribDivisor(loc, 1);
     }
     gl.bindVertexArray(null);
   }
@@ -229,8 +183,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
     gl.uniformMatrix4fv(this.uniforms['u_matrix'], false, options.defaultProjectionData.mainMatrix as unknown as Float32List);
     gl.uniform2f(this.uniforms['u_css'], canvas.clientWidth, canvas.clientHeight);
     gl.uniform1f(this.uniforms['u_tail'], TAIL_SECONDS);
-    gl.uniform1f(this.uniforms['u_half'], (this.colored > 0.5 ? 1.8 : LINE_WIDTH_CSS_PX) / 2 + 0.6); // the soft edge lies outside the line's own width
-    gl.uniform1f(this.uniforms['u_colored'], this.colored);
+    gl.uniform1f(this.uniforms['u_half'], LINE_WIDTH_CSS_PX / 2 + 0.6); // the soft edge lies outside the line's own width
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, RIBBON.length / 2, n);
     gl.bindVertexArray(null);
 

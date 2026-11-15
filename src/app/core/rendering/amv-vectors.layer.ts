@@ -254,8 +254,8 @@ export function syncAmvLayer(
 
   const speedKtExpr: any = ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]];
 
-  // Speed-based color scale:
-  // <10 kt: Soft cyan (#38bdf8)
+  // Speed-based color scale: muted tones for comfortable viewing
+  // <10 kt: Muted dark slate (#475569)
   // 10-20 kt: Soft green (#4ade80)
   // 20-30 kt: Warm amber (#fbbf24)
   // 30-40 kt: Soft orange (#fb923c)
@@ -263,7 +263,7 @@ export function syncAmvLayer(
   const arrowSpeedColorExpr: any = [
     'step',
     speedKtExpr,
-    '#38bdf8',       // < 10 kt: Soft cyan
+    '#475569',       // < 10 kt: Muted slate
     10.0, '#4ade80', // 10-20 kt: Soft green
     20.0, '#fbbf24', // 20-30 kt: Warm amber
     30.0, '#fb923c', // 30-40 kt: Soft orange

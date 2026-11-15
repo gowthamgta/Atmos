@@ -115,22 +115,23 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                 </div>
 
                 @if (amv.style() === 'particles') {
-                  <div class="amv-particles-hint">Flowing streamlines colored by wind speed</div>
-                }
-                <div class="amv-legend">
-                  <span class="leg-item"><span class="leg-color c-cyan"></span>&lt;10 kt</span>
-                  <span class="leg-item"><span class="leg-color c-green"></span>10–20</span>
-                  <span class="leg-item"><span class="leg-color c-yellow"></span>20–30</span>
-                  <span class="leg-item"><span class="leg-color c-orange"></span>30–40</span>
-                  <span class="leg-item"><span class="leg-color c-red"></span>&gt;40 kt</span>
-                </div>
-                @if (amv.style() !== 'particles' && amv.hoveredVector(); as hv) {
-                  <div class="amv-readout" aria-live="polite">
-                    <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
-                    <span class="amv-meta">
-                      {{ hv.p }} hPa (~{{ hv.z ? (hv.z / 1000).toFixed(1) : '1.5' }} km) · {{ hv.sat }}
-                    </span>
+                  <div class="amv-particles-hint">Particle ribbons flow along atmospheric currents</div>
+                } @else {
+                  <div class="amv-legend">
+                    <span class="leg-item"><span class="leg-color c-black"></span>&lt;10 kt</span>
+                    <span class="leg-item"><span class="leg-color c-green"></span>10–20</span>
+                    <span class="leg-item"><span class="leg-color c-yellow"></span>20–30</span>
+                    <span class="leg-item"><span class="leg-color c-orange"></span>30–40</span>
+                    <span class="leg-item"><span class="leg-color c-red"></span>&gt;40 kt</span>
                   </div>
+                  @if (amv.hoveredVector(); as hv) {
+                    <div class="amv-readout" aria-live="polite">
+                      <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
+                      <span class="amv-meta">
+                        {{ hv.p }} hPa (~{{ hv.z ? (hv.z / 1000).toFixed(1) : '1.5' }} km) · {{ hv.sat }}
+                      </span>
+                    </div>
+                  }
                 }
               }
             </div>
@@ -255,11 +256,11 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
     .leg-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
     .leg-color { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-    .leg-color.c-cyan { background: #38bdf8; box-shadow: 0 0 4px rgba(56, 189, 248, 0.4); }
-    .leg-color.c-green { background: #4ade80; box-shadow: 0 0 4px rgba(74, 222, 128, 0.4); }
-    .leg-color.c-yellow { background: #fbbf24; box-shadow: 0 0 4px rgba(251, 191, 36, 0.4); }
-    .leg-color.c-orange { background: #fb923c; box-shadow: 0 0 4px rgba(251, 146, 60, 0.4); }
-    .leg-color.c-red { background: #f87171; box-shadow: 0 0 4px rgba(248, 113, 113, 0.4); }
+    .leg-color.c-black { background: #475569; border: 1px solid rgba(255,255,255,0.5); }
+    .leg-color.c-green { background: #4ade80; }
+    .leg-color.c-yellow { background: #fbbf24; }
+    .leg-color.c-orange { background: #fb923c; }
+    .leg-color.c-red { background: #f87171; }
     .amv-readout { margin-top: 5px; padding: 4px 6px; border-radius: 6px; background: var(--surface-2); font-size: 11px; display: flex; flex-direction: column; gap: 1px; }
     .amv-spd { font-weight: 700; color: var(--neon-cyan); }
     .amv-meta { color: var(--text-secondary); }
