@@ -466,18 +466,19 @@ def is_cirrus_contamination(v: Dict[str, Any]) -> bool:
     """Reject semi-transparent cirrus contamination misassigned to low-level pressure.
     
     In the tropics/India, upper-level jet/cirrus blows SSE (110-210 deg) at high speed (> 12 m/s).
-    Genuine low-level (850 hPa) winds over land are gentle Easterlies/Northeasterlies (< 10 m/s).
-    Any satellite vector over the inland peninsula with speed > 12 m/s and SSE flow is cirrus aloft.
+    Genuine low-level (850 hPa) winds are gentle Easterlies/Northeasterlies (< 10 m/s).
+    Any satellite vector across the northern tropical belt (70.0 - 82.0E, 10.0 - 22.0N)
+    with speed > 12 m/s and SSE flow is cirrus aloft.
     """
-    sat = str(v.get("satellite", ""))
+    sat = str(v.get("satellite", v.get("sat", "")))
     if "ECMWF" in sat:
         return False
     lon = float(v.get("lon", v.get("original_lon", 0.0)))
     lat = float(v.get("lat", v.get("original_lat", 0.0)))
-    spd = float(v.get("speed_mps", 0.0))
-    d = float(v.get("direction_deg", 0.0))
-    is_peninsula_land = 74.0 <= lon <= 79.5 and 10.5 <= lat <= 19.0
-    return is_peninsula_land and spd > 12.0 and 110.0 <= d <= 210.0
+    spd = float(v.get("speed_mps", v.get("speed", 0.0)))
+    d = float(v.get("direction_deg", v.get("dir", 0.0)))
+    is_jet_region = 70.0 <= lon <= 82.0 and 10.0 <= lat <= 22.0
+    return is_jet_region and spd > 12.0 and 110.0 <= d <= 210.0
 
 
 def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[str, Any]:
@@ -976,14 +977,28 @@ def run_pipeline(out_dir: str, keep_minutes: int = DEFAULT_KEEP_MINUTES) -> int:
         print("No AMV vectors available to publish.")
         return 0
 
-    # 5. Integrate ECMWF 850 hPa Low-Level Wind Analysis (JTWC / CIMSS Deep-Layer analysis)
+    # 5. Integrate ECMWF 850 hPa Low-Level Wind Analysis as gap-filler (strictly no overlapping)
     ecmwf_vectors = []
     try:
         ecmwf_vectors = load_ecmwf_850_analysis(out_dir, stride=3)
     except Exception as e:
         print(f"::notice::ECMWF 850hPa integration skipped: {e}")
 
-    all_vectors = list(fused_vectors) + ecmwf_vectors
+    # Spatial deduplication: ECMWF vectors only where no satellite vector is within 0.35 deg
+    clean_sat_vectors = [v for v in fused_vectors if "ECMWF" not in str(v.get("satellite", v.get("sat", ""))) and not is_cirrus_contamination(v)]
+    if ecmwf_vectors and clean_sat_vectors:
+        sat_lons = np.array([float(v.get("lon", v.get("original_lon", 0.0))) for v in clean_sat_vectors])
+        sat_lats = np.array([float(v.get("lat", v.get("original_lat", 0.0))) for v in clean_sat_vectors])
+        gap_ecmwf = []
+        for ev in ecmwf_vectors:
+            e_lon = float(ev.get("lon", ev.get("original_lon", 0.0)))
+            e_lat = float(ev.get("lat", ev.get("original_lat", 0.0)))
+            dists = np.hypot(sat_lons - e_lon, sat_lats - e_lat)
+            if np.min(dists) >= 0.35:
+                gap_ecmwf.append(ev)
+        all_vectors = list(clean_sat_vectors) + gap_ecmwf
+    else:
+        all_vectors = list(clean_sat_vectors) + ecmwf_vectors
 
     fname = f"amv_{now_utc.strftime('%Y%m%d_%H%M%S')}.json"
     fpath = os.path.join(amv_dir, fname)

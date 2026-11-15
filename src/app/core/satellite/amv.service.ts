@@ -93,13 +93,13 @@ export class AmvService {
       // 2. Drop any vector with pressure less than 700 hPa
       if (p !== undefined && p !== null && p < 700.0) return false;
 
-      // 3. Reject semi-transparent cirrus contamination over inland peninsula:
+      // 3. Reject semi-transparent cirrus contamination across the northern tropical belt:
       // In the tropics, upper-level jet/cirrus blows SSE (110-210 deg) at high speed (> 12 m/s).
-      // Genuine low-level (850 hPa) winds over land are gentle Easterlies/Northeasterlies (< 10 m/s).
-      // Any satellite vector over the inland plateau with speed > 12 m/s and SSE flow is cirrus aloft.
+      // Genuine low-level (850 hPa) winds are gentle Easterlies/Northeasterlies (< 10 m/s).
+      // Any satellite vector in 70-82E, 10-22N with speed > 12 m/s and SSE flow is cirrus aloft.
       if (!sat.includes('ECMWF')) {
-        const isPeninsulaLand = lon >= 74.0 && lon <= 79.5 && lat >= 10.5 && lat <= 19.0;
-        if (isPeninsulaLand && spd > 12.0 && dir >= 110.0 && dir <= 210.0) {
+        const isJetRegion = lon >= 70.0 && lon <= 82.0 && lat >= 10.0 && lat <= 22.0;
+        if (isJetRegion && spd > 12.0 && dir >= 110.0 && dir <= 210.0) {
           return false;
         }
       }
@@ -111,6 +111,36 @@ export class AmvService {
       list = list.filter(f => f.properties.sat.includes('Meteosat') || f.properties.sat.includes('Himawari'));
     } else if (sf === 'ecmwf') {
       list = list.filter(f => f.properties.sat.includes('ECMWF'));
+    } else {
+      // 'all': Fuse Satellite AMVs with ECMWF IFS Model gap-filler.
+      // Observed satellite AMVs take strict precedence.
+      // ECMWF vectors are ONLY kept in clear-sky gaps where no satellite AMV is within 0.35 degrees (~38 km).
+      // This completely eliminates duplicate/overlapping arrows!
+      const satVectors = list.filter(f => !f.properties.sat.includes('ECMWF'));
+      const ecmwfVectors = list.filter(f => f.properties.sat.includes('ECMWF'));
+
+      if (satVectors.length > 0 && ecmwfVectors.length > 0) {
+        const cellSize = 0.35; // ~38 km
+        const satGrid = new Set<string>();
+        for (const sf of satVectors) {
+          const [sx, sy] = sf.geometry.coordinates;
+          const gx = Math.round(sx / cellSize);
+          const gy = Math.round(sy / cellSize);
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              satGrid.add(`${gx + dx}:${gy + dy}`);
+            }
+          }
+        }
+
+        const nonOverlappingEcmwf = ecmwfVectors.filter(ef => {
+          const [ex, ey] = ef.geometry.coordinates;
+          const key = `${Math.round(ex / cellSize)}:${Math.round(ey / cellSize)}`;
+          return !satGrid.has(key);
+        });
+
+        list = [...satVectors, ...nonOverlappingEcmwf];
+      }
     }
 
     // Ensure barb_id and speed_kt exist for all features
