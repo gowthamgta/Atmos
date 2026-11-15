@@ -59,17 +59,7 @@ describe('AmvService', () => {
     };
 
     service.currentGeoJson.set(mockGeo);
-    // Defaults to low level winds only (p >= 700 hPa)
-    expect(service.filteredGeoJson()?.count).toBe(2);
-
-    service.setLayerFilter('all');
-    expect(service.filteredGeoJson()?.count).toBe(4);
-
-    service.setLayerFilter('high');
-    expect(service.filteredGeoJson()?.count).toBe(1);
-    expect(service.filteredGeoJson()?.features[0].properties.layer).toBe('high');
-
-    service.setLayerFilter('low');
+    // Exclusively low-level winds (p >= 700 hPa). Middle and high clouds are discarded.
     expect(service.filteredGeoJson()?.count).toBe(2);
 
     service.setSourceFilter('ecmwf');
@@ -80,13 +70,39 @@ describe('AmvService', () => {
     expect(service.filteredGeoJson()?.count).toBe(1);
     expect(service.filteredGeoJson()?.features[0].properties.sat).toBe('Himawari-9');
 
-    // Barb calculation: 15 m/s = 29.2 kt -> barb-30, green (#00e676)
+    // Barb calculation: 15 m/s = 29.2 kt -> barb-30
     service.setSourceFilter('all');
     const lowFeatures = service.filteredGeoJson()?.features;
     const ecmwfFeat = lowFeatures?.find(f => f.properties.sat === 'ECMWF IFS');
     expect(ecmwfFeat?.properties.speed_kt).toBe(29.2);
     expect(ecmwfFeat?.properties.barb_id).toBe('barb-30');
-    expect(ecmwfFeat?.properties.barb_color).toBe('#00e676');
+  });
+
+  it('filters out inland semi-transparent cirrus contamination', () => {
+    const mockCirrusGeo: AmvGeoJson = {
+      type: 'FeatureCollection',
+      time: '2026-11-14T12:00:00Z',
+      count: 2,
+      features: [
+        {
+          type: 'Feature',
+          // Over Karnataka (76E, 14N), fast SSE wind (16 m/s, 150 deg) misassigned to 800 hPa
+          geometry: { type: 'Point', coordinates: [76, 14] },
+          properties: { u: -8, v: -13.8, speed: 16, dir: 150, p: 800, z: 2000, layer: 'low', sat: 'Meteosat-9', ch: 'IR_108', qi: 85, zen: 40 }
+        },
+        {
+          type: 'Feature',
+          // Genuine gentle low-level easterly (5 m/s, 70 deg)
+          geometry: { type: 'Point', coordinates: [76, 14] },
+          properties: { u: -4.7, v: -1.7, speed: 5, dir: 70, p: 850, z: 1500, layer: 'low', sat: 'Meteosat-9', ch: 'IR_108', qi: 85, zen: 40 }
+        }
+      ]
+    };
+
+    service.currentGeoJson.set(mockCirrusGeo);
+    // The fast SSE cirrus contamination vector is eliminated; only genuine easterly remains
+    expect(service.filteredGeoJson()?.count).toBe(1);
+    expect(service.filteredGeoJson()?.features[0].properties.speed).toBe(5);
   });
 
   it('computes accurate statistical metrics', () => {
