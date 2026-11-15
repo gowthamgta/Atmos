@@ -62,7 +62,7 @@ def test_export_geojson_and_index(tmp_path):
         {
             "lon": 78.5, "lat": 12.5, "original_lon": 78.5, "original_lat": 12.5,
             "u_mps": 10.0, "v_mps": 5.0, "speed_mps": 11.18, "direction_deg": 243.4,
-            "pressure_hpa": 250.0, "height_m": 10800, "layer": "high",
+            "pressure_hpa": 850.0, "height_m": 1500, "layer": "low",
             "satellite": "Meteosat-9", "channel": "IR_108", "quality_indicator": 88.5, "zenith_deg": 41.2
         }
     ]
@@ -72,7 +72,7 @@ def test_export_geojson_and_index(tmp_path):
     feat = geojson["features"][0]
     assert feat["geometry"]["coordinates"] == [78.5, 12.5]
     assert feat["properties"]["speed"] == 11.18
-    assert feat["properties"]["layer"] == "high"
+    assert feat["properties"]["layer"] == "low"
     # Wind barb properties: 11.18 m/s = 21.7 kt -> barb-20, green color (>=20 kt)
     assert feat["properties"]["speed_kt"] == 21.7
     assert feat["properties"]["barb_id"] == "barb-20"

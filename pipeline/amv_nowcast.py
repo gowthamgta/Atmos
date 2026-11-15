@@ -379,8 +379,12 @@ def assign_heights_and_qi(vectors: List[Dict[str, Any]], sounding: Dict[str, np.
             conf = "LOW"
             assigned_p = float(np.clip(assigned_p, 200.0, 600.0))
 
+        # Focus exclusively on low-level winds (>= 700 hPa)
+        if assigned_p < 700.0:
+            continue
+
         assigned_z = float(np.interp(assigned_p, p_prof[::-1], z_prof[::-1]))
-        layer = "low" if assigned_p > 700.0 else ("mid" if assigned_p >= 400.0 else "high")
+        layer = "low"
 
         # Parallax correction along bearing toward satellite
         zen_rad = np.radians(v["zenith_deg"])
@@ -392,10 +396,10 @@ def assign_heights_and_qi(vectors: List[Dict[str, Any]], sounding: Dict[str, np.
             corr_lon, corr_lat = v["original_lon"], v["original_lat"]
 
         # Observation-Only QI (strictly zero model circularity)
-        w_ncc = 30.0 * min(1.0, max(0.0, (v["ncc_corr"] - 0.70) / 0.28))
-        w_loop = 20.0 * max(0.0, 1.0 - v["fb_err_px"] / 0.8)
-        w_accel = 20.0 * max(0.0, 1.0 - v["accel_mps"] / 4.0)
-        w_flow = 15.0 * max(0.0, 1.0 - v["flow_diff_mps"] / 4.5)
+        w_ncc = 30.0 * min(1.0, max(0.0, (v["ncc_corr"] - 0.65) / 0.30))
+        w_loop = 20.0 * max(0.0, 1.0 - v["fb_err_px"] / 1.2)
+        w_accel = 20.0 * max(0.0, 1.0 - v["accel_mps"] / 5.0)
+        w_flow = 15.0 * max(0.0, 1.0 - v["flow_diff_mps"] / 8.0)
         w_zen = 10.0 * max(0.0, 1.0 - max(0.0, v["zenith_deg"] - 45.0) / 15.0)
         w_hconf = 5.0 if conf == "HIGH" else 0.0
         qi = float(np.clip(w_ncc + w_loop + w_accel + w_flow + w_zen + w_hconf, 0.0, 100.0))
@@ -461,7 +465,9 @@ def merge_unique_tracers(vectors: List[Dict[str, Any]], cluster_dist_deg: float 
 def export_geojson(vectors: List[Dict[str, Any]], valid_time_iso: str) -> Dict[str, Any]:
     """Convert AMV vectors to a standard GeoJSON FeatureCollection with wind barb properties."""
     features = []
-    for v in vectors:
+    # Filter strictly to low-level winds (>= 700 hPa, lower troposphere / marine boundary layer)
+    low_vectors = [v for v in vectors if v.get("pressure_hpa", 850.0) >= 700.0 or v.get("layer") == "low"]
+    for v in low_vectors:
         spd_mps = float(v.get("speed_mps", 0.0))
         spd_kt = round(spd_mps * 1.94384, 1)
         barb_step = min(100, max(0, int(round(spd_kt / 5.0) * 5)))
@@ -726,14 +732,14 @@ def track_regular_grid(
     f3: np.ndarray,
     dt_sec: float,
     sub_lon: float,
-    grid_step: int = 16,
+    grid_step: int = 8,
     sounding: Optional[Dict[str, np.ndarray]] = None
 ) -> List[Dict[str, Any]]:
-    """Track AMVs across a regular lat/lon grid triplet with TV-L1 cross-check, height assignment & QC."""
+    """Track AMVs across a regular lat/lon grid triplet optimized for dense Low-Level clouds."""
     if sounding is None:
         sounding = get_standard_tropical_profile()
 
-    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=1.2)
+    tracker = AMVTrackerEngine(template_size=24, search_radius=32, min_contrast_k=0.20)
     h, w = f2.shape
     half_t = tracker.template_size // 2
     margin = half_t + tracker.search_radius
@@ -762,7 +768,13 @@ def track_regular_grid(
             if not valid_mask[r, c]:
                 continue
             patch = f2[r - half_t : r + half_t, c - half_t : c + half_t]
-            if np.all(np.isfinite(patch)) and float(np.std(patch)) >= tracker.min_contrast_k:
+            if not np.all(np.isfinite(patch)):
+                continue
+            mean_tb = float(np.mean(patch))
+            # Focus strictly on low-level clouds (Tb >= 270 K, corresponding to >= 700 hPa)
+            if mean_tb < 270.0:
+                continue
+            if float(np.std(patch)) >= 0.20:
                 candidates.append((r, c))
 
     vectors = []
@@ -779,7 +791,7 @@ def track_regular_grid(
             continue
         dc_loop, dr_loop, _ = bwd_loop
         fb_err_px = float(np.hypot(r3_int + dr_loop - r2, c3_int + dc_loop - c2))
-        if fb_err_px > tracker.max_fb_error_px:
+        if fb_err_px > 1.2:
             continue
         bwd = tracker.track_patch_ncc(f2, f1, r2, c2)
         if bwd is None:
@@ -788,12 +800,13 @@ def track_regular_grid(
         spd_fwd_px = float(np.hypot(dc_fwd, dr_fwd))
         spd_bwd_px = float(np.hypot(dc_bwd, dr_bwd))
         accel_mps = abs(spd_fwd_px - spd_bwd_px) * (nom_res_m / dt_sec)
-        if accel_mps > tracker.max_acceleration_mps:
+        if accel_mps > 5.0:
             continue
         tv_dc, tv_dr = float(flow_u[r2, c2]), float(flow_v[r2, c2])
         flow_diff_px = float(np.hypot(dc_fwd - tv_dc, dr_fwd - tv_dr))
         flow_diff_mps = (flow_diff_px * nom_res_m) / dt_sec
-        if flow_diff_mps > tracker.max_flow_diff_mps:
+        # Allow robust NCC cross-correlation peaks (>= 0.75) through complex coastal transitions
+        if flow_diff_mps > 8.0 and corr_fwd < 0.75:
             continue
 
         r1_f, c1_f = r2 + dr_bwd, c2 + dc_bwd
