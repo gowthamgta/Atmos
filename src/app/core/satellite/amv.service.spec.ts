@@ -8,11 +8,11 @@ describe('AmvService', () => {
     service = new AmvService();
   });
 
-  it('initializes with inactive state, all layer filter, and barbs style', () => {
+  it('initializes with inactive state, low layer filter, and arrows style', () => {
     expect(service.active()).toBe(false);
-    expect(service.layerFilter()).toBe('all');
+    expect(service.layerFilter()).toBe('low');
     expect(service.sourceFilter()).toBe('all');
-    expect(service.style()).toBe('barbs');
+    expect(service.style()).toBe('arrows');
     expect(service.currentGeoJson()).toBeNull();
   });
 
@@ -22,11 +22,11 @@ describe('AmvService', () => {
     service.toggleActive();
     expect(service.active()).toBe(false);
 
-    expect(service.style()).toBe('barbs');
-    service.toggleStyle();
     expect(service.style()).toBe('arrows');
-    service.setStyle('barbs');
+    service.toggleStyle();
     expect(service.style()).toBe('barbs');
+    service.setStyle('arrows');
+    expect(service.style()).toBe('arrows');
   });
 
   it('filters vectors correctly according to layer and source filters', () => {
@@ -59,6 +59,10 @@ describe('AmvService', () => {
     };
 
     service.currentGeoJson.set(mockGeo);
+    // Defaults to low level winds only (p >= 700 hPa)
+    expect(service.filteredGeoJson()?.count).toBe(2);
+
+    service.setLayerFilter('all');
     expect(service.filteredGeoJson()?.count).toBe(4);
 
     service.setLayerFilter('high');

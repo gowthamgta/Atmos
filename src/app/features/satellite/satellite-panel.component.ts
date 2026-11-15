@@ -74,56 +74,22 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
             <!-- Dual-Satellite AMV Nowcast Section -->
             <div class="amv-section full-only">
               <div class="amv-toggle-row">
-                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Dual-Satellite Atmospheric Motion Vectors (AMVs) + ECMWF 850 hPa Analysis">
+                <button type="button" class="btn-amv" [class.on]="amv.active()" (click)="amv.toggleActive()" title="Low-Level Cloud Motion Vectors (AMVs, &ge;700 hPa)">
                   <span class="amv-dot" [class.active]="amv.active()"></span>
                   <strong>Satellite Winds (AMV)</strong>
                 </button>
-                @if (amv.active()) {
-                  <button type="button" class="btn-dim" [class.on]="amv.dimSatellite()" (click)="amv.toggleDimSatellite()" title="Dim satellite cloud image so wind vectors stand out clearly">
-                    {{ amv.dimSatellite() ? 'Clouds: Dimmed' : 'Clouds: Normal' }}
-                  </button>
-                }
                 @if (amv.active() && amv.stats(); as st) {
-                  <span class="amv-badge">{{ st.total }} vectors · {{ st.avgSpeedMps }} m/s</span>
+                  <span class="amv-badge">{{ st.low || st.total }} vectors · {{ st.avgSpeedMps }} m/s</span>
                 }
               </div>
               @if (amv.active()) {
-                <div class="amv-row">
-                  <span class="amv-row-label">Style:</span>
-                  <div class="amv-btn-group" role="group" aria-label="Vector Display Style">
-                    <button type="button" [class.on]="amv.style() === 'barbs'" (click)="amv.setStyle('barbs')" title="Meteorological wind barbs with >=20 kt in green">Barbs</button>
-                    <button type="button" [class.on]="amv.style() === 'arrows'" (click)="amv.setStyle('arrows')" title="Directional flow arrows">Arrows</button>
-                  </div>
+                <div class="amv-legend">
+                  <span class="leg-item"><span class="leg-color c-black"></span>&lt;10 kt</span>
+                  <span class="leg-item"><span class="leg-color c-green"></span>10–20</span>
+                  <span class="leg-item"><span class="leg-color c-yellow"></span>20–30</span>
+                  <span class="leg-item"><span class="leg-color c-orange"></span>30–40</span>
+                  <span class="leg-item"><span class="leg-color c-red"></span>&gt;40 kt</span>
                 </div>
-                <div class="amv-row">
-                  <span class="amv-row-label">Level:</span>
-                  <div class="amv-filters" role="group" aria-label="Altitude Level Filter">
-                    <button type="button" [class.on]="amv.layerFilter() === 'all'" (click)="amv.setLayerFilter('all')">All</button>
-                    <button type="button" [class.on]="amv.layerFilter() === 'high'" (click)="amv.setLayerFilter('high')">High</button>
-                    <button type="button" [class.on]="amv.layerFilter() === 'mid'" (click)="amv.setLayerFilter('mid')">Mid</button>
-                    <button type="button" [class.on]="amv.layerFilter() === 'low'" (click)="amv.setLayerFilter('low')" title="Low-level boundary layer AMVs + ECMWF 850 hPa analysis">Low (850hPa)</button>
-                  </div>
-                </div>
-                <div class="amv-row">
-                  <span class="amv-row-label">Source:</span>
-                  <div class="amv-btn-group" role="group" aria-label="Source Filter">
-                    <button type="button" [class.on]="amv.sourceFilter() === 'all'" (click)="amv.setSourceFilter('all')">All</button>
-                    <button type="button" [class.on]="amv.sourceFilter() === 'satellite'" (click)="amv.setSourceFilter('satellite')" title="Observed cloud-motion vectors from Meteosat-9 and Himawari-9">Observed AMV</button>
-                    <button type="button" [class.on]="amv.sourceFilter() === 'ecmwf'" (click)="amv.setSourceFilter('ecmwf')" title="ECMWF IFS 850 hPa model wind analysis">ECMWF 850hPa</button>
-                  </div>
-                </div>
-                @if (amv.style() === 'barbs') {
-                  <div class="amv-legend">
-                    <span class="leg-item"><span class="leg-color gale"></span>&ge;20 kt (Gale / Green)</span>
-                    <span class="leg-item"><span class="leg-color light"></span>&lt;20 kt (Dark)</span>
-                  </div>
-                } @else {
-                  <div class="amv-legend">
-                    <span class="leg-item"><span class="leg-color high"></span>&lt;400 hPa</span>
-                    <span class="leg-item"><span class="leg-color mid"></span>400-700</span>
-                    <span class="leg-item"><span class="leg-color low"></span>&gt;700 hPa</span>
-                  </div>
-                }
                 @if (amv.hoveredVector(); as hv) {
                   <div class="amv-readout" aria-live="polite">
                     <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
@@ -242,25 +208,17 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .btn-amv { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid var(--glass-border); border-radius: 7px; background: var(--surface-3); color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
     .btn-amv:hover { background: var(--surface-4); color: var(--text-primary); }
     .btn-amv.on { background: var(--surface-4); border-color: var(--neon-cyan); color: var(--neon-cyan); }
-    .btn-dim { padding: 3px 6px; border: 1px solid var(--glass-border); border-radius: 5px; background: var(--surface-3); color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
-    .btn-dim:hover { background: var(--surface-4); color: var(--text-primary); }
-    .btn-dim.on { background: var(--surface-4); border-color: var(--neon-cyan); color: var(--neon-cyan); }
-    .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+    .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
     .amv-dot.active { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
     .amv-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); }
-    .amv-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
-    .amv-row-label { font-size: 11px; font-weight: 600; color: var(--text-muted); width: 44px; flex-shrink: 0; }
-    .amv-btn-group, .amv-filters { display: flex; gap: 2px; flex: 1; }
-    .amv-btn-group button, .amv-filters button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: var(--surface-3); color: var(--text-muted); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
-    .amv-btn-group button.on, .amv-filters button.on { background: var(--accent); color: #fff; }
     .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
     .leg-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
-    .leg-color { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .leg-color.gale { background: #00e676; box-shadow: 0 0 4px #00e676; }
-    .leg-color.light { background: #334155; border: 1px solid rgba(255,255,255,0.4); }
-    .leg-color.high { background: #00e5ff; box-shadow: 0 0 4px #00e5ff; }
-    .leg-color.mid { background: #00e676; box-shadow: 0 0 4px #00e676; }
-    .leg-color.low { background: #ff9100; box-shadow: 0 0 4px #ff9100; }
+    .leg-color { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .leg-color.c-black { background: #0f172a; border: 1px solid rgba(255,255,255,0.7); }
+    .leg-color.c-green { background: #00e676; box-shadow: 0 0 4px #00e676; }
+    .leg-color.c-yellow { background: #ffea00; box-shadow: 0 0 4px #ffea00; }
+    .leg-color.c-orange { background: #ff9100; box-shadow: 0 0 4px #ff9100; }
+    .leg-color.c-red { background: #ff1744; box-shadow: 0 0 4px #ff1744; }
     .amv-readout { margin-top: 5px; padding: 4px 6px; border-radius: 6px; background: var(--surface-2); font-size: 11px; display: flex; flex-direction: column; gap: 1px; }
     .amv-spd { font-weight: 700; color: var(--neon-cyan); }
     .amv-meta { color: var(--text-secondary); }

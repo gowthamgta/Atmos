@@ -195,20 +195,32 @@ export function syncAmvLayer(
         35, 1.05
       ];
 
-  // Gale highlighting: >= 20 kt is green (#00e676), < 20 kt is clean high-contrast slate (#cbd5e1)
-  const iconColorExpr: any = isBarbs
-    ? ['case', ['>=', ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]], 20.0], '#00e676', '#cbd5e1']
-    : [
-        'match',
-        ['get', 'layer'],
-        'high', '#00e5ff',
-        'mid', '#00e676',
-        'low', '#ff9100',
-        '#00e676'
-      ];
+  const speedKtExpr: any = ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]];
 
-  const iconHaloColorExpr: any = '#000000';
-  const iconHaloWidth: number = 1.0;
+  // Speed-based color gradient: Black (<10 kt) -> Green (10-20 kt) -> Yellow (20-30 kt) -> Orange (30-40 kt) -> Red (>=40 kt)
+  const arrowSpeedColorExpr: any = [
+    'step',
+    speedKtExpr,
+    '#0f172a',       // < 10 kt: Black / deep charcoal
+    10.0, '#00e676', // 10-20 kt: Green
+    20.0, '#ffea00', // 20-30 kt: Yellow
+    30.0, '#ff9100', // 30-40 kt: Orange
+    40.0, '#ff1744'  // >= 40 kt: Red
+  ];
+
+  const iconColorExpr: any = isBarbs
+    ? ['case', ['>=', speedKtExpr, 20.0], '#00e676', '#cbd5e1']
+    : arrowSpeedColorExpr;
+
+  // Halo: white halo for black arrows (<10 kt) so they stay crisp on dark ocean/night map;
+  // dark halo (#000000) for bright colored arrows to pop against white satellite clouds.
+  const iconHaloColorExpr: any = [
+    'case',
+    ['<', speedKtExpr, 10.0],
+    'rgba(255, 255, 255, 0.90)',
+    '#000000'
+  ];
+  const iconHaloWidth: number = 1.2;
 
   if (!map.getLayer(AMV_SYMBOLS_LAYER_ID)) {
     const symbolSpec: any = {

@@ -63,13 +63,13 @@ export class AmvService {
   readonly frames = signal<AmvFrameMeta[]>([]);
   readonly currentFrame = signal<AmvFrameMeta | null>(null);
   readonly currentGeoJson = signal<AmvGeoJson | null>(null);
-  readonly layerFilter = signal<AmvLayerFilter>('all');
+  readonly layerFilter = signal<AmvLayerFilter>('low');
   readonly sourceFilter = signal<AmvSourceFilter>('all');
-  readonly style = signal<AmvStyle>('barbs');
+  readonly style = signal<AmvStyle>('arrows');
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
 
-  /** Filtered GeoJSON features matching active altitude and source filters */
+  /** Filtered GeoJSON features matching active altitude and source filters (defaults to low-level p >= 700 hPa) */
   readonly filteredGeoJson = computed<AmvGeoJson | null>(() => {
     const geo = this.currentGeoJson();
     if (!geo) return null;
@@ -77,7 +77,9 @@ export class AmvService {
     const sf = this.sourceFilter();
 
     let list = geo.features;
-    if (lf !== 'all') {
+    if (lf === 'low') {
+      list = list.filter(f => f.properties.layer === 'low' || f.properties.p >= 700.0);
+    } else if (lf !== 'all') {
       list = list.filter(f => f.properties.layer === lf);
     }
     if (sf === 'satellite') {
@@ -118,7 +120,7 @@ export class AmvService {
     const total = geo.features.length;
     const high = geo.features.filter(f => f.properties.layer === 'high').length;
     const mid = geo.features.filter(f => f.properties.layer === 'mid').length;
-    const low = geo.features.filter(f => f.properties.layer === 'low').length;
+    const low = geo.features.filter(f => f.properties.layer === 'low' || f.properties.p >= 700.0).length;
     const met = geo.features.filter(f => f.properties.sat.includes('Meteosat')).length;
     const him = geo.features.filter(f => f.properties.sat.includes('Himawari')).length;
     const ecmwf = geo.features.filter(f => f.properties.sat.includes('ECMWF')).length;
