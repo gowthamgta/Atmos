@@ -4,7 +4,7 @@ import type { AmvGeoJson, AmvVectorProperties, AmvStyle } from '../satellite/amv
 export const AMV_SOURCE_ID = 'amv-vectors-source';
 export const AMV_SYMBOLS_LAYER_ID = 'amv-vectors-symbols';
 
-/** Generate clean directional wind arrow with shaft and arrowhead (pointing UP/forward, 0 deg) */
+/** Generate clean, thin directional wind arrow (slender shaft + aerodynamic arrowhead) */
 function createArrowImageData(): ImageData {
   const size = 32;
   const canvas = document.createElement('canvas');
@@ -12,53 +12,61 @@ function createArrowImageData(): ImageData {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
+  const cx = 16;
+  ctx.strokeStyle = '#ffffff';
   ctx.fillStyle = '#ffffff';
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 1. Thin, straight shaft
   ctx.beginPath();
-  // Arrowhead tip at top center (pointing in direction of flow)
-  ctx.moveTo(16, 2);
-  ctx.lineTo(24, 13);
-  ctx.lineTo(18, 11);
-  ctx.lineTo(18, 29);
-  ctx.lineTo(14, 29);
-  ctx.lineTo(14, 11);
-  ctx.lineTo(8, 13);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(cx, 27);
+  ctx.lineTo(cx, 6);
+  ctx.stroke();
+
+  // 2. Slender arrowhead wings pointing in flow direction
+  ctx.beginPath();
+  ctx.moveTo(cx - 5, 13);
+  ctx.lineTo(cx, 5);
+  ctx.lineTo(cx + 5, 13);
+  ctx.stroke();
 
   return ctx.getImageData(0, 0, size, size);
 }
 
 /**
  * Generate standard meteorological wind barb with 5-kt half-barb, 10-kt full-barb, 50-kt pennant.
- * The staff base is centered at (cx, cy) = (18, 18) for pinpoint rotation around the grid point.
- * Feathers point to the right (upwind Northern Hemisphere convention), matching operational charts.
+ * Designed with clean line separation and slender strokes so barbs never blur or clutter.
+ * Base is pinned at (cx, cy) = (22, 22) for exact rotation around the station grid point.
  */
 function createBarbImageData(speedKt: number): ImageData {
-  const size = 36;
+  const size = 44;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
-  const cx = 18;
-  const cy = 18; // Base pinned at center for rotation around station
+  const cx = 22;
+  const cy = 22; // Base pinned at center for rotation around station
   const tipY = 3;
   const s = Math.round(speedKt / 5) * 5;
 
   ctx.strokeStyle = '#ffffff';
   ctx.fillStyle = '#ffffff';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.6;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
   if (s < 3) {
     // Calm circle centered at (cx, cy)
     ctx.beginPath();
-    ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+    ctx.arc(cx, cy, 2.5, 0, 2 * Math.PI);
+    ctx.lineWidth = 1.25;
     ctx.stroke();
     return ctx.getImageData(0, 0, size, size);
   }
 
-  // Main staff extending upwind
+  // Slender main staff extending upwind
   ctx.beginPath();
   ctx.moveTo(cx, cy);
   ctx.lineTo(cx, tipY);
@@ -70,8 +78,8 @@ function createBarbImageData(speedKt: number): ImageData {
   const halfBarbs = Math.floor((rem % 10) / 5);
 
   let currY = tipY;
-  const barbDx = 9;
-  const barbDy = 4;
+  const barbDx = 9.5;
+  const barbDy = 4.5;
 
   for (let i = 0; i < pennants; i++) {
     ctx.beginPath();
@@ -80,7 +88,7 @@ function createBarbImageData(speedKt: number): ImageData {
     ctx.lineTo(cx, currY + 2 * barbDy);
     ctx.closePath();
     ctx.fill();
-    currY += 2 * barbDy + 1;
+    currY += 2 * barbDy + 2;
   }
 
   for (let i = 0; i < fullBarbs; i++) {
@@ -88,18 +96,18 @@ function createBarbImageData(speedKt: number): ImageData {
     ctx.moveTo(cx, currY);
     ctx.lineTo(cx + barbDx, currY + barbDy);
     ctx.stroke();
-    currY += 3.5;
+    currY += 4.5;
   }
 
   for (let i = 0; i < halfBarbs; i++) {
     if (pennants === 0 && fullBarbs === 0) {
-      currY += 3; // offset 5-kt half barb slightly from tip
+      currY += 3.5; // offset 5-kt half barb slightly from tip
     }
     ctx.beginPath();
     ctx.moveTo(cx, currY);
     ctx.lineTo(cx + barbDx * 0.55, currY + barbDy * 0.55);
     ctx.stroke();
-    currY += 3.5;
+    currY += 4.5;
   }
 
   return ctx.getImageData(0, 0, size, size);
@@ -107,19 +115,18 @@ function createBarbImageData(speedKt: number): ImageData {
 
 /** Register all barb icons (barb-0 through barb-100) and arrow in MapLibre */
 function ensureAmvIcons(map: MapLibreMap): void {
-  if (!map.hasImage('amv-arrow')) {
-    try {
-      map.addImage('amv-arrow', createArrowImageData(), { sdf: true });
-    } catch {}
-  }
+  // Always update icons to ensure latest thin geometry
+  try {
+    if (map.hasImage('amv-arrow')) map.removeImage('amv-arrow');
+    map.addImage('amv-arrow', createArrowImageData(), { sdf: true });
+  } catch {}
 
   for (let kt = 0; kt <= 100; kt += 5) {
     const id = `barb-${kt}`;
-    if (!map.hasImage(id)) {
-      try {
-        map.addImage(id, createBarbImageData(kt), { sdf: true });
-      } catch {}
-    }
+    try {
+      if (map.hasImage(id)) map.removeImage(id);
+      map.addImage(id, createBarbImageData(kt), { sdf: true });
+    } catch {}
   }
 }
 
@@ -180,31 +187,28 @@ export function syncAmvLayer(
     : ['+', ['get', 'dir'], 180];
 
   const iconSizeExpr: any = isBarbs
-    ? 0.90
+    ? 0.85
     : [
         'interpolate', ['linear'], ['get', 'speed'],
-        3, 0.50,
-        15, 0.75,
-        35, 1.10
+        3, 0.65,
+        15, 0.85,
+        35, 1.05
       ];
 
-  // Coloring:
-  // In Barbs mode: >= 20 kt is green (#00e676), < 20 kt is dark slate (#334155) matching reference image
-  // In Arrows mode: High (<400 hPa) is cyan, Mid (400-700) is green, Low (>700) is orange
+  // Gale highlighting: >= 20 kt is green (#00e676), < 20 kt is clean high-contrast slate (#cbd5e1)
   const iconColorExpr: any = isBarbs
-    ? ['case', ['>=', ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]], 20.0], '#00e676', '#334155']
+    ? ['case', ['>=', ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]], 20.0], '#00e676', '#cbd5e1']
     : [
         'match',
         ['get', 'layer'],
         'high', '#00e5ff',
         'mid', '#00e676',
         'low', '#ff9100',
-        '#ffffff'
+        '#00e676'
       ];
 
-  const iconHaloColorExpr: any = isBarbs
-    ? 'rgba(255, 255, 255, 0.95)'
-    : '#000000';
+  const iconHaloColorExpr: any = '#000000';
+  const iconHaloWidth: number = 1.0;
 
   if (!map.getLayer(AMV_SYMBOLS_LAYER_ID)) {
     const symbolSpec: any = {
@@ -217,13 +221,17 @@ export function syncAmvLayer(
         'icon-size': iconSizeExpr,
         'icon-rotate': iconRotateExpr,
         'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true
+        // Collision prevention: keeps barbs cleanly spaced and simple without chaotic overlapping
+        'icon-allow-overlap': false,
+        'icon-ignore-placement': false,
+        'icon-padding': 3,
+        // Sort key: gale and strong winds get display placement priority
+        'symbol-sort-key': ['-', 1000, ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]]]
       },
       paint: {
         'icon-color': iconColorExpr,
         'icon-halo-color': iconHaloColorExpr,
-        'icon-halo-width': 1.5,
+        'icon-halo-width': iconHaloWidth,
         'icon-opacity': 0.95
       }
     };
@@ -248,9 +256,12 @@ export function syncAmvLayer(
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-image', iconImageExpr);
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-rotate', iconRotateExpr);
     map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-size', iconSizeExpr);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-allow-overlap', false);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-ignore-placement', false);
+    map.setLayoutProperty(AMV_SYMBOLS_LAYER_ID, 'icon-padding', 3);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-color', iconColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-color', iconHaloColorExpr);
-    map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-width', 1.5);
+    map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-width', iconHaloWidth);
   }
 
   if (visible) {
