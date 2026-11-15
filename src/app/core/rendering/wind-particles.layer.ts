@@ -57,7 +57,7 @@ const MIN_COUNT = 2500;
 
 /** MapLibre custom layer animating wind as particle streaks over the map. */
 export class WindParticlesLayer implements CustomLayerInterface {
-  readonly id = 'forecast-wind-particles';
+  readonly id: string;
   readonly type = 'custom' as const;
   readonly renderingMode = '2d' as const;
 
@@ -75,7 +75,13 @@ export class WindParticlesLayer implements CustomLayerInterface {
   private needsReset = true;
   private lastTime = 0;
 
-  constructor(maxCount = 16000) {
+  constructor(idOrCount: string | number = 'forecast-wind-particles', maxCount = 16000) {
+    if (typeof idOrCount === 'number') {
+      this.id = 'forecast-wind-particles';
+      maxCount = idOrCount;
+    } else {
+      this.id = idOrCount;
+    }
     this.system = new ParticleSystem(maxCount);
     this.instances = new Float32Array(maxCount * INSTANCE_FLOATS);
     this.budget = new AdaptiveCount(Math.min(MIN_COUNT, Math.max(500, Math.floor(maxCount * 0.4))), maxCount);

@@ -91,6 +91,12 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                   <button type="button" [class.on]="amv.layerFilter() === 'all'" (click)="amv.setLayerFilter('all')" title="All atmosphere levels combined">All</button>
                 </div>
 
+                <div class="amv-style-row" role="group" aria-label="Wind visualization style">
+                  <button type="button" [class.on]="amv.style() === 'particles'" (click)="amv.setStyle('particles')" title="Animated particle streamlines like the forecast wind layer">Flow Particles</button>
+                  <button type="button" [class.on]="amv.style() === 'arrows'" (click)="amv.setStyle('arrows')" title="Directional wind arrows">Arrows</button>
+                  <button type="button" [class.on]="amv.style() === 'barbs'" (click)="amv.setStyle('barbs')" title="Meteorological wind barbs">Barbs</button>
+                </div>
+
                 <div class="amv-height-info">
                   @switch (amv.layerFilter()) {
                     @case ('low') {
@@ -108,20 +114,24 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                   }
                 </div>
 
-                <div class="amv-legend">
-                  <span class="leg-item"><span class="leg-color c-black"></span>&lt;10 kt</span>
-                  <span class="leg-item"><span class="leg-color c-green"></span>10–20</span>
-                  <span class="leg-item"><span class="leg-color c-yellow"></span>20–30</span>
-                  <span class="leg-item"><span class="leg-color c-orange"></span>30–40</span>
-                  <span class="leg-item"><span class="leg-color c-red"></span>&gt;40 kt</span>
-                </div>
-                @if (amv.hoveredVector(); as hv) {
-                  <div class="amv-readout" aria-live="polite">
-                    <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
-                    <span class="amv-meta">
-                      {{ hv.p }} hPa (~{{ hv.z ? (hv.z / 1000).toFixed(1) : '1.5' }} km) · {{ hv.sat }}
-                    </span>
+                @if (amv.style() === 'particles') {
+                  <div class="amv-particles-hint">Particle ribbons flow along atmospheric currents</div>
+                } @else {
+                  <div class="amv-legend">
+                    <span class="leg-item"><span class="leg-color c-black"></span>&lt;10 kt</span>
+                    <span class="leg-item"><span class="leg-color c-green"></span>10–20</span>
+                    <span class="leg-item"><span class="leg-color c-yellow"></span>20–30</span>
+                    <span class="leg-item"><span class="leg-color c-orange"></span>30–40</span>
+                    <span class="leg-item"><span class="leg-color c-red"></span>&gt;40 kt</span>
                   </div>
+                  @if (amv.hoveredVector(); as hv) {
+                    <div class="amv-readout" aria-live="polite">
+                      <span class="amv-spd">{{ hv.speed }} m/s ({{ hv.speed_kt ? Math.round(hv.speed_kt) : Math.round(hv.speed * 1.94384) }} kt · {{ Math.round(hv.speed * 3.6) }} km/h) · {{ hv.dir }}°</span>
+                      <span class="amv-meta">
+                        {{ hv.p }} hPa (~{{ hv.z ? (hv.z / 1000).toFixed(1) : '1.5' }} km) · {{ hv.sat }}
+                      </span>
+                    </div>
+                  }
                 }
               }
             </div>
@@ -236,6 +246,11 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-level-row button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; transition: background 0.15s, color 0.15s; }
     .amv-level-row button:hover { background: var(--surface-4); color: var(--text-primary); }
     .amv-level-row button.on { background: var(--accent); color: #fff; }
+    .amv-style-row { display: flex; gap: 2px; margin-top: 5px; padding: 2px; border-radius: 7px; background: var(--surface-3); }
+    .amv-style-row button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; transition: background 0.15s, color 0.15s; }
+    .amv-style-row button:hover { background: var(--surface-4); color: var(--text-primary); }
+    .amv-style-row button.on { background: var(--accent); color: #fff; }
+    .amv-particles-hint { font-size: 11px; color: var(--neon-cyan); margin-top: 5px; }
     .amv-height-info { font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: flex; align-items: center; justify-content: space-between; }
     .amv-height-info strong { color: var(--neon-cyan); }
     .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }

@@ -8,11 +8,11 @@ describe('AmvService', () => {
     service = new AmvService();
   });
 
-  it('initializes with inactive state, low layer filter, and arrows style', () => {
+  it('initializes with inactive state, low layer filter, and particles style', () => {
     expect(service.active()).toBe(false);
     expect(service.layerFilter()).toBe('low');
     expect(service.sourceFilter()).toBe('all');
-    expect(service.style()).toBe('arrows');
+    expect(service.style()).toBe('particles');
     expect(service.currentGeoJson()).toBeNull();
   });
 
@@ -22,11 +22,13 @@ describe('AmvService', () => {
     service.toggleActive();
     expect(service.active()).toBe(false);
 
+    expect(service.style()).toBe('particles');
+    service.toggleStyle();
     expect(service.style()).toBe('arrows');
     service.toggleStyle();
     expect(service.style()).toBe('barbs');
-    service.setStyle('arrows');
-    expect(service.style()).toBe('arrows');
+    service.setStyle('particles');
+    expect(service.style()).toBe('particles');
   });
 
   it('filters vectors correctly according to layer and source filters', () => {

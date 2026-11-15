@@ -23,6 +23,7 @@ import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
 import { syncAmvLayer, ensureAmvOnTop } from '../../core/rendering/amv-vectors.layer';
+import { WindParticlesLayer } from '../../core/rendering/wind-particles.layer';
 import { AmvService } from '../../core/satellite/amv.service';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM } from '../../core/satellite/satellite.config';
@@ -178,15 +179,42 @@ export class MapComponent implements OnInit, OnDestroy {
     }
   });
 
-  // Reactive Effect: Dual-Satellite AMV Nowcast Vectors
+  private amvParticlesLayer: WindParticlesLayer | null = null;
+
+  // Reactive Effect: Dual-Satellite AMV Nowcast (Particles / Arrows / Barbs)
   private amvEffect = effect(() => {
     const active = this.amvService.active();
     const geoJson = this.amvService.filteredGeoJson();
     const style = this.amvService.style();
+    const windFrame = this.amvService.windFrame();
     if (!this.map || !this.isMapLoaded()) return;
-    syncAmvLayer(this.map, geoJson, active, style, undefined, (props) => {
-      this.amvService.setHoveredVector(props);
-    });
+
+    if (!this.amvParticlesLayer) {
+      this.amvParticlesLayer = new WindParticlesLayer('amv-wind-particles', isPhone() ? 2600 : 12000);
+      try {
+        this.map.addLayer(this.amvParticlesLayer);
+      } catch (err) {
+        console.warn('[map] amvParticlesLayer add failed', err);
+      }
+    }
+
+    if (active && style === 'particles') {
+      this.amvParticlesLayer.setWind(windFrame);
+      this.amvParticlesLayer.setVisible(true);
+      syncAmvLayer(this.map, null, false, style, undefined, (props) => {
+        this.amvService.setHoveredVector(props);
+      });
+    } else if (active && style !== 'particles') {
+      this.amvParticlesLayer.setVisible(false);
+      syncAmvLayer(this.map, geoJson, true, style, undefined, (props) => {
+        this.amvService.setHoveredVector(props);
+      });
+    } else {
+      this.amvParticlesLayer.setVisible(false);
+      syncAmvLayer(this.map, null, false, style, undefined, (props) => {
+        this.amvService.setHoveredVector(props);
+      });
+    }
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)

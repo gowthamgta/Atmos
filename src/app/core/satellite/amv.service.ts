@@ -1,4 +1,5 @@
 import { Injectable, computed, signal } from '@angular/core';
+import type { WindFrame } from '../forecast/particle-system';
 
 export const AMV_SITE = 'https://gowthamgta.github.io/atmos-satellite/amv/';
 
@@ -53,7 +54,7 @@ export interface AmvIndex {
 
 export type AmvLayerFilter = 'all' | 'high' | 'mid' | 'low';
 export type AmvSourceFilter = 'all' | 'satellite' | 'ecmwf';
-export type AmvStyle = 'barbs' | 'arrows';
+export type AmvStyle = 'particles' | 'arrows' | 'barbs';
 
 @Injectable({ providedIn: 'root' })
 export class AmvService {
@@ -65,7 +66,7 @@ export class AmvService {
   readonly currentGeoJson = signal<AmvGeoJson | null>(null);
   readonly layerFilter = signal<AmvLayerFilter>('low');
   readonly sourceFilter = signal<AmvSourceFilter>('all');
-  readonly style = signal<AmvStyle>('arrows');
+  readonly style = signal<AmvStyle>('particles');
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
 
@@ -240,8 +241,18 @@ export class AmvService {
   }
 
   toggleStyle(): void {
-    this.style.set(this.style() === 'barbs' ? 'arrows' : 'barbs');
+    const current = this.style();
+    if (current === 'particles') this.style.set('arrows');
+    else if (current === 'arrows') this.style.set('barbs');
+    else this.style.set('particles');
   }
+
+  /** Continuous WindFrame for smooth WebGL particle streamlines across the domain */
+  readonly windFrame = computed<WindFrame | null>(() => {
+    const filtered = this.filteredGeoJson();
+    if (!filtered || filtered.features.length === 0) return null;
+    return amvToWindFrame(filtered.features);
+  });
 
   toggleDimSatellite(): void {
     this.dimSatellite.update(v => !v);
@@ -300,4 +311,86 @@ export class AmvService {
     this.loading.set(false);
     this.failed.set(true);
   }
+}
+
+/** Interpolates discrete AMV vectors onto a regular grid for smooth WebGL particle animation */
+export function amvToWindFrame(features: AmvFeature[]): WindFrame | null {
+  if (!features || features.length === 0) return null;
+
+  const latMin = 2.0;
+  const latMax = 20.0;
+  const lonMin = 70.0;
+  const lonMax = 99.0;
+  const step = 0.25;
+  const nx = Math.round((lonMax - lonMin) / step) + 1; // 117
+  const ny = Math.round((latMax - latMin) / step) + 1; // 73
+  const count = nx * ny;
+
+  const uA = new Float32Array(count);
+  const vA = new Float32Array(count);
+
+  const bucketSize = 0.5;
+  const buckets = new Map<string, { u: number; v: number; x: number; y: number }[]>();
+
+  for (const f of features) {
+    const [x, y] = f.geometry.coordinates;
+    const bx = Math.round(x / bucketSize);
+    const by = Math.round(y / bucketSize);
+    const key = `${bx}:${by}`;
+    let list = buckets.get(key);
+    if (!list) {
+      list = [];
+      buckets.set(key, list);
+    }
+    list.push({ u: f.properties.u, v: f.properties.v, x, y });
+  }
+
+  for (let iy = 0; iy < ny; iy++) {
+    const lat = latMax - iy * step;
+    const by = Math.round(lat / bucketSize);
+
+    for (let ix = 0; ix < nx; ix++) {
+      const lon = lonMin + ix * step;
+      const bx = Math.round(lon / bucketSize);
+      const idx = iy * nx + ix;
+
+      let sumU = 0;
+      let sumV = 0;
+      let sumW = 0;
+
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
+          const bList = buckets.get(`${bx + dx}:${by + dy}`);
+          if (!bList) continue;
+          for (let k = 0; k < bList.length; k++) {
+            const v = bList[k];
+            const d2 = (lon - v.x) ** 2 + (lat - v.y) ** 2;
+            if (d2 < 2.5) {
+              const w = 1.0 / (d2 + 0.04);
+              sumU += v.u * w;
+              sumV += v.v * w;
+              sumW += w;
+            }
+          }
+        }
+      }
+
+      if (sumW > 0) {
+        uA[idx] = sumU / sumW;
+        vA[idx] = sumV / sumW;
+      } else {
+        uA[idx] = 0;
+        vA[idx] = 0;
+      }
+    }
+  }
+
+  return {
+    grid: { latMax, latMin, lonMin, lonMax, step, nx, ny },
+    uA,
+    vA,
+    uB: uA,
+    vB: vA,
+    mix: 0
+  };
 }
