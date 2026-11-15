@@ -215,11 +215,11 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-legend { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 6px; font-size: 11px; color: var(--text-muted); }
     .leg-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
     .leg-color { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
-    .leg-color.c-black { background: #0f172a; border: 1px solid rgba(255,255,255,0.7); }
-    .leg-color.c-green { background: #00e676; }
-    .leg-color.c-yellow { background: #ffea00; }
-    .leg-color.c-orange { background: #ff9100; }
-    .leg-color.c-red { background: #ff1744; }
+    .leg-color.c-black { background: #475569; border: 1px solid rgba(255,255,255,0.5); }
+    .leg-color.c-green { background: #4ade80; }
+    .leg-color.c-yellow { background: #fbbf24; }
+    .leg-color.c-orange { background: #fb923c; }
+    .leg-color.c-red { background: #f87171; }
     .amv-readout { margin-top: 5px; padding: 4px 6px; border-radius: 6px; background: var(--surface-2); font-size: 11px; display: flex; flex-direction: column; gap: 1px; }
     .amv-spd { font-weight: 700; color: var(--neon-cyan); }
     .amv-meta { color: var(--text-secondary); }

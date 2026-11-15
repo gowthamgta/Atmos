@@ -39,29 +39,29 @@ class AnimatedArrowImage {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // 1. Solid, crisp arrow shaft (unbroken staff, perfectly visible at all zoom scales)
-    ctx.lineWidth = 2.0;
+    // 1. Thin clean arrow shaft
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.moveTo(cx, 27);
     ctx.lineTo(cx, 10);
     ctx.stroke();
 
-    // 2. Bold, solid filled aerodynamic arrowhead pointing downwind
+    // 2. Compact filled arrowhead
     ctx.beginPath();
     ctx.moveTo(cx, 4);
-    ctx.lineTo(cx - 5.0, 13.5);
-    ctx.lineTo(cx, 10.5); // subtle notch for sleek aerodynamic profile
-    ctx.lineTo(cx + 5.0, 13.5);
+    ctx.lineTo(cx - 3.5, 12);
+    ctx.lineTo(cx, 9.5);
+    ctx.lineTo(cx + 3.5, 12);
     ctx.closePath();
     ctx.fill();
 
-    // 3. Smooth, gentle flow pulse traveling downwind along the shaft
+    // 3. Gentle flow pulse
     const t = (this.phase % 20) / 20.0;
-    const pulseY = 25.0 - t * 15.0; // glides smoothly from y=25 downwind to y=10
-    ctx.lineWidth = 3.6;
+    const pulseY = 25.0 - t * 15.0;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
-    ctx.moveTo(cx, Math.min(27, pulseY + 3.5));
-    ctx.lineTo(cx, Math.max(10, pulseY - 2.5));
+    ctx.moveTo(cx, Math.min(27, pulseY + 2.5));
+    ctx.lineTo(cx, Math.max(10, pulseY - 2.0));
     ctx.stroke();
 
     const imgData = ctx.getImageData(0, 0, this.width, this.height);
@@ -246,45 +246,42 @@ export function syncAmvLayer(
     ? 0.85
     : [
         'interpolate', ['linear'], ['zoom'],
-        3, 0.55,
-        5, 0.75,
-        7, 0.95,
-        10, 1.20
+        3, 0.45,
+        5, 0.60,
+        7, 0.80,
+        10, 1.0
       ];
 
   const speedKtExpr: any = ['coalesce', ['get', 'speed_kt'], ['*', ['get', 'speed'], 1.94384]];
 
-  // User requested color scale based on speed: black -> green -> yellow -> orange -> red
-  // High contrast & vivid definition on all backgrounds:
-  // <10 kt: Solid Black / Deep Charcoal (#0f172a)
-  // 10-20 kt: Clean Vivid Green (#00e676)
-  // 20-30 kt: Vibrant Yellow (#ffea00)
-  // 30-40 kt: Bright Orange (#ff9100)
-  // >=40 kt: Vivid Red (#ff1744)
+  // Speed-based color scale: muted tones for comfortable viewing
+  // <10 kt: Muted dark slate (#475569)
+  // 10-20 kt: Soft green (#4ade80)
+  // 20-30 kt: Warm amber (#fbbf24)
+  // 30-40 kt: Soft orange (#fb923c)
+  // >=40 kt: Coral red (#f87171)
   const arrowSpeedColorExpr: any = [
     'step',
     speedKtExpr,
-    '#0f172a',       // < 10 kt: Solid Black
-    10.0, '#00e676', // 10-20 kt: Vivid Green
-    20.0, '#ffea00', // 20-30 kt: Vibrant Yellow
-    30.0, '#ff9100', // 30-40 kt: Bright Orange
-    40.0, '#ff1744'  // >= 40 kt: Vivid Red
+    '#475569',       // < 10 kt: Muted slate
+    10.0, '#4ade80', // 10-20 kt: Soft green
+    20.0, '#fbbf24', // 20-30 kt: Warm amber
+    30.0, '#fb923c', // 30-40 kt: Soft orange
+    40.0, '#f87171'  // >= 40 kt: Coral red
   ];
 
   const iconColorExpr: any = isBarbs
     ? ['case', ['>=', speedKtExpr, 20.0], '#00e676', '#0f172a']
     : arrowSpeedColorExpr;
 
-  // Dual halo for universal contrast:
-  // Crisp white halo for black arrows (<10 kt) so they stand out clearly over dark ocean/terrain;
-  // Deep dark halo for colored arrows (>=10 kt) so they stand out crisply against bright white clouds.
+  // Subtle halo for readability without eye strain
   const iconHaloColorExpr: any = [
     'step',
     speedKtExpr,
-    'rgba(255, 255, 255, 0.95)',
-    10.0, 'rgba(15, 23, 42, 0.85)'
+    'rgba(255, 255, 255, 0.5)',
+    10.0, 'rgba(0, 0, 0, 0.35)'
   ];
-  const iconHaloWidth: number = 1.0;
+  const iconHaloWidth: number = 0.6;
 
   const allowOverlap = !isBarbs;
   const ignorePlacement = !isBarbs;
@@ -310,7 +307,7 @@ export function syncAmvLayer(
         'icon-color': iconColorExpr,
         'icon-halo-color': iconHaloColorExpr,
         'icon-halo-width': iconHaloWidth,
-        'icon-opacity': 1.0
+        'icon-opacity': 0.75
       }
     };
 
@@ -340,7 +337,7 @@ export function syncAmvLayer(
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-color', iconColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-color', iconHaloColorExpr);
     map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-halo-width', iconHaloWidth);
-    map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-opacity', 1.0);
+    map.setPaintProperty(AMV_SYMBOLS_LAYER_ID, 'icon-opacity', 0.75);
   }
 
   if (visible) {
