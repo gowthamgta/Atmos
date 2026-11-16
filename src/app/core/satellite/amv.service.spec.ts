@@ -137,4 +137,23 @@ describe('AmvService', () => {
     expect(stats?.avgSpeedMps).toBe(15.0);
     expect(stats?.avgQi).toBe(85.0);
   });
+
+  it('synchronizes to the closest AMV frame matching satellite time', () => {
+    service.frames.set([
+      { time: '2026-11-16T12:00:00Z', file: 'amv_1200.json', count: 7000 },
+      { time: '2026-11-16T12:15:00Z', file: 'amv_1215.json', count: 7100 },
+      { time: '2026-11-16T12:30:00Z', file: 'amv_1230.json', count: 7200 }
+    ]);
+
+    // Satellite at 12:14:00Z -> should pick 12:15:00Z frame
+    const satTime = Date.parse('2026-11-16T12:14:00Z');
+    service.syncWithSatelliteTime(satTime);
+    expect(service.currentFrame()?.file).toBe('amv_1215.json');
+    expect(service.currentFrameTimeMs()).toBe(Date.parse('2026-11-16T12:15:00Z'));
+    expect(service.currentFrameTimeLabel()).toContain('IST');
+
+    // Satellite moves to 12:31:00Z -> should advance to 12:30:00Z frame
+    service.syncWithSatelliteTime(Date.parse('2026-11-16T12:31:00Z'));
+    expect(service.currentFrame()?.file).toBe('amv_1230.json');
+  });
 });

@@ -1,5 +1,7 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, signal, inject, effect, OnDestroy } from '@angular/core';
 import type { WindFrame } from '../forecast/particle-system';
+import { SatelliteService } from './satellite.service';
+import { istClock } from '../forecast/model-runs';
 
 export const AMV_SITE = 'https://gowthamgta.github.io/atmos-satellite/amv/';
 
@@ -57,7 +59,7 @@ export type AmvSourceFilter = 'all' | 'satellite' | 'ecmwf';
 export type AmvStyle = 'particles' | 'arrows' | 'barbs';
 
 @Injectable({ providedIn: 'root' })
-export class AmvService {
+export class AmvService implements OnDestroy {
   readonly active = signal<boolean>(false);
   readonly loading = signal<boolean>(false);
   readonly failed = signal<boolean>(false);
@@ -69,6 +71,18 @@ export class AmvService {
   readonly style = signal<AmvStyle>('particles');
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
+
+  /** Timestamp in epoch ms of currently displayed AMV frame */
+  readonly currentFrameTimeMs = computed<number | null>(() => {
+    const f = this.currentFrame();
+    return f ? Date.parse(f.time) : null;
+  });
+
+  /** Human-readable time label for current AMV frame in IST (e.g. '20:19 IST') */
+  readonly currentFrameTimeLabel = computed<string>(() => {
+    const ms = this.currentFrameTimeMs();
+    return ms && Number.isFinite(ms) ? istClock(ms) : '';
+  });
 
   /** Filtered GeoJSON according to selected altitude level ('low' | 'mid' | 'high' | 'all') */
   readonly filteredGeoJson = computed<AmvGeoJson | null>(() => {
@@ -262,6 +276,128 @@ export class AmvService {
     this.hoveredVector.set(v);
   }
 
+  private checkTimer: ReturnType<typeof setInterval> | null = null;
+  readonly geoJsonCache = new Map<string, AmvGeoJson>();
+  private readonly satellite: SatelliteService | null = null;
+
+  constructor() {
+    try {
+      this.satellite = inject(SatelliteService, { optional: true });
+    } catch {
+      this.satellite = null;
+    }
+
+    if (this.satellite) {
+      try {
+        effect(() => {
+          const active = this.active();
+          const satCurrent = this.satellite?.current();
+          const frames = this.frames();
+          if (!active || frames.length === 0) return;
+
+          // If satellite layer is active and viewing a specific frame, sync AMV with that frame
+          if (this.satellite?.active() && satCurrent) {
+            this.syncWithSatelliteTime(satCurrent.timeMs);
+          }
+        });
+      } catch {}
+    }
+
+    try {
+      effect(() => {
+        const active = this.active();
+        if (active) {
+          this.startChecking();
+        } else {
+          this.stopChecking();
+        }
+      });
+    } catch {}
+  }
+
+  ngOnDestroy(): void {
+    this.stopChecking();
+    this.geoJsonCache.clear();
+  }
+
+  startChecking(): void {
+    if (this.checkTimer === null && typeof setInterval !== 'undefined') {
+      this.checkTimer = setInterval(() => void this.checkForNewRuns(), 2 * 60_000);
+    }
+  }
+
+  stopChecking(): void {
+    if (this.checkTimer !== null) {
+      clearInterval(this.checkTimer);
+      this.checkTimer = null;
+    }
+  }
+
+  /** Checks index.json for any newly published satellite AMV runs */
+  async checkForNewRuns(): Promise<void> {
+    if (!this.active()) return;
+    try {
+      const res = await fetch(`${AMV_SITE}index.json?t=${Date.now()}`, { cache: 'no-cache' });
+      if (!res.ok) return;
+      const idx: AmvIndex = await res.json();
+      const sorted = (idx.frames || []).sort((a, b) => a.time.localeCompare(b.time));
+      const oldFrames = this.frames();
+      const oldLatestTime = oldFrames.length > 0 ? oldFrames[oldFrames.length - 1].time : '';
+      const newLatest = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+
+      this.frames.set(sorted);
+
+      if (newLatest && newLatest.time !== oldLatestTime) {
+        const satCurrent = this.satellite?.current();
+        const satIsLive = !this.satellite?.active() || !satCurrent || this.satellite.position() >= this.satellite.frames().length - 1;
+        if (satIsLive) {
+          this.currentFrame.set(newLatest);
+          await this.loadFrame(newLatest);
+        }
+      }
+    } catch {
+      // ignore network errors during background check
+    }
+  }
+
+  /** Synchronize AMV frame to closest timestamp of the active satellite frame */
+  syncWithSatelliteTime(satTimeMs: number): void {
+    const frames = this.frames();
+    if (frames.length === 0) return;
+
+    let closest: AmvFrameMeta | null = null;
+    let minDiff = Infinity;
+    for (const f of frames) {
+      const fTimeMs = Date.parse(f.time);
+      if (!Number.isFinite(fTimeMs)) continue;
+      const diff = Math.abs(fTimeMs - satTimeMs);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = f;
+      }
+    }
+
+    if (closest && minDiff <= 45 * 60_000 && closest.file !== this.currentFrame()?.file) {
+      this.currentFrame.set(closest);
+      void this.loadFrame(closest);
+    }
+  }
+
+  private prefetchNearbyFrames(currentMeta: AmvFrameMeta): void {
+    const frames = this.frames();
+    const idx = frames.findIndex(f => f.file === currentMeta.file);
+    if (idx === -1) return;
+    const nearby = frames.slice(Math.max(0, idx - 2), Math.min(frames.length, idx + 3));
+    for (const f of nearby) {
+      if (!this.geoJsonCache.has(f.file)) {
+        void fetch(`${AMV_SITE}${f.file}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => { if (data) this.geoJsonCache.set(f.file, data); })
+          .catch(() => undefined);
+      }
+    }
+  }
+
   async refresh(): Promise<void> {
     this.loading.set(true);
     this.failed.set(false);
@@ -272,9 +408,14 @@ export class AmvService {
       const sorted = (idx.frames || []).sort((a, b) => a.time.localeCompare(b.time));
       this.frames.set(sorted);
       if (sorted.length > 0) {
-        const latest = sorted[sorted.length - 1];
-        this.currentFrame.set(latest);
-        await this.loadFrame(latest);
+        const satCurrent = this.satellite?.current();
+        if (this.satellite?.active() && satCurrent) {
+          this.syncWithSatelliteTime(satCurrent.timeMs);
+        } else {
+          const latest = sorted[sorted.length - 1];
+          this.currentFrame.set(latest);
+          await this.loadFrame(latest);
+        }
       } else {
         this.loading.set(false);
       }
@@ -284,13 +425,20 @@ export class AmvService {
   }
 
   async loadFrame(meta: AmvFrameMeta): Promise<void> {
+    const cached = this.geoJsonCache.get(meta.file);
+    if (cached) {
+      this.currentGeoJson.set(cached);
+      return;
+    }
     this.loading.set(true);
     try {
       const res = await fetch(`${AMV_SITE}${meta.file}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const geo: AmvGeoJson = await res.json();
+      this.geoJsonCache.set(meta.file, geo);
       this.currentGeoJson.set(geo);
       this.loading.set(false);
+      this.prefetchNearbyFrames(meta);
     } catch {
       await this.loadSampleFallback();
     }

@@ -79,7 +79,12 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
                   <strong>Satellite Winds (AMV)</strong>
                 </button>
                 @if (amv.active()) {
-                  <span class="amv-badge">{{ activeVectorCount() }} vectors</span>
+                  <div class="amv-badge-group">
+                    <span class="amv-badge">{{ activeVectorCount() }} vectors</span>
+                    @if (amv.currentFrameTimeLabel()) {
+                      <span class="amv-run-pill" title="AMV satellite run time">{{ amv.currentFrameTimeLabel() }}</span>
+                    }
+                  </div>
                 }
               </div>
 
@@ -241,7 +246,9 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .btn-amv.on { background: var(--surface-4); border-color: var(--neon-cyan); color: var(--neon-cyan); }
     .amv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
     .amv-dot.active { background: var(--neon-cyan); box-shadow: 0 0 6px var(--neon-cyan); }
+    .amv-badge-group { display: inline-flex; align-items: center; gap: 6px; }
     .amv-badge { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .amv-run-pill { font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.12); color: var(--neon-cyan); border: 1px solid rgba(56, 189, 248, 0.28); }
     .amv-level-row { display: flex; gap: 2px; margin-top: 6px; padding: 2px; border-radius: 7px; background: var(--surface-3); }
     .amv-level-row button { flex: 1; padding: 3px 4px; border: 0; border-radius: 5px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; text-align: center; transition: background 0.15s, color 0.15s; }
     .amv-level-row button:hover { background: var(--surface-4); color: var(--text-primary); }
