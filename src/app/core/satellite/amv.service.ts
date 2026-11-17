@@ -2,6 +2,7 @@ import { Injectable, computed, signal, inject, effect, OnDestroy } from '@angula
 import type { WindFrame } from '../forecast/particle-system';
 import { SatelliteService } from './satellite.service';
 import { istClock } from '../forecast/model-runs';
+import { CycloneData, CycloneMotion, loadCyclones, runStartMs, smoothTrack, stormAt, trackMotion, windClass } from '../forecast/cyclone-tracks';
 
 export const AMV_SITE = 'https://gowthamgta.github.io/atmos-satellite/amv/';
 
@@ -58,6 +59,22 @@ export type AmvLayerFilter = 'all' | 'high' | 'mid' | 'low';
 export type AmvSourceFilter = 'all' | 'satellite' | 'ecmwf';
 export type AmvStyle = 'particles' | 'arrows' | 'barbs';
 
+export interface ActiveCycloneInfo {
+  id: string;
+  name: string;
+  basin: string;
+  lat: number;
+  lon: number;
+  pMsl: number | null;
+  windKt: number | null;
+  windKmh: number | null;
+  className: string;
+  classColor: string;
+  motion: CycloneMotion | null;
+  startPoint: { lat: number; lon: number; h: number };
+  historyHours: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AmvService implements OnDestroy {
   readonly active = signal<boolean>(false);
@@ -71,6 +88,56 @@ export class AmvService implements OnDestroy {
   readonly style = signal<AmvStyle>('particles');
   readonly dimSatellite = signal<boolean>(false);
   readonly hoveredVector = signal<AmvVectorProperties | null>(null);
+
+  readonly cycloneData = signal<CycloneData | null>(null);
+  readonly showCycloneTrack = signal<boolean>(true);
+
+  /** Active cyclones tracked with current position, past trajectory, and motion vector */
+  readonly activeCyclones = computed<ActiveCycloneInfo[]>(() => {
+    const data = this.cycloneData();
+    if (!data || !data.storms || data.storms.length === 0) return [];
+
+    const start = runStartMs(data.run);
+    const timeMs = this.currentFrameTimeMs() ?? Date.now();
+    const rawNowH = start !== null ? (timeMs - start) / 3_600_000 : 0;
+
+    const res: ActiveCycloneInfo[] = [];
+    for (const s of data.storms) {
+      if (!s.track || s.track.length === 0) continue;
+      const track = smoothTrack(s.track);
+      const nowH = Math.min(Math.max(rawNowH, track[0].h), track[track.length - 1].h);
+      const here = stormAt(track, nowH);
+      if (!here) continue;
+
+      const cls = windClass(here.wind);
+      const motion = trackMotion(track, nowH);
+      const startPt = track[0];
+      const historyH = Math.max(0, Math.round((nowH - startPt.h) * 10) / 10);
+      const windKt = here.wind !== null ? Math.round(here.wind * 1.94384) : null;
+      const windKmh = here.wind !== null ? Math.round(here.wind * 3.6) : null;
+
+      res.push({
+        id: s.id,
+        name: s.name,
+        basin: s.basin,
+        lat: Math.round(here.lat * 100) / 100,
+        lon: Math.round(here.lon * 100) / 100,
+        pMsl: here.pMsl !== null ? Math.round(here.pMsl) : null,
+        windKt,
+        windKmh,
+        className: cls.name,
+        classColor: cls.color,
+        motion,
+        startPoint: { lat: Math.round(startPt.lat * 100) / 100, lon: Math.round(startPt.lon * 100) / 100, h: startPt.h },
+        historyHours: historyH,
+      });
+    }
+    return res;
+  });
+
+  toggleCycloneTrack(): void {
+    this.showCycloneTrack.update(v => !v);
+  }
 
   /** Timestamp in epoch ms of currently displayed AMV frame */
   readonly currentFrameTimeMs = computed<number | null>(() => {
@@ -313,6 +380,17 @@ export class AmvService implements OnDestroy {
         }
       });
     } catch {}
+
+    void this.loadCycloneData();
+  }
+
+  async loadCycloneData(): Promise<void> {
+    try {
+      const data = await loadCyclones();
+      if (data) {
+        this.cycloneData.set(data);
+      }
+    } catch {}
   }
 
   ngOnDestroy(): void {
@@ -401,6 +479,7 @@ export class AmvService implements OnDestroy {
   async refresh(): Promise<void> {
     this.loading.set(true);
     this.failed.set(false);
+    void this.loadCycloneData();
     try {
       const res = await fetch(`${AMV_SITE}index.json?t=${Date.now()}`, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

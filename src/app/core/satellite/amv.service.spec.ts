@@ -156,4 +156,35 @@ describe('AmvService', () => {
     service.syncWithSatelliteTime(Date.parse('2026-11-16T12:31:00Z'));
     expect(service.currentFrame()?.file).toBe('amv_1230.json');
   });
+
+  it('computes active cyclone info including eye, motion heading, speed, and origin point', () => {
+    service.cycloneData.set({
+      version: 1,
+      run: '20261117T00Z',
+      storms: [
+        {
+          id: '05B',
+          name: 'AKVAN',
+          basin: 'Bay of Bengal',
+          track: [
+            { h: 0, lat: 11.6, lon: 87.2, pMsl: 1004, wind: 14 },
+            { h: 12, lat: 12.1, lon: 86.8, pMsl: 1001, wind: 20 },
+            { h: 24, lat: 12.8, lon: 86.2, pMsl: 996, wind: 25 },
+          ],
+          members: []
+        }
+      ]
+    });
+
+    const active = service.activeCyclones();
+    expect(active.length).toBe(1);
+    const storm = active[0];
+    expect(storm.id).toBe('05B');
+    expect(storm.name).toBe('AKVAN');
+    expect(storm.startPoint.lat).toBe(11.6);
+    expect(storm.startPoint.lon).toBe(87.2);
+    expect(storm.motion).not.toBeNull();
+    expect(storm.motion?.dirText).toMatch(/NW|NNW|WNW/);
+    expect(storm.motion?.speedKmh).toBeGreaterThan(0);
+  });
 });

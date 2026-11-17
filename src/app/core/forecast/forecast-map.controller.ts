@@ -71,9 +71,17 @@ export class ForecastMapController {
   private imdTimer: ReturnType<typeof setInterval> | null = null;
 
   private static readonly CYCLONE_SOURCE = 'forecast-cyclones';
-  private static readonly CYCLONE_LAYERS = [
-    'forecast-cyclone-now-label', 'forecast-cyclone-now-icon', 'forecast-cyclone-now', 'forecast-cyclone-labels', 'forecast-cyclone-points',
-    'forecast-cyclone-track', 'forecast-cyclone-casing', 'forecast-cyclone-cone-line', 'forecast-cyclone-cone',
+  public static readonly CYCLONE_LAYERS = [
+    'forecast-cyclone-motion-arrow',
+    'forecast-cyclone-now-label',
+    'forecast-cyclone-now-icon',
+    'forecast-cyclone-now',
+    'forecast-cyclone-labels',
+    'forecast-cyclone-points',
+    'forecast-cyclone-track',
+    'forecast-cyclone-casing',
+    'forecast-cyclone-cone-line',
+    'forecast-cyclone-cone',
   ];
   private static readonly CYCLONE_IMAGE = 'cyclone-symbol';
   private static readonly LIGHTNING_SOURCE = 'forecast-lightning';
@@ -387,12 +395,14 @@ export class ForecastMapController {
     map.addLayer({ id: 'forecast-cyclone-cone-line', type: 'line', source, filter: kind('cone'), layout: { 'line-join': 'round', ...hidden },
       paint: { 'line-color': '#ffffff', 'line-opacity': 0.6, 'line-width': 1.2, 'line-dasharray': [3, 2] } });
     map.addLayer({ id: 'forecast-cyclone-casing', type: 'line', source, filter: kind('segment'), layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden },
-      paint: { 'line-color': 'rgba(8, 12, 22, 0.8)', 'line-width': 6.5 } });
+      paint: { 'line-color': 'rgba(8, 12, 22, 0.92)', 'line-width': ['case', ['get', 'past'], 7.5, 6.0] } });
     map.addLayer({ id: 'forecast-cyclone-track', type: 'line', source, filter: kind('segment'), layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden },
-      paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-opacity': ['case', ['get', 'past'], 0.4, 1] } });
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['case', ['get', 'past'], 4.2, 3.5], 'line-opacity': 0.95 } });
+    map.addLayer({ id: 'forecast-cyclone-motion-arrow', type: 'line', source, filter: kind('motion-arrow'), layout: { 'line-join': 'round', 'line-cap': 'round', ...hidden },
+      paint: { 'line-color': '#38bdf8', 'line-width': 4.5, 'line-dasharray': [2, 1] } });
     map.addLayer({ id: 'forecast-cyclone-points', type: 'circle', source, filter: kind('point'), layout: hidden,
-      paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['case', ['get', 'day'], 5.5, 3.5], 'circle-stroke-color': 'rgba(8, 12, 22, 0.9)', 'circle-stroke-width': 1.5,
-        'circle-opacity': ['case', ['get', 'past'], 0.4, 1], 'circle-stroke-opacity': ['case', ['get', 'past'], 0.4, 1] } });
+      paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['case', ['get', 'day'], 6.0, 4.0], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.8,
+        'circle-opacity': 0.95, 'circle-stroke-opacity': 0.95 } });
     map.addLayer({ id: 'forecast-cyclone-labels', type: 'symbol', source, filter: ['all', kind('point'), ['!=', ['get', 'label'], '']],
       layout: {
         'text-field': ['get', 'label'], 'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'], 'text-size': 11.5, 'text-line-height': 1.15,
@@ -577,12 +587,24 @@ export class ForecastMapController {
     if (map.getSource(ForecastMapController.CYCLONE_SOURCE)) map.removeSource(ForecastMapController.CYCLONE_SOURCE);
   }
 
+  private satelliteCyclonesOn = false;
+  private satelliteTimeMs: number | null = null;
+
+  setSatelliteCycloneMode(on: boolean, timeMs: number | null): void {
+    this.satelliteCyclonesOn = on;
+    this.satelliteTimeMs = timeMs;
+    this.updateCyclones();
+    if (on && this.map) {
+      ensureCycloneLayersOnTop(this.map);
+    }
+  }
+
   /** Shows the tracks while the overlay is on; the file is fetched when first needed and again once it is 30 minutes old. */
   private updateCyclones(): void {
     const map = this.map;
     if (!map) return;
-    const on = this.state.cyclones();
-    const time = this.state.timeMs();
+    const on = this.state.cyclones() || this.satelliteCyclonesOn;
+    const time = this.satelliteCyclonesOn ? this.satelliteTimeMs : this.state.timeMs();
     for (const id of ForecastMapController.CYCLONE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
     if (!on) return;
     this.drawCyclones(time);
@@ -594,7 +616,8 @@ export class ForecastMapController {
       if (!data) return;
       this.cycloneData = data;
       this.cycloneDrawnFor = '';
-      this.drawCyclones(this.state.timeMs());
+      const t = this.satelliteCyclonesOn ? this.satelliteTimeMs : this.state.timeMs();
+      this.drawCyclones(t);
     }).finally(() => (this.cycloneLoading = false));
   }
 
@@ -704,3 +727,26 @@ export class ForecastMapController {
       .catch(err => console.warn('[forecast] wind load failed', err));
   }
 }
+
+export function ensureCycloneLayersOnTop(map: MapLibreMap): void {
+  const ordered = [
+    'forecast-cyclone-cone',
+    'forecast-cyclone-cone-line',
+    'forecast-cyclone-casing',
+    'forecast-cyclone-track',
+    'forecast-cyclone-motion-arrow',
+    'forecast-cyclone-points',
+    'forecast-cyclone-labels',
+    'forecast-cyclone-now',
+    'forecast-cyclone-now-icon',
+    'forecast-cyclone-now-label',
+  ];
+  for (const id of ordered) {
+    if (map.getLayer(id)) {
+      try {
+        map.moveLayer(id);
+      } catch {}
+    }
+  }
+}
+

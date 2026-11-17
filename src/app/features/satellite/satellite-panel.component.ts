@@ -5,6 +5,7 @@ import { MapLayerService } from '../../core/services/map-layer.service';
 import { productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { AmvService } from '../../core/satellite/amv.service';
+import { MapHostService } from '../../core/ui/map-host.service';
 import { cloudTopGradient, greyScaleTempFromMeasured } from '../../core/satellite/satellite-image';
 import { CUSTOM_PRESETS, CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
 
@@ -89,6 +90,38 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
               </div>
 
               @if (amv.active()) {
+                @if (amv.activeCyclones().length > 0) {
+                  <div class="amv-cyclone-card">
+                    @for (cyc of amv.activeCyclones(); track cyc.id) {
+                      <div class="amv-cyc-header">
+                        <span class="amv-cyc-badge" [style.background]="cyc.classColor">{{ cyc.className }}</span>
+                        <strong class="amv-cyc-name">{{ cyc.name }} ({{ cyc.id }})</strong>
+                        <button type="button" class="btn-locate-eye" (click)="locateEye(cyc.lat, cyc.lon)" title="Center map on eye">
+                          Locate Eye
+                        </button>
+                      </div>
+                      <div class="amv-cyc-metrics">
+                        <span class="cyc-pos">Eye: <strong>{{ cyc.lat }}°N, {{ cyc.lon }}°E</strong></span>
+                        @if (cyc.pMsl) {
+                          <span class="cyc-p">{{ cyc.pMsl }} hPa</span>
+                        }
+                        @if (cyc.windKt) {
+                          <span class="cyc-wind">{{ cyc.windKt }} kt ({{ cyc.windKmh }} km/h)</span>
+                        }
+                      </div>
+                      @if (cyc.motion) {
+                        <div class="amv-cyc-motion">
+                          <span class="motion-icon">🧭</span>
+                          <span>Moving <strong>{{ cyc.motion.dirText }} ({{ cyc.motion.bearingDeg }}°)</strong> at <strong>{{ cyc.motion.speedKmh }} km/h</strong></span>
+                        </div>
+                      }
+                      <div class="amv-cyc-origin">
+                        <span>Tracked from {{ cyc.startPoint.lat }}°N, {{ cyc.startPoint.lon }}°E (+{{ cyc.historyHours }}h elapsed)</span>
+                      </div>
+                    }
+                  </div>
+                }
+
                 <div class="amv-level-row" role="group" aria-label="Wind altitude level">
                   <button type="button" [class.on]="amv.layerFilter() === 'low'" (click)="amv.setLayerFilter('low')" title="Surface to 700 hPa boundary layer flow">Low (&le;700)</button>
                   <button type="button" [class.on]="amv.layerFilter() === 'mid'" (click)="amv.setLayerFilter('mid')" title="700 to 400 hPa mid-tropospheric flow">Mid (700–400)</button>
@@ -271,6 +304,80 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
     .amv-readout { margin-top: 5px; padding: 4px 6px; border-radius: 6px; background: var(--surface-2); font-size: 11px; display: flex; flex-direction: column; gap: 1px; }
     .amv-spd { font-weight: 700; color: var(--neon-cyan); }
     .amv-meta { color: var(--text-secondary); }
+    .amv-cyclone-card {
+      margin-top: 8px;
+      margin-bottom: 4px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(15, 23, 42, 0.85));
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .amv-cyc-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .amv-cyc-badge {
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: #fff;
+      letter-spacing: 0.5px;
+    }
+    .amv-cyc-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      flex: 1;
+    }
+    .btn-locate-eye {
+      padding: 2px 7px;
+      border-radius: 5px;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--neon-cyan);
+      font: inherit;
+      font-size: 10.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-locate-eye:hover {
+      background: var(--neon-cyan);
+      color: #0b1120;
+    }
+    .amv-cyc-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      font-size: 11px;
+      color: var(--text-primary);
+    }
+    .cyc-pos strong { color: #f87171; }
+    .cyc-p { color: var(--text-secondary); }
+    .cyc-wind { color: #facc15; font-weight: 600; }
+    .amv-cyc-motion {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      padding: 3px 6px;
+      border-radius: 5px;
+    }
+    .amv-cyc-motion strong { color: #fff; }
+    .motion-icon { font-size: 12px; }
+    .amv-cyc-origin {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
     /* compact (phones by default): the satellite, the pictures in one row that scrolls, the time and the slider */
     .panel.compact .full-only { display: none; }
     .panel.compact .kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -302,6 +409,7 @@ export class SatellitePanelComponent {
   protected readonly sat = inject(SatelliteService);
   protected readonly amv = inject(AmvService);
   private readonly layers = inject(MapLayerService);
+  private readonly mapHost = inject(MapHostService);
   protected readonly Math = Math;
   protected readonly gradient = cloudTopGradient();
   protected readonly legendMarks = MEASURED_MARKS;
@@ -395,5 +503,9 @@ export class SatellitePanelComponent {
     const value = parseFloat((event.target as HTMLInputElement).value);
     this.sat.opacity.set(value);
     this.layers.setLayerOpacity('satellite', value);
+  }
+
+  protected locateEye(lat: number, lon: number): void {
+    this.mapHost.flyTo(lat, lon, 7.5);
   }
 }

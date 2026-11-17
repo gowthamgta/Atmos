@@ -49,7 +49,7 @@ const PLAIN_SEA = '#3d424d';
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
-import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
+import { ForecastMapController, ensureCycloneLayersOnTop } from '../../core/forecast/forecast-map.controller';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
@@ -176,6 +176,9 @@ export class MapComponent implements OnInit, OnDestroy {
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
     if (this.amvService.active()) {
       ensureAmvOnTop(this.map);
+      if (this.amvService.showCycloneTrack()) {
+        ensureCycloneLayersOnTop(this.map);
+      }
     }
   });
 
@@ -214,6 +217,19 @@ export class MapComponent implements OnInit, OnDestroy {
       syncAmvLayer(this.map, null, false, style, undefined, (props) => {
         this.amvService.setHoveredVector(props);
       });
+    }
+  });
+
+  // Reactive Effect: Satellite Cyclone Overlay synchronization
+  private satelliteCycloneEffect = effect(() => {
+    if (!this.map || !this.isMapLoaded()) return;
+    const amvActive = this.amvService.active();
+    const showTrack = this.amvService.showCycloneTrack();
+    const cycloneOn = amvActive && showTrack;
+    const satTime = this.amvService.currentFrameTimeMs() ?? this.satellite.current()?.timeMs ?? Date.now();
+    this.forecastMap.setSatelliteCycloneMode(cycloneOn, satTime);
+    if (cycloneOn) {
+      ensureCycloneLayersOnTop(this.map);
     }
   });
 

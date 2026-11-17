@@ -26,6 +26,40 @@ export interface CycloneData {
   storms: CycloneStorm[];
 }
 
+export interface CycloneMotion {
+  bearingDeg: number;
+  speedKmh: number;
+  dirText: string;
+}
+
+/** Instantaneous movement heading, translation speed (km/h), and compass direction of a storm along its track */
+export function trackMotion(track: readonly TrackPoint[], h: number): CycloneMotion | null {
+  if (track.length < 2) return null;
+  const pNow = stormAt(track, h);
+  if (!pNow) return null;
+
+  const hPast = Math.max(track[0].h, h - 3);
+  const hNext = Math.min(track[track.length - 1].h, h + 3);
+  const pA = stormAt(track, hPast);
+  const pB = stormAt(track, hNext);
+  if (!pA || !pB || hNext <= hPast) return null;
+
+  const dLat = pB.lat - pA.lat;
+  const dLon = (pB.lon - pA.lon) * Math.cos((pNow.lat * Math.PI) / 180);
+  let bearing = (Math.atan2(dLon, dLat) * 180) / Math.PI;
+  if (bearing < 0) bearing += 360;
+
+  const distKm = Math.hypot(dLat * 111.32, dLon * 111.32);
+  const dtHours = hNext - hPast;
+  const speedKmh = dtHours > 0 ? distKm / dtHours : 0;
+
+  const compass = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const dirIndex = Math.round(bearing / 22.5) % 16;
+  const dirText = compass[dirIndex];
+
+  return { bearingDeg: Math.round(bearing), speedKmh: Math.round(speedKmh * 10) / 10, dirText };
+}
+
 /**
  * IMD's classes of a low over the North Indian Ocean by its maximum sustained wind (m/s; IMD's limits are in knots: 17, 28, 34, 48, 64, 90 and
  * 120 kt), with a short name for the map and a colour that warms as the storm strengthens.
@@ -208,14 +242,46 @@ export function cycloneGeoJson(data: CycloneData | null, timeMs: number | null =
       });
     }
     const here = nowH !== null ? stormAt(track, nowH) : null;
-    if (here) {
+    if (here && nowH !== null) {
       const cls = windClass(here.wind);
       const kmh = here.wind === null ? '' : ` · ${Math.round(here.wind * 3.6)} km/h`;
+      const motion = trackMotion(track, nowH);
       features.push({
         type: 'Feature',
-        properties: { kind: 'now', storm: s.id, color: cls.color, label: `${label}\n${cls.name}${kmh}${here.pMsl === null ? '' : ` · ${Math.round(here.pMsl)} hPa`}` },
+        properties: {
+          kind: 'now',
+          storm: s.id,
+          color: cls.color,
+          bearing: motion?.bearingDeg ?? 0,
+          motionDir: motion?.dirText ?? '',
+          speedKmh: motion?.speedKmh ?? 0,
+          label: `${label}\n${cls.name}${kmh}${here.pMsl === null ? '' : ` · ${Math.round(here.pMsl)} hPa`}`,
+        },
         geometry: { type: 'Point', coordinates: [here.lon, here.lat] },
       });
+
+      // Forward motion vector arrow showing direction of movement:
+      if (motion && motion.speedKmh > 0) {
+        const radHeading = (motion.bearingDeg * Math.PI) / 180;
+        const arrowLenDeg = 0.85;
+        const arrowEndLon = here.lon + (arrowLenDeg * Math.sin(radHeading)) / Math.cos((here.lat * Math.PI) / 180);
+        const arrowEndLat = here.lat + arrowLenDeg * Math.cos(radHeading);
+
+        features.push({
+          type: 'Feature',
+          properties: {
+            kind: 'motion-arrow',
+            storm: s.id,
+            color: '#38bdf8',
+            bearing: motion.bearingDeg,
+            label: `Moving ${motion.dirText} (${motion.bearingDeg}°) · ${motion.speedKmh} km/h`
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: [[here.lon, here.lat], [arrowEndLon, arrowEndLat]]
+          }
+        });
+      }
     }
   }
   return { type: 'FeatureCollection', features };
