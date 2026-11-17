@@ -22,7 +22,7 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
-import { syncAmvLayer, ensureAmvOnTop } from '../../core/rendering/amv-vectors.layer';
+import { syncAmvLayer, ensureAmvOnTop, syncAmvCycloneTrack } from '../../core/rendering/amv-vectors.layer';
 import { WindParticlesLayer } from '../../core/rendering/wind-particles.layer';
 import { AmvService } from '../../core/satellite/amv.service';
 import { isShaderKind } from '../../core/satellite/own-products';
@@ -49,7 +49,7 @@ const PLAIN_SEA = '#3d424d';
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
-import { ForecastMapController, ensureCycloneLayersOnTop } from '../../core/forecast/forecast-map.controller';
+import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
@@ -176,20 +176,19 @@ export class MapComponent implements OnInit, OnDestroy {
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
     if (this.amvService.active()) {
       ensureAmvOnTop(this.map);
-      if (this.amvService.showCycloneTrack()) {
-        ensureCycloneLayersOnTop(this.map);
-      }
     }
   });
 
   private amvParticlesLayer: WindParticlesLayer | null = null;
 
-  // Reactive Effect: Dual-Satellite AMV Nowcast (Particles / Arrows / Barbs)
+  // Reactive Effect: Dual-Satellite AMV Nowcast (Particles / Arrows / Barbs & Cyclone Tracking)
   private amvEffect = effect(() => {
     const active = this.amvService.active();
     const geoJson = this.amvService.filteredGeoJson();
     const style = this.amvService.style();
     const windFrame = this.amvService.windFrame();
+    const cycloneData = this.amvService.cycloneData();
+    const timeMs = this.amvService.currentFrameTimeMs() ?? this.satellite.current()?.timeMs ?? Date.now();
     if (!this.map || !this.isMapLoaded()) return;
 
     if (!this.amvParticlesLayer) {
@@ -218,19 +217,9 @@ export class MapComponent implements OnInit, OnDestroy {
         this.amvService.setHoveredVector(props);
       });
     }
-  });
 
-  // Reactive Effect: Satellite Cyclone Overlay synchronization
-  private satelliteCycloneEffect = effect(() => {
-    if (!this.map || !this.isMapLoaded()) return;
-    const amvActive = this.amvService.active();
-    const showTrack = this.amvService.showCycloneTrack();
-    const cycloneOn = amvActive && showTrack;
-    const satTime = this.amvService.currentFrameTimeMs() ?? this.satellite.current()?.timeMs ?? Date.now();
-    this.forecastMap.setSatelliteCycloneMode(cycloneOn, satTime);
-    if (cycloneOn) {
-      ensureCycloneLayersOnTop(this.map);
-    }
+    // Mark the realtime position, previous positions (where it moved from), and direction of motion in the AMV layer itself
+    syncAmvCycloneTrack(this.map, cycloneData, timeMs, active);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)

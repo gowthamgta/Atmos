@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AmvService, AmvGeoJson } from './amv.service';
+import { buildAmvCycloneGeoJson } from '../rendering/amv-vectors.layer';
 
 describe('AmvService', () => {
   let service: AmvService;
@@ -157,8 +158,8 @@ describe('AmvService', () => {
     expect(service.currentFrame()?.file).toBe('amv_1230.json');
   });
 
-  it('computes active cyclone info including eye, motion heading, speed, and origin point', () => {
-    service.cycloneData.set({
+  it('builds AMV cyclone geojson marking realtime eye, past track line, fixes, and motion arrow', () => {
+    const data = {
       version: 1,
       run: '20261117T00Z',
       storms: [
@@ -174,17 +175,22 @@ describe('AmvService', () => {
           members: []
         }
       ]
-    });
+    };
 
-    const active = service.activeCyclones();
-    expect(active.length).toBe(1);
-    const storm = active[0];
-    expect(storm.id).toBe('05B');
-    expect(storm.name).toBe('AKVAN');
-    expect(storm.startPoint.lat).toBe(11.6);
-    expect(storm.startPoint.lon).toBe(87.2);
-    expect(storm.motion).not.toBeNull();
-    expect(storm.motion?.dirText).toMatch(/NW|NNW|WNW/);
-    expect(storm.motion?.speedKmh).toBeGreaterThan(0);
+    const timeMs = Date.UTC(2026, 10, 17, 14, 0); // h=14
+    const geo = buildAmvCycloneGeoJson(data, timeMs);
+    expect(geo.features.length).toBeGreaterThan(0);
+
+    const pastLine = geo.features.find((f: any) => f.properties.kind === 'past-line');
+    expect(pastLine).toBeDefined();
+    expect(pastLine.geometry.coordinates.length).toBeGreaterThanOrEqual(2);
+
+    const eye = geo.features.find((f: any) => f.properties.kind === 'realtime-eye');
+    expect(eye).toBeDefined();
+    expect(eye.properties.label).toContain('AKVAN');
+
+    const arrow = geo.features.find((f: any) => f.properties.kind === 'motion-arrow');
+    expect(arrow).toBeDefined();
+    expect(arrow.properties.label).toContain('Moving');
   });
 });

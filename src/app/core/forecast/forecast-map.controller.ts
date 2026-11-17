@@ -587,24 +587,12 @@ export class ForecastMapController {
     if (map.getSource(ForecastMapController.CYCLONE_SOURCE)) map.removeSource(ForecastMapController.CYCLONE_SOURCE);
   }
 
-  private satelliteCyclonesOn = false;
-  private satelliteTimeMs: number | null = null;
-
-  setSatelliteCycloneMode(on: boolean, timeMs: number | null): void {
-    this.satelliteCyclonesOn = on;
-    this.satelliteTimeMs = timeMs;
-    this.updateCyclones();
-    if (on && this.map) {
-      ensureCycloneLayersOnTop(this.map);
-    }
-  }
-
   /** Shows the tracks while the overlay is on; the file is fetched when first needed and again once it is 30 minutes old. */
   private updateCyclones(): void {
     const map = this.map;
     if (!map) return;
-    const on = this.state.cyclones() || this.satelliteCyclonesOn;
-    const time = this.satelliteCyclonesOn ? this.satelliteTimeMs : this.state.timeMs();
+    const on = this.state.cyclones();
+    const time = this.state.timeMs();
     for (const id of ForecastMapController.CYCLONE_LAYERS) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
     if (!on) return;
     this.drawCyclones(time);
@@ -616,8 +604,7 @@ export class ForecastMapController {
       if (!data) return;
       this.cycloneData = data;
       this.cycloneDrawnFor = '';
-      const t = this.satelliteCyclonesOn ? this.satelliteTimeMs : this.state.timeMs();
-      this.drawCyclones(t);
+      this.drawCyclones(this.state.timeMs());
     }).finally(() => (this.cycloneLoading = false));
   }
 

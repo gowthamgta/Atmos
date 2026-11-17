@@ -1,8 +1,28 @@
 import type { Map as MapLibreMap, GeoJSONSource } from 'maplibre-gl';
 import type { AmvGeoJson, AmvVectorProperties, AmvStyle } from '../satellite/amv.service';
+import { CycloneData, runStartMs, smoothTrack, stormAt, trackMotion, windClass } from '../forecast/cyclone-tracks';
 
 export const AMV_SOURCE_ID = 'amv-vectors-source';
 export const AMV_SYMBOLS_LAYER_ID = 'amv-vectors-symbols';
+
+export const AMV_CYCLONE_SOURCE_ID = 'amv-cyclone-track-source';
+export const AMV_CYCLONE_CASING_LAYER_ID = 'amv-cyclone-casing';
+export const AMV_CYCLONE_LINE_LAYER_ID = 'amv-cyclone-line';
+export const AMV_CYCLONE_POINTS_LAYER_ID = 'amv-cyclone-points';
+export const AMV_CYCLONE_MOTION_LAYER_ID = 'amv-cyclone-motion';
+export const AMV_CYCLONE_EYE_PULSE_LAYER_ID = 'amv-cyclone-eye-pulse';
+export const AMV_CYCLONE_EYE_LAYER_ID = 'amv-cyclone-eye';
+export const AMV_CYCLONE_LABELS_LAYER_ID = 'amv-cyclone-labels';
+
+const ALL_AMV_CYCLONE_LAYERS = [
+  AMV_CYCLONE_CASING_LAYER_ID,
+  AMV_CYCLONE_LINE_LAYER_ID,
+  AMV_CYCLONE_POINTS_LAYER_ID,
+  AMV_CYCLONE_MOTION_LAYER_ID,
+  AMV_CYCLONE_EYE_PULSE_LAYER_ID,
+  AMV_CYCLONE_EYE_LAYER_ID,
+  AMV_CYCLONE_LABELS_LAYER_ID,
+];
 
 /**
  * Animated wind flow arrow implementing MapLibre's StyleImageInterface.
@@ -183,11 +203,17 @@ function ensureAmvIcons(map: MapLibreMap): void {
 
 /** Keep AMV vectors on top of all underlying raster layers (satellite images, radar, terrain) */
 export function ensureAmvOnTop(map: MapLibreMap): void {
-  if (map && map.getLayer(AMV_SYMBOLS_LAYER_ID)) {
-    try {
-      map.moveLayer(AMV_SYMBOLS_LAYER_ID);
-    } catch {
-      // ignore if context not ready
+  if (!map) return;
+  const layers = [
+    'amv-wind-particles',
+    AMV_SYMBOLS_LAYER_ID,
+    ...ALL_AMV_CYCLONE_LAYERS,
+  ];
+  for (const id of layers) {
+    if (map.getLayer(id)) {
+      try {
+        map.moveLayer(id);
+      } catch {}
     }
   }
 }
@@ -344,3 +370,257 @@ export function syncAmvLayer(
     ensureAmvOnTop(map);
   }
 }
+
+/**
+ * Builds GeoJSON features for active cyclone(s) tailored specifically for the AMV layer:
+ * 1. Past track line showing where the cyclone formed and moved from up to the current eye position
+ * 2. Historical position points with time and wind speed
+ * 3. Direction of movement vector arrow pointing along its current heading
+ * 4. Real-time eye position marker with name, intensity, pressure, and motion summary
+ */
+export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number | null): any {
+  const features: any[] = [];
+  if (!data || !data.storms || data.storms.length === 0) {
+    return { type: 'FeatureCollection', features };
+  }
+
+  const start = runStartMs(data.run);
+  const targetTime = timeMs ?? Date.now();
+  const rawNowH = start !== null ? (targetTime - start) / 3_600_000 : 0;
+
+  for (const s of data.storms) {
+    if (!s.track || s.track.length === 0) continue;
+    const track = smoothTrack(s.track);
+    const nowH = Math.min(Math.max(rawNowH, track[0].h), track[track.length - 1].h);
+    const here = stormAt(track, nowH);
+    if (!here) continue;
+
+    const cls = windClass(here.wind);
+    const motion = trackMotion(track, nowH);
+
+    // 1. Previous positions: points with h <= nowH
+    const pastPoints = track.filter(p => p.h <= nowH);
+    const allPastCoords: [number, number][] = pastPoints.map(p => [p.lon, p.lat]);
+    if (allPastCoords.length === 0 || allPastCoords[allPastCoords.length - 1][0] !== here.lon || allPastCoords[allPastCoords.length - 1][1] !== here.lat) {
+      allPastCoords.push([here.lon, here.lat]);
+    }
+
+    // 2. Past Track Line (From where it formed/moved in past up to now)
+    if (allPastCoords.length >= 2) {
+      features.push({
+        type: 'Feature',
+        properties: {
+          kind: 'past-line',
+          storm: s.id,
+          color: cls.color || '#f59e0b',
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: allPastCoords,
+        },
+      });
+    }
+
+    // 3. Historical Position Fixes along the past track
+    for (const p of pastPoints) {
+      const pCls = windClass(p.wind);
+      const timeStr = start !== null ? new Date(start + p.h * 3_600_000).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) : `+${p.h}h`;
+      const kmhStr = p.wind ? `${Math.round(p.wind * 3.6)} km/h` : '';
+      features.push({
+        type: 'Feature',
+        properties: {
+          kind: 'past-fix',
+          storm: s.id,
+          h: p.h,
+          color: pCls.color,
+          label: `${timeStr}${kmhStr ? ' · ' + kmhStr : ''}`,
+        },
+        geometry: {
+          type: 'Point',
+          coordinates: [p.lon, p.lat],
+        },
+      });
+    }
+
+    // 4. Motion Vector Arrow (Direction & speed of movement)
+    if (motion && motion.speedKmh > 0) {
+      const radHeading = (motion.bearingDeg * Math.PI) / 180;
+      const arrowLenDeg = 0.95;
+      const arrowEndLon = here.lon + (arrowLenDeg * Math.sin(radHeading)) / Math.cos((here.lat * Math.PI) / 180);
+      const arrowEndLat = here.lat + arrowLenDeg * Math.cos(radHeading);
+
+      features.push({
+        type: 'Feature',
+        properties: {
+          kind: 'motion-arrow',
+          storm: s.id,
+          bearing: motion.bearingDeg,
+          speedKmh: motion.speedKmh,
+          dirText: motion.dirText,
+          label: `Moving ${motion.dirText} (${motion.bearingDeg}°) @ ${motion.speedKmh} km/h`,
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [[here.lon, here.lat], [arrowEndLon, arrowEndLat]],
+        },
+      });
+    }
+
+    // 5. Realtime Eye Position
+    const kmh = here.wind !== null ? `${Math.round(here.wind * 3.6)} km/h` : '';
+    const pMsl = here.pMsl !== null ? `${Math.round(here.pMsl)} hPa` : '';
+    const motionLabel = motion ? `Moving ${motion.dirText} @ ${motion.speedKmh} km/h` : '';
+    const stormTitle = s.name && s.name !== s.id ? `${s.name} (${s.id})` : s.id;
+
+    features.push({
+      type: 'Feature',
+      properties: {
+        kind: 'realtime-eye',
+        storm: s.id,
+        color: cls.color || '#ef4444',
+        name: stormTitle,
+        label: `${stormTitle}\n${cls.name}${kmh ? ' · ' + kmh : ''}${pMsl ? ' · ' + pMsl : ''}\n${motionLabel}`,
+      },
+      geometry: {
+        type: 'Point',
+        coordinates: [here.lon, here.lat],
+      },
+    });
+  }
+
+  return { type: 'FeatureCollection', features };
+}
+
+/** Synchronize cyclone past track, realtime position, and direction vector directly in the AMV map layer */
+export function syncAmvCycloneTrack(
+  map: MapLibreMap,
+  cycloneData: CycloneData | null,
+  timeMs: number | null,
+  visible: boolean
+): void {
+  if (!map) return;
+
+  const existingSource = map.getSource(AMV_CYCLONE_SOURCE_ID) as GeoJSONSource | undefined;
+  const emptyGeoJson = { type: 'FeatureCollection', features: [] };
+  const data = (visible && cycloneData) ? buildAmvCycloneGeoJson(cycloneData, timeMs) : emptyGeoJson;
+
+  if (existingSource) {
+    existingSource.setData(data as any);
+  } else {
+    map.addSource(AMV_CYCLONE_SOURCE_ID, {
+      type: 'geojson',
+      data: data as any,
+    });
+  }
+
+  if (!map.getLayer(AMV_CYCLONE_CASING_LAYER_ID)) {
+    // 1. Casing for past track line
+    map.addLayer({
+      id: AMV_CYCLONE_CASING_LAYER_ID,
+      type: 'line',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'past-line'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#0f172a', 'line-width': 7.5, 'line-opacity': 0.88 },
+    });
+
+    // 2. Past track line (where it moved from in the past)
+    map.addLayer({
+      id: AMV_CYCLONE_LINE_LAYER_ID,
+      type: 'line',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'past-line'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 4.0, 'line-opacity': 0.98 },
+    });
+
+    // 3. Motion vector line (direction of movement)
+    map.addLayer({
+      id: AMV_CYCLONE_MOTION_LAYER_ID,
+      type: 'line',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'motion-arrow'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': '#38bdf8', 'line-width': 4.5, 'line-dasharray': [2, 1], 'line-opacity': 0.95 },
+    });
+
+    // 4. Past position fix circles
+    map.addLayer({
+      id: AMV_CYCLONE_POINTS_LAYER_ID,
+      type: 'circle',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'past-fix'],
+      paint: {
+        'circle-radius': 5.0,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 1.8,
+        'circle-opacity': 0.95,
+      },
+    });
+
+    // 5. Realtime eye halo/pulse
+    map.addLayer({
+      id: AMV_CYCLONE_EYE_PULSE_LAYER_ID,
+      type: 'circle',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'realtime-eye'],
+      paint: {
+        'circle-radius': 14.0,
+        'circle-color': ['get', 'color'],
+        'circle-opacity': 0.35,
+      },
+    });
+
+    // 6. Realtime eye center circle
+    map.addLayer({
+      id: AMV_CYCLONE_EYE_LAYER_ID,
+      type: 'circle',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['==', ['get', 'kind'], 'realtime-eye'],
+      paint: {
+        'circle-radius': 8.0,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2.5,
+        'circle-opacity': 1.0,
+      },
+    });
+
+    // 7. Labels for eye and motion
+    map.addLayer({
+      id: AMV_CYCLONE_LABELS_LAYER_ID,
+      type: 'symbol',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['all', ['has', 'label'], ['!=', ['get', 'label'], '']],
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+        'text-size': ['case', ['==', ['get', 'kind'], 'realtime-eye'], 12.0, 10.0],
+        'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
+        'text-radial-offset': 1.2,
+        'text-justify': 'auto',
+        'text-line-height': 1.2,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#0f172a',
+        'text-halo-width': 2.5,
+      },
+    });
+  }
+
+  const visibility = visible ? 'visible' : 'none';
+  for (const id of ALL_AMV_CYCLONE_LAYERS) {
+    if (map.getLayer(id)) {
+      map.setLayoutProperty(id, 'visibility', visibility);
+    }
+  }
+
+  if (visible) {
+    ensureAmvOnTop(map);
+  }
+}
+
