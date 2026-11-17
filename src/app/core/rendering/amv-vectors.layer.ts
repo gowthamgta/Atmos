@@ -1,6 +1,6 @@
 import type { Map as MapLibreMap, GeoJSONSource } from 'maplibre-gl';
 import type { AmvGeoJson, AmvVectorProperties, AmvStyle } from '../satellite/amv.service';
-import { CycloneData, runStartMs, smoothTrack, stormAt, trackMotion, windClass } from '../forecast/cyclone-tracks';
+import { CycloneData, deduplicateStorms, runStartMs, smoothTrack, stormAt, trackMotion, windClass } from '../forecast/cyclone-tracks';
 
 export const AMV_SOURCE_ID = 'amv-vectors-source';
 export const AMV_SYMBOLS_LAYER_ID = 'amv-vectors-symbols';
@@ -12,7 +12,8 @@ export const AMV_CYCLONE_POINTS_LAYER_ID = 'amv-cyclone-points';
 export const AMV_CYCLONE_MOTION_LAYER_ID = 'amv-cyclone-motion';
 export const AMV_CYCLONE_EYE_PULSE_LAYER_ID = 'amv-cyclone-eye-pulse';
 export const AMV_CYCLONE_EYE_LAYER_ID = 'amv-cyclone-eye';
-export const AMV_CYCLONE_LABELS_LAYER_ID = 'amv-cyclone-labels';
+export const AMV_CYCLONE_PAST_LABELS_LAYER_ID = 'amv-cyclone-past-labels';
+export const AMV_CYCLONE_EYE_LABEL_LAYER_ID = 'amv-cyclone-eye-label';
 
 const ALL_AMV_CYCLONE_LAYERS = [
   AMV_CYCLONE_CASING_LAYER_ID,
@@ -21,7 +22,8 @@ const ALL_AMV_CYCLONE_LAYERS = [
   AMV_CYCLONE_MOTION_LAYER_ID,
   AMV_CYCLONE_EYE_PULSE_LAYER_ID,
   AMV_CYCLONE_EYE_LAYER_ID,
-  AMV_CYCLONE_LABELS_LAYER_ID,
+  AMV_CYCLONE_PAST_LABELS_LAYER_ID,
+  AMV_CYCLONE_EYE_LABEL_LAYER_ID,
 ];
 
 /**
@@ -387,8 +389,10 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
   const start = runStartMs(data.run);
   const targetTime = timeMs ?? Date.now();
   const rawNowH = start !== null ? (targetTime - start) / 3_600_000 : 0;
+  // Deduplicate: filter out duplicate invest / advisory tracks (e.g. 70B when 05B AKVAN exists)
+  const storms = deduplicateStorms(data.storms);
 
-  for (const s of data.storms) {
+  for (const s of storms) {
     if (!s.track || s.track.length === 0) continue;
     const track = smoothTrack(s.track);
     const nowH = Math.min(Math.max(rawNowH, track[0].h), track[track.length - 1].h);
@@ -426,6 +430,10 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
       const pCls = windClass(p.wind);
       const timeStr = start !== null ? new Date(start + p.h * 3_600_000).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) : `+${p.h}h`;
       const kmhStr = p.wind ? `${Math.round(p.wind * 3.6)} km/h` : '';
+      // Don't show label if fix is within ~40 km of current eye to prevent text crowding
+      const distToEyeDeg = Math.hypot(p.lat - here.lat, p.lon - here.lon);
+      const label = distToEyeDeg >= 0.38 ? `${timeStr} · ${kmhStr}` : '';
+
       features.push({
         type: 'Feature',
         properties: {
@@ -433,7 +441,7 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
           storm: s.id,
           h: p.h,
           color: pCls.color,
-          label: `${timeStr}${kmhStr ? ' · ' + kmhStr : ''}`,
+          label,
         },
         geometry: {
           type: 'Point',
@@ -442,7 +450,7 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
       });
     }
 
-    // 4. Motion Vector Arrow (Direction & speed of movement)
+    // 4. Motion Vector Arrow (Direction & speed of movement - vector line only, no overlapping text)
     if (motion && motion.speedKmh > 0) {
       const radHeading = (motion.bearingDeg * Math.PI) / 180;
       const arrowLenDeg = 0.95;
@@ -457,7 +465,6 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
           bearing: motion.bearingDeg,
           speedKmh: motion.speedKmh,
           dirText: motion.dirText,
-          label: `Moving ${motion.dirText} (${motion.bearingDeg}°) @ ${motion.speedKmh} km/h`,
         },
         geometry: {
           type: 'LineString',
@@ -466,11 +473,17 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
       });
     }
 
-    // 5. Realtime Eye Position
+    // 5. Realtime Eye Position with clean stacked label
     const kmh = here.wind !== null ? `${Math.round(here.wind * 3.6)} km/h` : '';
     const pMsl = here.pMsl !== null ? `${Math.round(here.pMsl)} hPa` : '';
-    const motionLabel = motion ? `Moving ${motion.dirText} @ ${motion.speedKmh} km/h` : '';
+    const motionLabel = motion ? `Moving ${motion.dirText} (${motion.bearingDeg}°) @ ${motion.speedKmh} km/h` : '';
     const stormTitle = s.name && s.name !== s.id ? `${s.name} (${s.id})` : s.id;
+
+    const eyeLabel = [
+      `${stormTitle} · ${cls.name}`,
+      [kmh, pMsl].filter(Boolean).join(' · '),
+      motionLabel
+    ].filter(Boolean).join('\n');
 
     features.push({
       type: 'Feature',
@@ -479,7 +492,7 @@ export function buildAmvCycloneGeoJson(data: CycloneData | null, timeMs: number 
         storm: s.id,
         color: cls.color || '#ef4444',
         name: stormTitle,
-        label: `${stormTitle}\n${cls.name}${kmh ? ' · ' + kmh : ''}${pMsl ? ' · ' + pMsl : ''}\n${motionLabel}`,
+        label: eyeLabel,
       },
       geometry: {
         type: 'Point',
@@ -499,6 +512,11 @@ export function syncAmvCycloneTrack(
   visible: boolean
 ): void {
   if (!map) return;
+
+  // Clean up legacy single label layer if present
+  if (map.getLayer('amv-cyclone-labels')) {
+    try { map.removeLayer('amv-cyclone-labels'); } catch {}
+  }
 
   const existingSource = map.getSource(AMV_CYCLONE_SOURCE_ID) as GeoJSONSource | undefined;
   const emptyGeoJson = { type: 'FeatureCollection', features: [] };
@@ -587,27 +605,50 @@ export function syncAmvCycloneTrack(
       },
     });
 
-    // 7. Labels for eye and motion
+    // 7. Past position fix labels (positioned clearly to the right)
     map.addLayer({
-      id: AMV_CYCLONE_LABELS_LAYER_ID,
+      id: AMV_CYCLONE_PAST_LABELS_LAYER_ID,
       type: 'symbol',
       source: AMV_CYCLONE_SOURCE_ID,
-      filter: ['all', ['has', 'label'], ['!=', ['get', 'label'], '']],
+      filter: ['all', ['==', ['get', 'kind'], 'past-fix'], ['!=', ['get', 'label'], '']],
       layout: {
         'text-field': ['get', 'label'],
         'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-        'text-size': ['case', ['==', ['get', 'kind'], 'realtime-eye'], 12.0, 10.0],
-        'text-variable-anchor': ['top', 'bottom', 'left', 'right'],
-        'text-radial-offset': 1.2,
-        'text-justify': 'auto',
-        'text-line-height': 1.2,
+        'text-size': 10.5,
+        'text-anchor': 'left',
+        'text-offset': [0.75, 0],
+        'text-justify': 'left',
+        'text-allow-overlap': false,
+      },
+      paint: {
+        'text-color': '#f8fafc',
+        'text-halo-color': '#0f172a',
+        'text-halo-width': 2.5,
+      },
+    });
+
+    // 8. Realtime eye label (positioned clearly above the eye marker)
+    map.addLayer({
+      id: AMV_CYCLONE_EYE_LABEL_LAYER_ID,
+      type: 'symbol',
+      source: AMV_CYCLONE_SOURCE_ID,
+      filter: ['all', ['==', ['get', 'kind'], 'realtime-eye'], ['!=', ['get', 'label'], '']],
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+        'text-size': 12.0,
+        'text-anchor': 'bottom',
+        'text-offset': [0, -1.5],
+        'text-justify': 'center',
+        'text-line-height': 1.25,
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
       paint: {
         'text-color': '#ffffff',
         'text-halo-color': '#0f172a',
-        'text-halo-width': 2.5,
+        'text-halo-width': 3.5,
+        'text-halo-blur': 0.5,
       },
     });
   }

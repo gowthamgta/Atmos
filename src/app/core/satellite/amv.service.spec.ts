@@ -191,6 +191,7 @@ describe('AmvService', () => {
 
     const arrow = geo.features.find((f: any) => f.properties.kind === 'motion-arrow');
     expect(arrow).toBeDefined();
-    expect(arrow.properties.label).toContain('Moving');
+    expect(arrow.properties.dirText).toBeDefined();
+    expect(eye.properties.label).toContain('Moving');
   });
 });

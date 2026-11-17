@@ -195,6 +195,52 @@ export interface CycloneFeatures {
   features: CycloneFeature[];
 }
 
+/** Deduplicates storm entries where an invest (e.g. 70B) and official named cyclone (e.g. 05B AKVAN) represent the same system */
+export function deduplicateStorms(storms: readonly CycloneStorm[]): CycloneStorm[] {
+  const kept: CycloneStorm[] = [];
+  for (const s of storms) {
+    if (!s.track || s.track.length === 0) continue;
+    const isDup = kept.some(existing => {
+      if (existing.basin !== s.basin) return false;
+      for (const pA of existing.track) {
+        const pB = s.track.find(p => p.h === pA.h);
+        if (pB) {
+          const dLat = Math.abs(pA.lat - pB.lat) * 111.32;
+          const dLon = Math.abs(pA.lon - pB.lon) * 111.32 * Math.cos((pA.lat * Math.PI) / 180);
+          if (Math.hypot(dLat, dLon) < 150) return true;
+        }
+      }
+      return false;
+    });
+
+    if (isDup) {
+      const dupIdx = kept.findIndex(existing => {
+        if (existing.basin !== s.basin) return false;
+        for (const pA of existing.track) {
+          const pB = s.track.find(p => p.h === pA.h);
+          if (pB) {
+            const dLat = Math.abs(pA.lat - pB.lat) * 111.32;
+            const dLon = Math.abs(pA.lon - pB.lon) * 111.32 * Math.cos((pA.lat * Math.PI) / 180);
+            if (Math.hypot(dLat, dLon) < 150) return true;
+          }
+        }
+        return false;
+      });
+      if (dupIdx !== -1) {
+        const existing = kept[dupIdx];
+        const sIsNamed = Boolean(s.name && s.name !== s.id);
+        const existingIsNamed = Boolean(existing.name && existing.name !== existing.id);
+        if (sIsNamed && !existingIsNamed) {
+          kept[dupIdx] = s;
+        }
+      }
+    } else {
+      kept.push(s);
+    }
+  }
+  return kept;
+}
+
 /**
  * The tracks as map features: the cone of each storm (from the time on the bar onwards), the track in segments coloured by the storm's class, a
  * point every 12 h, a label each day (date, wind and class), and the storm where it is at the time on the bar (`timeMs`).
@@ -203,7 +249,8 @@ export function cycloneGeoJson(data: CycloneData | null, timeMs: number | null =
   const features: CycloneFeature[] = [];
   const start = data ? runStartMs(data.run) : null;
   const nowH = start !== null && timeMs !== null ? (timeMs - start) / 3_600_000 : null;
-  for (const s of data?.storms ?? []) {
+  const storms = deduplicateStorms(data?.storms ?? []);
+  for (const s of storms) {
     if (s.track.length === 0) continue;
     const track = smoothTrack(s.track);
     const coneFrom = nowH !== null ? Math.max(nowH, track[0].h) : track[0].h;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONE_HOURS, CycloneData, coneOutline, coneRadiusKm, cycloneGeoJson, runStartMs, smoothTrack, stormAt, windClass } from './cyclone-tracks';
+import { CONE_HOURS, CycloneData, CycloneStorm, coneOutline, coneRadiusKm, cycloneGeoJson, deduplicateStorms, runStartMs, smoothTrack, stormAt, windClass } from './cyclone-tracks';
 
 const RUN = Date.UTC(2026, 9, 7, 12);
 const data: CycloneData = {
@@ -87,5 +87,28 @@ describe('cyclone tracks', () => {
   it('is empty when there is no data or no storm', () => {
     expect(cycloneGeoJson(null).features).toEqual([]);
     expect(cycloneGeoJson({ ...data, storms: [] }).features).toEqual([]);
+  });
+
+  it('deduplicates invest aliases in favor of named storms', () => {
+    const storms: CycloneStorm[] = [
+      {
+        id: '05B',
+        name: 'AKVAN',
+        basin: 'Bay of Bengal',
+        track: [{ h: 6, lat: 12.5, lon: 86.2, pMsl: 1002, wind: 20 }],
+        members: []
+      },
+      {
+        id: '70B',
+        name: '70B',
+        basin: 'Bay of Bengal',
+        track: [{ h: 6, lat: 12.5, lon: 86.2, pMsl: 1002, wind: 20 }],
+        members: []
+      }
+    ];
+    const deduped = deduplicateStorms(storms);
+    expect(deduped.length).toBe(1);
+    expect(deduped[0].id).toBe('05B');
+    expect(deduped[0].name).toBe('AKVAN');
   });
 });
