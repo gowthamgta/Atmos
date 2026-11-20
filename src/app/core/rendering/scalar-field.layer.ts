@@ -261,7 +261,17 @@ void main() {
 
   float t = clamp((v - u_disp.x) / (u_disp.y - u_disp.x), 0.0, 1.0);
   t = pow(t, u_gamma);
-  vec4 lutColor = texture(u_lut, vec2(t * (255.0 / 256.0) + 0.5 / 256.0, 0.5));
+
+  // Smooth curvy isoband contour layering across all meteorological layers:
+  // Quantizes the field into discrete solid color bands (82% solid plateau) with smooth C2 anti-aliased transitions (18%) at the borders
+  const float numBands = 18.0;
+  float u = t * (numBands - 1.0);
+  float k = floor(u);
+  float f = u - k;
+  float s = smoothstep(0.82, 1.0, f);
+  float tBanded = clamp((k + s) / (numBands - 1.0), 0.0, 1.0);
+
+  vec4 lutColor = texture(u_lut, vec2(tBanded * (255.0 / 256.0) + 0.5 / 256.0, 0.5));
   vec3 rgb = lutColor.rgb;
   float alpha = u_opacity * edgeFade * lutColor.a;   // a palette can fade to transparent (the clouds layer)
   if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * u_clearFade, v);

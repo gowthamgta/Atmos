@@ -5,14 +5,29 @@
  */
 
 /**
- * Temperature in °C, pinned to degrees as Windy's legend has them (read 6 Nov 2026: one colour every 5 °C, -20 to +40): violet at -20,
- * pale cyan -15, teal -10 and -5, blue 0, green 5, olive 10, mustard 15, yellow 20, orange 25, red 30, brick 35, dark red 40; colder than its
- * legend, Windy's own upper-air colours (purple -40, pale pink -55, plum -70, held to -100).
+ * Temperature in °C, pinned to values using the user-provided 10-step palette:
+ * - Emerald green to forest green for freezing & sub-zero (-100 to 0 °C): #106d3f, #24714f
+ * - Sea green to muted teal for cool mountain climates (0 to 10 °C): #38755e, #4c796e
+ * - Slate teal for pleasant highlands (18 °C): #607d7e
+ * - Steel slate for mild coastal / morning (25 °C): #74818d
+ * - Muted lavender grey for warm afternoon (30 °C): #88859d
+ * - Soft purple for hot afternoon (35 °C): #9c89ad
+ * - Medium orchid violet for very hot plains (40 °C): #b08dbc
+ * - Light orchid lilac for extreme heatwave (45 to 50 °C): #c491cc
  */
 const TEMP_ANCHORS: readonly [number, string][] = [
-  [-100, '#734669'], [-70, '#734669'], [-55, '#caacc3'], [-40, '#a24691'], [-20, '#9589d3'], [-15, '#96d1d8'], [-10, '#81ccc5'],
-  [-5, '#67b4ba'], [0, '#5f8fc5'], [5, '#508c3e'], [10, '#79921c'], [15, '#aba10e'], [20, '#dfb106'], [25, '#f39606'], [30, '#ec5f15'],
-  [35, '#be4112'], [40, '#8a2b0a'], [50, '#5a1a06'],
+  [-100, '#106d3f'],
+  [-20, '#106d3f'],    // Deep emerald green (extreme cold / upper air)
+  [-10, '#24714f'],    // Forest green (-10 °C)
+  [0, '#38755e'],      // Sea green / pine (freezing point, 0 °C)
+  [10, '#4c796e'],     // Muted teal green (cool mountain tops, 10 °C)
+  [18, '#607d7e'],     // Slate teal (highland valleys, 18 °C)
+  [25, '#74818d'],     // Steel slate grey (mild, 25 °C)
+  [30, '#88859d'],     // Muted lavender grey (warm tropical day, 30 °C)
+  [35, '#9c89ad'],     // Soft purple (hot afternoon, 35 °C)
+  [40, '#b08dbc'],     // Medium orchid violet (very hot, 40 °C)
+  [45, '#c491cc'],     // Light orchid lilac (extreme heatwave, 45 °C)
+  [50, '#c491cc'],
 ];
 
 /** Windy's colour of a temperature (°C), as "#rrggbb". */
