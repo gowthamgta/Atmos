@@ -75,24 +75,41 @@ def worldcover_cog_name(lat: int, lon: int) -> tuple[int, int, str]:
     return sw_lat, sw_lon, cog_name
 
 
-def fetch_worldcover_cog_subgrid(sw_lat: int, sw_lon: int, cog_name: str, cache_dir: str = CACHE_DIR) -> np.ndarray | None:
-    """Fetches the 3000 x 3000 per degree overview (Page 2) for a 3° x 3° block."""
+def fetch_worldcover_cog_subgrid(sw_lat: int, sw_lon: int, cog_name: str, cache_dir: str = CACHE_DIR, page: int = 3) -> np.ndarray | None:
+    """Fetches the 1500 x 1500 per degree overview (Page 3: 4500x4500 for 3°x3°) or Page 2 for a 3° x 3° block."""
     os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"{cog_name}.npy")
-    if os.path.exists(cache_path):
-        return np.load(cache_path)
+    # Check for existing cache (either page 3 or page 2)
+    cache_path_p3 = os.path.join(cache_dir, f"{cog_name}_p3.npy")
+    cache_path_orig = os.path.join(cache_dir, f"{cog_name}.npy")
+    if os.path.exists(cache_path_p3):
+        return np.load(cache_path_p3)
+    if os.path.exists(cache_path_orig):
+        return np.load(cache_path_orig)
 
     url = f"{S3_BASE}/{cog_name}"
+    tmp_tif = os.path.join(cache_dir, f"{cog_name}.tmp.tif")
     try:
-        # Read the overview page (Page 2: 9000x9000 for 3x3 deg, i.e. 3000x3000 per 1 deg)
-        with fsspec.open(url, mode="rb") as f:
-            with tifffile.TiffFile(f) as tif:
-                arr = tif.pages[2].asarray().astype(np.uint8)
-                np.save(cache_path, arr)
-                return arr
+        # Stream the GeoTIFF in a single HTTP request for 10x throughput over individual range seeks
+        urllib.request.urlretrieve(url, tmp_tif)
+        with tifffile.TiffFile(tmp_tif) as tif:
+            arr = tif.pages[page].asarray().astype(np.uint8)
+            target_cache = cache_path_p3 if page == 3 else cache_path_orig
+            np.save(target_cache, arr)
+            return arr
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        print(f"  [worldcover] HTTP error {e.code} for {cog_name}", flush=True)
+        return None
     except Exception as e:
         print(f"  [worldcover] Note: {cog_name} not available or sea: {e}", flush=True)
         return None
+    finally:
+        if os.path.exists(tmp_tif):
+            try:
+                os.remove(tmp_tif)
+            except Exception:
+                pass
 
 
 def get_worldcover_1deg(lat: int, lon: int, per_deg: int = 1200, cache_dir: str = CACHE_DIR) -> np.ndarray | None:
@@ -106,26 +123,27 @@ def get_worldcover_1deg(lat: int, lon: int, per_deg: int = 1200, cache_dir: str 
     if full_3deg is None:
         return None
 
-    # In Page 2, each 1° is 3000 x 3000 cells.
+    # Dynamically determine cells per degree from the loaded array
+    cells_per_deg = full_3deg.shape[0] // 3
     # Rows: Row 0 is north (sw_lat + 3).
     # lat is between sw_lat and sw_lat + 2.
-    # row_offset from top: (sw_lat + 3 - (lat + 1)) * 3000 = (sw_lat + 2 - lat) * 3000
-    r0 = (sw_lat + 2 - lat) * 3000
-    r1 = r0 + 3000
+    # row_offset from top: (sw_lat + 2 - lat) * cells_per_deg
+    r0 = (sw_lat + 2 - lat) * cells_per_deg
+    r1 = r0 + cells_per_deg
     # Cols: Col 0 is west (sw_lon).
-    # col_offset from left: (lon - sw_lon) * 3000
-    c0 = (lon - sw_lon) * 3000
-    c1 = c0 + 3000
+    # col_offset from left: (lon - sw_lon) * cells_per_deg
+    c0 = (lon - sw_lon) * cells_per_deg
+    c1 = c0 + cells_per_deg
 
-    sub_3000 = full_3deg[r0:r1, c0:c1]
-    if sub_3000.size == 0 or np.all(sub_3000 == 0):
+    sub_deg = full_3deg[r0:r1, c0:c1]
+    if sub_deg.size == 0 or np.all(sub_deg == 0):
         return None
 
-    if per_deg == 3000:
-        return sub_3000
+    if per_deg == cells_per_deg:
+        return sub_deg
 
     # Nearest-neighbor resize to preserve categorical class IDs exactly
-    im = Image.fromarray(sub_3000)
+    im = Image.fromarray(sub_deg)
     resized = im.resize((per_deg, per_deg), Image.Resampling.NEAREST)
     return np.array(resized, dtype=np.uint8)
 

@@ -27,30 +27,55 @@ float decode(vec4 c, vec2 enc) {
   return enc.x + q / 65535.0 * (enc.y - enc.x);
 }
 
-// The ground from the 90 m tiles held on the GPU: (metres, land fraction, lulc class, 1). Open sea is 0 m with no land and counts as
-// held. A tile that is not on the GPU, or lies outside the domain, gives (0, 0, 0, 0): the caller then uses another ground.
-vec4 tileTerrain(float lat, float lon) {
+struct TerrainSample {
+  vec2 ground;   // x: elevation metres, y: land fraction (0..1)
+  vec4 micro;    // x: urban weight, y: forest canopy weight, z: cropland weight, w: water weight (continuous, curvy C2 smooth)
+  float lulc;    // dominant categorical class ID at nearest point
+  float valid;   // 1.0 if valid, 0.0 otherwise
+};
+
+// The ground and continuous curvy microclimate weights from tiles held on the GPU.
+// Open sea gives (0, 0, 0, 1.0). A tile not on the GPU gives valid=0.0.
+TerrainSample tileSample(float lat, float lon) {
   vec2 d = vec2(lon - u_tileOrigin.x, u_tileOrigin.y - lat);
   ivec2 t = ivec2(floor(d));
-  if (t.x < 0 || t.y < 0 || t.x >= u_tileCount.x || t.y >= u_tileCount.y) return vec4(0.0);
+  if (t.x < 0 || t.y < 0 || t.x >= u_tileCount.x || t.y >= u_tileCount.y)
+    return TerrainSample(vec2(0.0), vec4(0.0), 0.0, 0.0);
   int slot = int(texelFetch(u_tileMap, t, 0).r * 255.0 + 0.5);
-  if (slot == 254) return vec4(0.0, 0.0, 0.0, 1.0);   // open sea
-  if (slot > 253) return vec4(0.0);                    // not on the GPU
+  if (slot == 254) return TerrainSample(vec2(0.0), vec4(0.0), 0.0, 1.0);   // open sea
+  if (slot > 253) return TerrainSample(vec2(0.0), vec4(0.0), 0.0, 0.0);    // not on the GPU
+
   vec2 g = clamp((d - vec2(t)) * u_tilePx - 0.5, vec2(0.0), vec2(u_tilePx - 1.0));
   vec2 fr = fract(g);
+  // Perlin quintic S-curve: 6t^5 - 15t^4 + 10t^3 ensures zero 1st & 2nd derivatives at cell borders,
+  // creating silky smooth, organic, curvy isoclines without blocky or stair-step raster pixelation.
+  vec2 s = fr * fr * fr * (fr * (fr * 6.0 - 15.0) + 10.0);
   ivec2 i0 = ivec2(floor(g));
   ivec2 hi = ivec2(u_tilePx) - 1;
+
   vec2 acc = vec2(0.0);
+  vec4 micro = vec4(0.0); // x: urban, y: tree/mangrove, z: crop/wetland, w: water
   for (int k = 0; k < 4; k++) {
     ivec2 o = ivec2(k & 1, k >> 1);
     vec4 c = texelFetch(u_tiles, ivec3(clamp(i0 + o, ivec2(0), hi), slot), 0);
-    float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
+    float w = (o.x == 1 ? s.x : 1.0 - s.x) * (o.y == 1 ? s.y : 1.0 - s.y);
     acc += vec2(decode(c, u_demEnc), c.b) * w;
+    int cls = int(c.a * 255.0 + 0.5);
+    if (cls == 50) micro.x += w;
+    else if (cls == 10 || cls == 95) micro.y += w;
+    else if (cls == 40 || cls == 90) micro.z += w;
+    else if (cls == 80) micro.w += w;
   }
-  // Land-cover class: nearest pixel value from alpha channel
+  // Dominant nearest class ID for discrete metadata lookups
   ivec2 oNear = ivec2(fr.x > 0.5 ? 1 : 0, fr.y > 0.5 ? 1 : 0);
   float lulc = floor(texelFetch(u_tiles, ivec3(clamp(i0 + oNear, ivec2(0), hi), slot), 0).a * 255.0 + 0.5);
-  return vec4(acc, lulc, 1.0);
+  return TerrainSample(acc, micro, lulc, 1.0);
+}
+
+// Backwards-compatible tileTerrain helper: (metres, land fraction, lulc class, valid)
+vec4 tileTerrain(float lat, float lon) {
+  TerrainSample s = tileSample(lat, lon);
+  return vec4(s.ground, s.lulc, s.valid);
 }
 
 // Slope (m/m, rising east and north) of the 90 m ground over two cells either side; zero where a neighbour is not held.

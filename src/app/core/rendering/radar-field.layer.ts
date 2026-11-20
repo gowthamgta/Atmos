@@ -113,8 +113,8 @@ float bicubic(vec2 px) {
 // How the 90 m ground lights an echo: hills lit from the north-west, 1.0 on flat ground, at sea and where the ground is not loaded.
 float reliefShade(float lat, float lon) {
   if (lon < u_terrainBox.x || lon > u_terrainBox.z || lat < u_terrainBox.y || lat > u_terrainBox.w) return 1.0;
-  vec3 tile = tileTerrain(lat, lon);
-  if (tile.z < 0.5) return 1.0;
+  vec4 tile = tileTerrain(lat, lon);
+  if (tile.w < 0.5) return 1.0;
   vec2 slope;
   if (u_lite == 0) {
     slope = tileSlope(lat, lon);
