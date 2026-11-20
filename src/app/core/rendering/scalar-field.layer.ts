@@ -231,26 +231,30 @@ void main() {
     float dz = clamp(fineGround.x - model.x, -${f(MAX_TERRAIN_DELTA_M)}, ${f(MAX_TERRAIN_DELTA_M)});
     int m = u_terrainMode;
     if (m == 1) {
-      // Temperature: lapse rate + continuous curvy organic land-cover microclimate (UHI, canopy cooling, crops, water)
+      // Temperature: lapse rate (-6.5°C/km) + physical land-cover microclimate (UHI, canopy cooling, crops, inland water)
       v -= ${f(LAPSE_RATE_C_PER_M)} * dz;
-      // fineMicro: x = urban (+1.5°C), y = tree/mangrove (-1.8°C), z = crop/wetland (-0.8°C), w = water (-1.0°C)
-      float microT = 1.5 * fineMicro.x - 1.8 * fineMicro.y - 0.8 * fineMicro.z - 1.0 * fineMicro.w;
+      // Microclimate temperature anomaly scaled by land fraction fineGround.y:
+      // urban (+1.5°C), forest canopy (-1.8°C), crops (-0.8°C), inland water (-1.0°C)
+      float microT = (1.5 * fineMicro.x - 1.8 * fineMicro.y - 0.8 * fineMicro.z - 1.0 * fineMicro.w) * fineGround.y;
       v += microT;
     } else if (m == 2) {
-      // Relative humidity: elevation saturation + continuous curvy transpiration boost
-      float rhMult = 1.0 - 0.08 * fineMicro.x + 0.08 * fineMicro.y + 0.05 * fineMicro.z;
+      // Relative humidity: elevation saturation + physical land transpiration boost
+      float rhLandFactor = 1.0 - 0.08 * fineMicro.x + 0.08 * fineMicro.y + 0.05 * fineMicro.z;
+      float rhMult = mix(1.0, rhLandFactor, fineGround.y);
       v = min(100.0, v * exp(${f(RH_LOG_PER_M)} * dz) * rhMult);
     } else if (m == 3) {
       v -= ${f(DEWPOINT_LAPSE_C_PER_M)} * dz;
     } else if (m == 7) {
       v *= exp(-dz / ${f(VAPOUR_SCALE_HEIGHT_M)});
     } else if (m == 4) {
-      // Wind: TPI exposure + coastal gain + continuous aerodynamic roughness length drag
-      float tpi = fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x;
+      // Wind: topographic exposure + coastal transition + aerodynamic roughness length drag on land
+      float tpi = (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y;
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fineGround.y);
-      // Roughness multiplier: urban (0.70), forest canopy (0.65), farmlands (1.15), water (1.30)
-      float rough = 1.0 - 0.30 * fineMicro.x - 0.35 * fineMicro.y + 0.15 * fineMicro.z + 0.30 * fineMicro.w;
+      // Aerodynamic surface roughness drag applies to land relative to regional background:
+      // Urban drag (-30%), forest canopy drag (-35%), farmlands (+15%), inland water (+25%)
+      float landRough = 1.0 - 0.30 * fineMicro.x - 0.35 * fineMicro.y + 0.15 * fineMicro.z + 0.25 * fineMicro.w;
+      float rough = mix(1.0, landRough, fineGround.y);
       v *= clamp(exposure * coast * rough, 0.45, 1.75);
     }
   }
@@ -279,24 +283,6 @@ void main() {
       float grey = dot(rgb, vec3(0.299, 0.587, 0.114));
       rgb = mix(rgb, vec3(grey * 0.6), under * 0.8);
       alpha *= 1.0 - 0.55 * under;
-    } else if (u_terrainMode != 5) {
-      // Continuous curvy organic land-cover visual surface modulation (smooth C2 transitions without pixelation):
-      if (fineMicro.x > 0.005) {
-        vec3 urbanRgb = rgb * vec3(1.18, 1.08, 0.95) + vec3(0.06, 0.03, 0.0);
-        rgb = mix(rgb, urbanRgb, 0.40 * fineMicro.x);
-      }
-      if (fineMicro.y > 0.005) {
-        vec3 forestRgb = rgb * vec3(0.82, 0.94, 0.82);
-        rgb = mix(rgb, forestRgb, 0.45 * fineMicro.y);
-      }
-      if (fineMicro.z > 0.005) {
-        vec3 cropRgb = rgb * vec3(1.05, 1.03, 0.93);
-        rgb = mix(rgb, cropRgb, 0.25 * fineMicro.z);
-      }
-      if (fineMicro.w > 0.005) {
-        vec3 waterRgb = rgb * vec3(0.70, 0.85, 1.15);
-        rgb = mix(rgb, waterRgb, 0.50 * fineMicro.w);
-      }
     }
   }
   outColor = vec4(rgb * alpha, alpha);   // premultiplied for MapLibre's blend function

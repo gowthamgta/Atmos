@@ -164,7 +164,7 @@ export function columnFactor(dz: number): number {
 export function windFactor(tpi: number, landFine: number, landModel: number, lulc = 0): number {
   const exposure = clamp(1 + tpi * EXPOSURE_PER_M, EXPOSURE_MIN, EXPOSURE_MAX);
   const coast = 1 + SEA_WIND_GAIN * (landModel - landFine);
-  if (!lulc) {
+  if (!lulc || (landFine <= 0.001 && landModel <= 0.001)) {
     return clamp(exposure * coast, WIND_FACTOR_MIN, WIND_FACTOR_MAX);
   }
   const rough = roughnessWindFactor(lulc);
@@ -287,7 +287,8 @@ export function lulcLabel(lulc: number): string | null {
 export function applyTerrain(mode: TerrainMode | null, value: number, ctx: TerrainContext | number | null): number {
   if (mode === null || ctx === null || Number.isNaN(value)) return value;
   const dz = typeof ctx === 'number' ? ctx : ctx.terrain.dz;
-  const lulc = typeof ctx === 'number' ? 0 : ctx.terrain.lulc ?? 0;
+  const landFine = typeof ctx === 'number' ? 1 : ctx.terrain.landFine ?? 1;
+  const lulc = (typeof ctx === 'number' || landFine <= 0.001) ? 0 : ctx.terrain.lulc ?? 0;
   switch (mode) {
     case 'temperature': {
       const sunUp = ctx !== null && typeof ctx !== 'number' && ctx.timeMs !== undefined && ctx.lat !== undefined && ctx.lon !== undefined
