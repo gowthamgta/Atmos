@@ -285,6 +285,22 @@ void main() {
       float grey = dot(rgb, vec3(0.299, 0.587, 0.114));
       rgb = mix(rgb, vec3(grey * 0.6), under * 0.8);
       alpha *= 1.0 - 0.55 * under;
+    } else {
+      // 100 m Land-cover microclimate downscaling visual modulation at surface:
+      int lulc = int(fine.z + 0.5);
+      if (lulc == 50) {
+        // Urban Heat Island: concrete thermal signature
+        rgb = mix(rgb, rgb * vec3(1.18, 1.08, 0.95) + vec3(0.06, 0.03, 0.0), 0.40);
+      } else if (lulc == 10 || lulc == 95) {
+        // Tree canopy: evaporative shade cooling & dense foliage depth
+        rgb = mix(rgb, rgb * vec3(0.82, 0.94, 0.82), 0.45);
+      } else if (lulc == 40) {
+        // Farmlands / crop fields: agricultural soil & crop modulation
+        rgb = mix(rgb, rgb * vec3(1.05, 1.03, 0.93), 0.25);
+      } else if (lulc == 80) {
+        // Water body: crisp inland water definition
+        rgb = mix(rgb, rgb * vec3(0.70, 0.85, 1.15), 0.50);
+      }
     }
   }
   outColor = vec4(rgb * alpha, alpha);   // premultiplied for MapLibre's blend function
