@@ -43,38 +43,59 @@ export function windStops(min: number, max: number): string[] {
 }
 
 /**
- * Rain accumulation in mm with Windy's colours (the owner, 6 Nov 2026: reverted to the old palette,
- * with sky blue #38bdf8 at the base: sky blue to 3 mm, blue 5.5, cyan at 10, aqua at 16,
- * aqua-green at 25, lime at 50, orange at 100, red 173, dark red at 300).
+ * Rain accumulation in mm: high-contrast meteorological color progression matching the reference standard
+ * (5 mm: royal blue, 20 mm: vibrant green, 40 mm: brilliant yellow, 60 mm: orange, 80 mm: fire red,
+ * 100 mm: dark maroon, 150 mm: deep violet, 200-300 mm: electric purple/magenta/lavender).
  */
 const RAIN_ACCUMULATION_ANCHORS: readonly [number, string][] = [
-  [0, '#4352bf'],
-  [3, '#4352bf'],
-  [5.5, '#3f7bea'],
-  [10, '#29bced'],
-  [16, '#25d2d1'],
-  [25, '#29e6b0'],
-  [50, '#c1ee34'],
-  [100, '#f7a82b'],
-  [173, '#d33104'],
-  [300, '#8a0b03'],
+  [0, '#60b1ff'],
+  [2, '#60b1ff'],      // Light sky blue
+  [5, '#0661d6'],      // Royal blue (5 mm contour)
+  [10, '#0048aa'],     // Deep cobalt blue
+  [15, '#0e7c30'],     // Deep green
+  [20, '#22c53e'],     // Lush vibrant green (20 mm contour)
+  [28, '#44db00'],     // Vivid lime green
+  [34, '#f0d810'],     // Golden transition
+  [40, '#fff420'],     // Pure bright yellow (40 mm contour)
+  [48, '#ffa800'],     // Golden amber
+  [54, '#f68e24'],     // Warm orange
+  [60, '#f08139'],     // Rich vibrant orange (60 mm contour)
+  [68, '#f44818'],     // Coral red-orange
+  [74, '#e52028'],     // Crimson red
+  [80, '#e01020'],     // Bold fire red (80 mm contour)
+  [90, '#b80018'],     // Deep red
+  [100, '#8f1009'],    // Dark crimson / maroon (100 mm contour)
+  [125, '#6a0408'],    // Deep burgundy
+  [150, '#3c0548'],    // Deep violet / dark purple (150 mm contour)
+  [180, '#581c87'],    // Intense purple
+  [220, '#7e22ce'],    // Vibrant purple
+  [260, '#c026d3'],    // Electric magenta / fuchsia
+  [300, '#f0abfc'],    // Bright lavender / extreme core
 ];
 
 /**
- * Rain rate in mm/h in the accumulation's colours (sky blue to 0.5 mm/h, blue 1, cyan 2,
- * aqua 3, aqua-green 5, lime 10, orange 20, red 35, dark red 50).
+ * Rain rate in mm/h in matching meteorological progression
+ * (1-2 mm/h: blue, 5 mm/h: green, 10 mm/h: yellow, 20 mm/h: orange, 35 mm/h: red, 50 mm/h: violet).
  */
 const RAIN_ANCHORS: readonly [number, string][] = [
-  [0, '#4352bf'],
-  [0.5, '#4352bf'],
-  [1, '#3f7bea'],
-  [2, '#29bced'],
-  [3, '#25d2d1'],
-  [5, '#29e6b0'],
-  [10, '#c1ee34'],
-  [20, '#f7a82b'],
-  [35, '#d33104'],
-  [50, '#8a0b03'],
+  [0, '#60b1ff'],
+  [0.5, '#60b1ff'],    // Light sky blue
+  [1.2, '#3890f0'],    // Sky blue
+  [2.0, '#0661d6'],    // Royal blue (~2 mm/h)
+  [3.2, '#0048aa'],    // Deep blue
+  [4.0, '#0e7c30'],    // Deep green
+  [5.0, '#22c53e'],    // Vibrant green (~5 mm/h)
+  [7.0, '#44db00'],    // Vivid lime green
+  [8.5, '#f0d810'],    // Golden yellow
+  [10.0, '#fff420'],   // Pure bright yellow (~10 mm/h)
+  [14.0, '#ffa800'],   // Amber
+  [17.0, '#f68e24'],   // Warm orange
+  [20.0, '#f08139'],   // Rich vibrant orange (~20 mm/h)
+  [26.0, '#f44818'],   // Coral red
+  [30.0, '#e52028'],   // Crimson red
+  [35.0, '#e01020'],   // Bold fire red (~35 mm/h)
+  [42.0, '#8f1009'],   // Dark maroon
+  [50.0, '#3c0548'],   // Deep violet / purple (~50 mm/h)
 ];
 
 /** The palette stops for a value-pinned scale drawn with a gamma (stop i sits at min + (max - min) * (i / n)^(1 / gamma), as the shader reads). */
@@ -85,7 +106,7 @@ function gammaStops(anchors: readonly [number, string][], min: number, max: numb
 
 export const RAIN_MAX = 50;
 export const RAIN_GAMMA = 0.4;
-export const RAIN_ACCUMULATION_GAMMA = 0.27;
+export const RAIN_ACCUMULATION_GAMMA = 0.40;
 export const WINDY_RAIN_RATE = gammaStops(RAIN_ANCHORS, 0, RAIN_MAX, RAIN_GAMMA);
 export const WINDY_RAIN_ACCUMULATION = gammaStops(RAIN_ACCUMULATION_ANCHORS, 0, 300, RAIN_ACCUMULATION_GAMMA);
 

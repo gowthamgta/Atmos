@@ -268,7 +268,10 @@ void main() {
       vec3 n = normalize(vec3(-fineSlope * 3.0, 1.0));
       vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
       float shade = dot(n, light) / light.z;
-      rgb *= mix(1.0, clamp(1.0 + u_relief * (shade - 1.0), 0.55, 1.4), fineGround.y);
+      float relStr = u_terrainMode == 5 ? u_relief * 0.25 : u_relief;
+      float minShade = u_terrainMode == 5 ? 0.75 : 0.55;
+      float maxShade = u_terrainMode == 5 ? 1.25 : 1.4;
+      rgb *= mix(1.0, clamp(1.0 + relStr * (shade - 1.0), minShade, maxShade), fineGround.y);
     }
     // pressure levels: where the ground stands above the level there is no air at that height
     if (u_levelHeight > 0.0) {
@@ -276,7 +279,7 @@ void main() {
       float grey = dot(rgb, vec3(0.299, 0.587, 0.114));
       rgb = mix(rgb, vec3(grey * 0.6), under * 0.8);
       alpha *= 1.0 - 0.55 * under;
-    } else {
+    } else if (u_terrainMode != 5) {
       // Continuous curvy organic land-cover visual surface modulation (smooth C2 transitions without pixelation):
       if (fineMicro.x > 0.005) {
         vec3 urbanRgb = rgb * vec3(1.18, 1.08, 0.95) + vec3(0.06, 0.03, 0.0);
