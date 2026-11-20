@@ -5,29 +5,31 @@
  */
 
 /**
- * Temperature in °C, pinned to values using the user-provided 10-step palette:
- * - Emerald green to forest green for freezing & sub-zero (-100 to 0 °C): #106d3f, #24714f
- * - Sea green to muted teal for cool mountain climates (0 to 10 °C): #38755e, #4c796e
- * - Slate teal for pleasant highlands (18 °C): #607d7e
- * - Steel slate for mild coastal / morning (25 °C): #74818d
- * - Muted lavender grey for warm afternoon (30 °C): #88859d
- * - Soft purple for hot afternoon (35 °C): #9c89ad
- * - Medium orchid violet for very hot plains (40 °C): #b08dbc
- * - Light orchid lilac for extreme heatwave (45 to 50 °C): #c491cc
+ * Temperature in °C, pinned to values using the user-provided 12-swatch thermal scale:
+ * - Midnight navy to royal cobalt for freezing & sub-zero (-100 to -10 °C): #041b5f, #086ab1
+ * - Deep teal to turquoise for cool mountain climates (0 to 8 °C): #068f99, #1bb3b8
+ * - Aqua ice blue to pastel ice blue for pleasant highlands / Western Ghats (15 to 20 °C): #74c5c9, #a1c3cd
+ * - Golden yellow for mild morning / pleasant plains (26 °C): #f6c255
+ * - Amber orange for warm tropical daytime (30 °C): #f49507
+ * - Coral red for hot afternoon (35 °C): #f26875
+ * - Crimson fire red for very hot plains (40 °C): #c73d33
+ * - Deep maroon red for severe heatwave (45 °C): #8f0012
+ * - Burgundy plum for extreme heat core (50 °C): #680524
  */
 const TEMP_ANCHORS: readonly [number, string][] = [
-  [-100, '#106d3f'],
-  [-20, '#106d3f'],    // Deep emerald green (extreme cold / upper air)
-  [-10, '#24714f'],    // Forest green (-10 °C)
-  [0, '#38755e'],      // Sea green / pine (freezing point, 0 °C)
-  [10, '#4c796e'],     // Muted teal green (cool mountain tops, 10 °C)
-  [18, '#607d7e'],     // Slate teal (highland valleys, 18 °C)
-  [25, '#74818d'],     // Steel slate grey (mild, 25 °C)
-  [30, '#88859d'],     // Muted lavender grey (warm tropical day, 30 °C)
-  [35, '#9c89ad'],     // Soft purple (hot afternoon, 35 °C)
-  [40, '#b08dbc'],     // Medium orchid violet (very hot, 40 °C)
-  [45, '#c491cc'],     // Light orchid lilac (extreme heatwave, 45 °C)
-  [50, '#c491cc'],
+  [-100, '#041b5f'],
+  [-20, '#041b5f'],    // Midnight deep navy (extreme cold / upper air)
+  [-10, '#086ab1'],    // Royal cobalt blue (-10 °C)
+  [0, '#068f99'],      // Deep cyan / teal (freezing point, 0 °C)
+  [8, '#1bb3b8'],      // Turquoise cyan (cool mountain summits, 8 °C)
+  [15, '#74c5c9'],     // Aqua ice blue (Western Ghats / Nilgiris, 15 °C)
+  [20, '#a1c3cd'],     // Pastel ice blue (mild transition, 20 °C)
+  [26, '#f6c255'],     // Warm golden yellow (pleasant plains, 26 °C)
+  [30, '#f49507'],     // Amber orange (warm tropical day, 30 °C)
+  [35, '#f26875'],     // Coral red (hot afternoon, 35 °C)
+  [40, '#c73d33'],     // Crimson fire red (very hot, 40 °C)
+  [45, '#8f0012'],     // Deep maroon red (severe heatwave, 45 °C)
+  [50, '#680524'],     // Burgundy plum (extreme heat core, 50 °C)
 ];
 
 /** Windy's colour of a temperature (°C), as "#rrggbb". */

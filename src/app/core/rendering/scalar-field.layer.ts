@@ -263,12 +263,13 @@ void main() {
   t = pow(t, u_gamma);
 
   // Smooth curvy isoband contour layering across all meteorological layers:
-  // Quantizes the field into discrete solid color bands (82% solid plateau) with smooth C2 anti-aliased transitions (18%) at the borders
-  const float numBands = 18.0;
+  // Quantizes the field into high-density discrete color layers for each 0.5% difference (200 layers across the 0..1 scale)
+  // with smooth C2 anti-aliased transitions at the contour borders:
+  const float numBands = 200.0;
   float u = t * (numBands - 1.0);
   float k = floor(u);
   float f = u - k;
-  float s = smoothstep(0.82, 1.0, f);
+  float s = smoothstep(0.70, 1.0, f);
   float tBanded = clamp((k + s) / (numBands - 1.0), 0.0, 1.0);
 
   vec4 lutColor = texture(u_lut, vec2(tBanded * (255.0 / 256.0) + 0.5 / 256.0, 0.5));
