@@ -142,7 +142,13 @@ export class TerrainService {
 
   /** A 90 m, 270 m or 1.08 km tile as an image (metres in R,G; land in B). */
   async tileImage(level: TerrainLevel, name: string): Promise<ImageBitmap> {
-    const res = await this.ok(fetch(`${TERRAIN_BASE}/L${level}/${name}.webp`));
+    try {
+      const local = await fetch(`/terrain/L${level}/${name}.webp`);
+      if (local.ok) {
+        return createImageBitmap(await local.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+      }
+    } catch {}
+    const res = await this.ok(fetch(`${PAGES}/terrain/L${level}/${name}.webp`));
     return createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   }
 
@@ -227,9 +233,14 @@ export class TerrainService {
   }
 
   private async load(): Promise<TerrainData> {
-    const meta = (await (await this.ok(fetch(`${TERRAIN_BASE}/index.json`))).json()) as TerrainMeta;
+    let base = `${PAGES}/terrain`;
+    try {
+      const local = await fetch('/terrain/index.json');
+      if (local.ok) base = '/terrain';
+    } catch {}
+    const meta = (await (await this.ok(fetch(`${base}/index.json`))).json()) as TerrainMeta;
     const image = async (name: string) =>
-      createImageBitmap(await (await this.ok(fetch(`${TERRAIN_BASE}/${name}`))).blob(), {
+      createImageBitmap(await (await this.ok(fetch(`${base}/${name}`))).blob(), {
         premultiplyAlpha: 'none',
         colorSpaceConversion: 'none',
       });

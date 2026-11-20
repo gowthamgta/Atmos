@@ -1,5 +1,7 @@
 {
- "version": 1,
+ "version": 2,
+ "updated": "2026-11-20T18:59:00Z",
+ "worldcover": true,
  "domain": {
   "latMax": 20.0,
   "latMin": 2.0,
