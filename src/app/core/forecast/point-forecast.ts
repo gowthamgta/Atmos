@@ -63,6 +63,8 @@ export interface PointForecast {
   state: string | null;
   /** Ground height from the 90 m terrain (null while it is unavailable). */
   elevationM: number | null;
+  /** Land cover category from 100 m ESA WorldCover (null when unclassified or unavailable). */
+  surfaceType?: string | null;
   timeMs: number;
   rows: PointRow[];
   /** The blended raw values (°C, m/s, mm, %...) the rows were made from, for the weather picture and the big numbers of the place card. */

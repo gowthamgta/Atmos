@@ -108,16 +108,28 @@ def process_tile(lat: int, lon: int, cache: str, out: str) -> tuple[int, int, np
     levels = tile_levels(src)
     del src
     name = tile_name(lat, lon)
+
+    # Optional 10 m ESA WorldCover land cover downscaled to tile levels
+    wc_levels = {}
+    try:
+        import fetch_worldcover as W
+        for lvl in levels.keys():
+            wc_levels[lvl] = W.get_worldcover_1deg(lat, lon, per_deg=LEVELS[lvl])
+    except Exception as e:
+        print(f"  [terrain] land cover fetch note for {name}: {e}", flush=True)
+
     for lvl, (z, land) in levels.items():
         if lvl == 1 or (lvl == 0 and not in_full_res_box(lat, lon)):
             continue
         folder = os.path.join(out, f"L{lvl}")
         os.makedirs(folder, exist_ok=True)
-        Image.fromarray(encode_rgb(z, land)).save(os.path.join(folder, name + ".webp"), format="WEBP", lossless=True, method=6)
+        lc = wc_levels.get(lvl)
+        Image.fromarray(encode_rgba(z, land, lc)).save(os.path.join(folder, name + ".webp"), format="WEBP", lossless=True, method=6)
     folder = os.path.join(out, "L1")
     os.makedirs(folder, exist_ok=True)
     z1, l1 = levels[1]
-    Image.fromarray(encode_rgb(z1, l1)).save(os.path.join(folder, name + ".webp"), format="WEBP", lossless=True, method=6)
+    lc1 = wc_levels.get(1)
+    Image.fromarray(encode_rgba(z1, l1, lc1)).save(os.path.join(folder, name + ".webp"), format="WEBP", lossless=True, method=6)
     print(f"  {name}: land {float(l1.mean()):.2f}, highest {float(z1.max()):.0f} m", flush=True)
     return lat, lon, z1, l1
 
@@ -137,13 +149,21 @@ def tile_levels(src: np.ndarray) -> dict[int, tuple[np.ndarray, np.ndarray]]:
     return {0: (z0, l0), 1: (z1, l1), 2: (z2, l2)}
 
 
-def encode_rgb(metres: np.ndarray, land: np.ndarray) -> np.ndarray:
+def encode_rgba(metres: np.ndarray, land: np.ndarray, lulc: np.ndarray | None = None) -> np.ndarray:
+    """Encodes elevation (R, G), land fraction (B), and land cover class (A) into an RGBA image array."""
     q = np.clip(np.round(np.clip(metres, 0, MAX_M) / MAX_M * 65535), 0, 65535).astype(np.uint32)
-    rgb = np.zeros(metres.shape + (3,), np.uint8)
-    rgb[..., 0] = (q // 256).astype(np.uint8)
-    rgb[..., 1] = (q % 256).astype(np.uint8)
-    rgb[..., 2] = np.clip(np.round(land * 255), 0, 255).astype(np.uint8)
-    return rgb
+    rgba = np.zeros(metres.shape + (4,), np.uint8)
+    rgba[..., 0] = (q // 256).astype(np.uint8)
+    rgba[..., 1] = (q % 256).astype(np.uint8)
+    rgba[..., 2] = np.clip(np.round(land * 255), 0, 255).astype(np.uint8)
+    if lulc is not None:
+        rgba[..., 3] = lulc.astype(np.uint8)
+    else:
+        rgba[..., 3] = 0
+    return rgba
+
+
+encode_rgb = encode_rgba
 
 
 def tile_range() -> tuple[list[int], list[int]]:

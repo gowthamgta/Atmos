@@ -27,15 +27,15 @@ float decode(vec4 c, vec2 enc) {
   return enc.x + q / 65535.0 * (enc.y - enc.x);
 }
 
-// The ground from the 90 m tiles held on the GPU: (metres, land fraction, 1). Open sea is 0 m with no land and counts as
-// held. A tile that is not on the GPU, or lies outside the domain, gives (0, 0, 0): the caller then uses another ground.
-vec3 tileTerrain(float lat, float lon) {
+// The ground from the 90 m tiles held on the GPU: (metres, land fraction, lulc class, 1). Open sea is 0 m with no land and counts as
+// held. A tile that is not on the GPU, or lies outside the domain, gives (0, 0, 0, 0): the caller then uses another ground.
+vec4 tileTerrain(float lat, float lon) {
   vec2 d = vec2(lon - u_tileOrigin.x, u_tileOrigin.y - lat);
   ivec2 t = ivec2(floor(d));
-  if (t.x < 0 || t.y < 0 || t.x >= u_tileCount.x || t.y >= u_tileCount.y) return vec3(0.0);
+  if (t.x < 0 || t.y < 0 || t.x >= u_tileCount.x || t.y >= u_tileCount.y) return vec4(0.0);
   int slot = int(texelFetch(u_tileMap, t, 0).r * 255.0 + 0.5);
-  if (slot == 254) return vec3(0.0, 0.0, 1.0);   // open sea
-  if (slot > 253) return vec3(0.0);              // not on the GPU
+  if (slot == 254) return vec4(0.0, 0.0, 0.0, 1.0);   // open sea
+  if (slot > 253) return vec4(0.0);                    // not on the GPU
   vec2 g = clamp((d - vec2(t)) * u_tilePx - 0.5, vec2(0.0), vec2(u_tilePx - 1.0));
   vec2 fr = fract(g);
   ivec2 i0 = ivec2(floor(g));
@@ -47,17 +47,20 @@ vec3 tileTerrain(float lat, float lon) {
     float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
     acc += vec2(decode(c, u_demEnc), c.b) * w;
   }
-  return vec3(acc, 1.0);
+  // Land-cover class: nearest pixel value from alpha channel
+  ivec2 oNear = ivec2(fr.x > 0.5 ? 1 : 0, fr.y > 0.5 ? 1 : 0);
+  float lulc = floor(texelFetch(u_tiles, ivec3(clamp(i0 + oNear, ivec2(0), hi), slot), 0).a * 255.0 + 0.5);
+  return vec4(acc, lulc, 1.0);
 }
 
 // Slope (m/m, rising east and north) of the 90 m ground over two cells either side; zero where a neighbour is not held.
 vec2 tileSlope(float lat, float lon) {
   float s = 2.0 / u_tilePx;
-  vec3 e = tileTerrain(lat, lon + s);
-  vec3 w = tileTerrain(lat, lon - s);
-  vec3 n = tileTerrain(lat + s, lon);
-  vec3 so = tileTerrain(lat - s, lon);
-  if (min(min(e.z, w.z), min(n.z, so.z)) < 0.5) return vec2(0.0);
+  vec4 e = tileTerrain(lat, lon + s);
+  vec4 w = tileTerrain(lat, lon - s);
+  vec4 n = tileTerrain(lat + s, lon);
+  vec4 so = tileTerrain(lat - s, lon);
+  if (min(min(e.w, w.w), min(n.w, so.w)) < 0.5) return vec2(0.0);
   return vec2((e.x - w.x) / (2.0 * s * M_PER_DEG * cos(radians(lat))), (n.x - so.x) / (2.0 * s * M_PER_DEG));
 }
 `;

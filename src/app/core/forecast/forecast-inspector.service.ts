@@ -7,6 +7,7 @@ import { ForecastStateService } from './forecast-state.service';
 import { bracketSteps, sampleGrid } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { PointForecast, blendTime, buildPointRows, inspectVars, summaryVars } from './point-forecast';
+import { lulcLabel } from './terrain-correction';
 import { TerrainService } from './terrain.service';
 import { ConsensusService } from './consensus.service';
 import { HOME } from '../geo/home';
@@ -233,6 +234,7 @@ export class ForecastInspectorService {
         district: place.district,
         state: place.state,
         elevationM: ground?.fine ?? null,
+        surfaceType: ground?.lulc ? lulcLabel(ground.lulc) : null,
         timeMs: time,
         rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }, this.unitsService.units()),
         values: { ...values },

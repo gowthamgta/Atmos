@@ -207,15 +207,15 @@ void main() {
 
   // the ground under the pixel: its 90 m tile where that is on the GPU, else the model's own ground (nothing corrected there)
   vec2 model = vec2(0.0, 1.0);
-  vec2 fine = vec2(0.0, 1.0);
+  vec3 fine = vec3(0.0, 1.0, 0.0);
   vec2 fineSlope = vec2(0.0);
   bool needFineSlope = u_lite == 0 && onGround && u_relief > 0.0;
   if (onGround) {
     model = modelGroundAt(g, lat, lon);
-    vec3 tile = tileTerrain(lat, lon);
-    fine = tile.z > 0.5 ? tile.xy : model;
+    vec4 tile = tileTerrain(lat, lon);
+    fine = tile.w > 0.5 ? tile.xyz : vec3(model, 0.0);
     if (needFineSlope) {
-      fineSlope = tile.z > 0.5 ? tileSlope(lat, lon) : vec2(0.0);
+      fineSlope = tile.w > 0.5 ? tileSlope(lat, lon) : vec2(0.0);
     } else if (u_lite == 1 && u_relief > 0.0) {
       // the screen-space slope of the ground (one terrain read instead of sixteen), in metres per metre
       float mPerPx = max(length(dFdx(v_merc)) * 40075016.686 * cos(radians(lat)), 1.0);
@@ -226,19 +226,41 @@ void main() {
   if (onGround && u_terrainMode != 0) {
     float dz = clamp(fine.x - model.x, -${f(MAX_TERRAIN_DELTA_M)}, ${f(MAX_TERRAIN_DELTA_M)});
     int m = u_terrainMode;
+    int lulc = int(fine.z + 0.5);
     if (m == 1) {
+      // Temperature: lapse rate + land-cover microclimate (UHI, canopy cooling, crops)
       v -= ${f(LAPSE_RATE_C_PER_M)} * dz;
+      if (lulc == 50) {
+        v += 1.5;
+      } else if (lulc == 10 || lulc == 95) {
+        v -= 1.8;
+      } else if (lulc == 40 || lulc == 90) {
+        v -= 0.8;
+      } else if (lulc == 80) {
+        v -= 1.0;
+      }
     } else if (m == 2) {
-      v = min(100.0, v * exp(${f(RH_LOG_PER_M)} * dz));
+      // Relative humidity: elevation saturation + transpiration boost
+      float rhMult = 1.0;
+      if (lulc == 10 || lulc == 95) rhMult = 1.08;
+      else if (lulc == 40 || lulc == 90) rhMult = 1.05;
+      else if (lulc == 50) rhMult = 0.92;
+      v = min(100.0, v * exp(${f(RH_LOG_PER_M)} * dz) * rhMult);
     } else if (m == 3) {
       v -= ${f(DEWPOINT_LAPSE_C_PER_M)} * dz;
     } else if (m == 7) {
       v *= exp(-dz / ${f(VAPOUR_SCALE_HEIGHT_M)});
     } else if (m == 4) {
+      // Wind: TPI exposure + coastal gain + aerodynamic roughness length z0
       float tpi = fine.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x;
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fine.y);
-      v *= clamp(exposure * coast, ${f(WIND_FACTOR_MIN)}, ${f(WIND_FACTOR_MAX)});
+      float rough = 1.0;
+      if (lulc == 10 || lulc == 95) rough = 0.65;
+      else if (lulc == 50) rough = 0.70;
+      else if (lulc == 40) rough = 1.15;
+      else if (lulc == 80) rough = 1.30;
+      v *= clamp(exposure * coast * rough, 0.45, 1.75);
     }
   }
 

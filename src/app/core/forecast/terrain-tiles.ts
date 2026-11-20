@@ -177,14 +177,17 @@ export class TileSlots {
   }
 }
 
-/** Metres and land fraction from a tile pixel's bytes (R, G: 16-bit metres over 0..max; B: land fraction). */
-export function decodeTilePixel(r: number, g: number, b: number, max: number): { z: number; land: number } {
-  return { z: ((r * 256 + g) / 65535) * max, land: b / 255 };
+/** Metres and land fraction from a tile pixel's bytes (R, G: 16-bit metres over 0..max; B: land fraction; A: land cover class). */
+export function decodeTilePixel(r: number, g: number, b: number, max: number, a?: number): { z: number; land: number; lulc?: number } {
+  return a !== undefined && a > 0
+    ? { z: ((r * 256 + g) / 65535) * max, land: b / 255, lulc: Math.round(a) }
+    : { z: ((r * 256 + g) / 65535) * max, land: b / 255 };
 }
 
 /**
  * Bilinear metres and land fraction inside one tile, from its RGBA bytes (n x n pixels, row 0 north). The point is given
  * in degrees inside the tile: `dLat` and `dLon` are its distance from the tile's north and west edges.
+ * `lulc` is the categorical ESA WorldCover land-cover class at the nearest cell (e.g. 10: tree, 40: cropland, 50: built-up).
  */
 export function sampleTile(
   rgba: Uint8ClampedArray,
@@ -192,7 +195,7 @@ export function sampleTile(
   dLat: number,
   dLon: number,
   max: number,
-): { z: number; land: number } {
+): { z: number; land: number; lulc: number } {
   const x = Math.min(Math.max(dLon * n - 0.5, 0), n - 1);
   const y = Math.min(Math.max(dLat * n - 0.5, 0), n - 1);
   const x0 = Math.min(Math.floor(x), n - 2);
@@ -201,20 +204,23 @@ export function sampleTile(
   const fy = y - y0;
   let z = 0;
   let land = 0;
+  const nearX = Math.min(n - 1, Math.max(0, Math.round(x)));
+  const nearY = Math.min(n - 1, Math.max(0, Math.round(y)));
+  const lulc = rgba[(nearY * n + nearX) * 4 + 3] ?? 0;
   for (let k = 0; k < 4; k++) {
     const ox = k & 1;
     const oy = k >> 1;
     const i = ((y0 + oy) * n + (x0 + ox)) * 4;
     const w = (ox ? fx : 1 - fx) * (oy ? fy : 1 - fy);
-    const d = decodeTilePixel(rgba[i], rgba[i + 1], rgba[i + 2], max);
+    const d = decodeTilePixel(rgba[i], rgba[i + 1], rgba[i + 2], max, rgba[i + 3]);
     z += d.z * w;
     land += d.land * w;
   }
-  return { z, land };
+  return { z, land, lulc };
 }
 
 /**
- * A tile at another size, from its encoded pixels (R,G: 16-bit metres over 0..max; B: land fraction). Bilinear on the decoded
+ * A tile at another size, from its encoded pixels (R,G: 16-bit metres over 0..max; B: land fraction; A: land cover class). Bilinear on the decoded
  * metres and land, then encoded again, so heights are never blended byte by byte (which would make false steps at edges).
  * Used for the 90 m detail where a tile only has its 270 m file: the same ground, drawn at the finer size.
  */
@@ -244,12 +250,15 @@ export function resampleTileRgb(src: Uint8ClampedArray, n: number, m: number, ma
       const z = ((src[a] * 256 + src[a + 1]) * w00 + (src[b] * 256 + src[b + 1]) * w10 +
         (src[c] * 256 + src[c + 1]) * w01 + (src[d] * 256 + src[d + 1]) * w11) * k16;
       const land = src[a + 2] * w00 + src[b + 2] * w10 + src[c + 2] * w01 + src[d + 2] * w11;
+      const lulc = w00 >= w10 && w00 >= w01 && w00 >= w11 ? src[a + 3] :
+                   w10 >= w01 && w10 >= w11 ? src[b + 3] :
+                   w01 >= w11 ? src[c + 3] : src[d + 3];
       const q = Math.min(65535, Math.max(0, Math.round(z / max * 65535)));
       const o = (y * m + x) * 4;
       out[o] = q >> 8;
       out[o + 1] = q & 255;
       out[o + 2] = Math.round(land);
-      out[o + 3] = 255;
+      out[o + 3] = lulc;
     }
   }
   return out;

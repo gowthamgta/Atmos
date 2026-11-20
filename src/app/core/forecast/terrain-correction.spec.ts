@@ -128,3 +128,31 @@ describe('applyTerrain', () => {
     expect(applyTerrain('solar', 600, noon)).toBeGreaterThan(600);
   });
 });
+
+describe('land cover microclimate adjustments', () => {
+  it('slows wind in tree canopies and urban buildings, speeds it across open cropland and water', () => {
+    // 0: model neutral
+    expect(windFactor(0, 1, 1, 0)).toBe(1);
+    // 10: tree cover / forest canopy friction
+    expect(windFactor(0, 1, 1, 10)).toBeLessThan(0.70);
+    // 50: built-up / urban building drag
+    expect(windFactor(0, 1, 1, 50)).toBeLessThan(0.75);
+    // 40: cropland open boundary layer
+    expect(windFactor(0, 1, 1, 40)).toBeGreaterThan(1.10);
+    // 80: water body smooth surface
+    expect(windFactor(0, 1, 1, 80)).toBeGreaterThan(1.25);
+  });
+
+  it('adjusts temperature for urban heat island and canopy evaporative shade', () => {
+    // flat elevation (dz = 0)
+    expect(applyTerrain('temperature', 30, { terrain: { fine: 500, model: 500, dz: 0, tpi: 0, landFine: 1, landModel: 1, slope: [0, 0], modelSlope: [0, 0], fineSlope: [0, 0], lulc: 50 } })).toBe(31.2); // Urban Heat Island (+1.2°C daytime)
+    expect(applyTerrain('temperature', 30, { terrain: { fine: 500, model: 500, dz: 0, tpi: 0, landFine: 1, landModel: 1, slope: [0, 0], modelSlope: [0, 0], fineSlope: [0, 0], lulc: 10 } })).toBe(28.2); // Canopy evaporative cooling (-1.8°C daytime)
+    expect(applyTerrain('temperature', 30, { terrain: { fine: 500, model: 500, dz: 0, tpi: 0, landFine: 1, landModel: 1, slope: [0, 0], modelSlope: [0, 0], fineSlope: [0, 0], lulc: 40 } })).toBe(29.2); // Cropland transpiration cooling (-0.8°C)
+  });
+
+  it('boosts humidity in vegetated areas and lowers it over impervious concrete', () => {
+    expect(adjustHumidity(60, 0, 10)).toBeCloseTo(60 * 1.08, 1); // +8% under forest canopy
+    expect(adjustHumidity(60, 0, 40)).toBeCloseTo(60 * 1.05, 1); // +5% over crops
+    expect(adjustHumidity(60, 0, 50)).toBeCloseTo(60 * 0.92, 1); // -8% over urban concrete
+  });
+});

@@ -193,6 +193,7 @@ export class TerrainService {
       slope: slopeOf(t.smooth, smoothGrid, lat, lon, min, max),
       modelSlope: slopeOf(model, grid, lat, lon, min, max),
       fineSlope: [(zE - zW) / dx, (zN - zS) / dy],
+      lulc: fine.lulc,
     };
   }
 

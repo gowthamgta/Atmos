@@ -87,7 +87,7 @@ export function firstNumber(text: string | undefined): number | null {
                 }
               </div>
             }
-            <div class="when">{{ timeLabel() }} · {{ sel.lat.toFixed(2) }}°N, {{ sel.lon.toFixed(2) }}°E@if (p.elevationM !== null) { · {{ p.elevationM.toFixed(0) }} m }</div>
+            <div class="when">{{ timeLabel() }} · {{ sel.lat.toFixed(2) }}°N, {{ sel.lon.toFixed(2) }}°E@if (p.elevationM !== null) { · {{ p.elevationM.toFixed(0) }} m }@if (p.surfaceType) { · {{ p.surfaceType }} }</div>
 
             @if (outlook.days().length) {
               <ul class="days" aria-label="Next days">

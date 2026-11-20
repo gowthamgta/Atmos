@@ -49,6 +49,86 @@ export const LOW_CLOUD_OROGRAPHIC_POWER = 0.6;
 export const DIFFUSE_FRACTION = 0.3;
 export const SOLAR_FACTOR_MAX = 2.2;
 
+/** ESA WorldCover 10 m / 90 m Land Cover Classes */
+export const LULC_TREE = 10;
+export const LULC_SHRUB = 20;
+export const LULC_GRASS = 30;
+export const LULC_CROPLAND = 40;
+export const LULC_BUILTUP = 50;
+export const LULC_BARE = 60;
+export const LULC_SNOW = 70;
+export const LULC_WATER = 80;
+export const LULC_WETLAND = 90;
+export const LULC_MANGROVE = 95;
+export const LULC_MOSS = 100;
+
+/** Aerodynamic surface roughness length z0 (meters) per land cover class. */
+export function roughnessLength(lulc: number): number {
+  switch (lulc) {
+    case LULC_TREE: return 1.0;      // Forest canopy
+    case LULC_MANGROVE: return 0.8;
+    case LULC_BUILTUP: return 1.5;   // Towns, buildings, settlements
+    case LULC_SHRUB: return 0.10;
+    case LULC_CROPLAND: return 0.05;  // Farmlands, crops, paddy
+    case LULC_WETLAND: return 0.05;
+    case LULC_GRASS: return 0.03;
+    case LULC_BARE: return 0.01;
+    case LULC_WATER: return 0.0005;  // Open water
+    default: return 0.10;            // Model regional background (~10 cm)
+  }
+}
+
+/** Wind factor multiplier from aerodynamic surface roughness (boundary-layer log profile at 10 m). */
+export function roughnessWindFactor(lulc: number): number {
+  if (!lulc) return 1.0;
+  const z0 = roughnessLength(lulc);
+  const z0Model = 0.10;
+  const factor = Math.log(10 / z0) / Math.log(10 / z0Model);
+  return clamp(factor, 0.55, 1.35);
+}
+
+/**
+ * Microclimate temperature anomaly (°C) from land use / land cover:
+ * - Urban Heat Island (UHI): +1.2°C daytime, up to +2.5°C at night/dusk
+ * - Tree cover / forest canopy: -1.8°C evaporative shade cooling in sun, +0.5°C night canopy trap
+ * - Cropland / farmland: -0.8°C daytime transpiration cooling
+ * - Inland water: -1.0°C daytime cooling, +1.0°C nighttime warmth
+ */
+export function lulcTemperatureAnomaly(lulc: number, sunUp = true): number {
+  if (!lulc) return 0;
+  switch (lulc) {
+    case LULC_BUILTUP:
+      return sunUp ? 1.2 : 2.5;
+    case LULC_TREE:
+    case LULC_MANGROVE:
+      return sunUp ? -1.8 : 0.5;
+    case LULC_CROPLAND:
+    case LULC_WETLAND:
+      return sunUp ? -0.8 : 0.0;
+    case LULC_WATER:
+      return sunUp ? -1.0 : 1.0;
+    default:
+      return 0.0;
+  }
+}
+
+/** Relative humidity multiplier from land cover transpiration vs urban runoff. */
+export function lulcHumidityFactor(lulc: number): number {
+  if (!lulc) return 1.0;
+  switch (lulc) {
+    case LULC_TREE:
+    case LULC_MANGROVE:
+      return 1.08;
+    case LULC_CROPLAND:
+    case LULC_WETLAND:
+      return 1.05;
+    case LULC_BUILTUP:
+      return 0.92;
+    default:
+      return 1.0;
+  }
+}
+
 export type TerrainMode = 'temperature' | 'humidity' | 'dewpoint' | 'wind' | 'rain' | 'lowcloud' | 'column' | 'solar';
 
 export function terrainDelta(fineMeters: number, modelMeters: number): number {
@@ -57,9 +137,9 @@ export function terrainDelta(fineMeters: number, modelMeters: number): number {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
-/** Temperature (or feels-like) at height dz above the model's own ground. */
-export function adjustTemperature(tempC: number, dz: number): number {
-  return tempC - LAPSE_RATE_C_PER_M * dz;
+/** Temperature (or feels-like) at height dz above the model's own ground, plus land-cover microclimate. */
+export function adjustTemperature(tempC: number, dz: number, lulc = 0, sunUp = true): number {
+  return tempC - LAPSE_RATE_C_PER_M * dz + lulcTemperatureAnomaly(lulc, sunUp);
 }
 
 /** Dew point at height dz above the model's own ground. */
@@ -68,8 +148,8 @@ export function adjustDewpoint(dewC: number, dz: number): number {
 }
 
 /** Relative humidity (%) at height dz above the model's own ground, capped at saturation. */
-export function adjustHumidity(rhPercent: number, dz: number): number {
-  return Math.min(100, rhPercent * Math.exp(RH_LOG_PER_M * dz));
+export function adjustHumidity(rhPercent: number, dz: number, lulc = 0): number {
+  return Math.min(100, rhPercent * Math.exp(RH_LOG_PER_M * dz) * lulcHumidityFactor(lulc));
 }
 
 /** Total moisture column over ground dz higher than the model's (less air above, so less water). */
@@ -78,13 +158,17 @@ export function columnFactor(dz: number): number {
 }
 
 /**
- * Wind multiplier at a pixel: exposure (`tpi`, metres above the smoothed terrain around it) and the coast
- * (`landFine` the pixel's land fraction, `landModel` the model cell's).
+ * Wind multiplier at a pixel: exposure (`tpi`, metres above the smoothed terrain around it), the coast
+ * (`landFine` the pixel's land fraction, `landModel` the model cell's), and surface roughness from land cover.
  */
-export function windFactor(tpi: number, landFine: number, landModel: number): number {
+export function windFactor(tpi: number, landFine: number, landModel: number, lulc = 0): number {
   const exposure = clamp(1 + tpi * EXPOSURE_PER_M, EXPOSURE_MIN, EXPOSURE_MAX);
   const coast = 1 + SEA_WIND_GAIN * (landModel - landFine);
-  return clamp(exposure * coast, WIND_FACTOR_MIN, WIND_FACTOR_MAX);
+  if (!lulc) {
+    return clamp(exposure * coast, WIND_FACTOR_MIN, WIND_FACTOR_MAX);
+  }
+  const rough = roughnessWindFactor(lulc);
+  return clamp(exposure * coast * rough, 0.45, 1.75);
 }
 
 /**
@@ -169,6 +253,8 @@ export interface PointTerrain {
   modelSlope: [number, number];
   /** Slope of the 90 m terrain, for sunshine on hillsides. */
   fineSlope: [number, number];
+  /** ESA WorldCover land-cover class (10: Tree, 40: Cropland, 50: Built-up, 80: Water, etc.). 0: none/sea. */
+  lulc?: number;
 }
 
 /** Optional context for the corrections that depend on more than height. */
@@ -181,15 +267,36 @@ export interface TerrainContext {
   lon?: number;
 }
 
+export function lulcLabel(lulc: number): string | null {
+  switch (lulc) {
+    case LULC_TREE: return 'Tree canopy';
+    case LULC_SHRUB: return 'Shrubland';
+    case LULC_GRASS: return 'Grassland';
+    case LULC_CROPLAND: return 'Cropland';
+    case LULC_BUILTUP: return 'Urban built-up';
+    case LULC_BARE: return 'Bare ground';
+    case LULC_SNOW: return 'Snow / ice';
+    case LULC_WATER: return 'Water body';
+    case LULC_WETLAND: return 'Wetland';
+    case LULC_MANGROVE: return 'Mangrove';
+    default: return null;
+  }
+}
+
 /** Apply a layer's terrain correction to a model value at one point (the click card; the map does the same on the GPU). */
 export function applyTerrain(mode: TerrainMode | null, value: number, ctx: TerrainContext | number | null): number {
   if (mode === null || ctx === null || Number.isNaN(value)) return value;
   const dz = typeof ctx === 'number' ? ctx : ctx.terrain.dz;
+  const lulc = typeof ctx === 'number' ? 0 : ctx.terrain.lulc ?? 0;
   switch (mode) {
-    case 'temperature':
-      return adjustTemperature(value, dz);
+    case 'temperature': {
+      const sunUp = ctx !== null && typeof ctx !== 'number' && ctx.timeMs !== undefined && ctx.lat !== undefined && ctx.lon !== undefined
+        ? sunVector(ctx.timeMs, ctx.lat, ctx.lon)[2] > 0.05
+        : true;
+      return adjustTemperature(value, dz, lulc, sunUp);
+    }
     case 'humidity':
-      return adjustHumidity(value, dz);
+      return adjustHumidity(value, dz, lulc);
     case 'dewpoint':
       return adjustDewpoint(value, dz);
     case 'column':
@@ -199,9 +306,9 @@ export function applyTerrain(mode: TerrainMode | null, value: number, ctx: Terra
   const t = ctx.terrain;
   switch (mode) {
     case 'wind':
-      return value * windFactor(t.tpi, t.landFine, t.landModel);
+      return value * windFactor(t.tpi, t.landFine, t.landModel, lulc);
     case 'rain':
-    case 'lowcloud': {
+      case 'lowcloud': {
       if (!ctx.liftWind) return value;
       const [u, v] = ctx.liftWind;
       const f = orographicFactor(lift(u, v, t.slope[0], t.slope[1]), lift(u, v, t.modelSlope[0], t.modelSlope[1]));
