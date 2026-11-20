@@ -76,6 +76,8 @@ ai_model/weights/*.pt
 /e2e/perf-report.json
 
 /public/data/radar/
+/cache/
+/pipeline/cache/
 
 # Cloudflare wrangler (local pages dev)
 /.wrangler
