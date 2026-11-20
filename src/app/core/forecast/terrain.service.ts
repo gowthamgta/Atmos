@@ -5,8 +5,10 @@ import { TerrainLevel, sampleTile, tileNameAt } from './terrain-tiles';
 import { PAGES } from './forecast-models';
 import { groundAtFieldNodes, sameLattice } from './terrain-ground';
 
-/** The terrain files, published with the forecast data on GitHub Pages (written by pipeline/build_terrain.py). */
-export const TERRAIN_BASE = `${PAGES}/terrain`;
+/** The terrain files: local /terrain proxy in dev/preview, published on GitHub Pages in production. */
+export const TERRAIN_BASE = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? '/terrain'
+  : `${PAGES}/terrain`;
 
 /** Contents of terrain/index.json, written by pipeline/build_terrain.py. */
 export interface TerrainMeta {

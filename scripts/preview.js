@@ -67,6 +67,39 @@ const server = http.createServer((req, res) => {
     return proxyReq.end();
   }
 
+  // 1b. Terrain tiles with local override and remote fallback
+  if (pathname.startsWith('/terrain/')) {
+    const localRel = pathname.replace(/^\/terrain\//, '');
+    const localDist = path.join(DIST_DIR, 'terrain', localRel);
+    const localPipeline = path.resolve(__dirname, '../pipeline/data/terrain', localRel);
+    const targetFile = fs.existsSync(localDist) ? localDist : (fs.existsSync(localPipeline) ? localPipeline : null);
+    if (targetFile) {
+      const ext = path.extname(targetFile).toLowerCase();
+      res.writeHead(200, {
+        'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600'
+      });
+      return fs.createReadStream(targetFile).pipe(res);
+    }
+    const proxyReq = https.request(
+      `https://gowthamgta.github.io/Atmos${pathname}`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } },
+      (proxyRes) => {
+        res.writeHead(proxyRes.statusCode, {
+          'Content-Type': proxyRes.headers['content-type'] || 'image/webp',
+          'Access-Control-Allow-Origin': '*'
+        });
+        proxyRes.pipe(res);
+      }
+    );
+    proxyReq.on('error', () => {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+    });
+    return proxyReq.end();
+  }
+
   // 2. Our Netlify functions (lightning: ILDN, IMD), run here as Netlify runs them
   const fn = /^\/(?:api|\.netlify\/functions)\/([a-z-]+)$/.exec(pathname); // /api/ as on Cloudflare Pages
   if (fn && ['ildn', 'imd-lightning'].includes(fn[1])) {
