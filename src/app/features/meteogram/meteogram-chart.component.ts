@@ -236,7 +236,7 @@ const tickCount = (height: number): number => Math.max(2, Math.floor(height / 30
     .now-line { stroke: var(--text-secondary); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.75; }
     .map-line { stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.7)); }
     .map-flag { fill: var(--accent); filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.7)); }
-    .cursor-line { stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.5; stroke-dasharray: 3 3; }
+    .cursor-line { stroke: var(--text-primary); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.85; }
     .dot { stroke: #fff; stroke-width: 2; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
     .hit { fill: transparent; cursor: crosshair; }
 

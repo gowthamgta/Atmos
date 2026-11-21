@@ -103,8 +103,18 @@ function weightsOf(group: Record<string, number> | undefined, has: (id: string) 
 export function blendSeries(series: PointSeries, corr: CorrectionsFile): { blend: ModelSeries; rainChance: Series } | null {
   const tempW = corr.blend?.temp;
   const rainW = corr.blend?.rain;
-  // If no blend weights in corrections, default to equal weights among models
-  const defaultW: Record<string, number> = { ecmwf_ifs: 0.38, ukmo: 0.32, icon: 0.12, gfs: 0.10, aifs: 0.08 };
+  // If no blend weights in corrections, default to balanced weights among operational models
+  const defaultW: Record<string, number> = {
+    ecmwf_ifs: 0.30,
+    ukmo: 0.20,
+    gfs: 0.14,
+    icon: 0.10,
+    gem: 0.08,
+    jma: 0.07,
+    aifs: 0.05,
+    arpege: 0.03,
+    cma: 0.03,
+  };
   const effectiveTempW = (tempW && Object.keys(tempW).length > 0) ? tempW : defaultW;
   const effectiveRainW = (rainW && Object.keys(rainW).length > 0) ? rainW : defaultW;
 

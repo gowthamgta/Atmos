@@ -32,7 +32,7 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
         @for (r of rows(); track r.def.id) {
           <tr [class.on-map]="r.def.id === mapModelId()" [class.off]="r.hidden" [style.--model-color]="r.color" (click)="choose(r.def.id)" [title]="r.mapModel ? 'Show ' + r.def.label + ' on the map' : r.def.label + ': compared here only, not a map layer'">
             <th scope="row" class="model">
-              <button type="button" class="pick" [disabled]="!r.mapModel" (click)="$event.stopPropagation(); choose(r.def.id)" [attr.aria-label]="r.mapModel ? 'Show ' + r.def.label + ' on the map' : r.def.label" [attr.aria-pressed]="r.def.id === mapModelId()">
+              <button type="button" class="pick" [class.unmapped]="!r.mapModel" (click)="$event.stopPropagation(); choose(r.def.id)" [attr.aria-label]="r.mapModel ? 'Show ' + r.def.label + ' on the map' : r.def.label" [attr.aria-pressed]="r.def.id === mapModelId()">
                 <span class="model-dot" [class.ai]="r.def.ai" [style.--model-color]="r.color"></span>
                 <span class="name">{{ r.def.short }}</span>
                 @if (r.def.id === mapModelId()) { <span class="tag">on map</span> }
@@ -58,24 +58,25 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
     </table>
   `,
   styles: [`
-    :host { display: block; min-width: 0; overflow-x: auto; background: rgba(0, 0, 0, 0.22); border-radius: var(--radius-m); border: 1px solid rgba(255, 255, 255, 0.08); padding: 4px 8px; }
-    .table { width: 100%; border-collapse: collapse; font-size: var(--fs-m); font-variant-numeric: tabular-nums; }
-    th, td { padding: 0 var(--sp-3); height: 34px; text-align: right; white-space: nowrap; }
-    thead th { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    :host { display: block; min-width: 0; overflow-x: auto; background: var(--surface-3); border-radius: var(--radius-m); border: 1px solid var(--line); padding: 4px 8px; }
+    .table { width: 100%; border-collapse: collapse; font-size: var(--fs-m); font-variant-numeric: tabular-nums; color: var(--text-primary); }
+    th, td { padding: 0 var(--sp-3); height: 34px; text-align: right; white-space: nowrap; color: var(--text-primary); }
+    thead th { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); border-bottom: 1px solid var(--line); }
     .model { text-align: left; padding-left: 8px; }
     tbody th.model { font-weight: var(--fw-strong); }
-    .pick { display: flex; align-items: center; gap: var(--sp-2); height: 34px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-    tbody tr { cursor: pointer; border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background var(--t-fast); }
-    tbody tr:hover { background: rgba(255, 255, 255, 0.06); }
+    .pick { display: flex; align-items: center; gap: var(--sp-2); height: 34px; padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; }
+    .pick.unmapped { cursor: default; }
+    tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); transition: background var(--t-fast); }
+    tbody tr:hover { background: var(--surface-4); }
     /* the model on the map is marked in its own colour (the colour of a model is the colour of choosing it) */
-    tbody tr.on-map { background: color-mix(in srgb, var(--model-color) 22%, transparent); box-shadow: inset 4px 0 0 var(--model-color); }
+    tbody tr.on-map { background: color-mix(in srgb, var(--model-color) 20%, transparent); box-shadow: inset 4px 0 0 var(--model-color); }
     tbody tr.off { opacity: 0.4; }
-    .name { color: var(--text-primary); font-weight: var(--fw-medium); }
-    .tag { padding: 2px 7px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); color: var(--text-primary); font-size: var(--fs-xs); font-weight: var(--fw-medium); }
+    .name { color: var(--text-primary); font-weight: var(--fw-strong); }
+    .tag { padding: 2px 7px; border-radius: 8px; background: var(--surface-4); color: var(--text-primary); font-size: var(--fs-xs); font-weight: var(--fw-medium); }
     .muted { color: var(--text-muted); }
     td { color: var(--text-primary); }
-    tfoot th, tfoot td { color: var(--text-secondary); font-weight: var(--fw-strong); border-top: 1px solid rgba(255, 255, 255, 0.15); }
-    tfoot th.model { font-size: var(--fs-s); }
+    tfoot th, tfoot td { color: var(--text-primary); font-weight: var(--fw-strong); border-top: 1px solid var(--line-strong); }
+    tfoot th.model { font-size: var(--fs-s); color: var(--text-secondary); }
     /* a narrower sheet: tighter columns, and the row's colour says which model is on the map */
     @media (max-width: 1100px) {
       .table { font-size: var(--fs-s); }
@@ -120,7 +121,7 @@ export class CompareTableComponent {
         covered: r.covered,
         run: init !== null ? runHourLabel(init) : dash,
         runTitle: init !== null ? `Run began ${istStamp(init)} (${utcStamp(init)})` : 'Run not known',
-        hour: hours !== null ? (r.covered ? leadLabel(hours) : 'ended') : dash,
+        hour: hours !== null ? (r.covered ? leadLabel(hours) : 'ended') : (r.covered ? dash : 'ended'),
         temp: r.temp !== null ? formatTemp(r.temp, u, 1) : dash,
         rain24h: r.rain24h !== null ? formatRain(r.rain24h, u) : dash,
         wind: r.wind !== null ? `${formatWind(r.wind, u)}${compass}` : dash,

@@ -70,6 +70,10 @@ export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] =
   { id: 'gfs', label: 'NOAA GFS', short: 'GFS', ai: false, apiId: 'gfs_global' },
   { id: 'icon', label: 'DWD ICON', short: 'ICON', ai: false, apiId: 'icon_global' },
   { id: 'ukmo', label: 'UK Met Office', short: 'UKMO', ai: false, apiId: 'ukmo_global_deterministic_10km' },
+  { id: 'gem', label: 'GEM Canada', short: 'GEM', ai: false, apiId: 'gem_global' },
+  { id: 'jma', label: 'JMA Japan', short: 'JMA', ai: false, apiId: 'jma_gsm' },
+  { id: 'arpege', label: 'Météo-France', short: 'ARPEGE', ai: false, apiId: 'meteofrance_arpege_world' },
+  { id: 'cma', label: 'CMA China', short: 'CMA', ai: false, apiId: 'cma_grapes_global' },
 ];
 
 /** The models of the meteogram's comparison: the map's models, then the others. */

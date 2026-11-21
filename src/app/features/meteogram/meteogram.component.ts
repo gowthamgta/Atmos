@@ -141,12 +141,12 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
       /* it stops short of the right-hand column (menu, layers, zoom, model), which keeps its place and its height */
       width: min(calc(100vw - 2 * var(--gutter) - 240px), 1080px);
       max-height: min(72dvh, 620px); overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-3);
-      background: rgba(22, 27, 36, 0.94);
+      background: var(--surface-1);
       backdrop-filter: blur(28px) saturate(180%);
       -webkit-backdrop-filter: blur(28px) saturate(180%);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: 1px solid var(--line);
       border-radius: var(--radius-l);
-      box-shadow: 0 24px 54px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.2);
       color: var(--text-primary); animation: sheet-in var(--t-med) both;
     }
     /* name | the two choices | tools, in one row when there is room; the choices drop under the name when there is not */
@@ -154,27 +154,27 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
     .where { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; flex: 1 1 220px; flex-wrap: wrap; }
     .tools { display: flex; gap: var(--sp-1); margin-left: auto; }
     .short { display: none; }
-    .place { font-size: var(--fs-xl); font-weight: var(--fw-strong); line-height: var(--lh-tight); }
+    .place { font-size: var(--fs-xl); font-weight: var(--fw-strong); line-height: var(--lh-tight); color: var(--text-primary); }
     .meta { font-size: var(--fs-s); color: var(--text-muted); }
     .controls { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; flex: 0 1 auto; }
 
     .readout { display: grid; grid-template-columns: minmax(170px, 1.4fr) repeat(4, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-3); padding: 0 0 var(--sp-2); }
     .cell {
       display: flex; flex-direction: column; gap: 3px; min-width: 0;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.07);
+      background: var(--surface-3);
+      border: 1px solid var(--line);
       border-radius: var(--radius-m);
       padding: 8px 12px;
       transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
     }
     .cell:hover {
-      background: rgba(255, 255, 255, 0.07);
-      border-color: rgba(255, 255, 255, 0.14);
+      background: var(--surface-4);
+      border-color: var(--line-strong);
       transform: translateY(-1px);
     }
     .cell.when {
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
-      border-color: rgba(255, 255, 255, 0.14);
+      background: var(--surface-4);
+      border-color: var(--line-strong);
     }
     .line { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
     .label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); white-space: nowrap; }
@@ -190,12 +190,12 @@ const COMPARE_TABS: readonly { id: CompareVar; label: string }[] = [
     .legend { display: flex; gap: var(--sp-1); flex-wrap: wrap; }
     .key {
       display: inline-flex; align-items: center; gap: 7px; min-height: calc(var(--hit) - 8px); padding: 0 var(--sp-3);
-      border: 1px solid rgba(255, 255, 255, 0.12); border-radius: calc(var(--hit) / 2);
-      background: rgba(255, 255, 255, 0.04); color: var(--text-primary);
+      border: 1px solid var(--line); border-radius: calc(var(--hit) / 2);
+      background: var(--surface-3); color: var(--text-primary);
       font-size: var(--fs-m); font-weight: var(--fw-medium); cursor: pointer;
       transition: background 0.15s ease, border-color 0.15s ease;
     }
-    .key:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); }
+    .key:hover { background: var(--surface-4); border-color: var(--line-strong); }
     .key.off { color: var(--text-muted); text-decoration: line-through; }
     .key.off .model-dot { opacity: 0.35; }
     .ai-tag { padding: 0 5px; border-radius: 6px; background: var(--surface-4); font-size: var(--fs-xs); color: var(--text-secondary); }

@@ -57,6 +57,10 @@
   --m-gfs: #b794ff;
   --m-blend: #ffb547;
   --m-icon: #ff8fb8;
+  --m-gem: #38bdf8;
+  --m-jma: #f43f5e;
+  --m-arpege: #c084fc;
+  --m-cma: #fbbf24;
   --model: var(--m-blend);
 
   /* Meteogram series, when a single model is shown */
@@ -166,6 +170,10 @@
   --m-gfs: #6c3fd0;
   --m-blend: #a35f00;
   --m-icon: #c2306f;
+  --m-gem: #0284c7;
+  --m-jma: #c0272d;
+  --m-arpege: #7c3aed;
+  --m-cma: #b45309;
   --s-temp: #d9480f;
   --s-feels: rgba(217, 72, 15, 0.55);
   --s-rain: #1c7ed6;
