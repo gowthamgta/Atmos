@@ -65,8 +65,12 @@ export interface PointModelDef {
   ai: boolean;
 }
 
-/** Models compared in the meteogram that are not on the map, with Open-Meteo's names (none at the moment: DWD ICON is on the map now). */
-export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [];
+/** Models compared in the meteogram alongside the map models, with Open-Meteo's API names. */
+export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [
+  { id: 'gfs', label: 'NOAA GFS', short: 'GFS', ai: false, apiId: 'gfs_global' },
+  { id: 'icon', label: 'DWD ICON', short: 'ICON', ai: false, apiId: 'icon_global' },
+  { id: 'ukmo', label: 'UK Met Office', short: 'UKMO', ai: false, apiId: 'ukmo_global_deterministic_10km' },
+];
 
 /** The models of the meteogram's comparison: the map's models, then the others. */
 export const POINT_MODELS: readonly PointModelDef[] = [...FORECAST_MODELS, ...POINT_ONLY_MODELS];

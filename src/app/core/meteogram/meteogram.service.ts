@@ -2,6 +2,7 @@ import { Injectable, computed, effect, inject, signal, untracked } from '@angula
 import { ForecastInspectorService } from '../forecast/forecast-inspector.service';
 import { ForecastStateService } from '../forecast/forecast-state.service';
 import { PointSeriesService } from './point-series.service';
+import { MapHostService } from '../ui/map-host.service';
 
 export type MeteogramView = 'model' | 'compare';
 /** What the model comparison draws: temperature, the rain added up since the window began, the wind speed, or the pressure. */
@@ -50,6 +51,7 @@ export class MeteogramService {
   private readonly inspector = inject(ForecastInspectorService);
   private readonly state = inject(ForecastStateService);
   private readonly series = inject(PointSeriesService);
+  private readonly mapHost = inject(MapHostService);
 
   private readonly saved = load();
   readonly wish = signal<Wish>(this.saved.wish);
@@ -81,8 +83,23 @@ export class MeteogramService {
     });
   }
 
-  open(): void {
+  open(lat?: number, lon?: number): void {
     this.wish.set('open');
+    if (lat !== undefined && lon !== undefined) {
+      this.inspector.select(lat, lon);
+      void this.series.load(lat, lon);
+    } else {
+      const sel = this.inspector.selected();
+      if (sel) {
+        void this.series.load(sel.lat, sel.lon);
+      } else {
+        const v = this.mapHost.view();
+        if (v) {
+          this.inspector.select(v.lat, v.lon);
+          void this.series.load(v.lat, v.lon);
+        }
+      }
+    }
   }
 
   /** Puts the sheet away; it stays away until asked for again. */
@@ -98,7 +115,12 @@ export class MeteogramService {
 
   /** A click on the map chose a place: the first time, the meteogram opens with it. Once the visitor has chosen either way, it is left as chosen. */
   noteMapClick(): void {
-    if (this.wish() === 'unset' && roomForSheet()) this.wish.set('open');
+    if (this.wish() === 'unset' && roomForSheet()) {
+      this.open();
+    } else if (this.wish() === 'open') {
+      const sel = this.inspector.selected();
+      if (sel) void this.series.load(sel.lat, sel.lon);
+    }
   }
 
   toggleModel(id: string): void {

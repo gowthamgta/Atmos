@@ -369,7 +369,7 @@ export class MapComponent implements OnInit, OnDestroy {
               'https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}'
             ],
             tileSize: 256,
-            maxzoom: 16
+            maxzoom: 14
           }
         },
         layers: [
@@ -391,7 +391,8 @@ export class MapComponent implements OnInit, OnDestroy {
             },
             paint: {
               'raster-opacity': 0.65,
-              'raster-brightness-min': 0.14
+              'raster-brightness-min': 0.14,
+              'raster-resampling': 'linear'
             }
           },
           {

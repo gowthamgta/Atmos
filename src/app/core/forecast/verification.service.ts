@@ -24,9 +24,13 @@ export class VerificationService {
   /** The corrections (learn_bias.py), once loaded; null until then or when they cannot be had. */
   readonly corrections = signal<CorrectionsFile | null>(null);
 
+  private getBase(): string {
+    return typeof window !== 'undefined' && window.location.pathname.startsWith('/Atmos') ? '/Atmos' : '';
+  }
+
   /** Loads the corrections once (a failure is asked again next time). */
   loadCorrections(): Promise<CorrectionsFile | null> {
-    this.correctionsPromise ??= fetch('/data/verification/corrections.json')
+    this.correctionsPromise ??= fetch(`${this.getBase()}/data/verification/corrections.json`)
       .then(r => (r.ok ? (r.json() as Promise<CorrectionsFile>) : null))
       .then(c => {
         const ok = c && c.models && c.airports ? c : null;
@@ -43,7 +47,7 @@ export class VerificationService {
   load(): void {
     if (this.asked) return;
     this.asked = true;
-    fetch('/data/verification/scores.json')
+    fetch(`${this.getBase()}/data/verification/scores.json`)
       .then(r => (r.ok ? r.json() : null))
       .then((f: VerificationFile | null) => { if (f?.days?.length) this.file.set(f); })
       .catch(() => { this.asked = false; }); // ask again next time the list opens

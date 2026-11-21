@@ -143,16 +143,17 @@ vec2 blendTime(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
   return vec2((a.x * wa + b.x * wb) / (wa + wb), 1.0);
 }
 
-// Terrain: (metres, land fraction), bilinear.
+// Terrain: (metres, land fraction), smooth Hermite.
 vec2 terrainAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
   vec2 g = clamp(vec2((lon - grid.x) / grid.z, (grid.y - lat) / grid.z), vec2(0.0), vec2(size) - 1.0001);
   vec2 fr = fract(g);
+  vec2 s = fr * fr * (3.0 - 2.0 * fr);
   ivec2 i0 = ivec2(floor(g));
   vec2 acc = vec2(0.0);
   for (int k = 0; k < 4; k++) {
     ivec2 o = ivec2(k & 1, k >> 1);
     vec4 c = texelFetch(tex, clamp(i0 + o, ivec2(0), size - 1), 0);
-    float w = (o.x == 1 ? fr.x : 1.0 - fr.x) * (o.y == 1 ? fr.y : 1.0 - fr.y);
+    float w = (o.x == 1 ? s.x : 1.0 - s.x) * (o.y == 1 ? s.y : 1.0 - s.y);
     acc += vec2(decode(c, u_demEnc), c.b) * w;
   }
   return acc;
@@ -211,19 +212,14 @@ void main() {
   vec4 fineMicro = vec4(0.0);
   float fineLulc = 0.0;
   vec2 fineSlope = vec2(0.0);
-  bool needFineSlope = u_lite == 0 && onGround && u_relief > 0.0;
   if (onGround) {
     model = modelGroundAt(g, lat, lon);
     TerrainSample ts = tileSample(lat, lon);
     fineGround = ts.valid > 0.5 ? ts.ground : model;
     fineMicro = ts.valid > 0.5 ? ts.micro : vec4(0.0);
     fineLulc = ts.valid > 0.5 ? ts.lulc : 0.0;
-    if (needFineSlope) {
-      fineSlope = ts.valid > 0.5 ? tileSlope(lat, lon) : vec2(0.0);
-    } else if (u_lite == 1 && u_relief > 0.0) {
-      // the screen-space slope of the ground (one terrain read instead of sixteen), in metres per metre
-      float mPerPx = max(length(dFdx(v_merc)) * 40075016.686 * cos(radians(lat)), 1.0);
-      fineSlope = vec2(dFdx(fineGround.x), -dFdy(fineGround.x)) / mPerPx;
+    if (u_relief > 0.0) {
+      fineSlope = ts.valid > 0.5 ? ts.slope : vec2(0.0);
     }
   }
 

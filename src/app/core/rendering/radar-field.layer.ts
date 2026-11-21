@@ -113,20 +113,12 @@ float bicubic(vec2 px) {
 // How the 90 m ground lights an echo: hills lit from the north-west, 1.0 on flat ground, at sea and where the ground is not loaded.
 float reliefShade(float lat, float lon) {
   if (lon < u_terrainBox.x || lon > u_terrainBox.z || lat < u_terrainBox.y || lat > u_terrainBox.w) return 1.0;
-  vec4 tile = tileTerrain(lat, lon);
-  if (tile.w < 0.5) return 1.0;
-  vec2 slope;
-  if (u_lite == 0) {
-    slope = tileSlope(lat, lon);
-  } else {
-    // the screen-space slope of the ground (one terrain read instead of sixteen), in metres per metre
-    float mPerPx = max(length(dFdx(v_merc)) * 40075016.686 * cos(radians(lat)), 1.0);
-    slope = vec2(dFdx(tile.x), -dFdy(tile.x)) / mPerPx;
-  }
-  vec3 n = normalize(vec3(-slope * 3.0, 1.0));
+  TerrainSample ts = tileSample(lat, lon);
+  if (ts.valid < 0.5) return 1.0;
+  vec3 n = normalize(vec3(-ts.slope * 3.0, 1.0));
   vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
   float shade = dot(n, light) / light.z;
-  return mix(1.0, clamp(1.0 + u_relief * (shade - 1.0), 0.55, 1.4), tile.y);
+  return mix(1.0, clamp(1.0 + u_relief * (shade - 1.0), 0.55, 1.4), ts.ground.y);
 }
 
 void main() {

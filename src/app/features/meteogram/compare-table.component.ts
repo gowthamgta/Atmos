@@ -58,23 +58,23 @@ import { Units, formatPressure, formatRain, formatTemp, formatWind, tempFromC, T
     </table>
   `,
   styles: [`
-    :host { display: block; min-width: 0; overflow-x: auto; }
+    :host { display: block; min-width: 0; overflow-x: auto; background: rgba(0, 0, 0, 0.22); border-radius: var(--radius-m); border: 1px solid rgba(255, 255, 255, 0.08); padding: 4px 8px; }
     .table { width: 100%; border-collapse: collapse; font-size: var(--fs-m); font-variant-numeric: tabular-nums; }
-    th, td { padding: 0 var(--sp-2); height: 30px; text-align: right; white-space: nowrap; }
-    thead th { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); border-bottom: 1px solid var(--line); }
-    .model { text-align: left; padding-left: 0; }
+    th, td { padding: 0 var(--sp-3); height: 34px; text-align: right; white-space: nowrap; }
+    thead th { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-muted); text-transform: uppercase; letter-spacing: var(--ls-caps); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+    .model { text-align: left; padding-left: 8px; }
     tbody th.model { font-weight: var(--fw-strong); }
-    .pick { display: flex; align-items: center; gap: var(--sp-2); height: 30px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
-    tbody tr { cursor: pointer; border-bottom: 1px solid var(--line); transition: background var(--t-fast); }
-    tbody tr:hover { background: var(--surface-3); }
+    .pick { display: flex; align-items: center; gap: var(--sp-2); height: 34px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+    tbody tr { cursor: pointer; border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background var(--t-fast); }
+    tbody tr:hover { background: rgba(255, 255, 255, 0.06); }
     /* the model on the map is marked in its own colour (the colour of a model is the colour of choosing it) */
-    tbody tr.on-map { background: color-mix(in srgb, var(--model-color) 20%, transparent); box-shadow: inset 3px 0 0 var(--model-color); }
+    tbody tr.on-map { background: color-mix(in srgb, var(--model-color) 22%, transparent); box-shadow: inset 4px 0 0 var(--model-color); }
     tbody tr.off { opacity: 0.4; }
-    .name { color: var(--text-primary); }
-    .tag { padding: 1px 6px; border-radius: 8px; background: var(--surface-4); color: var(--text-secondary); font-size: var(--fs-xs); font-weight: var(--fw-medium); }
+    .name { color: var(--text-primary); font-weight: var(--fw-medium); }
+    .tag { padding: 2px 7px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); color: var(--text-primary); font-size: var(--fs-xs); font-weight: var(--fw-medium); }
     .muted { color: var(--text-muted); }
     td { color: var(--text-primary); }
-    tfoot th, tfoot td { color: var(--text-secondary); font-weight: var(--fw-medium); border-top: 1px solid var(--line-strong); }
+    tfoot th, tfoot td { color: var(--text-secondary); font-weight: var(--fw-strong); border-top: 1px solid rgba(255, 255, 255, 0.15); }
     tfoot th.model { font-size: var(--fs-s); }
     /* a narrower sheet: tighter columns, and the row's colour says which model is on the map */
     @media (max-width: 1100px) {

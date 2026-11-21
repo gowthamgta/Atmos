@@ -73,7 +73,22 @@ const tickCount = (height: number): number => Math.max(2, Math.floor(height / 30
         <svg #svg class="svg" [attr.width]="geo().w" [attr.height]="geo().h" [attr.viewBox]="'0 0 ' + geo().w + ' ' + geo().h" role="img" [attr.aria-label]="summary()">
           <defs>
             <clipPath id="clip-plot"><rect [attr.x]="geo().left" y="0" [attr.width]="geo().plotW" [attr.height]="geo().h" /></clipPath>
-            <linearGradient id="fade-temp" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--s-temp)" stop-opacity="0.26" /><stop offset="1" stop-color="var(--s-temp)" stop-opacity="0" /></linearGradient>
+            <linearGradient id="fade-temp" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.35" />
+              <stop offset="50%" stop-color="#f59e0b" stop-opacity="0.10" />
+              <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.0" />
+            </linearGradient>
+            <linearGradient id="rain-bar-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#38bdf8" />
+              <stop offset="100%" stop-color="#0284c7" stop-opacity="0.85" />
+            </linearGradient>
+            <linearGradient id="gust-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#2dd4bf" stop-opacity="0.32" />
+              <stop offset="100%" stop-color="#2dd4bf" stop-opacity="0.04" />
+            </linearGradient>
+            <filter id="glow-line" x="-10%" y="-20%" width="120%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000" flood-opacity="0.45" />
+            </filter>
           </defs>
 
           <!-- night, then the days -->
@@ -207,22 +222,22 @@ const tickCount = (height: number): number => Math.max(2, Math.floor(height / 30
     .grid { stroke: var(--s-grid); stroke-width: 1; shape-rendering: crispEdges; }
 
     .line { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-    .line.temp { stroke: var(--s-temp); stroke-width: 2.6; }
-    .line.feels { stroke: var(--s-feels); stroke-width: 1.4; stroke-dasharray: 4 3; }
-    .line.wind { stroke: var(--s-wind); }
-    .line.gust { stroke: var(--s-gust); stroke-width: 1.2; stroke-dasharray: 3 3; }
-    .gust-band { fill: var(--s-wind); fill-opacity: 0.2; }
-    .line.model { stroke-width: 2.2; }
+    .line.temp { stroke: var(--s-temp); stroke-width: 2.8; filter: url(#glow-line); }
+    .line.feels { stroke: var(--s-feels); stroke-width: 1.5; stroke-dasharray: 4 3; opacity: 0.85; }
+    .line.wind { stroke: var(--s-wind); stroke-width: 2.4; filter: url(#glow-line); }
+    .line.gust { stroke: var(--s-gust); stroke-width: 1.4; stroke-dasharray: 3 3; }
+    .gust-band { fill: url(#gust-grad); }
+    .line.model { stroke-width: 2.6; filter: url(#glow-line); }
     .line.model.ai { stroke-dasharray: 6 3.5; }
-    .bars { fill: var(--s-rain); fill-opacity: 0.8; }
+    .bars { fill: url(#rain-bar-grad); filter: drop-shadow(0 2px 4px rgba(2, 132, 199, 0.35)); }
     .cloud { fill: var(--text-primary); }
     .arrow path { fill: none; stroke: var(--text-secondary); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 
     .now-line { stroke: var(--text-secondary); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.75; }
-    .map-line { stroke: var(--accent); stroke-width: 2; }
-    .map-flag { fill: var(--accent); }
-    .cursor-line { stroke: var(--text-primary); stroke-width: 1; opacity: 0.55; }
-    .dot { stroke: var(--surface-solid); stroke-width: 1.5; }
+    .map-line { stroke: var(--accent); stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.7)); }
+    .map-flag { fill: var(--accent); filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.7)); }
+    .cursor-line { stroke: rgba(255, 255, 255, 0.85); stroke-width: 1.5; stroke-dasharray: 3 3; }
+    .dot { stroke: #fff; stroke-width: 2; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6)); }
     .hit { fill: transparent; cursor: crosshair; }
 
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

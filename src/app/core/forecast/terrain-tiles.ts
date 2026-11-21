@@ -18,17 +18,17 @@ export type TerrainLevel = 0 | 1 | 2;
  * give the ridges their true heights); the 1.08 km copy only further out, where the whole domain is a few hundred pixels.
  */
 export function terrainLevelForZoom(zoom: number): TerrainLevel {
-  if (zoom >= 9.5) return 0;
+  if (zoom >= 8) return 0;
   if (zoom >= 5) return 1;
   return 2;
 }
 
 /**
- * Tiles held on the GPU at once, per level. The 90 m level is the largest (about 1.2k x 1.2k cells each, 5.8 MB): 30 on a
- * desktop, 20 on a phone. More slots mean fewer tiles reloaded when the view moves.
+ * Tiles held on the GPU at once, per level. The 90 m level is the largest (about 1.2k x 1.2k cells each, 5.8 MB): 36 on a
+ * desktop, 24 on a phone. More slots mean fewer tiles reloaded when the view moves.
  */
 export function tileSlots(phone: boolean): Record<TerrainLevel, number> {
-  return { 0: phone ? 20 : 30, 1: 56, 2: 56 };
+  return { 0: phone ? 24 : 36, 1: 56, 2: 56 };
 }
 
 /** The tile that holds a point: its south-west corner, e.g. N11E078 for 11.74 N, 78.96 E. */

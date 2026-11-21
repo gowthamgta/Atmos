@@ -56,8 +56,8 @@ export class PointSeriesService {
   }
 
   private async run(lat: number, lon: number, key: string, force: boolean): Promise<void> {
-    if (!inForecastBox(lat, lon)) {
-      // every forecast is for the forecast box only (FORECAST_BOX)
+    const inRegion = inForecastBox(lat, lon) || (lat >= 0.0 && lat <= 38.0 && lon >= 60.0 && lon <= 105.0);
+    if (!inRegion) {
       ++this.token;
       this.data.set(null);
       this.status.set('error');
