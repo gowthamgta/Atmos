@@ -244,6 +244,15 @@ export class SatelliteService {
       const published = Date.parse(res.headers.get('last-modified') ?? '');
       if (Number.isFinite(published)) this.updatedAtMs.set(published);
       if (token !== this.loadToken || this.source() !== kind || this.ownSatellite() !== satellite) return;
+
+      // If the selected satellite has no frames or is stale (>75 min old) and the user hasn't explicitly locked it,
+      // seamlessly fall back to Himawari-9 (updating reliably every 10 min without API quota limits)
+      const newestFrameTime = index.frames?.length ? Date.parse(index.frames[index.frames.length - 1].time) : 0;
+      const isStale = !newestFrameTime || (Date.now() - newestFrameTime) > 75 * 60_000;
+      if (isStale && satellite === 'msg' && localStorage.getItem('atmosiq.satellite.ownSatellite') !== 'msg') {
+        this.setOwnSatellite('h9');
+        return;
+      }
       const following = this.position() >= this.frames().length - 1;
       // the RGB until its first frames are made: the colour picture the satellite has (natural or true colour), else the infrared
       let shown: OwnKind = kind;
@@ -528,9 +537,10 @@ function readCustom(): readonly CustomChannel[] {
 
 function readOwnSatellite(): OwnSatellite {
   try {
-    return localStorage.getItem('atmosiq.satellite.ownSatellite') === 'h9' ? 'h9' : 'msg';
+    const pref = localStorage.getItem('atmosiq.satellite.ownSatellite');
+    return pref === 'msg' ? 'msg' : 'h9';
   } catch {
-    return 'msg';
+    return 'h9';
   }
 }
 

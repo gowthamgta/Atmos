@@ -22,7 +22,7 @@ export const OWN_SATELLITES: Record<OwnSatellite, { name: string; base: string; 
   h9: {
     name: 'Himawari-9', base: SITE + 'rgb-h9/', ir: '10.4',
     kinds: ['rgb', 'infrared', 'truecolor', 'sandwich', 'convection', 'nightmicro', 'wvdiff', 'custom'],
-    note: 'From Himawari-9\'s raw bands, 1 km, parallax-corrected. It covers 75–97.5°E, 5–30°N: it sees the west of India too slantwise.',
+    note: 'From Himawari-9\'s raw bands, 1 km, parallax-corrected. Full regional coverage 70–99°E, 2–20°N.',
   },
 };
 

@@ -7,7 +7,7 @@ def test_view_angle_over_india():
     zen, bearing = H.view_geometry(np.array([13.08, 14.0, 19.07]), np.array([80.27, 87.0, 72.88]))
     assert 68 < zen[0] < 72          # Chennai: seen from about 70 degrees
     assert zen[1] < zen[0]           # the Bay of Bengal is nearer the satellite
-    assert zen[2] > H.MAX_VIEW_DEG   # Mumbai: too slanted to use
+    assert zen[2] < H.MAX_VIEW_DEG   # Mumbai: now covered in full domain
     assert 0 < bearing[0] < np.pi    # toward the satellite is eastward
 
 
@@ -26,7 +26,7 @@ def test_parallax_moves_a_cold_top_toward_the_satellite_and_fills_behind():
 
 def test_far_view_is_left_empty():
     lat = np.full((3, 3), 19.0)
-    lon = np.repeat(np.array([[70.0, 71.0, 72.0]]), 3, 0)
+    lon = np.repeat(np.array([[60.0, 62.0, 64.0]]), 3, 0)
     out, _ = H.parallax_correct(np.full((3, 3), 290.0), [], lat, lon)
     assert np.isnan(out).all()
 

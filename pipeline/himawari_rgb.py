@@ -31,7 +31,7 @@ import satellite_bt as S
 from net import download, download_parallel
 
 FOLDER = "rgb-h9"
-WEST, EAST, SOUTH, NORTH = 75.0, 99.0, 2.0, 20.0   # Himawari's own data box: the satellite box east of 75 E (it sees further west too slantwise)
+WEST, EAST, SOUTH, NORTH = 70.0, 99.0, 2.0, 20.0   # Himawari full forecast boundary: 70-99 E, 2-20 N
 RES_M = 1000                    # the pictures (Web Mercator metres at the equator)
 DATA_RES_M = 2000               # the data pack: the infrared's own pixel
 SEGMENTS = ("03", "04", "05")   # 5-30 N

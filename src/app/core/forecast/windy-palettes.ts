@@ -5,13 +5,12 @@
  */
 
 /**
- * Temperature in °C, pinned to values using the user-provided 12-swatch thermal scale:
+ * Temperature in °C, pinned to values using the thermal scale with middle swatches removed:
  * - Midnight navy to royal cobalt for freezing & sub-zero (-100 to -10 °C): #041b5f, #086ab1
- * - Deep teal to turquoise for cool mountain climates (0 to 8 °C): #068f99, #1bb3b8
- * - Aqua ice blue to pastel ice blue for pleasant highlands / Western Ghats (15 to 20 °C): #74c5c9, #a1c3cd
- * - Golden yellow for mild morning / pleasant plains (26 °C): #f6c255
- * - Amber orange for warm tropical daytime (30 °C): #f49507
- * - Coral red for hot afternoon (35 °C): #f26875
+ * - Deep teal to turquoise cyan for cool mountain climates (0 to 12 °C): #068f99, #1bb3b8
+ * - Warm golden yellow for pleasant plains (22 °C): #f6c255
+ * - Amber orange for warm tropical daytime (28 °C): #f49507
+ * - Coral red for hot afternoon (34 °C): #f26875
  * - Crimson fire red for very hot plains (40 °C): #c73d33
  * - Deep maroon red for severe heatwave (45 °C): #8f0012
  * - Burgundy plum for extreme heat core (50 °C): #680524
@@ -21,12 +20,10 @@ const TEMP_ANCHORS: readonly [number, string][] = [
   [-20, '#041b5f'],    // Midnight deep navy (extreme cold / upper air)
   [-10, '#086ab1'],    // Royal cobalt blue (-10 °C)
   [0, '#068f99'],      // Deep cyan / teal (freezing point, 0 °C)
-  [8, '#1bb3b8'],      // Turquoise cyan (cool mountain summits, 8 °C)
-  [15, '#74c5c9'],     // Aqua ice blue (Western Ghats / Nilgiris, 15 °C)
-  [20, '#a1c3cd'],     // Pastel ice blue (mild transition, 20 °C)
-  [26, '#f6c255'],     // Warm golden yellow (pleasant plains, 26 °C)
-  [30, '#f49507'],     // Amber orange (warm tropical day, 30 °C)
-  [35, '#f26875'],     // Coral red (hot afternoon, 35 °C)
+  [12, '#1bb3b8'],     // Turquoise cyan (cool mountain summits, 12 °C)
+  [22, '#f6c255'],     // Warm golden yellow (pleasant plains, 22 °C)
+  [28, '#f49507'],     // Amber orange (warm tropical day, 28 °C)
+  [34, '#f26875'],     // Coral red (hot afternoon, 34 °C)
   [40, '#c73d33'],     // Crimson fire red (very hot, 40 °C)
   [45, '#8f0012'],     // Deep maroon red (severe heatwave, 45 °C)
   [50, '#680524'],     // Burgundy plum (extreme heat core, 50 °C)

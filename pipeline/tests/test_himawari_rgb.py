@@ -9,7 +9,7 @@ import himawari_rgb as G
 
 def test_grid_is_web_mercator_over_the_box():
     g = G.grid(1000)
-    assert (g["cols"], g["rows"]) == (2672, 2050)
+    assert (g["cols"], g["rows"]) == (3228, 2050)
     assert abs(g["lat"][0, 0] - 20) < 0.02 and abs(g["lat"][-1, 0] - 2) < 0.02     # rows north to south
     r, c = g["to_rc"](np.array([g["lat"][100, 7]]), np.array([g["lon"][100, 7]]))
     assert abs(r[0] - 100) < 1e-6 and abs(c[0] - 7) < 1e-6                          # a place maps back to its own cell
@@ -53,7 +53,7 @@ def test_index_keeps_whole_recent_frames(tmp_path):
                                     (datetime(2026, 10, 22, 4, 0, tzinfo=timezone.utc), {"truecolor": "old.webp"})], now)
     assert [f["time"] for f in index["frames"]] == ["2026-10-22T06:20:00Z"]
     assert sorted(os.listdir(folder)) == ["a.webp", "b.png", "index.json"]
-    assert index["bounds"] == {"west": 75.0, "east": 99.0, "south": 2.0, "north": 20.0}
+    assert index["bounds"] == {"west": 70.0, "east": 99.0, "south": 2.0, "north": 20.0}
 
 
 def test_index_starts_again_when_the_box_changes(tmp_path):
