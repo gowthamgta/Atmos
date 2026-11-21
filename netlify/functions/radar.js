@@ -64,6 +64,7 @@ exports.handler = async function (event, context) {
 
     const arrayBuffer = await response.arrayBuffer();
     const base64 = toBase64(new Uint8Array(arrayBuffer));
+    const lastModified = response.headers.get('last-modified');
 
     return {
       statusCode: 200,
@@ -71,7 +72,8 @@ exports.handler = async function (event, context) {
         'Content-Type': 'image/gif',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
-        'Cache-Control': 'public, max-age=60, s-maxage=60'
+        'Cache-Control': 'public, max-age=60, s-maxage=60',
+        ...(lastModified ? { 'Last-Modified': lastModified } : {})
       },
       body: base64,
       isBase64Encoded: true

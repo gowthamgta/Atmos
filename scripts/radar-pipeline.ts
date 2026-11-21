@@ -63,6 +63,7 @@ const STACK_PRODUCTS: readonly RadarProductKey[] = ['ppi', 'caz', 'ppz'];
 /** Where this workflow publishes (the last run's manifest is read from it) and our satellite (the cloud map). */
 const RADAR_SITE = 'https://gowthamgta.github.io/atmos-radar/';
 const SATELLITE_SITE = 'https://gowthamgta.github.io/atmos-satellite/rgb-msg/';
+const PROXY_RADAR_BASE = 'https://kralveth-weather.pages.dev/imd-radar/';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 interface ParsedArgs {
@@ -107,32 +108,47 @@ async function getRadarGif(url: string, args: ParsedArgs): Promise<{ buffer: Buf
   return got;
 }
 
-/** Fetch a single radar GIF from IMD */
-async function fetchRadarGif(url: string): Promise<{ buffer: Buffer; lastModified: Date | null; isWriteTime: boolean } | null> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'image/gif,image/*,*/*',
-      },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    const arrayBuf = await res.arrayBuffer();
-    const buf = Buffer.from(arrayBuf);
-    if (buf.length < 1000 || buf[0] !== 0x47 || buf[1] !== 0x49 || buf[2] !== 0x46) {
-      return null;
+/** Fetch a single radar GIF directly from IMD, falling back to the Cloudflare proxy if IMD times out or fails */
+async function fetchRadarGif(url: string, attempts = 2): Promise<{ buffer: Buffer; lastModified: Date | null; isWriteTime: boolean } | null> {
+  const filename = path.basename(url);
+  const candidateUrls = [
+    url,
+    `${PROXY_RADAR_BASE}${filename}`,
+  ];
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    for (const targetUrl of candidateUrls) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await fetch(targetUrl, {
+          headers: {
+            'User-Agent': USER_AGENT,
+            'Accept': 'image/gif,image/*,*/*',
+            'Referer': 'https://mausam.imd.gov.in/',
+          },
+          signal: controller.signal,
+        });
+        if (!res.ok) continue;
+        const arrayBuf = await res.arrayBuffer();
+        const buf = Buffer.from(arrayBuf);
+        if (buf.length < 1000 || buf[0] !== 0x47 || buf[1] !== 0x49 || buf[2] !== 0x46) {
+          continue;
+        }
+        const lastModHeader = res.headers.get('last-modified');
+        const lastModified = lastModHeader ? new Date(lastModHeader) : new Date();
+        return { buffer: buf, lastModified, isWriteTime: !!lastModHeader };
+      } catch {
+        // try next candidate URL or retry
+      } finally {
+        clearTimeout(timeout);
+      }
     }
-    const lastModHeader = res.headers.get('last-modified');
-    const lastModified = lastModHeader ? new Date(lastModHeader) : null;
-    return { buffer: buf, lastModified, isWriteTime: !!lastModHeader };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
+    if (attempt < attempts) {
+      await new Promise(r => setTimeout(r, 1500));
+    }
   }
+  return null;
 }
 
 /** Processes a station sweep exactly as RadarService.processStationSweep does */
@@ -642,6 +658,7 @@ async function main() {
   fs.writeFileSync(path.join(outDir, 'index.html'), html);
   console.log(`[RadarPipeline] Exported index.html`);
   console.log(`[RadarPipeline] Pipeline successfully finished.`);
+  if (process.env['GITHUB_OUTPUT']) fs.appendFileSync(process.env['GITHUB_OUTPUT'], 'deploy=true\n');
 }
 
 /**
