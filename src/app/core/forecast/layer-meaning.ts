@@ -129,10 +129,10 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     guideText: 'Amount of moisture in the air relative to saturation. High humidity (>75%, blue colors) prevents sweat from evaporating, making heat feel stifling.',
   },
   tcwv: {
-    summary: 'Total precipitable water in air column',
-    low: 'Dry air column',
-    high: 'Deep tropical moisture',
-    guideText: 'The total water vapor in the entire column of air from ground to outer space. Over 50 kg/m² indicates rich tropical moisture that can fuel intense downpours.',
+    summary: 'Total precipitable water (TPW)',
+    low: 'Dry air column (<20 mm)',
+    high: 'Deep tropical moisture (>50 mm)',
+    guideText: 'Depth of water if all vapor in the atmospheric column condensed into rain. Over 45–50 mm fuels intense tropical downpours and cyclonic convection.',
   },
   vis: {
     summary: 'Horizontal ground visibility',

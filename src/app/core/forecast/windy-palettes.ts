@@ -160,3 +160,38 @@ function colourAt(anchors: readonly [number, string][], v: number): string {
 }
 
 export const WINDY_HUMIDITY = humidityStops(30, 100);
+
+/**
+ * Total Precipitable Water (TPW) in mm (depth of liquid water if atmospheric column condensed).
+ * Meteorological color ramp matching NOAA MIMIC-TPW and Windy:
+ * - 0 to 10 mm: Arid desert & high plateau (sandy buff to light cyan)
+ * - 10 to 25 mm: Light to moderate moisture (sky cyan to deep ocean blue)
+ * - 25 to 40 mm: Subtropical moisture (teal to emerald green)
+ * - 40 to 55 mm: Deep tropical moisture boundary (lime green to golden yellow)
+ * - 55 to 68 mm: Heavy monsoon moisture plume (warm amber orange to crimson red)
+ * - 68 to 75 mm: Convective core & tropical cyclone plume (deep maroon burgundy)
+ * - 75 to 80 mm: Extreme moisture core (dark violet / magenta)
+ */
+const TPW_ANCHORS: readonly [number, string][] = [
+  [0, '#e8e0d0'],
+  [5, '#cce4ee'],
+  [10, '#98cee8'],
+  [18, '#3b9ee0'],
+  [25, '#126ecc'],
+  [32, '#098288'],
+  [40, '#19ad4e'],
+  [48, '#70cc1a'],
+  [54, '#f5d61a'],
+  [60, '#f59018'],
+  [68, '#e6391d'],
+  [74, '#9e0d48'],
+  [80, '#5a0658'],
+];
+
+/** TPW colours as evenly spaced stops over a display range in mm (default 0 to 80 mm). */
+export function tpwStops(min = 0, max = 80): string[] {
+  return pinnedStops(TPW_ANCHORS, min, max, (max - min) / 128);
+}
+
+export const WINDY_TPW = tpwStops(0, 80);
+

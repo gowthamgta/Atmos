@@ -44,6 +44,7 @@ function unitAgrees(fieldUnit: string, layerUnit: string, scale: number): boolea
   switch (fieldUnit) {
     case 'm/s': return (scale === 3.6 && layerUnit === 'km/h') || (scale === 100 && layerUnit.startsWith('cm/s')) || (scale === 1 && layerUnit === 'm/s');
     case 'mm': return scale === 1 && layerUnit.startsWith('mm');          // mm, mm/h (the rain rate is published as mm per hour), mm in the chosen period
+    case 'kg/m²': return scale === 1 && (layerUnit === 'mm' || layerUnit === 'kg/m²'); // 1 kg/m² = 1 mm precipitable water
     case 'level': return layerUnit.startsWith('IMD');                      // the IMD rain category
     default: return scale === 1 && layerUnit.startsWith(fieldUnit);
   }

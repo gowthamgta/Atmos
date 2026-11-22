@@ -1,7 +1,7 @@
 /** Declarative registry of the scalar forecast layers. The menu and legend are generated from this list. */
 
 import type { TerrainMode } from './terrain-correction';
-import { WINDY_HUMIDITY, humidityStops, windStops, RAIN_ACCUMULATION_GAMMA, RAIN_GAMMA, RAIN_MAX, WINDY_RAIN_RATE, WINDY_RAIN_ACCUMULATION, tempStops, WINDY_WIND } from './windy-palettes';
+import { WINDY_HUMIDITY, humidityStops, windStops, RAIN_ACCUMULATION_GAMMA, RAIN_GAMMA, RAIN_MAX, WINDY_RAIN_RATE, WINDY_RAIN_ACCUMULATION, tempStops, WINDY_WIND, WINDY_TPW, tpwStops } from './windy-palettes';
 
 /** Altitude: the ground (10 m / 2 m fields) or a pressure level in hPa. */
 export type Level = 'surface' | 925 | 850 | 800 | 700 | 600 | 500 | 300 | 250 | 200;
@@ -76,7 +76,8 @@ const WIND = WINDY_WIND;
 /** Multi-model probability of rain over the next 24 h (0–100%): deep, vibrant, saturated tones (cyan to emerald, amber, orange, crimson and deep violet). */
 const EXTREME = ['#0284c7', '#0284c7', '#059669', '#10b981', '#f59e0b', '#ea580c', '#dc2626', '#7c3aed'];
 const PRESSURE = ['#4a2a8a', '#2a56b0', '#1f8fa8', '#4fae6a', '#c9b92a', '#e0762a', '#b3262f'];
-const WATER = ['#2a2018', '#4a5a3a', '#2a7a6a', '#1f6fa8', '#2a46b0', '#6a2fb0'];
+const WATER = WINDY_TPW;
+const TPW = WINDY_TPW;
 const DEW = tempStops(-20, 30); // Windy draws the dew point on its temperature scale
 const VISIBILITY = ['#a02c4a', '#d17a22', '#d4c02a', '#3fae6a', '#1f6f8f'];
 // lifted index: negative (unstable, storms possible) is the warm end, positive (stable) the cool end
@@ -151,7 +152,7 @@ export const FORECAST_LAYERS: readonly ForecastLayerDef[] = [
   { id: 'rain', label: 'Rain', icon: '🌧', group: 'Rain and humidity', varId: 'precip', unit: 'mm/h', min: 0, max: RAIN_MAX, stops: RAIN, gamma: RAIN_GAMMA, clearBelow: 0.2, clearFade: 1.5, ticks: [1, 2, 5, 10, 20, 35, 50], opacity: 1, terrain: 'rain' },
   { id: 'raintot', label: 'Rain accumulation, choose period', icon: '🌧', group: 'Rain and humidity', varId: 'raintot', unit: 'mm in the chosen period', min: 0, max: 300, stops: WINDY_RAIN_ACCUMULATION, gamma: RAIN_ACCUMULATION_GAMMA, clearBelow: 1.0, clearFade: 1.8, ticks: [5, 20, 40, 60, 80, 100, 150, 300], opacity: 1, terrain: 'rain' },
   { id: 'extreme', label: 'Probability of rain, next 24 h', icon: '🌧', group: 'Rain and humidity', varId: 'extreme', unit: '%', min: 0, max: 100, stops: EXTREME, gamma: 1, clearBelow: 20, clearFade: 1.15, ticks: [20, 40, 60, 80, 100], opacity: 1, terrain: null },
-  { id: 'tcwv', label: 'Atmospheric moisture', icon: '🌫', group: 'Rain and humidity', varId: 'tcwv', unit: 'kg/m²', min: 20, max: 70, stops: WATER, gamma: 1, clearBelow: 0, ticks: [30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
+  { id: 'tcwv', label: 'Total precipitable water', icon: '💧', group: 'Rain and humidity', varId: 'tcwv', unit: 'mm', min: 0, max: 80, stops: TPW, gamma: 1, clearBelow: 0, ticks: [10, 20, 30, 40, 50, 60, 70], opacity: 0.85, terrain: 'column' },
   { id: 'vis', label: 'Visibility', icon: '🔭', group: 'Visibility', varId: 'vis', unit: 'km', min: 0, max: 20, stops: VISIBILITY, gamma: 0.6, clearBelow: 0, ticks: [1, 2, 5, 10, 20], opacity: 0.8, terrain: null },
   {
     id: 'pressure', label: 'Pressure', icon: '⏲', group: 'Pressure and storms', varId: 'msl', unit: 'hPa', min: 1000, max: 1020, stops: PRESSURE, gamma: 1,
