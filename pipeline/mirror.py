@@ -85,6 +85,13 @@ def mirror_status(site: str, base_url: str, model: str, get: Callable = session_
             f.write(manifest_raw)
         with open(os.path.join(root, "latest.json"), "wb") as f:  # last, so a partial copy is never advertised
             f.write(latest_raw)
+
+        # Strict single-run mirroring: remove any older superseded run directories in site/<model>
+        for item in os.listdir(root):
+            item_path = os.path.join(root, item)
+            if item != run and item != "latest.json" and os.path.isdir(item_path):
+                shutil.rmtree(item_path, ignore_errors=True)
+
         print(f"mirrored {model} run {run}: {len(files)} files")
         return "mirrored"
     except Exception as e:  # noqa: BLE001 - live but not copied completely

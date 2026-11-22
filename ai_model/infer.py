@@ -182,12 +182,12 @@ class KralvethAIInferenceEngine:
         level_vars = [f"{p}{l}" for l in C.LEVELS for p in ["u", "v", "rh", "t", "gh", "w", "vo", "dv"] if f"{p}{l}" in C.VARS]
         extra_vars = other_surface_vars + level_vars
 
-        total_steps = (reach_hours // step_hours) + 1
+        # Adaptive step sparsity: 3-hourly for Days 1-5 (0-120h), 6-hourly for Days 6-10 (126-240h)
+        target_steps = [h for h in AIC.ADAPTIVE_STEPS if h <= reach_hours]
         if steps_limit:
-            total_steps = min(total_steps, steps_limit)
+            target_steps = target_steps[:steps_limit]
 
-        for step_idx in range(total_steps):
-            h = step_idx * step_hours
+        for step_idx, h in enumerate(target_steps):
             valid_dt = ref_run + timedelta(hours=h)
             hour_utc = valid_dt.hour
             t0 = time.time()

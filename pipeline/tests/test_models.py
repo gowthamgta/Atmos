@@ -80,6 +80,11 @@ def _fake_site(files):
 
 def test_mirror_copies_a_live_model_and_writes_latest_last(tmp_path):
     base = "https://x.github.io/Atmos"
+    # Pre-existing superseded run that should be strictly purged on mirroring
+    old_run_dir = tmp_path / "ukmo" / "R0"
+    old_run_dir.mkdir(parents=True)
+    (old_run_dir / "old.png").write_bytes(b"old")
+
     manifest = {"vars": {"t2m": {}, "rh": {}}, "steps": [{"h": 0}, {"h": 3}]}
     files = {f"{base}/ukmo/latest.json": json.dumps({"run": "R1"}).encode(),
              f"{base}/ukmo/R1/manifest.json": json.dumps(manifest).encode()}
@@ -90,6 +95,8 @@ def test_mirror_copies_a_live_model_and_writes_latest_last(tmp_path):
     assert json.loads((tmp_path / "ukmo" / "latest.json").read_text())["run"] == "R1"
     assert (tmp_path / "ukmo" / "R1" / "t2m" / "003.png").read_bytes() == b"png-t2m"
     assert len(list((tmp_path / "ukmo" / "R1").rglob("*.png"))) == 4
+    # Verify strict single-run retention: R0 has been purged
+    assert not old_run_dir.exists()
 
 
 def test_mirror_skips_a_model_that_is_not_live_yet_and_leaves_nothing(tmp_path):

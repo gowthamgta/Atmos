@@ -26,9 +26,11 @@ STEP_1KM = 0.01
 NY_1KM = round((LAT_MAX - LAT_MIN) / STEP_1KM) + 1  # 1801
 NX_1KM = round((LON_MAX - LON_MIN) / STEP_1KM) + 1  # 2901
 
-# Forecast Reach & Frequency
-REACH_HOURS = 240  # 10 days (80 steps @ 3h intervals)
-STEP_HOURS = 3    # 3-hourly time steps
+# Forecast Reach & Frequency:
+# Adaptive forecast step sparsity: 3-hourly for Days 1–5 (0 to +120 h), 6-hourly for Days 6–10 (+126 to +240 h)
+REACH_HOURS = 240  # 10 days
+STEP_HOURS = 3    # Base time step
+ADAPTIVE_STEPS = list(range(0, 121, 3)) + list(range(126, REACH_HOURS + 1, 6))
 
 # Atmospheric Variables
 TARGET_VARIABLES = [

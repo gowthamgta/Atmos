@@ -208,6 +208,15 @@ def main() -> int:
         print(f"{args.model}: pressure levels missing at +{', +'.join(str(g) for g in gaps)} h; this run will be built again", flush=True)
     write(os.path.join(args.out, fetcher.MODEL_ID, "latest.json"), json.dumps(latest).encode())
     write(os.path.join(args.out, ".nojekyll"), b"")
+
+    # Strict single-run retention: purge any older superseded runs in site/<model>
+    model_dir = os.path.join(args.out, fetcher.MODEL_ID)
+    if os.path.isdir(model_dir):
+        for item in os.listdir(model_dir):
+            item_path = os.path.join(model_dir, item)
+            if item != run_id and item != "latest.json" and os.path.isdir(item_path):
+                shutil.rmtree(item_path, ignore_errors=True)
+
     print("done")
     return 0
 

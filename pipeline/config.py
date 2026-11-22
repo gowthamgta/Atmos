@@ -38,8 +38,10 @@ class Var:
     bits: int = 16     # precision actually stored: smooth upper-air fields keep 12 bits, which compresses ~25% better
 
 
-# Pressure levels offered as "altitude" (hPa) and how high they are in the standard atmosphere, to 100 m (the app has the same table in forecast-layers.ts)
-LEVELS = (925, 850, 800, 700, 600, 500, 300, 250, 200)
+# Pressure levels offered as "altitude" (hPa) and how high they are in the standard atmosphere, to 100 m (the app has the same table in forecast-layers.ts).
+# Core mandatory synoptic levels: auxiliary levels (800 and 600 hPa) are omitted from the pipeline to save ~45 MB per model run;
+# the Atmos frontend synthesizes them dynamically via log-linear (ln p) interpolation in FieldLoaderService.
+LEVELS = (925, 850, 700, 500, 300, 250, 200)
 LEVEL_KM = {925: 0.8, 850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8}
 
 # Encoding ranges per level: temperature (degC) and geopotential height (m). Generous, so no value can clip.
@@ -80,14 +82,14 @@ VARS: dict[str, Var] = {v.id: v for v in [
     Var("cloud_high", "%", 0, 100, 12),
     Var("vis", "km", 0, 60, 12),
     Var("solar", "W/m²", 0, 1400, 12),
-    Var("cape", "J/kg", 0, 6000),
-    Var("tcwv", "kg/m²", 0, 80),
+    Var("cape", "J/kg", 0, 6000, 12),
+    Var("tcwv", "kg/m²", 0, 80, 12),
     Var("li", "°C", -15, 25, 12),         # lifted index: negative means unstable air
     Var("cin", "J/kg", 0, 1000, 12),      # convective inhibition (magnitude)
-    Var("tmin24", "°C", -40, 50),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
-    Var("tmax24", "°C", -40, 50),        # see derive.forward_extreme)
+    Var("tmin24", "°C", -40, 50, 12),        # lowest and highest temperature in the next 24 hours from this step (derived across steps,
+    Var("tmax24", "°C", -40, 50, 12),        # see derive.forward_extreme)
     Var("rain24", "mm", 0, 600),          # rain over the next 24 hours from this step (derived across steps, see derive.forward_accumulation)
-    Var("extreme", "%", 0, 100),          # multi-model probability of rain over the next 24 hours (0 to 100 %, derived from rain24 across models)
+    Var("extreme", "%", 0, 100, 12),          # multi-model probability of rain over the next 24 hours (0 to 100 %, derived from rain24 across models)
     Var("raintot", "mm", 0, 1500),        # rain from the start of the run to this step (derived across steps, see derive.cumulative_accumulation)
     *_level_vars(),
 ]}
