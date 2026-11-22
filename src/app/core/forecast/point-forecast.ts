@@ -169,7 +169,7 @@ export function buildPointRows(
     { id: 'pressure', label: 'Pressure', text: formatPressure(v('msl'), units), meaning: layerMeaning('pressure', v('msl'), level), terrainAdjusted: false },
     { id: 'cape', label: 'Thunderstorm energy', text: withUnit(v('cape'), 0, 'J/kg'), meaning: layerMeaning('cape', v('cape'), level), terrainAdjusted: false },
   );
-  if (!Number.isNaN(v('tcwv'))) rows.push({ id: 'tcwv', label: 'Atmospheric moisture', text: withUnit(adjust('column', v('tcwv')), 0, 'kg/m²'), meaning: layerMeaning('tcwv', adjust('column', v('tcwv')), level), terrainAdjusted: adjusted });
+  if (!Number.isNaN(v('tcwv'))) rows.push({ id: 'tcwv', label: 'Total precipitable water', text: withUnit(v('tcwv'), 0, 'mm'), meaning: layerMeaning('tcwv', v('tcwv'), level), terrainAdjusted: false });
   if (!Number.isNaN(v('cin'))) rows.push({ id: 'cin', label: 'Convective inhibition', text: withUnit(v('cin'), 0, 'J/kg'), meaning: layerMeaning('cin', v('cin'), level), terrainAdjusted: false });
   if (!Number.isNaN(v('li'))) rows.push({ id: 'li', label: 'Lifted index', text: withUnit(v('li'), 1, '°C'), meaning: layerMeaning('li', v('li'), level), terrainAdjusted: false });
 

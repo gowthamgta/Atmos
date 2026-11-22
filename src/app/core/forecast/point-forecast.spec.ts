@@ -123,7 +123,9 @@ describe('point forecast helpers', () => {
     const rich = buildPointRows({ ...values, rain24: 42.6, tcwv: 55.2, cin: 85, li: -3.4 }, null);
     expect(find(rich, 'rain24').text).toBe('43 mm');
     expect(rich.findIndex(r => r.id === 'rain24')).toBe(rich.findIndex(r => r.id === 'rain') + 1);     // right under the rain row
-    expect(find(rich, 'tcwv').text).toBe('55 kg/m²');
+    expect(find(rich, 'tcwv').text).toBe('55 mm');
+    expect(find(rich, 'tcwv').label).toBe('Total precipitable water');
+    expect(find(rich, 'tcwv').terrainAdjusted).toBe(false);
     expect(find(rich, 'cin').text).toBe('85 J/kg');
     expect(find(rich, 'li').text).toBe('-3.4 °C');
     // a small total keeps a decimal
