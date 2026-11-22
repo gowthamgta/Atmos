@@ -97,7 +97,7 @@ GFS_STEPS = list(range(0, 121, 3)) + list(range(126, MAP_REACH_H + 1, 6))
 GFS = RegularModel(
     model_id="gfs", label="NOAA GFS", run_hours=(0, 6, 12, 18), step_hours=GFS_STEPS, grid=COARSE_GRID,
     sources=[
-        Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation"] + SURFACE_UV)),
+        Source("ncep_gfs013", _SAME(["temperature_2m", "relative_humidity_2m", "precipitation", "cloud_cover", "shortwave_radiation", "total_column_integrated_water_vapour"] + SURFACE_UV)),
         Source("ncep_gfs025", _SAME(["pressure_msl", "wind_gusts_10m", "cape", "convective_inhibition", "lifted_index", "visibility"]
                                     + LEVEL_SCALARS + level_w() + level_uv())),
     ],

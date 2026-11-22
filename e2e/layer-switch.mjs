@@ -11,7 +11,7 @@ const SITE = process.env.SITE_URL || 'http://localhost:8080';
 const PHONE = process.argv.includes('--phone');
 const LABELS = {
   temp: 'Temperature', feels: 'Feels like', dew: 'Dew point', wind: 'Wind', gust: 'Wind gusts', humidity: 'Humidity', rain: 'Rain',
-  tcwv: 'Atmospheric moisture', vis: 'Visibility', pressure: 'Pressure', li: 'Lifted index', cin: 'Convective inhibition',
+  tcwv: 'Total precipitable water', vis: 'Visibility', pressure: 'Pressure', li: 'Lifted index', cin: 'Convective inhibition',
   cape: 'Thunderstorm energy', tmin24: 'Lowest, next 24 h', tmax24: 'Highest, next 24 h',
 };
 const LAYERS = Object.keys(LABELS);

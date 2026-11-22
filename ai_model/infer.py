@@ -300,6 +300,16 @@ class KralvethAIInferenceEngine:
                             if f_lo is not None and f_hi is not None:
                                 f_ext = ((1.0 - mix) * f_lo + mix * f_hi).astype(np.float32)
 
+                # For Total Precipitable Water (tcwv), strictly source from genuine numerical base models (ECMWF IFS, GFS, etc.)
+                # Never synthesize using empirical approximations or formulas.
+                if f_ext is None and var_name == "tcwv":
+                    for comp in components:
+                        if comp.model not in ("ecmwf_ifs", "aifs"):
+                            f_cand = legacy_blend.field_at_valid(comp, "tcwv", valid_dt)
+                            if f_cand is not None:
+                                f_ext = f_cand
+                                break
+
                 # Physical hydrostatic/barometric synthesis fallback if absent from base models
                 if f_ext is None:
                     if var_name.startswith("t") and var_name[1:].isdigit():
@@ -328,8 +338,6 @@ class KralvethAIInferenceEngine:
                         f_ext = np.clip((fields_syn["rh"] - 60.0) * 2.5, 0.0, 100.0).astype(np.float32)
                     elif var_name == "vis":
                         f_ext = np.clip(25.0 - (fields_syn["rh"] / 100.0) * 15.0 - fields_syn["precip"] * 2.0, 1.0, 25.0).astype(np.float32)
-                    elif var_name == "tcwv":
-                        f_ext = np.clip(fields_syn["rh"] * 0.45 + fields_syn["t2m"] * 0.5, 10.0, 75.0).astype(np.float32)
                     elif var_name.startswith("w") and var_name[1:].isdigit():
                         f_ext = np.zeros((ny, nx), dtype=np.float32)
                     elif var_name.startswith("vo") and var_name[2:].isdigit():

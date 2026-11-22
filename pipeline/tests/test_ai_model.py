@@ -103,3 +103,15 @@ def test_airport_and_tn_station_assimilation():
     assert "rh" in assimilated
     # Trace drizzle under 0.1 mm/h is clamped to 0
     assert (assimilated["precip"] == 0.0).all()
+
+
+def test_tcwv_sourced_strictly_from_models_without_synthetic_formula():
+    """Verify that Total Precipitable Water (tcwv) is never synthesized via empirical approximations."""
+    import inspect
+    import ai_model.infer as infer
+
+    source_code = inspect.getsource(infer.KralvethAIInferenceEngine.run_model)
+    # Ensure the empirical formula rh * 0.45 + t2m * 0.5 was eradicated
+    assert "0.45" not in source_code or "fields_syn[\"rh\"] * 0.45" not in source_code
+    assert 'elif var_name == "tcwv":' not in source_code
+
