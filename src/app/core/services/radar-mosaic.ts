@@ -8,13 +8,13 @@ import type { ProcessedRadarResult, RadarObservationTiming, RadarProductKey, Rad
 import { quantizeRadarField } from './radar-field';
 
 /** A live scan older than this many minutes is not drawn (the radar is stale or stuck, the picture would mislead). */
-export const MAX_SCAN_AGE_MIN = 45;
+export const MAX_SCAN_AGE_MIN = 75;
 
 /**
  * Evaluates whether a product observation is eligible for inclusion in the composite.
- * Enforces the strict 45-minute freshness limit:
- * - Age <= 45 minutes: eligible, provided image is valid.
- * - Age > 45 minutes: expired and excluded.
+ * Enforces the 75-minute freshness limit (fresh: <= 20m, recent: 20-45m, stale: 45-75m):
+ * - Age <= 75 minutes: eligible, provided image is valid.
+ * - Age > 75 minutes: expired and excluded.
  * - Missing or unreliable timestamp (null, undefined, NaN, <= 0): ineligible.
  * - Implausible future timestamp (> 10 minutes ahead): ineligible.
  */

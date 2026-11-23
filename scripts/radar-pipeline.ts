@@ -168,6 +168,9 @@ async function processSweep(
 
   // Extract observation timing
   let timing: RadarObservationTiming | null = extractRadarIsoTimestamp(rawBytes.slice().buffer);
+  if (timing && (!timing.epochMs || isNaN(timing.epochMs) || timing.epochMs <= 0 || (new Date(timing.epochMs).getFullYear() < new Date().getFullYear() - 1))) {
+    timing = null;
+  }
 
   if (!timing && productConfig.stampBox) {
     const stamp = readStampTime(rgba, w, h, productConfig.stampBox);
@@ -194,11 +197,11 @@ async function processSweep(
     ageMinutes = Math.max(0, Math.floor((now - timing.epochMs) / 60000));
     isDisplayed = isObservationEligible(timing, now);
     timing.ageMinutes = ageMinutes;
-    timing.freshness = isDisplayed ? (ageMinutes <= 20 ? 'fresh' : 'recent') : 'offline';
+    timing.freshness = isDisplayed ? (ageMinutes <= 20 ? 'fresh' : (ageMinutes <= 45 ? 'recent' : 'stale')) : 'offline';
   }
 
   if (!isDisplayed || ageMinutes === undefined || ageMinutes > MAX_SCAN_AGE_MIN) {
-    return null; // expired (> 45 min) or missing/future timestamp
+    return null; // expired (> MAX_SCAN_AGE_MIN) or missing/future timestamp
   }
 
   const layoutOk = layoutMatches(productConfig.crop, w, h) && looksLikeRadar(rgba, w, h, productConfig.palette);
@@ -580,7 +583,10 @@ async function main() {
     const cazRes = ringResults.get(ringKey(s.id, 'caz'));
     const ppzRes = ringResults.get(ringKey(s.id, 'ppz'));
     const ppiRes = ringResults.get(ringKey(s.id, 'ppi'));
-    const primaryRes = cazRes || ppzRes || ppiRes;
+    const candidates = [cazRes, ppzRes, ppiRes].filter((r): r is ProcessedRadarResult => !!r?.timing?.epochMs);
+    const primaryRes = candidates.length > 0
+      ? candidates.reduce((best, curr) => (curr.timing.epochMs! > best.timing.epochMs! ? curr : best))
+      : (cazRes || ppzRes || ppiRes || null);
     const hasEligibleProduct = [cazRes, ppzRes, ppiRes].some(r => r && isObservationEligible(r.timing, nowMs));
     return {
       id: s.id,

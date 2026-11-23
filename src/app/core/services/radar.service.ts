@@ -343,7 +343,7 @@ export class RadarService implements OnDestroy {
           const eligible = isObservationEligible(timing, now);
           let freshness: 'fresh' | 'recent' | 'stale' | 'offline' = 'offline';
           if (eligible) {
-            freshness = newAge <= 20 ? 'fresh' : 'recent';
+            freshness = newAge <= 20 ? 'fresh' : (newAge <= 45 ? 'recent' : 'stale');
           }
 
           if (newAge !== timing.ageMinutes || freshness !== timing.freshness) {
@@ -511,16 +511,33 @@ export class RadarService implements OnDestroy {
   /** Where the radar workflow publishes (an old copy kept in the app itself was dropped: it could only ever show a stale radar). */
   private static readonly PREPROCESSED_SOURCES = ['https://gowthamgta.github.io/atmos-radar/'];
 
+  private updateStationTimingsFromManifest(stations: any[]): void {
+    this.workflowReach.set(new Map(stations.filter((s: { reachKm?: number }) => (s.reachKm ?? 0) > 0).map((s: { id: string; reachKm: number }) => [s.id, s.reachKm])));
+    this.stationTimings.update(m => {
+      const next = new Map(m);
+      for (const s of stations) {
+        if (s.id && s.timing) {
+          const age = Math.max(0, Math.floor((Date.now() - s.timing.epochMs) / 60000));
+          const eligible = isObservationEligible(s.timing, Date.now());
+          s.timing.ageMinutes = age;
+          s.timing.freshness = eligible ? (age <= 20 ? 'fresh' : (age <= 45 ? 'recent' : 'stale')) : 'offline';
+          next.set(s.id, s.timing);
+        }
+      }
+      return next;
+    });
+  }
+
   /**
    * Fetches the preprocessed composite of Karaikal and Chennai published by the background workflow (gowthamgta/atmos-radar).
    * Returns true when the manifest and binary intensity field were loaded and displayed.
    */
   private async tryFetchPreprocessedComposite(requestId: number): Promise<boolean> {
-    const cacheBuster = Math.floor(Date.now() / 60_000);
+    const cacheBuster = Date.now();
 
     for (const base of RadarService.PREPROCESSED_SOURCES) {
       try {
-        const manifestRes = await fetch(`${base}manifest.json?_t=${cacheBuster}`);
+        const manifestRes = await fetch(`${base}manifest.json?_t=${cacheBuster}`, { cache: 'no-cache' });
         if (!manifestRes.ok) continue;
 
         const manifest = await manifestRes.json();
@@ -535,10 +552,17 @@ export class RadarService implements OnDestroy {
         if (!timeMs || !isObservationEligible(radarTimingFromDate(new Date(timeMs), 'radar_metadata', false), Date.now())) {
           continue;
         }
+
+        // Always update station timings from manifest so all station cards in UI reflect real IMD scan times & freshness
+        if (Array.isArray(manifest.stations)) {
+          this.updateStationTimingsFromManifest(manifest.stations);
+        }
+
         // the same run as the one on the map (the app checks every minute, the workflow runs every 5): nothing new to download
         if (manifest.updatedAtEpochMs === this.compositeRun && this.workflowComposite && this.compositeMosaic() === this.workflowComposite) return true;
 
-        const binRes = await fetch(`${base}field.bin?_t=${cacheBuster}`);
+        const versionParam = manifest.updatedAtEpochMs ? `_v=${manifest.updatedAtEpochMs}` : `_t=${cacheBuster}`;
+        const binRes = await fetch(`${base}field.bin?${versionParam}`);
         if (!binRes.ok) continue;
 
         const binBuf = await binRes.arrayBuffer();
@@ -580,24 +604,6 @@ export class RadarService implements OnDestroy {
         this.updatedAtMs.set(manifest.updatedAtEpochMs);
         this.workflowComposite = result;
 
-        // Update station timings from manifest so all station cards in UI reflect real IMD scan times & freshness
-        if (Array.isArray(manifest.stations)) {
-          this.workflowReach.set(new Map(manifest.stations.filter((s: { reachKm?: number }) => (s.reachKm ?? 0) > 0).map((s: { id: string; reachKm: number }) => [s.id, s.reachKm])));
-          this.stationTimings.update(m => {
-            const next = new Map(m);
-            for (const s of manifest.stations) {
-              if (s.id && s.timing) {
-                const age = Math.max(0, Math.floor((Date.now() - s.timing.epochMs) / 60000));
-                const eligible = isObservationEligible(s.timing, Date.now());
-                s.timing.ageMinutes = age;
-                s.timing.freshness = eligible ? (age <= 20 ? 'fresh' : 'recent') : 'offline';
-                next.set(s.id, s.timing);
-              }
-            }
-            return next;
-          });
-        }
-
         return true;
       } catch {
         // Fall back to next source
@@ -627,6 +633,16 @@ export class RadarService implements OnDestroy {
       }
     } catch {
       // Fallback
+    }
+
+    // Anti-glitch guard: if we already have an active workflow composite that remains eligible, preserve it!
+    if (this.workflowComposite && this.compositeMosaic() === this.workflowComposite) {
+      if (isObservationEligible(this.workflowComposite.timing, Date.now())) {
+        if (requestId === this.currentRequestId) {
+          this.isRefreshing.set(false);
+        }
+        return;
+      }
     }
 
     // Fallback: no fresh composite from the radar workflow (the workflow stopped, GitHub Pages down, or its newest scans too old), so the
@@ -825,6 +841,9 @@ export class RadarService implements OnDestroy {
 
     // ── Observation Timestamp Extraction & Per-Station Freshness Calculation ──
     let timing: RadarObservationTiming | null = binaryTiming;
+    if (timing && (!timing.epochMs || isNaN(timing.epochMs) || timing.epochMs <= 0 || (new Date(timing.epochMs).getFullYear() < new Date().getFullYear() - 1))) {
+      timing = null;
+    }
     // No timestamp in the GIF: some pictures print the scan time in their side panel. The server's "last modified" only says
     // when the file was copied, so the printed time wins where there is one (decoded once per new picture).
     const hash = this.hashBytes(new Uint8Array(rawArrayBuf));
@@ -860,7 +879,7 @@ export class RadarService implements OnDestroy {
       ageMinutes = Math.max(0, Math.floor((now - timing.epochMs) / 60000));
       isDisplayed = isObservationEligible(timing, now);
       if (isDisplayed) {
-        freshness = ageMinutes <= 20 ? 'fresh' : 'recent';
+        freshness = ageMinutes <= 20 ? 'fresh' : (ageMinutes <= 45 ? 'recent' : 'stale');
       }
     }
 

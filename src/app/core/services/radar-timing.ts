@@ -47,29 +47,35 @@ export function extractRadarIsoTimestamp(arrayBuffer: ArrayBuffer): RadarObserva
     const bytes = new Uint8Array(arrayBuffer);
     // Scan for all embedded ISO timestamps (e.g. "2026-09-29T22:12:22")
     // In animated GIFs, multiple timestamps exist across frames; pick the latest one (maximum epochMs)
-    let str = '';
-    const step = Math.max(1, Math.floor(bytes.length / 50000));
-    for (let i = 0; i < bytes.length; i += step) {
-      str += String.fromCharCode(bytes[i]);
-    }
-    const head = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(bytes.length, 4096)));
-    const tail = new TextDecoder('latin1').decode(bytes.subarray(Math.max(0, bytes.length - 65536)));
-    const fullText = head + ' ' + str + ' ' + tail;
+    const fullText = bytes.length <= 1_500_000
+      ? new TextDecoder('latin1').decode(bytes)
+      : new TextDecoder('latin1').decode(bytes.subarray(0, 131072)) + ' ' + new TextDecoder('latin1').decode(bytes.subarray(Math.max(0, bytes.length - 131072)));
 
     const regex = /(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/g;
     const matches = [...fullText.matchAll(regex)];
     if (matches.length === 0) return null;
 
-    let bestMatch = matches[0];
+    let bestMatch: RegExpMatchArray | null = null;
     let maxEpoch = 0;
+    const currentYear = new Date().getFullYear();
 
     for (const m of matches) {
+      const year = parseInt(m[1], 10);
+      // Strictly ignore corrupted or misformatted dates (e.g. '1050' from HHMM-DD-MM formatted comment fields)
+      if (year < currentYear - 2 || year > currentYear + 1) continue;
+      const month = parseInt(m[2], 10);
+      if (month < 1 || month > 12) continue;
+      const day = parseInt(m[3], 10);
+      if (day < 1 || day > 31) continue;
+
       const epoch = new Date(`${m[0]}+05:30`).getTime();
       if (!isNaN(epoch) && epoch > maxEpoch) {
         maxEpoch = epoch;
         bestMatch = m;
       }
     }
+
+    if (!bestMatch || maxEpoch <= 0) return null;
 
     const [full, yyyy, mm, dd, hh, min, ss] = bestMatch;
     const h = parseInt(hh, 10);
@@ -87,10 +93,7 @@ export function extractRadarIsoTimestamp(arrayBuffer: ArrayBuffer): RadarObserva
     const utcTime = `${pad(utcH)}:${pad(utcM)}:${pad(s)} UTC`;
     const dateStr = `${dd}-${mm}-${yyyy}`;
 
-    const sweepEpoch = new Date(`${full}+05:30`).getTime();
-    const epochMs = maxEpoch > 0 ? maxEpoch : (!isNaN(sweepEpoch) ? sweepEpoch : undefined);
-
-    return { ist: istTime, utc: utcTime, date: dateStr, raw: full, epochMs, source: 'radar_metadata' };
+    return { ist: istTime, utc: utcTime, date: dateStr, raw: full, epochMs: maxEpoch, source: 'radar_metadata' };
   } catch {
     // Ignore
   }

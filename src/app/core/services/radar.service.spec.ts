@@ -428,14 +428,14 @@ describe('Radar refresh: which stations wait for their next scan', () => {
   });
 });
 
-describe('RadarService: 45-minute freshness limit and observation gating', () => {
+describe('RadarService: 75-minute freshness limit and observation gating', () => {
   const T = Date.UTC(2026, 9, 25, 12, 0, 0);
 
-  it('enforces 45-minute limit: 44m/45m eligible, 46m expired', () => {
-    expect(MAX_SCAN_AGE_MIN).toBe(45);
+  it('enforces 75-minute limit: 44m/75m eligible, 76m expired', () => {
+    expect(MAX_SCAN_AGE_MIN).toBe(75);
     expect(isObservationEligible({ epochMs: T - 44 * 60_000, source: 'radar_metadata' }, T)).toBe(true);
-    expect(isObservationEligible({ epochMs: T - 45 * 60_000, source: 'radar_metadata' }, T)).toBe(true);
-    expect(isObservationEligible({ epochMs: T - 46 * 60_000, source: 'radar_metadata' }, T)).toBe(false);
+    expect(isObservationEligible({ epochMs: T - 75 * 60_000, source: 'radar_metadata' }, T)).toBe(true);
+    expect(isObservationEligible({ epochMs: T - 76 * 60_000, source: 'radar_metadata' }, T)).toBe(false);
     expect(isObservationEligible({ epochMs: T - 180 * 60_000, source: 'radar_metadata' }, T)).toBe(false);
   });
 
