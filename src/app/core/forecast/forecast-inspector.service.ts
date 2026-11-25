@@ -4,6 +4,7 @@ import { DistrictLookupService } from '../geo/district-lookup.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastStateService } from './forecast-state.service';
+import { GlobalForecastService } from './global-forecast.service';
 import { bracketSteps, sampleGrid } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { PointForecast, blendTime, buildPointRows, inspectVars, summaryVars } from './point-forecast';
@@ -32,6 +33,7 @@ export class ForecastInspectorService {
   private readonly districts = inject(DistrictLookupService);
   private readonly consensus = inject(ConsensusService);
   private readonly unitsService = inject(UnitsService);
+  private readonly globalForecast = inject(GlobalForecastService);
 
   /** The clicked location, or null when nothing is selected. */
   readonly selected = signal<{ lat: number; lon: number } | null>(null);
@@ -165,9 +167,18 @@ export class ForecastInspectorService {
     const manifest = this.catalog.manifest();
     const time = this.state.timeMs();
     if (!manifest || time === null) return;
-    const g = manifest.grid;
-    if (lat > g.latMax || lat < g.latMin || lon < g.lonMin || lon > g.lonMax || !inForecastBox(lat, lon)) {
-      this.point.set(null); // outside the forecast domain
+    const regGrid = manifest.grid;
+    const useRegional = lat <= regGrid.latMax && lat >= regGrid.latMin && lon >= regGrid.lonMin && lon <= regGrid.lonMax && inForecastBox(lat, lon);
+    const activeManifest = useRegional ? manifest : await this.globalForecast.ensureManifest();
+    if (!activeManifest) {
+      this.point.set(null); // outside the forecast domain and no global run live yet
+      this.settle(false);
+      return;
+    }
+    const g = activeManifest.grid;
+    const sampleLon = useRegional ? lon : ((((lon + 180) % 360) + 360) % 360) - 180;
+    if (lat > g.latMax || lat < g.latMin) {
+      this.point.set(null);
       this.settle(false);
       return;
     }
@@ -176,12 +187,13 @@ export class ForecastInspectorService {
     this.armStale(my);
     let answered = false;
     try {
-      const { a, b, mix } = bracketSteps(this.catalog.validTimes(), time);
-      const hA = manifest.steps[a].h;
-      const hB = manifest.steps[b].h;
+      const times = useRegional ? this.catalog.validTimes() : activeManifest.steps.map(s => Date.parse(s.valid));
+      const { a, b, mix } = bracketSteps(times, time);
+      const hA = activeManifest.steps[a].h;
+      const hB = activeManifest.steps[b].h;
       const [place] = await Promise.all([
         this.districts.lookup(lat, lon),
-        this.terrain.ensureLoaded().then(() => this.terrain.prepareAt(lat, lon)).catch(() => null), // terrain is optional; values fall back to model resolution
+        this.terrain.ensureLoaded().then(() => useRegional ? this.terrain.prepareAt(lat, lon) : undefined).catch(() => null),
       ]);
       const level = this.state.level();
       const detailed = this.detail();
@@ -191,16 +203,22 @@ export class ForecastInspectorService {
       if (detailed) this.progress.set({ done: 0, total: wanted.length });
       await Promise.all(
         wanted.map(async id => {
-          const info = manifest.vars[id];
+          const info = activeManifest.vars[id];
           if (!info) {
-            values[id] = NaN; // this model does not publish the variable (e.g. gusts on AIFS)
+            values[id] = NaN;
           } else {
-            const [bmpA, bmpB] = await Promise.all([this.loader.get(id, hA, 'low'), this.loader.get(id, hB, 'low')]);
-            values[id] = blendTime(
-              sampleRg16Bitmap(bmpA, g, lat, lon, info.min, info.max),
-              sampleRg16Bitmap(bmpB, g, lat, lon, info.min, info.max),
-              mix
-            );
+            const [bmpA, bmpB] = useRegional
+              ? await Promise.all([this.loader.get(id, hA, 'low'), this.loader.get(id, hB, 'low')])
+              : await Promise.all([this.globalForecast.getField(id, hA), this.globalForecast.getField(id, hB)]);
+            if (!bmpA || !bmpB) {
+              values[id] = NaN;
+            } else {
+              values[id] = blendTime(
+                sampleRg16Bitmap(bmpA, g, lat, sampleLon, info.min, info.max),
+                sampleRg16Bitmap(bmpB, g, lat, sampleLon, info.min, info.max),
+                mix
+              );
+            }
           }
           done++;
           if (detailed && my === this.token) this.progress.set({ done, total: wanted.length });
@@ -210,24 +228,24 @@ export class ForecastInspectorService {
       const layerId = this.state.activeLayerId();
       const from = this.state.rangeStartMs();
       const to = this.state.rangeEndMs();
-      const totalInfo = manifest.vars['raintot'];
-      if (layerId === 'raintot' && totalInfo && from !== null && to !== null) {
+      const totalInfo = activeManifest.vars['raintot'];
+      if (useRegional && layerId === 'raintot' && totalInfo && from !== null && to !== null) {
         const validTimes = this.catalog.validTimes();
         const totalAt = async (t: number): Promise<number> => {
           const s = bracketSteps(validTimes, t);
-          const [x, y] = await Promise.all([this.loader.get('raintot', manifest.steps[s.a].h), this.loader.get('raintot', manifest.steps[s.b].h)]);
+          const [x, y] = await Promise.all([this.loader.get('raintot', activeManifest.steps[s.a].h), this.loader.get('raintot', activeManifest.steps[s.b].h)]);
           return blendTime(sampleRg16Bitmap(x, g, lat, lon, totalInfo.min, totalInfo.max), sampleRg16Bitmap(y, g, lat, lon, totalInfo.min, totalInfo.max), s.mix);
         };
         const [atEnd, atStart] = await Promise.all([totalAt(to), totalAt(from)]);
         const diff = atEnd - atStart;
         values['rainrange'] = diff < 0.15 ? 0 : Math.max(0, diff);
       }
-      if ((layerId === 'extreme' || detailed) && !manifest.vars['extreme']) {
+      if (useRegional && (layerId === 'extreme' || detailed) && !activeManifest.vars['extreme']) {
         const agreed = await this.consensus.compute(time);
         if (agreed) values['extreme'] = sampleGrid(agreed.values, INDIA_GRID, lat, lon);
       }
       if (my !== this.token) return; // a newer request replaced this one
-      const ground = this.terrain.pointTerrain(lat, lon, this.catalog.model().groundKm, manifest.grid);
+      const ground = this.terrain.pointTerrain(lat, sampleLon, useRegional ? this.catalog.model().groundKm : 28, activeManifest.grid);
       this.point.set({
         lat,
         lon,

@@ -122,7 +122,7 @@ def test_each_model_declares_its_rain_accumulation_window():
 
 
 def test_run_py_knows_every_model_and_each_has_a_distinct_folder():
-    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "aifs"])
+    assert sorted(pipeline_run.MODELS) == sorted(["ecmwf_ifs", "aifs", "global"])
     for m in pipeline_run.MODELS.values():
         assert callable(m.precip_window_hours) and callable(m.read_step) and callable(m.latest_run)
 

@@ -68,6 +68,14 @@ uniform sampler2D u_b2;      // second component, time B
 uniform sampler2D u_lut;
 uniform sampler2D u_demModel;  // the ground as the model sees it (forecast grid) + its land fraction
 uniform sampler2D u_demSmooth; // terrain smoothed over ~4 km
+uniform sampler2D u_demGlobal;      // global 0.1° DEM + land fraction
+uniform sampler2D u_demGlobalModel; // global 0.25° model ground
+uniform vec4 u_globalFineGrid;
+uniform ivec2 u_globalFineSize;
+uniform vec4 u_globalModelGrid;
+uniform ivec2 u_globalModelSize;
+uniform vec2 u_globalDemEnc;
+uniform int u_hasGlobalTerrain;
 uniform float u_mix;
 uniform float u_opacity;
 uniform vec2 u_enc;      // value range of the 16-bit encoding
@@ -147,7 +155,7 @@ vec2 blendTime(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
 }
 
 // Terrain: (metres, land fraction), smooth Hermite.
-vec2 terrainAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
+vec2 terrainAtEnc(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon, vec2 enc) {
   vec2 g = clamp(vec2((lon - grid.x) / grid.z, (grid.y - lat) / grid.z), vec2(0.0), vec2(size) - 1.0001);
   vec2 fr = fract(g);
   vec2 s = fr * fr * (3.0 - 2.0 * fr);
@@ -157,9 +165,13 @@ vec2 terrainAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
     ivec2 o = ivec2(k & 1, k >> 1);
     vec4 c = texelFetch(tex, clamp(i0 + o, ivec2(0), size - 1), 0);
     float w = (o.x == 1 ? s.x : 1.0 - s.x) * (o.y == 1 ? s.y : 1.0 - s.y);
-    acc += vec2(decode(c, u_demEnc), c.b) * w;
+    acc += vec2(decode(c, enc), c.b) * w;
   }
   return acc;
+}
+
+vec2 terrainAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
+  return terrainAtEnc(tex, grid, size, lat, lon, u_demEnc);
 }
 
 // The ground the FIELD stands on at a pixel (metres, land fraction). On the model-ground picture's own lattice that is the picture read at the
@@ -193,11 +205,13 @@ void main() {
   float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * v_merc.y))));
   float lon = v_merc.x * 360.0 - 180.0;
   bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
+  bool hasGlobalT = !onGround && u_hasGlobalTerrain == 1;
+  bool isGlobalGrid = u_grid.z * float(u_size.x) >= 359.0;
   vec2 g = vec2((lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
-  // Fade out over the last 12 cells (about 1.2 degrees) so the data area does not end in a hard edge.
+  // Fade out over the last 12 cells (about 1.2 degrees) for regional grids; global grids wrap longitudinally.
   vec2 toFar = vec2(u_size) - 1.0 - g;
-  float edge = min(min(g.x, g.y), min(toFar.x, toFar.y));
-  float edgeFade = smoothstep(0.0, 12.0, edge);
+  float edge = isGlobalGrid ? min(g.y, toFar.y) : min(min(g.x, g.y), min(toFar.x, toFar.y));
+  float edgeFade = smoothstep(0.0, isGlobalGrid ? 4.0 : 12.0, edge);
   g = clamp(g, vec2(0.0), vec2(u_size) - 1.0001);
 
   vec2 first = blendTime(u_a, u_b, g, u_enc);
@@ -224,9 +238,12 @@ void main() {
     if (u_relief > 0.0) {
       fineSlope = ts.valid > 0.5 ? ts.slope : vec2(0.0);
     }
+  } else if (hasGlobalT) {
+    model = terrainAtEnc(u_demGlobalModel, u_globalModelGrid, u_globalModelSize, lat, lon, u_globalDemEnc);
+    fineGround = terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
   }
 
-  if (onGround && u_terrainMode != 0) {
+  if ((onGround || hasGlobalT) && u_terrainMode != 0) {
     float dz = clamp(fineGround.x - model.x, -${f(MAX_TERRAIN_DELTA_M)}, ${f(MAX_TERRAIN_DELTA_M)});
     int m = u_terrainMode;
     if (m == 1) {
@@ -258,7 +275,7 @@ void main() {
       v *= exp(-dz / ${f(VAPOUR_SCALE_HEIGHT_M)});
     } else if (m == 4) {
       // Wind: topographic exposure + coastal transition + aerodynamic roughness length drag on land
-      float tpi = (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y;
+      float tpi = onGround ? (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y : 0.0;
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fineGround.y);
       // Aerodynamic surface roughness drag matching roughnessWindFactor() in terrain-correction.ts:
@@ -324,14 +341,16 @@ const UNIFORMS = [
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_clearFade', 'u_grid', 'u_size',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_sunParams', 'u_hasTime',
+  'u_demGlobal', 'u_demGlobalModel', 'u_globalFineGrid', 'u_globalFineSize', 'u_globalModelGrid', 'u_globalModelSize', 'u_globalDemEnc', 'u_hasGlobalTerrain',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 
 /** MapLibre custom layer drawing one forecast variable on the 90 m terrain, blended between two time steps on the GPU. */
 export class ScalarFieldLayer implements CustomLayerInterface {
-  readonly id = 'forecast-scalar-layer';
   readonly type = 'custom' as const;
   readonly renderingMode = '2d' as const;
+
+  constructor(readonly id: string = 'forecast-scalar-layer') {}
 
   private map: MapLibreMap | null = null;
   private gl: WebGL2RenderingContext | null = null;
@@ -360,7 +379,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private modelBitmap: ImageBitmap | null = null;
   private demModelTex: WebGLTexture | null = null;
   private demSmoothTex: WebGLTexture | null = null;
+  private demGlobalTex: WebGLTexture | null = null;
+  private demGlobalModelTex: WebGLTexture | null = null;
   private smoothUploadedFor: TerrainData | null = null;
+  private globalUploadedFor: TerrainData | null = null;
   private modelUploaded: ImageBitmap | null = null;
   /** The 90 m terrain tiles of the view on the GPU (shared code with the radar layer). */
   private readonly tiles = new TerrainTileGpu('forecast');
@@ -452,8 +474,11 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.lutTex = gl.createTexture();
     this.demModelTex = gl.createTexture();
     this.demSmoothTex = gl.createTexture();
+    this.demGlobalTex = gl.createTexture();
+    this.demGlobalModelTex = gl.createTexture();
     this.tiles.attach(map, gl);
     this.smoothUploadedFor = null;
+    this.globalUploadedFor = null;
     this.modelUploaded = null;
     this.uploadQuad();
   }
@@ -461,14 +486,14 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
     for (const tex of this.textures.values()) gl.deleteTexture(tex);
     this.textures.clear();
-    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex]) if (tex) gl.deleteTexture(tex);
+    for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.demGlobalTex, this.demGlobalModelTex]) if (tex) gl.deleteTexture(tex);
     this.tiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     const handle = this.program ?? this.pending?.handle;
     if (handle) gl.deleteProgram(handle);
     this.pending = null;
-    this.lutTex = this.demModelTex = this.demSmoothTex = this.vbo = this.vao = this.program = null;
+    this.lutTex = this.demModelTex = this.demSmoothTex = this.demGlobalTex = this.demGlobalModelTex = this.vbo = this.vao = this.program = null;
     this.map = null;
     this.gl = null;
   }
@@ -501,13 +526,19 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       this.uploadTerrainImage(gl, this.demSmoothTex, this.terrain.smooth);
       this.smoothUploadedFor = this.terrain;
     }
+    if (this.terrain?.globalFine && this.terrain?.globalModel && this.globalUploadedFor !== this.terrain) {
+      this.uploadTerrainImage(gl, this.demGlobalTex, this.terrain.globalFine);
+      this.uploadTerrainImage(gl, this.demGlobalModelTex, this.terrain.globalModel);
+      this.globalUploadedFor = this.terrain;
+    }
     if (this.modelBitmap && this.modelUploaded !== this.modelBitmap) {
       this.uploadTerrainImage(gl, this.demModelTex, this.modelBitmap);
       this.modelUploaded = this.modelBitmap;
     }
     this.tiles.update(gl);
     const terrainOn = !!this.terrain && this.smoothUploadedFor === this.terrain && this.modelUploaded !== null && this.tiles.ready;
-    const terrainMode = terrainOn && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
+    const hasGlobalT = !!this.terrain?.meta.global && this.globalUploadedFor === this.terrain;
+    const terrainMode = (terrainOn || hasGlobalT) && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
 
     gl.useProgram(program);
     gl.bindVertexArray(this.vao);
@@ -526,6 +557,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       bind(4, this.demModelTex);
       bind(7, this.demSmoothTex);
     }
+    if (hasGlobalT) {
+      bind(8, this.demGlobalTex);
+      bind(9, this.demGlobalModelTex);
+    }
     this.tiles.bind(gl, terrainOn);   // with no terrain the tile sampler still reads a 2D-array texture (a blank one), as the shader declares it
 
     const u = this.uniforms;
@@ -539,6 +574,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     unit('u_b2', 6, magnitude);
     unit('u_demModel', 4, terrainOn);
     unit('u_demSmooth', 7, terrainOn);
+    unit('u_demGlobal', 8, hasGlobalT);
+    unit('u_demGlobalModel', 9, hasGlobalT);
     gl.uniform1i(u['u_magnitude'], magnitude ? 1 : 0);
     gl.uniform1f(u['u_mix'], this.mix);
     gl.uniform1f(u['u_opacity'], def.opacity);
@@ -572,6 +609,17 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     } else {
       for (const name of ['u_smoothSize', 'u_modelSize']) gl.uniform2i(u[name], 1, 1);
     }
+    gl.uniform1i(u['u_hasGlobalTerrain'], hasGlobalT ? 1 : 0);
+    if (hasGlobalT && meta?.global) {
+      gl.uniform4f(u['u_globalFineGrid'], meta.global.fine.lonMin, meta.global.fine.latMax, meta.global.fine.step, 0);
+      gl.uniform2i(u['u_globalFineSize'], meta.global.fine.nx, meta.global.fine.ny);
+      gl.uniform4f(u['u_globalModelGrid'], meta.global.model.lonMin, meta.global.model.latMax, meta.global.model.step, 0);
+      gl.uniform2i(u['u_globalModelSize'], meta.global.model.nx, meta.global.model.ny);
+      gl.uniform2f(u['u_globalDemEnc'], meta.global.min, meta.global.max);
+    } else {
+      gl.uniform2i(u['u_globalFineSize'], 1, 1);
+      gl.uniform2i(u['u_globalModelSize'], 1, 1);
+    }
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -584,8 +632,9 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private uploadQuad(): void {
     const { gl, grid } = this;
     if (!gl || !grid || !this.vao || !this.vbo) return;
-    const x0 = mercatorUnitX(grid.lonMin);
-    const x1 = mercatorUnitX(grid.lonMax);
+    const isGlobal = grid.step * grid.nx >= 359;
+    const x0 = isGlobal ? 0 : mercatorUnitX(grid.lonMin);
+    const x1 = isGlobal ? 1 : mercatorUnitX(grid.lonMax);
     const y0 = mercatorUnitY(grid.latMax);
     const y1 = mercatorUnitY(grid.latMin);
     gl.bindVertexArray(this.vao);

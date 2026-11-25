@@ -10,6 +10,14 @@ export const TERRAIN_BASE = typeof window !== 'undefined' && (window.location.ho
   ? '/terrain'
   : `${PAGES}/terrain`;
 
+/** Global 0.1° / 0.25° terrain metadata for rest-of-world downscaling. */
+export interface GlobalTerrainMeta {
+  min: number;
+  max: number;
+  fine: ForecastGrid & { file: string };
+  model: ForecastGrid & { file: string };
+}
+
 /** Contents of terrain/index.json, written by pipeline/build_terrain.py. */
 export interface TerrainMeta {
   domain: { latMax: number; latMin: number; lonMin: number; lonMax: number };
@@ -27,6 +35,7 @@ export interface TerrainMeta {
   grid: ForecastGrid;
   model: Record<string, string>;
   source: string;
+  global?: GlobalTerrainMeta;
 }
 
 export interface TerrainData {
@@ -36,6 +45,8 @@ export interface TerrainData {
   models: Map<number, ImageBitmap>;
   /** A 90 m, 270 m or 1.08 km tile (see TerrainService.tileImage). */
   tileImage: (level: TerrainLevel, name: string) => Promise<ImageBitmap>;
+  globalFine?: ImageBitmap;
+  globalModel?: ImageBitmap;
 }
 
 const M_PER_DEG = 111_200;
@@ -168,7 +179,25 @@ export class TerrainService {
     const t = this.data();
     if (!t) return null;
     const { domain, min, max, smooth: smoothGrid, grid } = t.meta;
-    if (lat > domain.latMax || lat < domain.latMin || lon < domain.lonMin || lon > domain.lonMax) return null;
+    if (lat > domain.latMax || lat < domain.latMin || lon < domain.lonMin || lon > domain.lonMax) {
+      const gMeta = t.meta.global;
+      if (!gMeta || !t.globalFine || !t.globalModel) return null;
+      const wLon = ((((lon + 180) % 360) + 360) % 360) - 180;
+      const cLat = Math.min(Math.max(lat, gMeta.fine.latMin), gMeta.fine.latMax);
+      const fineG = sampleTerrain(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
+      const modelG = sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
+      return {
+        fine: fineG.z,
+        model: modelG.z,
+        dz: terrainDelta(fineG.z, modelG.z),
+        tpi: 0,
+        landFine: fineG.land,
+        landModel: modelG.land,
+        slope: [0, 0],
+        modelSlope: [0, 0],
+        fineSlope: [0, 0],
+      };
+    }
     const name = tileNameAt(lat, lon);
     const cpu = this.cpuTiles.get(name);
     if (!cpu) {
@@ -246,6 +275,13 @@ export class TerrainService {
       });
     const kms = Object.keys(meta.model).map(Number);
     const [smooth, ...models] = await Promise.all([meta.smooth.file, ...kms.map(km => meta.model[String(km)])].map(image));
+    let globalFine: ImageBitmap | undefined;
+    let globalModel: ImageBitmap | undefined;
+    if (meta.global) {
+      try {
+        [globalFine, globalModel] = await Promise.all([image(meta.global.fine.file), image(meta.global.model.file)]);
+      } catch {}
+    }
     this.present = new Set(meta.tiles);
     this.presentL0 = new Set(meta.tilesL0 ?? meta.tiles);
     const data: TerrainData = {
@@ -253,6 +289,8 @@ export class TerrainService {
       smooth,
       models: new Map(kms.map((km, i) => [km, models[i]])),
       tileImage: (level, name) => this.tileImage(level, name),
+      globalFine,
+      globalModel,
     };
     this.data.set(data);
     return data;

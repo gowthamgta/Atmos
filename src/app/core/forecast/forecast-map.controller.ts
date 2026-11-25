@@ -16,6 +16,7 @@ import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
+import { GlobalForecastService } from './global-forecast.service';
 import { TerrainService } from './terrain.service';
 import { ForecastManifest, bracketSteps } from './forecast.model';
 import { FORECAST_LAYERS, type ForecastLayerDef } from './forecast-layers';
@@ -43,9 +44,12 @@ export class ForecastMapController {
   private readonly consensus = inject(ConsensusService);
   private readonly meteogram = inject(MeteogramService);
   private readonly perf = inject(PerfMeterService);
+  private readonly globalForecast = inject(GlobalForecastService);
 
   private map: MapLibreMap | null = null;
+  private globalLayer: ScalarFieldLayer | null = null;
   private layer: ScalarFieldLayer | null = null;
+  private globalToken = 0;
   private windLayer: WindParticlesLayer | null = null;
   private effects: EffectRef[] = [];
   private marker: Marker | null = null;
@@ -99,6 +103,8 @@ export class ForecastMapController {
   attach(map: MapLibreMap, beforeId?: string): void {
     this.detach();
     this.map = map;
+    this.globalLayer = new ScalarFieldLayer('forecast-global-layer');
+    map.addLayer(this.globalLayer, beforeId);
     this.layer = new ScalarFieldLayer();
     map.addLayer(this.layer, beforeId);
     // the particle step needs no log, tan or cos per particle (see particle-system.ts), so these counts cost less than 1800 and 11000 did
@@ -128,6 +134,7 @@ export class ForecastMapController {
     this.marker?.remove();
     this.marker = null;
     this.token++;
+    this.globalToken++;
     this.windToken++;
     this.isobarToken++;
     if (this.isobarTimer) clearTimeout(this.isobarTimer);
@@ -138,9 +145,10 @@ export class ForecastMapController {
       this.removeLightningLayer(this.map);
     }
     this.stopLightning();
-    for (const l of [this.layer, this.windLayer]) {
+    for (const l of [this.globalLayer, this.layer, this.windLayer]) {
       if (this.map && l && this.map.getLayer(l.id)) this.map.removeLayer(l.id);
     }
+    this.globalLayer = null;
     this.layer = null;
     this.windLayer = null;
     this.map = null;
@@ -206,6 +214,7 @@ export class ForecastMapController {
     if (!layer) return;
     if (!def || !manifest || time === null || validTimes.length === 0) {
       layer.setLayer(null);
+      this.globalLayer?.setLayer(null);
       return;
     }
     // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It goes to every field whatever
@@ -223,6 +232,12 @@ export class ForecastMapController {
     layer.setLite(isPhone()); // phones take the cheaper relief slope; larger screens take the full one
     if (!terrainData) {
       this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));
+    }
+    if (this.globalLayer) {
+      this.globalLayer.setTerrain(onTerrain ? terrainData : null, modelGround);
+      this.globalLayer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
+      this.globalLayer.setLite(isPhone());
+      void this.updateGlobalLayer(def, time, ++this.globalToken);
     }
 
     if (consensusLayer) {
@@ -270,6 +285,45 @@ export class ForecastMapController {
         this.prefetchOtherLayers(manifest, [hA, hB]);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
+  }
+
+  private async updateGlobalLayer(def: ForecastLayerDef, time: number, my: number): Promise<void> {
+    const gLayer = this.globalLayer;
+    if (!gLayer) return;
+    const gMan = await this.globalForecast.ensureManifest();
+    if (my !== this.globalToken || !this.globalLayer) return;
+    if (!gMan) {
+      gLayer.setLayer(null);
+      return;
+    }
+    const info = gMan.vars[def.varId];
+    const info2 = def.varId2 ? gMan.vars[def.varId2] : undefined;
+    if (!info || (def.varId2 && !info2)) {
+      gLayer.setLayer(null);
+      return;
+    }
+    const gTimes = gMan.steps.map(s => Date.parse(s.valid));
+    const { a, b, mix } = bracketSteps(gTimes, time);
+    const hA = gMan.steps[a].h;
+    const hB = gMan.steps[b].h;
+    const varIds = def.varId2 ? [def.varId, def.varId2] : [def.varId];
+    const bitmaps = await Promise.all(varIds.flatMap(v => [this.globalForecast.getField(v, hA), this.globalForecast.getField(v, hB)]));
+    if (my !== this.globalToken || !this.globalLayer || bitmaps.some(bmp => !bmp)) {
+      if (my === this.globalToken) gLayer.setLayer(null);
+      return;
+    }
+    const prefix = `${gMan.model}/${gMan.run}`;
+    const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap });
+    gLayer.setGrid(gMan.grid);
+    gLayer.setLayer(def, [info.min, info.max], info2 ? [info2.min, info2.max] : undefined);
+    gLayer.setFrames(
+      frame(def.varId, hA, bitmaps[0]!),
+      frame(def.varId, hB, bitmaps[1]!),
+      mix,
+      def.varId2 ? frame(def.varId2, hA, bitmaps[2]!) : null,
+      def.varId2 ? frame(def.varId2, hB, bitmaps[3]!) : null,
+      time
+    );
   }
 
   /**

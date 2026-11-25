@@ -471,5 +471,29 @@
       "95": "Mangroves",
       "100": "Moss / Lichen"
     }
+  },
+  "global": {
+    "min": 0,
+    "max": 6000,
+    "fine": {
+      "file": "global.webp",
+      "latMax": 85.0,
+      "latMin": -85.0,
+      "lonMin": -180.0,
+      "lonMax": 179.9,
+      "step": 0.1,
+      "nx": 3600,
+      "ny": 1701
+    },
+    "model": {
+      "file": "global_model.webp",
+      "latMax": 85.0,
+      "latMin": -85.0,
+      "lonMin": -180.0,
+      "lonMax": 179.75,
+      "step": 0.25,
+      "nx": 1440,
+      "ny": 681
+    }
   }
 }

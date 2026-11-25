@@ -80,8 +80,19 @@ AIFS = RegularModel(
     )],
 )
 
-# Active regular models: only ECMWF AIFS is active (GFS, UKMO, ICON removed on user request)
-ALL: tuple[RegularModel, ...] = (AIFS,)
+# Active regular models: AIFS (for blend input) and GLOBAL (worldwide 25 km surface forecast)
+GLOBAL_GRID = Grid(-85.0, 85.0, -180.0, 179.75, 0.25, "global-0.25")
+GLOBAL_STEPS = list(range(0, 121, 6))
+GLOBAL = RegularModel(
+    model_id="global", label="Global 25km", run_hours=(0, 6, 12, 18), step_hours=GLOBAL_STEPS, grid=GLOBAL_GRID,
+    sources=[Source(
+        "ecmwf_aifs025_single",
+        _SAME(["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
+              + CLOUD_LAYERS + SURFACE_UV),
+    )],
+)
+
+ALL: tuple[RegularModel, ...] = (AIFS, GLOBAL)
 
 # Legacy models kept only for backward compatibility / reference tests:
 UKMO = RegularModel(

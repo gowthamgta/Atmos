@@ -112,9 +112,9 @@ jobs:
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
-          # mirror live blend as a fallback in case blend.py fails
-          if ! python mirror.py --site site --base-url "$base" --models blend; then
-            echo "::warning::live blend could not be copied; not deploying, so that it is not dropped from the site"
+          # mirror live blend and global as fallbacks in case a build fails
+          if ! python mirror.py --site site --base-url "$base" --models blend global; then
+            echo "::warning::live model could not be copied; not deploying, so that it is not dropped from the site"
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi

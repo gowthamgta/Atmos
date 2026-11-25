@@ -68,7 +68,7 @@ def build_manifest(fetcher, run, steps, build=None, omit=frozenset()):
 DERIVED_ACROSS_STEPS = {"rain24", "raintot", "extreme", "tmin24", "tmax24"}   # needs several steps, so it is computed after all of them (see main)
 
 
-def process_step(fetcher, run, h):
+def process_step(fetcher, run, h, global_deltas=None):
     """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from, its air
     temperature, and the variables that have data at this step (the rest are all "no data": see main)."""
     fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid_of(fetcher).lat_max)
@@ -80,8 +80,26 @@ def process_step(fetcher, run, h):
         if RAIN_BIAS:
             # the rain factor of the Tamil Nadu gauges, on land near them (see correction.apply_rain)
             fields = correction.apply_rain(fields, grid.lats(), grid.lons(), RAIN_BIAS, LAND_MASK)
+    if fetcher.MODEL_ID == "global" and global_deltas:
+        import math
+        from derive import dew_point, feels_like
+        persistence = math.exp(-h / 24.0)
+        if "t2m" in global_deltas and "t2m" in fields:
+            fields["t2m"] = (fields["t2m"] + persistence * global_deltas["t2m"]).astype(np.float32)
+        if "rh" in global_deltas and "rh" in fields:
+            fields["rh"] = np.clip(fields["rh"] + persistence * global_deltas["rh"], 5.0, 100.0).astype(np.float32)
+        if "t2m" in fields and "rh" in fields:
+            fields["dew"] = dew_point(fields["t2m"], fields["rh"]).astype(np.float32)
+            if "u10" in fields and "v10" in fields:
+                fields["feels"] = feels_like(fields["t2m"], fields["rh"], np.hypot(fields["u10"], fields["v10"])).astype(np.float32)
     per_step = [v for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS]
-    pngs = {v.id: encode_field(fields[v.id], v.lo, v.hi, v.bits) for v in per_step}
+    pngs = {
+        v.id: encode_field(
+            fields[v.id], v.lo, v.hi,
+            min(v.bits, 12) if fetcher.MODEL_ID == "global" and v.id not in ("precip", "rain24", "raintot", "extreme") else v.bits,
+        )
+        for v in per_step
+    }
     with_data = {v.id for v in per_step if np.isfinite(fields[v.id]).any()}
     return h, pngs, fields["precip"], fields["t2m"], with_data
 
@@ -151,10 +169,22 @@ def main() -> int:
     temps: dict[int, object] = {}
     with_data: set[str] = set()
     empty: set[str] = set()
+    global_deltas = None
+    if fetcher.MODEL_ID == "global" and steps:
+        try:
+            import obs_global_metar
+            now_wall = datetime.now(timezone.utc)
+            h_now = min(steps, key=lambda s: abs((run + timedelta(hours=s) - now_wall).total_seconds()))
+            now_fields = derive(fetcher.read_step(run, h_now), fetcher.precip_window_hours(h_now), grid_of(fetcher).lat_max)
+            g = grid_of(fetcher)
+            global_deltas = obs_global_metar.assimilate_global_metars(now_fields, g.lat_max, g.lat_min, g.lon_min, g.step)
+        except Exception as e:
+            print(f"global: worldwide METAR assimilation skipped ({e})", flush=True)
+
     run_dir = os.path.join(args.out, fetcher.MODEL_ID, run_id)
     try:
         with ThreadPoolExecutor(args.workers) as pool:
-            for h, pngs, rate, temp, seen in pool.map(lambda h: process_step(fetcher, run, h), steps):
+            for h, pngs, rate, temp, seen in pool.map(lambda h: process_step(fetcher, run, h, global_deltas), steps):
                 for vid, png in pngs.items():
                     write(os.path.join(run_dir, vid, f"{h:03d}.png"), png)
                 rates[h] = rate
