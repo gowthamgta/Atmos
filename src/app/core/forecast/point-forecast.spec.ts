@@ -177,7 +177,7 @@ describe('point forecast helpers', () => {
     expect(find(rows, 'lvl-height').text).toBe('1532 m');
     expect(buildPointRows(aloft, ground(0), 'surface').some(r => r.id.startsWith('lvl-'))).toBe(false);
     // a model without that level shows dashes rather than failing
-    expect(find(buildPointRows(values, ground(0), 500), 'lvl-temp').text).toBe('–');
+    expect(find(buildPointRows(values, ground(0), 700), 'lvl-temp').text).toBe('–');
   });
 
   it('makes a ridge windier and a windward slope cloudier, the rain left as the map draws it', () => {

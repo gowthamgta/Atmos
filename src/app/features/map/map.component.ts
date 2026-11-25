@@ -577,6 +577,8 @@ export class MapComponent implements OnInit, OnDestroy {
   private satelliteKeys = '';
 
   private removeSatelliteLayers(): void {
+    if (this.map && this.globalSatelliteData && this.map.getLayer(this.globalSatelliteData.id)) this.map.removeLayer(this.globalSatelliteData.id);
+    this.globalSatelliteData = null;
     if (this.map && this.satelliteData && this.map.getLayer(this.satelliteData.id)) this.map.removeLayer(this.satelliteData.id);
     this.satelliteData = null;
     this.removeFlatLayers();
@@ -618,10 +620,30 @@ export class MapComponent implements OnInit, OnDestroy {
   // --- Our own products drawn in the browser from the data pack (satellite-data.layer.ts): IR enhanced, WV difference, custom RGB ---
 
   private satelliteData: SatelliteDataLayer | null = null;
+  private globalSatelliteData: SatelliteDataLayer | null = null;
 
   private updateSatelliteData(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number, custom: SatelliteService['custom'] extends () => infer C ? C : never): void {
     const map = this.map;
     if (!map) return;
+    const gIr = this.satellite.globalIr();
+    if (!on || !gIr) {
+      if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
+      this.globalSatelliteData = null;
+    } else {
+      if (!this.globalSatelliteData) {
+        this.globalSatelliteData = new SatelliteDataLayer('satellite-global-data');
+        const before = this.satelliteData && map.getLayer(this.satelliteData.id)
+          ? this.satelliteData.id
+          : this.satelliteLayer && map.getLayer(this.satelliteLayer.id)
+            ? this.satelliteLayer.id
+            : this.observationAnchorId();
+        map.addLayer(this.globalSatelliteData, before);
+      }
+      this.globalSatelliteData.setFrames([{ key: gIr.url, url: gIr.url }], gIr.bounds, gIr.minK, gIr.spanK);
+      this.globalSatelliteData.setStyle({ mode: 0, custom });
+      this.globalSatelliteData.setPosition(0, opacity * 0.85);
+    }
+
     const own = frames[0]?.own;
     if (!on || !own) {
       if (this.satelliteData && map.getLayer(this.satelliteData.id)) map.removeLayer(this.satelliteData.id);

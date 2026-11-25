@@ -129,9 +129,10 @@ export interface DataLayerStyle {
 }
 
 export class SatelliteDataLayer implements CustomLayerInterface {
-  readonly id = 'satellite-data-layer';
   readonly type = 'custom' as const;
   readonly renderingMode = '2d' as const;
+
+  constructor(readonly id: string = 'satellite-data-layer') {}
 
   private map: MapLibreMap | null = null;
   private pending: PendingProgram | null = null;

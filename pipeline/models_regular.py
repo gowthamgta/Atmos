@@ -88,7 +88,7 @@ GLOBAL = RegularModel(
     sources=[Source(
         "ecmwf_aifs025_single",
         _SAME(["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
-              + CLOUD_LAYERS + SURFACE_UV),
+              + CLOUD_LAYERS + SURFACE_UV + LEVEL_SCALARS + level_uv()),
     )],
 )
 

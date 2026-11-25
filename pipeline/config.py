@@ -39,10 +39,9 @@ class Var:
 
 
 # Pressure levels offered as "altitude" (hPa) and how high they are in the standard atmosphere, to 100 m (the app has the same table in forecast-layers.ts).
-# Core mandatory synoptic levels: auxiliary levels (800 and 600 hPa) are omitted from the pipeline to save ~45 MB per model run;
-# the Atmos frontend synthesizes them dynamically via log-linear (ln p) interpolation in FieldLoaderService.
-LEVELS = (925, 850, 700, 500, 300, 250, 200)
-LEVEL_KM = {925: 0.8, 850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 500: 5.6, 300: 9.2, 250: 10.4, 200: 11.8}
+# 800 hPa is synthesized dynamically via log-linear (ln p) interpolation in FieldLoaderService from 850 and 700 hPa.
+LEVELS = (850, 700, 600, 200)
+LEVEL_KM = {850: 1.5, 800: 2.0, 700: 3.0, 600: 4.2, 200: 11.8}
 
 # Encoding ranges per level: temperature (degC) and geopotential height (m). Generous, so no value can clip.
 # wide enough for the whole domain (Ladakh's winter, the jet's cold core at 200 hPa down to -100 °C): the app colours them on Windy's scale

@@ -60,10 +60,10 @@ describe('the pipeline list that these checks read', () => {
   it('has the variables, including every level', () => {
     expect(PIPELINE['t2m']).toEqual({ unit: '°C', lo: -40, hi: 50 });
     expect(PIPELINE['u10']).toEqual({ unit: 'm/s', lo: -60, hi: 60 });
-    expect(PIPELINE['t500']).toEqual({ unit: '°C', lo: -55, hi: 5 });
+    expect(PIPELINE['t700']).toEqual({ unit: '°C', lo: -35, hi: 25 });
     expect(PIPELINE['gh850']).toEqual({ unit: 'm', lo: 1100, hi: 1800 });
     expect(PIPELINE['vo850'].unit).toContain('s');
-    expect(Object.keys(PIPELINE).length).toBeGreaterThan(70);
+    expect(Object.keys(PIPELINE).length).toBeGreaterThan(50);
   });
 });
 
@@ -143,9 +143,9 @@ describe('what each layer says about time', () => {
     for (const id of ['rain24', 'tmin24', 'tmax24', 'extreme']) expect(note(id).gaps).toContain('run ends before');
   });
 
-  it('describes the rain of the layer as the model reports it, in mm per hour', () => {
-    const facts = layerFacts(FORECAST_LAYERS.find(l => l.id === 'rain')!, FORECAST_LAYERS.find(l => l.id === 'rain')!, 'surface');
-    expect(facts.scale).toMatch(/mm\/h|mm/);
+  it('describes the rain accumulation of the layer as the model reports it, in mm', () => {
+    const facts = layerFacts(FORECAST_LAYERS.find(l => l.id === 'raintot')!, FORECAST_LAYERS.find(l => l.id === 'raintot')!, 'surface');
+    expect(facts.scale).toMatch(/mm/);
     expect(facts.ground).toContain('slopes');
   });
 });

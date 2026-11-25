@@ -32,14 +32,10 @@ describe('the labels of an altitude', () => {
   it('gives the pressure, the height in metres and the flight level of each level', () => {
     const rows = PRESSURE_LEVELS.map(l => [l, altitudeLabels(l).metres, altitudeLabels(l).flight]);
     expect(rows).toEqual([
-      [925, '800 m', 'FL25'],
       [850, '1500 m', 'FL50'],
       [800, '2000 m', 'FL65'],
       [700, '3000 m', 'FL100'],
       [600, '4200 m', 'FL140'],
-      [500, '5600 m', 'FL185'],
-      [300, '9200 m', 'FL300'],
-      [250, '10400 m', 'FL340'],
       [200, '11800 m', 'FL385'],
     ]);
   });
@@ -56,14 +52,10 @@ describe('the labels of an altitude', () => {
 
   it('gives the slider\'s second line in metres and feet, as windy.com writes it ("1500 m · 5000 ft")', () => {
     expect(PRESSURE_LEVELS.map(l => altitudeFeetLine(l).replace(/ /g, ' '))).toEqual([
-      '800 m · 2500 ft',
       '1500 m · 5000 ft',
       '2000 m · 6500 ft',
       '3000 m · 10000 ft',
       '4200 m · 14000 ft',
-      '5600 m · 18500 ft',
-      '9200 m · 30000 ft',
-      '10400 m · 34000 ft',
       '11800 m · 38500 ft',
     ]);
     expect(altitudeFeetLine('surface')).toBe('2–10 m');

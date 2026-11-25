@@ -133,10 +133,10 @@ def test_derive_passes_pressure_level_winds_through():
            "wind_gusts_10m": z, "pressure_msl": z + 101000, "precipitation": z, "cloud_cover": z, "cape": z,
            "total_column_integrated_water_vapour": z,
            "wind_u_component_850hPa": z + 12, "wind_v_component_850hPa": z - 3,
-           "wind_u_component_500hPa": z + 20, "wind_v_component_500hPa": z + 1}
+           "wind_u_component_700hPa": z + 20, "wind_v_component_700hPa": z + 1}
     out = derive(raw)
     assert np.allclose(out["u850"], 12) and np.allclose(out["v850"], -3)
-    assert np.allclose(out["u500"], 20) and np.allclose(out["v500"], 1)
+    assert np.allclose(out["u700"], 20) and np.allclose(out["v700"], 1)
 
 
 def test_mirror_tells_a_model_that_is_not_live_from_a_copy_that_failed(tmp_path):

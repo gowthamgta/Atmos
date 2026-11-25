@@ -70,7 +70,7 @@ def test_every_regular_model_is_consistent():
         provided = {k for s in m.sources for k in s.vars} | {k for s in m.sources for w in s.winds for k in w[:2]}
         # a model that does not list a variable must declare it unavailable, and the reverse
         wants = {"rh": "relative_humidity_2m", "gust": "wind_gusts_10m", "cape": "cape", "tcwv": "total_column_integrated_water_vapour",
-                 "u850": "wind_u_component_850hPa", "u500": "wind_u_component_500hPa"}
+                 "u850": "wind_u_component_850hPa", "u700": "wind_u_component_700hPa"}
         for pub, raw in wants.items():
             assert (raw in provided) == (pub not in m.UNAVAILABLE_VARS), (m.MODEL_ID, pub)
         assert ("rh" in m.UNAVAILABLE_VARS) == ("feels" in m.UNAVAILABLE_VARS)   # feels-like needs humidity
@@ -96,15 +96,15 @@ import fetch_ifs
 
 
 def test_every_level_has_five_fields_with_sensible_ranges():
-    assert C.LEVELS == (925, 850, 700, 500, 300, 250, 200)
+    assert C.LEVELS == (850, 700, 600, 200)
     for lvl in C.LEVELS:
         for kind in ("u", "v", "t", "rh", "gh"):
             var = C.VARS[f"{kind}{lvl}"]
             assert var.hi > var.lo and var.bits == 12
     # a typical value of each level must sit inside its encoding range (no clipping)
-    assert C.VARS["t850"].lo < 20 < C.VARS["t850"].hi and C.VARS["t500"].lo < -8 < C.VARS["t500"].hi
-    assert C.VARS["gh500"].lo < 5880 < C.VARS["gh500"].hi and C.VARS["gh200"].lo < 12400 < C.VARS["gh200"].hi
-    assert C.VARS["t300"].lo < -42 < C.VARS["t300"].hi and C.VARS["t200"].lo < -55 < C.VARS["t200"].hi
+    assert C.VARS["t850"].lo < 20 < C.VARS["t850"].hi and C.VARS["t700"].lo < 9 < C.VARS["t700"].hi
+    assert C.VARS["gh700"].lo < 3120 < C.VARS["gh700"].hi and C.VARS["gh200"].lo < 12400 < C.VARS["gh200"].hi
+    assert C.VARS["t600"].lo < 1 < C.VARS["t600"].hi and C.VARS["t200"].lo < -55 < C.VARS["t200"].hi
 
 
 def test_dew_point_is_the_inverse_of_relative_humidity():
@@ -134,7 +134,7 @@ def test_derive_handles_levels_and_the_extra_surface_parameters():
     assert np.allclose(out["vis"], 12.0)          # metres in the file, kilometres published
     assert np.allclose(out["solar"], 650)
     assert np.allclose(out["dew"], D.dew_point(np.float32(30), np.float32(70)), atol=0.01)   # derived from temperature and humidity
-    assert np.isnan(out["t500"]).all()            # a level the model lacks stays empty
+    assert np.isnan(out["t700"]).all()            # a level the model lacks stays empty
 
 
 def test_dew_point_prefers_the_models_own_value():
@@ -152,7 +152,7 @@ def test_unavailable_for_follows_the_raw_fields_a_model_has():
     assert D.unavailable_for(no_humidity) == {"rh", "feels", "dew"}                        # none of the three can be made
     assert D.unavailable_for(no_humidity | {"dew_point_2m"}) == set()                 # a dew point restores all three
     assert D.unavailable_for(everything - {"wind_v_component_10m"}) == {"v10", "feels"}     # feels-like needs both wind components
-    assert D.unavailable_for(everything - {"geopotential_height_500hPa"}) == {"gh500"}
+    assert D.unavailable_for(everything - {"geopotential_height_700hPa"}) == {"gh700"}
     assert D.unavailable_for(everything - {"relative_humidity_200hPa"}) == {"rh200"}
 
 
@@ -277,9 +277,9 @@ def test_vorticity_and_divergence_of_simple_winds():
 
 
 def test_the_new_level_fields_exist_and_are_derived_from_the_level_winds():
-    assert "w250" in C.VARS and "vo925" in C.VARS and "dv200" in C.VARS
-    assert D.NEEDS["vo250"] == [{"wind_u_component_250hPa", "wind_v_component_250hPa"}]
-    assert D.NEEDS["w500"] == [{"vertical_velocity_500hPa"}]
+    assert "w700" in C.VARS and "vo850" in C.VARS and "dv200" in C.VARS
+    assert D.NEEDS["vo700"] == [{"wind_u_component_700hPa", "wind_v_component_700hPa"}]
+    assert D.NEEDS["w700"] == [{"vertical_velocity_700hPa"}]
 
 
 def test_a_field_whose_unit_could_not_be_read_is_not_taken_for_degrees_or_pascals():

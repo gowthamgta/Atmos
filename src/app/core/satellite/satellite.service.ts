@@ -63,6 +63,9 @@ export class SatelliteService {
   readonly ownSatellite = signal<OwnSatellite>(readOwnSatellite());
   /** Why our own source shows nothing: a daytime picture at night, or nothing published yet. */
   readonly ownEmpty = signal<'night' | 'none' | null>(null);
+  /** Latest global IR brightness-temperature mosaic (GOES-East/West + Meteosat + Himawari-9). */
+  readonly globalIr = signal<{ bounds: GeoBounds; minK: number; spanK: number; url: string } | null>(null);
+  private globalIrFetchedAt = 0;
 
   /** The picture the loop is nearest to. */
   readonly current = computed<SatelliteFrame | null>(() => this.frames()[Math.round(this.position())] ?? null);
@@ -159,6 +162,29 @@ export class SatelliteService {
       document.addEventListener('visibilitychange', this.onVisible);
     }
     void this.load();
+    void this.loadGlobalIr();
+  }
+
+  private async loadGlobalIr(): Promise<void> {
+    if (Date.now() - this.globalIrFetchedAt < 5 * 60_000 && this.globalIr()) return;
+    try {
+      const base = 'https://gowthamgta.github.io/atmos-satellite/bt-global/';
+      const res = await fetch(`${base}index.json?t=${Date.now()}`, { cache: 'no-cache' });
+      if (!res.ok) return;
+      const idx = (await res.json()) as {
+        bounds: GeoBounds; offsetK: number; stepK: number;
+        frames?: { time: string; file: string }[];
+      };
+      const latest = idx.frames?.[idx.frames.length - 1];
+      if (!latest?.file) return;
+      this.globalIrFetchedAt = Date.now();
+      this.globalIr.set({
+        bounds: idx.bounds,
+        minK: idx.offsetK,
+        spanK: idx.stepK * 255,
+        url: `${base}${latest.file}`,
+      });
+    } catch {}
   }
   private onVisible: (() => void) | null = null;
 

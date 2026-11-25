@@ -36,12 +36,11 @@ describe('forecast layer registry', () => {
     }
   });
 
-  it('keeps only visibility in the clouds group, and adds accumulation, stability and rain-chance layers', () => {
+  it('keeps only visibility in the clouds group, and keeps rain accumulation, stability and tcwv layers', () => {
     const inGroup = (g: string) => FORECAST_LAYERS.filter(l => l.group === g).map(l => l.id);
     expect(inGroup('Visibility')).toEqual(['vis']);
-    for (const gone of ['clouds', 'cloud_low', 'cloud_mid', 'cloud_high', 'solar']) expect(forecastLayerById(gone)).toBeNull();
-    expect(inGroup('Rain and humidity')).toEqual(expect.arrayContaining(['rain', 'raintot']));
-    expect(inGroup('Rain and humidity')).not.toContain('rain24');   // the period layer covers the next 24 hours too
+    for (const gone of ['clouds', 'cloud_low', 'cloud_mid', 'cloud_high', 'solar', 'rain', 'rain24', 'extreme']) expect(forecastLayerById(gone)).toBeNull();
+    expect(inGroup('Rain and humidity')).toEqual(['humidity', 'raintot', 'tcwv']);
     expect(inGroup('Pressure and storms')).toEqual(expect.arrayContaining(['li', 'cin', 'cape']));
     // the unstable end of the lifted index is the warm colour
     expect(forecastLayerById('li')!.min).toBeLessThan(0);
@@ -80,10 +79,9 @@ describe('forecast layer registry', () => {
   });
 
   it('positions legend ticks with the layer gamma and the display scale', () => {
-    const rain = forecastLayerById('rain')!;
-    expect(legendPosition(rain, 0)).toBe(0);
-    expect(legendPosition(rain, 50)).toBe(1);
-    expect(legendPosition(rain, 50 * Math.pow(0.5, 1 / 0.4))).toBeCloseTo(0.5, 6); // (v / 50)^0.4
+    const raintot = forecastLayerById('raintot')!;
+    expect(legendPosition(raintot, 0)).toBe(0);
+    expect(legendPosition(raintot, 300)).toBe(1);
     const wind = forecastLayerById('wind')!;
     expect(legendPosition(wind, 72)).toBeCloseTo(1, 9); // 20 m/s = 72 km/h is the top of the palette
     expect(legendPosition(wind, 36)).toBeCloseTo(0.5, 9);
@@ -92,8 +90,8 @@ describe('forecast layer registry', () => {
 });
 
 describe('altitude', () => {
-  it('offers the ground and nine pressure levels', () => {
-    expect(ALL_LEVELS).toEqual(['surface', 925, 850, 800, 700, 600, 500, 300, 250, 200]);
+  it('offers the ground and selected pressure levels', () => {
+    expect(ALL_LEVELS).toEqual(['surface', 850, 800, 700, 600, 200]);
   });
 
   it('only the upper-air layers (and temperature, humidity, wind, height) can be drawn aloft', () => {
@@ -101,16 +99,16 @@ describe('altitude', () => {
   });
 
   it('resolves a layer to the variables, range and label of the chosen level', () => {
-    const temp = resolveLayer(forecastLayerById('temp')!, 500);
-    expect(temp.varId).toBe('t500');
-    expect(temp.label).toBe('Temperature · 500 hPa');
+    const temp = resolveLayer(forecastLayerById('temp')!, 700);
+    expect(temp.varId).toBe('t700');
+    expect(temp.label).toBe('Temperature · 700 hPa');
     expect(temp.terrain).toBeNull(); // the 90 m terrain correction is a near-surface thing
-    expect(temp.min).toBeLessThan(-8); // 500 hPa is about -5 degC in the tropics, inside the range
-    expect(temp.max).toBeGreaterThan(-5);
+    expect(temp.min).toBeLessThan(0);
+    expect(temp.max).toBeGreaterThan(10);
     expect(temp.stops).toEqual(tempStops(temp.min, temp.max)); // the same colour for the same temperature, over the level's range
 
-    const wind = resolveLayer(forecastLayerById('wind')!, 300);
-    expect([wind.varId, wind.varId2]).toEqual(['u300', 'v300']);
+    const wind = resolveLayer(forecastLayerById('wind')!, 200);
+    expect([wind.varId, wind.varId2]).toEqual(['u200', 'v200']);
     expect(wind.displayScale).toBe(3.6); // still shown in km/h
     expect(wind.max).toBeGreaterThan(forecastLayerById('wind')!.max); // jets are faster than the ground wind
 
@@ -123,8 +121,8 @@ describe('altitude', () => {
   it('leaves the layer alone at the ground and for ground-only layers', () => {
     const temp = forecastLayerById('temp')!;
     expect(resolveLayer(temp, 'surface')).toBe(temp);
-    const rain = forecastLayerById('rain')!;
-    expect(resolveLayer(rain, 500)).toBe(rain);
+    const raintot = forecastLayerById('raintot')!;
+    expect(resolveLayer(raintot, 700)).toBe(raintot);
   });
 
   it('keeps every level inside its own legend range for typical tropical values', () => {
@@ -144,7 +142,7 @@ describe('altitude', () => {
   it('works out which altitudes a model has', () => {
     expect(availableLevels(null)).toEqual([...ALL_LEVELS]);
     expect(availableLevels(vars(...SURFACE))).toEqual(['surface']);
-    expect(availableLevels(vars(...SURFACE, ...levelVars([850, 500])))).toEqual(['surface', 850, 500]);
+    expect(availableLevels(vars(...SURFACE, ...levelVars([850, 700])))).toEqual(['surface', 850, 700]);
     expect(availableLevels(vars(...SURFACE, ...levelVars(PRESSURE_LEVELS)))).toEqual([...ALL_LEVELS]);
   });
 
@@ -155,12 +153,12 @@ describe('altitude', () => {
     expect(layerAvailableAt(temp, 'surface', noLevels)).toBe(true);
     expect(layerAvailableAt(temp, 850, noLevels)).toBe(false);
     expect(layerAvailableAt(temp, 850, full)).toBe(true);
-    expect(layerAvailableAt(forecastLayerById('rain')!, 850, full)).toBe(false); // rain has no pressure-level version
-    expect(layerAvailableAt(forecastLayerById('rain')!, 'surface', full)).toBe(true);
+    expect(layerAvailableAt(forecastLayerById('raintot')!, 850, full)).toBe(false); // rain accumulation has no pressure-level version
+    expect(layerAvailableAt(forecastLayerById('raintot')!, 'surface', full)).toBe(true);
     // a model whose humidity stops short of 200 hPa (a model with a short humidity profile) still has the other levels
     const shortHumidity = vars(...SURFACE, ...levelVars(PRESSURE_LEVELS).filter(v => v !== 'rh200'));
     expect(layerAvailableAt(forecastLayerById('humidity')!, 200, shortHumidity)).toBe(false);
-    expect(layerAvailableAt(forecastLayerById('humidity')!, 300, shortHumidity)).toBe(true);
+    expect(layerAvailableAt(forecastLayerById('humidity')!, 700, shortHumidity)).toBe(true);
   });
 
   it('keeps the plain availability check for surface variables', () => {
@@ -173,7 +171,7 @@ describe('altitude', () => {
     expect(windVars('surface')).toEqual(['u10', 'v10']);
     expect(windVars(700)).toEqual(['u700', 'v700']);
     expect(contourSpec('surface')).toEqual({ varId: 'msl', step: 2, unit: 'hPa' });
-    expect(contourSpec(500)).toEqual({ varId: 'gh500', step: 20, unit: 'm' });
+    expect(contourSpec(700)).toEqual({ varId: 'gh700', step: 10, unit: 'm' });
     for (const lvl of PRESSURE_LEVELS) expect(contourSpec(lvl).step).toBeGreaterThan(0);
   });
 
@@ -183,8 +181,8 @@ describe('altitude', () => {
       const def = forecastLayerById(id)!;
       expect(def.levelOnly).toBe(true);
       expect(layerAvailableAt(def, 'surface', full)).toBe(false);
-      expect(layerAvailableAt(def, 250, full)).toBe(true);
-      expect(resolveLayer(def, 250).varId).toMatch(/250$/);
+      expect(layerAvailableAt(def, 700, full)).toBe(true);
+      expect(resolveLayer(def, 700).varId).toMatch(/700$/);
     }
   });
 });
