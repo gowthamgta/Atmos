@@ -19,6 +19,7 @@ import {
 import type { TerrainData } from '../forecast/terrain.service';
 import { sameLattice } from '../forecast/terrain-ground';
 import { TERRAIN_TILE_GLSL, TerrainTileGpu } from './terrain-tile-gpu';
+import { GLOBAL_TERRAIN_TILE_GLSL, GlobalTerrainTileGpu } from './global-terrain-tile-gpu';
 import { PendingProgram } from './gl-program';
 import { decodeFieldBitmap } from '../forecast/field-decode';
 
@@ -106,6 +107,7 @@ out vec4 outColor;
 
 const float PI = 3.14159265358979;
 ${TERRAIN_TILE_GLSL}
+${GLOBAL_TERRAIN_TILE_GLSL}
 // The fields are float textures of (value as a share of the encoding range times valid, valid), filtered by the GPU (fieldTexture): one
 // read gives the bilinear blend of the valid neighbours. Returns (value, weight of valid neighbours).
 vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
@@ -248,6 +250,7 @@ void main() {
   vec4 fineMicro = vec4(0.0);
   float fineLulc = 0.0;
   vec2 fineSlope = vec2(0.0);
+  bool usedGlobalTile = false;
   if (onGround) {
     model = modelGroundAt(g, lat, lon);
     TerrainSample ts = tileSample(lat, lon);
@@ -259,9 +262,11 @@ void main() {
     }
   } else if (hasGlobalT) {
     model = terrainAtEnc(u_demGlobalModel, u_globalModelGrid, u_globalModelSize, lat, lon, u_globalDemEnc);
-    fineGround = terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
+    TerrainSample gts = globalTileSample(v_merc, lat);
+    usedGlobalTile = gts.valid > 0.5;
+    fineGround = usedGlobalTile ? gts.ground : terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
     if (u_relief > 0.0) {
-      fineSlope = slopeAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
+      fineSlope = usedGlobalTile ? gts.slope : slopeAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
     }
   }
 
@@ -332,7 +337,7 @@ void main() {
   if (onGround || hasGlobalT) {
     // 90 m / global relief: hills lit from the north-west, so mountains and valleys read through every layer
     if (u_relief > 0.0) {
-      float slopeBoost = onGround ? 3.0 : 14.0;
+      float slopeBoost = onGround ? 3.0 : (usedGlobalTile ? 4.5 : 14.0);
       vec3 n = normalize(vec3(-fineSlope * slopeBoost, 1.0));
       vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
       float shade = dot(n, light) / light.z;
@@ -368,6 +373,7 @@ const UNIFORMS = [
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_sunParams', 'u_hasTime',
   'u_demGlobal', 'u_demGlobalModel', 'u_globalFineGrid', 'u_globalFineSize', 'u_globalModelGrid', 'u_globalModelSize', 'u_globalDemEnc', 'u_hasGlobalTerrain',
+  'u_gTiles', 'u_gTileMap', 'u_hasGlobalTiles',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 
@@ -412,6 +418,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private modelUploaded: ImageBitmap | null = null;
   /** The 90 m terrain tiles of the view on the GPU (shared code with the radar layer). */
   private readonly tiles = new TerrainTileGpu('forecast');
+  private readonly globalTiles = new GlobalTerrainTileGpu();
   private relief = 0;
   private lite = false;
   private visible = false;
@@ -503,6 +510,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.demGlobalTex = gl.createTexture();
     this.demGlobalModelTex = gl.createTexture();
     this.tiles.attach(map, gl);
+    this.globalTiles.attach(map, gl);
     this.smoothUploadedFor = null;
     this.globalUploadedFor = null;
     this.modelUploaded = null;
@@ -514,6 +522,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.textures.clear();
     for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.demGlobalTex, this.demGlobalModelTex]) if (tex) gl.deleteTexture(tex);
     this.tiles.detach(gl);
+    this.globalTiles.detach(gl);
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     const handle = this.program ?? this.pending?.handle;
@@ -564,6 +573,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.tiles.update(gl);
     const terrainOn = !!this.terrain && this.smoothUploadedFor === this.terrain && this.modelUploaded !== null && this.tiles.ready;
     const hasGlobalT = !!this.terrain?.meta.global && this.globalUploadedFor === this.terrain;
+    if (hasGlobalT) this.globalTiles.update(gl);
     const terrainMode = (terrainOn || hasGlobalT) && def.terrain ? TERRAIN_MODE_CODE[def.terrain] : 0;
 
     gl.useProgram(program);
@@ -588,6 +598,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       bind(9, this.demGlobalModelTex);
     }
     this.tiles.bind(gl, terrainOn);   // with no terrain the tile sampler still reads a 2D-array texture (a blank one), as the shader declares it
+    this.globalTiles.bind(gl, hasGlobalT);
 
     const u = this.uniforms;
     // Unused samplers must not alias a unit holding a different kind of texture; point them at unit 0.
@@ -623,6 +634,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform3f(u['u_sunParams'], this.sunParams[0], this.sunParams[1], this.sunParams[2]);
     gl.uniform1i(u['u_hasTime'], this.hasTime ? 1 : 0);
     this.tiles.setUniforms(gl, u, terrainOn);
+    this.globalTiles.setUniforms(gl, u, hasGlobalT);
     const meta = this.terrain?.meta;
     if (terrainOn && meta) {
       const g4 = (name: string, g: ForecastGrid) => gl.uniform4f(u[name], g.lonMin, g.latMax, g.step, 0);

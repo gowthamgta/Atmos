@@ -195,7 +195,7 @@ export class ForecastInspectorService {
       const hB = activeManifest.steps[b].h;
       const [place] = await Promise.all([
         this.districts.lookup(lat, lon),
-        this.terrain.ensureLoaded().then(() => useRegional ? this.terrain.prepareAt(lat, lon) : undefined).catch(() => null),
+        this.terrain.ensureLoaded().then(() => useRegional ? this.terrain.prepareAt(lat, lon) : this.terrain.prepareGlobalAt(lat, sampleLon)).catch(() => null),
       ]);
       const level = this.state.level();
       const detailed = this.detail();

@@ -111,10 +111,46 @@ function slopeOf(bitmap: ImageBitmap, grid: ForecastGrid, lat: number, lon: numb
   return [(z(lat, lon + s) - z(lat, lon - s)) / dx, (z(lat + s, lon) - z(lat - s, lon)) / dy];
 }
 
-/** A decoded 90 m tile, kept in memory for the click card. */
+/** A decoded 90 m or global 1 km tile, kept in memory for the click card. */
 interface CpuTile {
   rgba: Uint8ClampedArray;
   n: number;
+}
+
+const GLOBAL_DEM_Z = 7;
+const GLOBAL_DEM_N = 1 << GLOBAL_DEM_Z;
+const GLOBAL_DEM_PX = 256;
+
+function globalTileCoords(lat: number, lon: number): { tx: number; ty: number; fx: number; fy: number } {
+  const cLat = Math.min(Math.max(lat, -85), 85);
+  const ux = ((lon + 180) / 360) * GLOBAL_DEM_N;
+  const latR = (cLat * Math.PI) / 180;
+  const uy = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * GLOBAL_DEM_N;
+  const tx = ((Math.floor(ux) % GLOBAL_DEM_N) + GLOBAL_DEM_N) % GLOBAL_DEM_N;
+  const ty = Math.min(Math.max(Math.floor(uy), 0), GLOBAL_DEM_N - 1);
+  return { tx, ty, fx: ux - Math.floor(ux), fy: Math.min(Math.max(uy - Math.floor(uy), 0), 1) };
+}
+
+function sampleTerrariumTile(rgba: Uint8ClampedArray, fx: number, fy: number, lat: number): { z: number; land: number; slope: [number, number] } {
+  const px = fx * (GLOBAL_DEM_PX - 1);
+  const py = fy * (GLOBAL_DEM_PX - 1);
+  const at = (ix: number, iy: number): { z: number; l: number } => {
+    const cx = Math.min(Math.max(ix, 0), GLOBAL_DEM_PX - 1);
+    const cy = Math.min(Math.max(iy, 0), GLOBAL_DEM_PX - 1);
+    const o = (cy * GLOBAL_DEM_PX + cx) * 4;
+    const raw = rgba[o] * 256 + rgba[o + 1] + rgba[o + 2] / 256 - 32768;
+    const z = Math.max(0, raw);
+    return { z, l: raw > 0.5 ? 1 : 0 };
+  };
+  const i0 = Math.floor(px), j0 = Math.floor(py);
+  const rx = px - i0, ry = py - j0;
+  const a = at(i0, j0), b = at(i0 + 1, j0), c = at(i0, j0 + 1), d = at(i0 + 1, j0 + 1);
+  const z = (a.z * (1 - rx) + b.z * rx) * (1 - ry) + (c.z * (1 - rx) + d.z * rx) * ry;
+  const land = (a.l * (1 - rx) + b.l * rx) * (1 - ry) + (c.l * (1 - rx) + d.l * rx) * ry;
+  const mPerPx = Math.max(120, 1223 * Math.cos((lat * Math.PI) / 180));
+  const gx = (at(i0 + 1, j0).z - at(i0 - 1, j0).z) / (2 * mPerPx);
+  const gy = (at(i0, j0 - 1).z - at(i0, j0 + 1).z) / (2 * mPerPx);
+  return { z, land, slope: [gx, gy] };
 }
 
 /**
@@ -127,9 +163,39 @@ export class TerrainService {
   private loading: Promise<TerrainData> | null = null;
   private readonly cpuTiles = new Map<string, CpuTile>();
   private readonly cpuLoading = new Map<string, Promise<void>>();
+  private readonly cpuGlobalTiles = new Map<string, Uint8ClampedArray>();
+  private readonly cpuGlobalLoading = new Map<string, Promise<void>>();
   private present: ReadonlySet<string> = new Set();
   /** Tiles with a 90 m file (see TerrainMeta.tilesL0). */
   private presentL0: ReadonlySet<string> = new Set();
+
+  /** Fetches and decodes one ~1 km Terrarium z=7 tile globally for the click card outside South India. */
+  prepareGlobalAt(lat: number, lon: number): Promise<void> {
+    const { tx, ty } = globalTileCoords(lat, lon);
+    const key = `${tx}_${ty}`;
+    if (this.cpuGlobalTiles.has(key)) return Promise.resolve();
+    const running = this.cpuGlobalLoading.get(key);
+    if (running) return running;
+    const load = fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${GLOBAL_DEM_Z}/${tx}/${ty}.png`)
+      .then(res => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
+      .then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
+      .then(bitmap => {
+        const canvas: OffscreenCanvas | HTMLCanvasElement =
+          typeof OffscreenCanvas !== 'undefined'
+            ? new OffscreenCanvas(GLOBAL_DEM_PX, GLOBAL_DEM_PX)
+            : Object.assign(document.createElement('canvas'), { width: GLOBAL_DEM_PX, height: GLOBAL_DEM_PX });
+        const c = canvas.getContext('2d', { willReadFrequently: true }) as Canvas2D;
+        c.drawImage(bitmap, 0, 0);
+        const rgba = c.getImageData(0, 0, GLOBAL_DEM_PX, GLOBAL_DEM_PX).data;
+        bitmap.close();
+        if (this.cpuGlobalTiles.size >= 8) this.cpuGlobalTiles.delete(this.cpuGlobalTiles.keys().next().value!);
+        this.cpuGlobalTiles.set(key, rgba);
+      })
+      .catch(() => undefined)
+      .finally(() => this.cpuGlobalLoading.delete(key));
+    this.cpuGlobalLoading.set(key, load);
+    return load;
+  }
 
   ensureLoaded(): Promise<TerrainData> {
     const have = this.data();
@@ -186,14 +252,26 @@ export class TerrainService {
       const cLat = Math.min(Math.max(lat, gMeta.fine.latMin), gMeta.fine.latMax);
       const fineG = sampleTerrain(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
       const modelG = sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
-      const fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
+      let fineZ = fineG.z;
+      let fineLand = fineG.land;
+      let fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
+      const { tx, ty, fx, fy } = globalTileCoords(cLat, wLon);
+      const gTile = this.cpuGlobalTiles.get(`${tx}_${ty}`);
+      if (gTile) {
+        const res = sampleTerrariumTile(gTile, fx, fy, cLat);
+        fineZ = res.z;
+        fineLand = res.land;
+        fineSlope = res.slope;
+      } else {
+        void this.prepareGlobalAt(cLat, wLon);
+      }
       const modelSlope = slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
       return {
-        fine: fineG.z,
+        fine: fineZ,
         model: modelG.z,
-        dz: terrainDelta(fineG.z, modelG.z),
-        tpi: (fineG.z - modelG.z) * fineG.land,
-        landFine: fineG.land,
+        dz: terrainDelta(fineZ, modelG.z),
+        tpi: (fineZ - modelG.z) * fineLand,
+        landFine: fineLand,
         landModel: modelG.land,
         slope: fineSlope,
         modelSlope,
