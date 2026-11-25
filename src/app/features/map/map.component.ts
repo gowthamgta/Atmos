@@ -426,7 +426,7 @@ export class MapComponent implements OnInit, OnDestroy {
             filter: ['match', ['get', 'class'], ['primary'], true, false],
             layout: { 'line-cap': 'round', 'line-join': 'round' },
             paint: {
-              'line-color': 'rgba(226, 232, 240, 0.25)',
+              'line-color': 'rgba(226, 232, 240, 0.35)',
               'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 9, 1.0, 13, 2.2]
             }
           },
@@ -439,7 +439,7 @@ export class MapComponent implements OnInit, OnDestroy {
             filter: ['match', ['get', 'class'], ['motorway', 'trunk'], true, false],
             layout: { 'line-cap': 'round', 'line-join': 'round' },
             paint: {
-              'line-color': 'rgba(241, 245, 249, 0.35)',
+              'line-color': 'rgba(241, 245, 249, 0.48)',
               'line-width': ['interpolate', ['linear'], ['zoom'], 4.5, 0.6, 8, 1.2, 12, 2.4, 15, 3.5]
             }
           },
@@ -480,6 +480,14 @@ export class MapComponent implements OnInit, OnDestroy {
       // 1b. Tamil Nadu boundary lines (must exist before any overlay layer is mounted)
       this.initBoundaries();
       this.initPlaceLabels();
+
+      // 1c. Keep highways and primary roads above weather overlays (forecast, radar, satellite) and below place labels
+      if (map.getLayer('base-road-primary') && map.getLayer('label-sea')) {
+        map.moveLayer('base-road-primary', 'label-sea');
+      }
+      if (map.getLayer('base-road-motorway') && map.getLayer('label-sea')) {
+        map.moveLayer('base-road-motorway', 'label-sea');
+      }
 
       // 4. Initial Radar Mosaic Mount
       this.updateRadarMosaicOverlay(this.radarService.displayed());
