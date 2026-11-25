@@ -93,26 +93,29 @@ export function roughnessWindFactor(lulc: number): number {
  * - Tree cover / forest canopy: -1.8°C evaporative shade cooling in sun, +0.5°C night canopy trap
  * - Cropland / farmland: -0.8°C daytime transpiration cooling
  * - Inland water: -1.0°C daytime cooling, +1.0°C nighttime warmth
+ * `dayWeight` in [0, 1] smoothly blends night (0) to full daytime (1) based on solar elevation.
  */
-export function lulcTemperatureAnomaly(lulc: number, sunUp = true): number {
+export function lulcTemperatureAnomaly(lulc: number, dayWeight: boolean | number = 1): number {
   if (!lulc) return 0;
+  const d = typeof dayWeight === 'boolean' ? (dayWeight ? 1 : 0) : clamp(dayWeight, 0, 1);
+  const lerp = (night: number, day: number) => night + (day - night) * d;
   switch (lulc) {
     case LULC_BUILTUP:
-      return sunUp ? 1.2 : 2.5;
+      return lerp(2.5, 1.2);
     case LULC_TREE:
     case LULC_MANGROVE:
-      return sunUp ? -1.8 : 0.5;
+      return lerp(0.5, -1.8);
     case LULC_CROPLAND:
     case LULC_WETLAND:
-      return sunUp ? -0.8 : 0.0;
+      return lerp(0.0, -0.8);
     case LULC_WATER:
-      return sunUp ? -1.0 : 1.0;
+      return lerp(1.0, -1.0);
     default:
       return 0.0;
   }
 }
 
-/** Relative humidity multiplier from land cover transpiration vs urban runoff. */
+/** Relative humidity multiplier from land cover transpiration/evaporation vs urban runoff. */
 export function lulcHumidityFactor(lulc: number): number {
   if (!lulc) return 1.0;
   switch (lulc) {
@@ -122,6 +125,8 @@ export function lulcHumidityFactor(lulc: number): number {
     case LULC_CROPLAND:
     case LULC_WETLAND:
       return 1.05;
+    case LULC_WATER:
+      return 1.06;
     case LULC_BUILTUP:
       return 0.92;
     default:
@@ -138,8 +143,8 @@ export function terrainDelta(fineMeters: number, modelMeters: number): number {
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
 /** Temperature (or feels-like) at height dz above the model's own ground, plus land-cover microclimate. */
-export function adjustTemperature(tempC: number, dz: number, lulc = 0, sunUp = true): number {
-  return tempC - LAPSE_RATE_C_PER_M * dz + lulcTemperatureAnomaly(lulc, sunUp);
+export function adjustTemperature(tempC: number, dz: number, lulc = 0, dayWeight: boolean | number = 1): number {
+  return tempC - LAPSE_RATE_C_PER_M * dz + lulcTemperatureAnomaly(lulc, dayWeight);
 }
 
 /** Dew point at height dz above the model's own ground. */
@@ -291,10 +296,13 @@ export function applyTerrain(mode: TerrainMode | null, value: number, ctx: Terra
   const lulc = (typeof ctx === 'number' || landFine <= 0.001) ? 0 : ctx.terrain.lulc ?? 0;
   switch (mode) {
     case 'temperature': {
-      const sunUp = ctx !== null && typeof ctx !== 'number' && ctx.timeMs !== undefined && ctx.lat !== undefined && ctx.lon !== undefined
-        ? sunVector(ctx.timeMs, ctx.lat, ctx.lon)[2] > 0.05
-        : true;
-      return adjustTemperature(value, dz, lulc, sunUp);
+      let dayWeight = 1;
+      if (ctx !== null && typeof ctx !== 'number' && ctx.timeMs !== undefined && ctx.lat !== undefined && ctx.lon !== undefined) {
+        const up = sunVector(ctx.timeMs, ctx.lat, ctx.lon)[2];
+        const t = clamp((up + 0.05) / 0.40, 0, 1);
+        dayWeight = t * t * (3 - 2 * t);
+      }
+      return adjustTemperature(value, dz, lulc, dayWeight);
     }
     case 'humidity':
       return adjustHumidity(value, dz, lulc);

@@ -232,14 +232,14 @@ void main() {
     if (m == 1) {
       // Temperature: lapse rate (-6.5°C/km) + physical land-cover microclimate (UHI, canopy cooling, crops, inland water)
       v -= ${f(LAPSE_RATE_C_PER_M)} * dz;
-      // Day vs night from solar elevation (mirrors sunVector(...)[2] > 0.05 in terrain-correction.ts)
+      // Day vs night from solar elevation (smoothstep mirrors applyTerrain in terrain-correction.ts)
       float dayFactor = 1.0;
       if (u_hasTime == 1) {
         float rad = 0.017453292519943295;
         float hourAngle = ((u_sunParams.z + u_sunParams.y + 4.0 * lon) / 4.0 - 180.0) * rad;
         float latR = lat * rad;
         float sunUpVal = sin(latR) * sin(u_sunParams.x) + cos(latR) * cos(u_sunParams.x) * cos(hourAngle);
-        dayFactor = sunUpVal > 0.05 ? 1.0 : 0.0;
+        dayFactor = smoothstep(-0.05, 0.35, sunUpVal);
       }
       // Urban (+1.2 day / +2.5 night), Forest (-1.8 day / +0.5 night), Crops (-0.8 day / 0.0 night), Inland water (-1.0 day / +1.0 night)
       float microT = (mix(2.5, 1.2, dayFactor) * fineMicro.x
@@ -248,8 +248,8 @@ void main() {
                     + mix(1.0, -1.0, dayFactor) * fineMicro.w) * fineGround.y;
       v += microT;
     } else if (m == 2) {
-      // Relative humidity: elevation saturation + physical land transpiration boost
-      float rhLandFactor = 1.0 - 0.08 * fineMicro.x + 0.08 * fineMicro.y + 0.05 * fineMicro.z;
+      // Relative humidity: elevation saturation + physical land transpiration/evaporation boost
+      float rhLandFactor = 1.0 - 0.08 * fineMicro.x + 0.08 * fineMicro.y + 0.05 * fineMicro.z + 0.06 * fineMicro.w;
       float rhMult = mix(1.0, rhLandFactor, fineGround.y);
       v = min(100.0, v * exp(${f(RH_LOG_PER_M)} * dz) * rhMult);
     } else if (m == 3) {
