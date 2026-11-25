@@ -46,6 +46,9 @@ uniform vec2 u_rangeG;
 uniform vec2 u_rangeB;
 uniform vec3 u_gamma;
 uniform sampler2D u_lut;   // Windy's infrared colours over minK .. minK + spanK (RGBA, alpha included)
+uniform float u_feather;   // > 0: fade out smoothly inside this box's edge (map units)
+uniform vec4 u_hole;       // mercator box of a stacked high-res layer above this one
+uniform float u_holeFeather; // > 0 when there is a regional layer above this one
 in vec2 v_merc;
 out vec4 o;
 
@@ -105,6 +108,13 @@ vec4 shade(vec4 s) {
   return vec4(rgb * s.a, s.a);
 }
 
+float edgeMask(vec2 p, vec4 box, float feather) {
+  vec2 lo = min(box.xy, box.zw);
+  vec2 hi = max(box.xy, box.zw);
+  vec2 d = min(p - lo, hi - p);
+  return smoothstep(0.0, feather, min(d.x, d.y));
+}
+
 void main() {
   float mx = (u_box.z - u_box.x > 0.99) ? fract(v_merc.x) : v_merc.x;
   vec2 uv = vec2((mx - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
@@ -112,6 +122,9 @@ void main() {
   vec2 px = uv * vec2(u_size);
   vec4 c = shade(sampleK(u_a, px));
   if (u_hasB == 1) c = mix(c, shade(sampleK(u_b, px)), u_mixB);
+  vec2 wrapped = vec2(fract(v_merc.x), v_merc.y);
+  if (u_feather > 0.0) c *= edgeMask(wrapped, u_box, u_feather);
+  if (u_holeFeather > 0.0) c *= 1.0 - edgeMask(wrapped, u_hole, u_holeFeather);
   o = c * u_opacity;
 }`;
 
@@ -134,7 +147,10 @@ export class SatelliteDataLayer implements CustomLayerInterface {
   readonly type = 'custom' as const;
   readonly renderingMode = '2d' as const;
 
-  constructor(readonly id: string = 'satellite-data-layer') {}
+  constructor(
+    readonly id: string = 'satellite-data-layer',
+    private readonly featherFraction: number = 0,
+  ) {}
 
   private map: MapLibreMap | null = null;
   private pending: PendingProgram | null = null;
@@ -153,6 +169,14 @@ export class SatelliteDataLayer implements CustomLayerInterface {
   private size: [number, number] = [1, 1];
   private lut: WebGLTexture | null = null;
   private lutFor = '';
+  private holeBox: GeoBounds | null = null;
+  private holeFeatherFraction = 0;
+
+  setWindow(bounds: GeoBounds | null, featherFraction = 0.05): void {
+    this.holeBox = bounds;
+    this.holeFeatherFraction = bounds ? featherFraction : 0;
+    this.map?.triggerRepaint();
+  }
 
   setFrames(frames: readonly SatelliteDataFrame[], bounds: GeoBounds, minK: number, spanK: number): void {
     this.frames = frames;
@@ -222,9 +246,8 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     const b = this.bounds;
     if (!gl || !this.vbo || !b) return;
     const x0 = mercatorUnitX(b.west), x1 = mercatorUnitX(b.east), y0 = mercatorUnitY(b.north), y1 = mercatorUnitY(b.south);
-    const isGlobal = b.east - b.west >= 359.5;
     const verts: number[] = [];
-    for (const dx of isGlobal ? [-1, 0, 1] : [0]) {
+    for (const dx of [-1, 0, 1]) {
       const a = x0 + dx;
       const c = x1 + dx;
       verts.push(a, y0, c, y0, a, y1, a, y1, c, y0, c, y1);
@@ -301,7 +324,7 @@ export class SatelliteDataLayer implements CustomLayerInterface {
       }
       this.program = p;
       for (const name of ['u_matrix', 'u_a', 'u_b', 'u_box', 'u_size', 'u_mixB', 'u_hasB', 'u_opacity', 'u_mode', 'u_minK', 'u_spanK', 'u_src',
-        'u_rangeR', 'u_rangeG', 'u_rangeB', 'u_gamma', 'u_lut']) {
+        'u_rangeR', 'u_rangeG', 'u_rangeB', 'u_gamma', 'u_lut', 'u_feather', 'u_hole', 'u_holeFeather']) {
         this.uniforms[name] = gl.getUniformLocation(p, name);
       }
     }
@@ -338,11 +361,21 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     gl.uniform2f(u['u_rangeG'], ch(1).min, ch(1).max);
     gl.uniform2f(u['u_rangeB'], ch(2).min, ch(2).max);
     gl.uniform3f(u['u_gamma'], ch(0).gamma, ch(1).gamma, ch(2).gamma);
+    const boxW = mercatorUnitX(b.east) - mercatorUnitX(b.west);
+    gl.uniform1f(u['u_feather'], this.featherFraction > 0 ? boxW * this.featherFraction : 0);
+    const h = this.holeBox;
+    if (h && this.holeFeatherFraction > 0) {
+      const hw = mercatorUnitX(h.east) - mercatorUnitX(h.west);
+      gl.uniform4f(u['u_hole'], mercatorUnitX(h.west), mercatorUnitY(h.north), mercatorUnitX(h.east), mercatorUnitY(h.south));
+      gl.uniform1f(u['u_holeFeather'], hw * this.holeFeatherFraction);
+    } else {
+      gl.uniform4f(u['u_hole'], 0, 0, 0, 0);
+      gl.uniform1f(u['u_holeFeather'], 0);
+    }
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.lutTexture(gl));
     gl.uniform1i(u['u_lut'], 2);
-    const isGlobal = b.east - b.west >= 359.5;
-    gl.drawArrays(gl.TRIANGLES, 0, isGlobal ? 18 : 6);
+    gl.drawArrays(gl.TRIANGLES, 0, 18);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
   }

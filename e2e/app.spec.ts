@@ -14,7 +14,7 @@ test.describe('the app', () => {
     await expect(page.locator('app-radar-panel section')).toBeVisible();
     await page.goto('/#l=satellite');
     await page.reload();
-    await expect(page.locator('app-satellite-panel')).toContainText('Meteosat');
+    await expect(page.locator('app-satellite-panel')).toContainText('Global Satellite');
     await expect(page.locator('app-radar-panel section')).toHaveCount(0);
   });
 

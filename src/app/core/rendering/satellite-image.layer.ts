@@ -138,8 +138,9 @@ void main() {
   // fade the picture's own border so it does not end in a hard line (skip horizontal fade on 360° global wrap)
   vec2 e = min(uv, 1.0 - uv) * vec2(u_size);
   c *= smoothstep(0.0, 6.0, (u_box.z - u_box.x > 0.99) ? e.y : min(e.x, e.y));
-  if (u_feather > 0.0) c *= edgeMask(v_merc, u_box, u_feather);
-  if (u_holeFeather > 0.0) c *= 1.0 - edgeMask(v_merc, u_hole, u_holeFeather);
+  vec2 wrapped = vec2(fract(v_merc.x), v_merc.y);
+  if (u_feather > 0.0) c *= edgeMask(wrapped, u_box, u_feather);
+  if (u_holeFeather > 0.0) c *= 1.0 - edgeMask(wrapped, u_hole, u_holeFeather);
   outColor = c * u_opacity;
 }`;
 

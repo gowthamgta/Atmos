@@ -168,11 +168,12 @@ export class MapComponent implements OnInit, OnDestroy {
     // our own pictures (own-products.ts): the RGB as a picture, the infrared and the others drawn from the data pack in the shader
     const own = frames[0]?.own;
     const regIr = this.satellite.regionalIr();
+    const regRgb = this.satellite.regionalRgb();
     const shader = !!own && isShaderKind(own.kind);
     const effOpacity = this.amvService.active() && this.amvService.dimSatellite()
       ? Math.min(opacity, 0.40)
       : opacity;
-    this.updateSatelliteOverlay(on && !shader, frames, position, effOpacity);
+    this.updateSatelliteOverlay(on && !shader, frames, position, effOpacity, regRgb);
     this.updateSatelliteData(on && shader, frames, position, effOpacity, custom, regIr);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
     if (this.amvService.active()) {
@@ -575,6 +576,7 @@ export class MapComponent implements OnInit, OnDestroy {
   // --- Meteosat satellite pictures: one GPU layer with smooth (bicubic) magnification and a cross-fade between pictures ---
 
   private satelliteLayer: SatelliteImageLayer | null = null;
+  private regionalSatelliteLayer: SatelliteImageLayer | null = null;
   private satelliteKeys = '';
 
   private removeSatelliteLayers(): void {
@@ -587,6 +589,10 @@ export class MapComponent implements OnInit, OnDestroy {
 
   /** The flat picture (the browser-drawn products have their own layer). */
   private removeFlatLayers(): void {
+    this.satelliteData?.setWindow(null);
+    this.satelliteLayer?.setWindow(null);
+    if (this.map && this.regionalSatelliteLayer && this.map.getLayer(this.regionalSatelliteLayer.id)) this.map.removeLayer(this.regionalSatelliteLayer.id);
+    this.regionalSatelliteLayer = null;
     if (this.map && this.satelliteLayer && this.map.getLayer(this.satelliteLayer.id)) this.map.removeLayer(this.satelliteLayer.id);
     this.satelliteLayer = null;
     this.satelliteKeys = '';
@@ -594,9 +600,15 @@ export class MapComponent implements OnInit, OnDestroy {
 
   /**
    * Shows frame `floor(position)` and fades the next one in by the fractional part, so playback moves smoothly instead
-   * of jumping between pictures.
+   * of jumping between pictures. Stacks high-res Meteosat-9 specialized RGB cleanly over India when available.
    */
-  private updateSatelliteOverlay(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number): void {
+  private updateSatelliteOverlay(
+    on: boolean,
+    frames: readonly SatelliteFrame[],
+    position: number,
+    opacity: number,
+    regRgb: SatelliteService['regionalRgb'] extends () => infer R ? R : never = null,
+  ): void {
     if (!this.map) return;
     if (!on || frames.length === 0) {
       this.removeFlatLayers();
@@ -616,6 +628,22 @@ export class MapComponent implements OnInit, OnDestroy {
     this.satelliteLayer.setFlows(this.satellite.flows());
     this.satelliteLayer.setSoften(!frames[0]?.own);   // our own frames are lossless: no softening
     this.satelliteLayer.setPosition(position, opacity);
+
+    if (regRgb) {
+      if (!this.regionalSatelliteLayer) {
+        this.regionalSatelliteLayer = new SatelliteImageLayer({ id: 'satellite-india-rgb', featherFraction: 0.05 });
+        this.map.addLayer(this.regionalSatelliteLayer, this.observationAnchorId());
+      }
+      this.regionalSatelliteLayer.setBounds(regRgb.bounds);
+      this.regionalSatelliteLayer.setFrames([{ key: regRgb.url, url: regRgb.url }]);
+      this.regionalSatelliteLayer.setSoften(false);
+      this.regionalSatelliteLayer.setPosition(0, opacity);
+      this.satelliteLayer.setWindow(this.regionalSatelliteLayer);
+    } else {
+      this.satelliteLayer.setWindow(null);
+      if (this.regionalSatelliteLayer && this.map.getLayer(this.regionalSatelliteLayer.id)) this.map.removeLayer(this.regionalSatelliteLayer.id);
+      this.regionalSatelliteLayer = null;
+    }
   }
 
   // --- Our own products drawn in the browser from the data pack (satellite-data.layer.ts): IR enhanced, WV difference, custom RGB ---
@@ -652,13 +680,15 @@ export class MapComponent implements OnInit, OnDestroy {
     // Optional high-resolution regional 3 km India IR stacked cleanly on top in Infrared mode
     if (own.kind === 'infrared' && regIr) {
       if (!this.globalSatelliteData) {
-        this.globalSatelliteData = new SatelliteDataLayer('satellite-regional-data');
+        this.globalSatelliteData = new SatelliteDataLayer('satellite-regional-data', 0.05);
         map.addLayer(this.globalSatelliteData, this.observationAnchorId());
       }
       this.globalSatelliteData.setFrames([{ key: regIr.url, url: regIr.url }], regIr.bounds, regIr.minK, regIr.spanK);
       this.globalSatelliteData.setStyle({ mode: 0, custom });
       this.globalSatelliteData.setPosition(0, opacity);
+      this.satelliteData.setWindow(regIr.bounds, 0.05);
     } else {
+      this.satelliteData.setWindow(null);
       if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
       this.globalSatelliteData = null;
     }
