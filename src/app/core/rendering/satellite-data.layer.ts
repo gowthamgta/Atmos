@@ -51,7 +51,8 @@ out vec4 o;
 
 // the three temperatures (kelvin) at a texel, and whether it has data
 vec4 texK(sampler2D t, ivec2 q) {
-  vec3 v = texelFetch(t, clamp(q, ivec2(0), u_size - 1), 0).rgb;
+  int qx = (u_box.z - u_box.x > 0.99) ? ((q.x % u_size.x + u_size.x) % u_size.x) : clamp(q.x, 0, u_size.x - 1);
+  vec3 v = texelFetch(t, ivec2(qx, clamp(q.y, 0, u_size.y - 1)), 0).rgb;
   float ok = v.r > 0.5 / 255.0 ? 1.0 : 0.0;
   return vec4(u_minK + v * u_spanK, ok);
 }

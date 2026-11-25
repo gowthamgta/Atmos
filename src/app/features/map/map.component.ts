@@ -167,12 +167,13 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!this.map || !this.isMapLoaded()) return;
     // our own pictures (own-products.ts): the RGB as a picture, the infrared and the others drawn from the data pack in the shader
     const own = frames[0]?.own;
+    const regIr = this.satellite.regionalIr();
     const shader = !!own && isShaderKind(own.kind);
     const effOpacity = this.amvService.active() && this.amvService.dimSatellite()
       ? Math.min(opacity, 0.40)
       : opacity;
     this.updateSatelliteOverlay(on && !shader, frames, position, effOpacity);
-    this.updateSatelliteData(on && shader, frames, position, effOpacity, custom);
+    this.updateSatelliteData(on && shader, frames, position, effOpacity, custom, regIr);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
     if (this.amvService.active()) {
       ensureAmvOnTop(this.map);
@@ -622,32 +623,22 @@ export class MapComponent implements OnInit, OnDestroy {
   private satelliteData: SatelliteDataLayer | null = null;
   private globalSatelliteData: SatelliteDataLayer | null = null;
 
-  private updateSatelliteData(on: boolean, frames: readonly SatelliteFrame[], position: number, opacity: number, custom: SatelliteService['custom'] extends () => infer C ? C : never): void {
+  private updateSatelliteData(
+    on: boolean,
+    frames: readonly SatelliteFrame[],
+    position: number,
+    opacity: number,
+    custom: SatelliteService['custom'] extends () => infer C ? C : never,
+    regIr: SatelliteService['regionalIr'] extends () => infer R ? R : never = null,
+  ): void {
     const map = this.map;
     if (!map) return;
-    const gIr = this.satellite.globalIr();
-    if (!on || !gIr) {
-      if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
-      this.globalSatelliteData = null;
-    } else {
-      if (!this.globalSatelliteData) {
-        this.globalSatelliteData = new SatelliteDataLayer('satellite-global-data');
-        const before = this.satelliteData && map.getLayer(this.satelliteData.id)
-          ? this.satelliteData.id
-          : this.satelliteLayer && map.getLayer(this.satelliteLayer.id)
-            ? this.satelliteLayer.id
-            : this.observationAnchorId();
-        map.addLayer(this.globalSatelliteData, before);
-      }
-      this.globalSatelliteData.setFrames([{ key: gIr.url, url: gIr.url }], gIr.bounds, gIr.minK, gIr.spanK);
-      this.globalSatelliteData.setStyle({ mode: 0, custom });
-      this.globalSatelliteData.setPosition(0, opacity * 0.85);
-    }
-
     const own = frames[0]?.own;
     if (!on || !own) {
       if (this.satelliteData && map.getLayer(this.satelliteData.id)) map.removeLayer(this.satelliteData.id);
       this.satelliteData = null;
+      if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
+      this.globalSatelliteData = null;
       return;
     }
     if (!this.satelliteData) {
@@ -657,6 +648,20 @@ export class MapComponent implements OnInit, OnDestroy {
     this.satelliteData.setFrames(frames.map(f => ({ key: f.url, url: f.url })), own.bounds, own.minK, own.spanK);
     this.satelliteData.setStyle({ mode: own.kind === 'infrared' ? 0 : own.kind === 'wvdiff' ? 1 : 2, custom });
     this.satelliteData.setPosition(position, opacity);
+
+    // Optional high-resolution regional 3 km India IR stacked cleanly on top in Infrared mode
+    if (own.kind === 'infrared' && regIr) {
+      if (!this.globalSatelliteData) {
+        this.globalSatelliteData = new SatelliteDataLayer('satellite-regional-data');
+        map.addLayer(this.globalSatelliteData, this.observationAnchorId());
+      }
+      this.globalSatelliteData.setFrames([{ key: regIr.url, url: regIr.url }], regIr.bounds, regIr.minK, regIr.spanK);
+      this.globalSatelliteData.setStyle({ mode: 0, custom });
+      this.globalSatelliteData.setPosition(0, opacity);
+    } else {
+      if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
+      this.globalSatelliteData = null;
+    }
   }
 
 

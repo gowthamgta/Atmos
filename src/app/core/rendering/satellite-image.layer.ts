@@ -134,9 +134,9 @@ void main() {
     vec4 b = sampleFrame(u_b, uvB, uvB * vec2(u_size), gx, gy, magnifying);
     c = mix(c, b, u_mixB); // premultiplied: a plain mix cross-fades colour and cloud cover together
   }
-  // fade the picture's own border so it does not end in a hard line
+  // fade the picture's own border so it does not end in a hard line (skip horizontal fade on 360° global wrap)
   vec2 e = min(uv, 1.0 - uv) * vec2(u_size);
-  c *= smoothstep(0.0, 6.0, min(e.x, e.y));
+  c *= smoothstep(0.0, 6.0, (u_box.z - u_box.x > 0.99) ? e.y : min(e.x, e.y));
   if (u_feather > 0.0) c *= edgeMask(v_merc, u_box, u_feather);
   if (u_holeFeather > 0.0) c *= 1.0 - edgeMask(v_merc, u_hole, u_holeFeather);
   outColor = c * u_opacity;
@@ -356,7 +356,8 @@ export class SatelliteImageLayer implements CustomLayerInterface {
       gl.generateMipmap(gl.TEXTURE_2D);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      const wrapS = (this.bounds.east - this.bounds.west >= 359.5) ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       slot.texture = tex;
       slot.bitmap.close();

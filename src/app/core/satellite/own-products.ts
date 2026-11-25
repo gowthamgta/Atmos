@@ -85,8 +85,9 @@ export interface DataPack {
 /** The three brightness temperatures (kelvin) at a place, or null outside the pack or where it has no data. */
 export function readDataPack(p: DataPack, lat: number, lon: number): { ir: number; wv62: number; wv73: number } | null {
   const b = p.bounds;
-  if (lon < b.west || lon > b.east || lat < b.south || lat > b.north) return null;
-  const x = Math.min(p.w - 1, Math.floor(((lon - b.west) / (b.east - b.west)) * p.w));
+  const normLon = ((((lon + 180) % 360) + 360) % 360) - 180;
+  if (normLon < b.west || normLon > b.east || lat < b.south || lat > b.north) return null;
+  const x = Math.min(p.w - 1, Math.floor(((normLon - b.west) / (b.east - b.west)) * p.w));
   const yTop = mercatorUnitY(b.north);
   const y = Math.min(p.h - 1, Math.floor(((mercatorUnitY(lat) - yTop) / (mercatorUnitY(b.south) - yTop)) * p.h));
   const o = (y * p.w + x) * 3;

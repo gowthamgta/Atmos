@@ -2,11 +2,10 @@ import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inj
 import { IconComponent } from '../../shared/icon.component';
 import { LightningKeyComponent } from '../map/lightning-key.component';
 import { MapLayerService } from '../../core/services/map-layer.service';
-import { productForTime } from '../../core/satellite/satellite.config';
 import { SatelliteService } from '../../core/satellite/satellite.service';
 import { AmvService } from '../../core/satellite/amv.service';
 import { cloudTopGradient, greyScaleTempFromMeasured } from '../../core/satellite/satellite-image';
-import { CUSTOM_PRESETS, CUSTOM_SOURCES, CustomChannel, DEFAULT_CUSTOM as DEFAULT_RECIPE, OWN_KINDS, OWN_SATELLITES, OwnKind, OwnSatellite } from '../../core/satellite/own-products';
+import { OwnKind } from '../../core/satellite/own-products';
 
 const IST_OFFSET_MS = 5.5 * 3_600_000;
 
@@ -32,7 +31,7 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
           <span class="live" [class.off]="failed()" aria-hidden="true"></span>
           <div class="heading">
             <div class="title-row">
-              <strong>{{ ownSat().name }}</strong>
+              <strong>Global Satellite</strong>
             </div>
             <span class="sub">Observed, {{ productLabel() }}</span>
           </div>
@@ -55,21 +54,11 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
         @if (failed()) {
           <p class="msg">The satellite service did not answer. It will try again in a few minutes.</p>
         } @else {
-          <div class="channel" role="group" aria-label="Satellite">
-              @for (s of ownSatellites; track s.id) {
-                <button type="button" [class.on]="sat.ownSatellite() === s.id" [attr.aria-pressed]="sat.ownSatellite() === s.id" (click)="sat.setOwnSatellite(s.id)">{{ s.name }}</button>
-              }
-            </div>
             <div class="channel view3d" role="group" aria-label="Picture">
-              <button type="button" [class.on]="sat.source() === 'rgb'" [attr.aria-pressed]="sat.source() === 'rgb'" (click)="pick('rgb')" title="The visible picture in its own colours (by day)">RGB</button>
-              <button type="button" [class.on]="sat.source() === 'infrared'" [attr.aria-pressed]="sat.source() === 'infrared'" (click)="pick('infrared')" title="Cloud-top temperature in Windy's colours, day and night">Infrared</button>
+              <button type="button" [class.on]="sat.source() === 'rgb'" [attr.aria-pressed]="sat.source() === 'rgb'" (click)="pick('rgb')" title="Global True Colour (day) &amp; IR clouds (night) from best satellite view angles">RGB</button>
+              <button type="button" [class.on]="sat.source() === 'infrared'" [attr.aria-pressed]="sat.source() === 'infrared'" (click)="pick('infrared')" title="Global cloud-top brightness temperature in Windy colours, day and night">Infrared</button>
             </div>
-            @if (sat.ownEmpty() === 'night') {
-              <p class="hint3d">The RGB needs daylight: the infrared takes over at night.</p>
-            } @else if (sat.ownEmpty() === 'none') {
-              <p class="hint3d">Nothing published yet: the first pictures come with the next run of the satellite workflow.</p>
-            }
-            <p class="hint3d full-only">{{ ownSat().note }}</p>
+            <p class="hint3d full-only">{{ ownNote }}</p>
 
             <!-- Satellite Winds (AMV) Section with Height Level Selector -->
             <div class="amv-section full-only">
@@ -294,11 +283,6 @@ const MEASURED_MARKS = [0, -20, -40, -60].map(t => ({ label: `${t}°`, left: ((2
 export class SatellitePanelComponent {
   /** Phones start with the compact panel (the full one covered most of the screen); larger screens start expanded. */
   protected readonly expanded = signal(typeof window === 'undefined' || window.innerWidth > 700);
-  protected readonly presets = CUSTOM_PRESETS;
-  protected isPreset(recipe: readonly CustomChannel[]): boolean {
-    const c = this.sat.custom();
-    return recipe.every((r, i) => c[i] && r.source === c[i].source && r.min === c[i].min && r.max === c[i].max && r.gamma === c[i].gamma);
-  }
   protected readonly sat = inject(SatelliteService);
   protected readonly amv = inject(AmvService);
   private readonly layers = inject(MapLayerService);
@@ -311,34 +295,20 @@ export class SatellitePanelComponent {
   protected readonly activeVectorCount = computed(() => this.amv.filteredGeoJson()?.count ?? 0);
   protected readonly failed = this.sat.failed;
   protected readonly opacityPercent = computed(() => Math.round(this.sat.opacity() * 100));
-  /** The picture on the map is the infrared (night, or the night side of the twilight): the colour bar explains its colours. */
-  protected readonly nightLegend = computed(() => this.sat.current()?.own.kind === 'infrared');
-  /** Night over India: the visible picture is the infrared too, so there is nothing to choose between. */
-  protected readonly night = computed(() => {
-    const f = this.sat.current();
-    return productForTime(f ? f.timeMs : Date.now()).id === 'ir'; // before a picture is there, the clock says
-  });
-  protected readonly nightHint = 'At night the visible picture is the infrared as well';
-  /** Nothing to play or step through: the loop is loaded and has fewer than two pictures. (Until Play, only the newest three are loaded.) */
+  /** The picture on the map is the infrared: the colour bar explains its colours. */
+  protected readonly nightLegend = computed(() => this.sat.source() === 'infrared');
   protected readonly noLoop = computed(() => this.count() < 2 && this.sat.historyRequested());
   protected readonly historyHint = computed(() => this.count() > 0 && !this.sat.historyRequested());
-  protected readonly productLabel = computed(() => {
-    const f = this.sat.current();
-    return f ? (OWN_KINDS.find(k => k.id === f.own.kind)?.label ?? '') : 'loading';
-  });
-  protected readonly ownSat = computed(() => OWN_SATELLITES[this.sat.ownSatellite()]);
-  protected readonly ownKinds = computed(() => OWN_KINDS.filter(k => this.ownSat().kinds.includes(k.id)));
-  protected readonly ownSatellites = (Object.keys(OWN_SATELLITES) as OwnSatellite[]).map(id => ({ id, name: OWN_SATELLITES[id].name }));
-  protected readonly customSources = CUSTOM_SOURCES;
+  protected readonly productLabel = computed(() => (this.sat.source() === 'rgb' ? 'GeoColor RGB' : 'Infrared'));
   protected readonly readoutTitle = computed(() => {
     const m = this.sat.hoverReading()?.measured;
     if (m) {
       const c = (k: number) => (Number.isNaN(k) ? '–' : `${(k - 273.15).toFixed(1)} °C (${k.toFixed(1)} K)`);
-      return `Measured by ${this.ownSat().name}: ${this.ownSat().ir} µm ${c(m.ir)}, 6.2 µm ${c(m.wv62)}, 7.3 µm ${c(m.wv73)}`;
+      return `Measured cloud-top IR temperature: ${c(m.ir)}`;
     }
-    return 'Estimated from the grey of the infrared picture, not measured: good to a few degrees and a couple of kilometres';
+    return 'Hover the map anywhere to read cloud-top temperature and height';
   });
-  protected readonly ownNote = 'Last 4 hours, made by our satellite workflow from raw satellite data: Meteosat-9 © EUMETSAT, Himawari-9 © JMA (via NOAA Open Data on AWS). The hover readout is measured.';
+  protected readonly ownNote = 'Best-view-angle global mosaic: GOES-West, GOES-East, Meteosat-0°, Meteosat-9 & Himawari-9.';
   protected readonly timeLabel = computed(() => {
     const f = this.sat.current();
     return f ? istClock(f.timeMs) : '';
@@ -373,17 +343,7 @@ export class SatellitePanelComponent {
   }
 
   protected pick(kind: OwnKind): void {
-    if (this.ownSat().kinds.includes(kind)) this.sat.pickKind(kind);
-  }
-
-  protected setCustom(i: number, key: keyof CustomChannel, event: Event): void {
-    const v = parseFloat((event.target as HTMLInputElement | HTMLSelectElement).value);
-    if (!Number.isFinite(v)) return;
-    this.sat.setCustom(this.sat.custom().map((c, j) => (j === i ? { ...c, [key]: key === 'gamma' ? Math.max(0.1, v) : v } : c)));
-  }
-
-  protected resetCustom(): void {
-    this.sat.setCustom(DEFAULT_RECIPE);
+    this.sat.pickKind(kind);
   }
 
   protected onFrame(event: Event): void {
