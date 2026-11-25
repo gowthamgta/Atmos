@@ -169,9 +169,7 @@ describe('the model list', () => {
       expect(m.apiId).toBeTruthy();
       expect(m.reachHours).toBeGreaterThan(0);
     }
-    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id).sort()).toEqual(['aifs', 'blend']);
-    expect(forecastModelById('aifs').centre).toBe('ECMWF');
-    expect(forecastModelById('ecmwf_ifs').centre).toBe('ECMWF');
+    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id)).toEqual(['blend']);
     expect(forecastModelById('blend').centre).toBe('Kralveth');
   });
 });

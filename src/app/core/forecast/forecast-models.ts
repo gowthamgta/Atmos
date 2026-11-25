@@ -39,15 +39,7 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
     id: 'blend', label: 'Kralveth AI 1km', short: 'AI 1km', resolution: '1 km high definition neural model, South India and its seas', gridKm: 1, groundKm: 1, baseUrl: `${PAGES}/blend`,
-    centre: 'Kralveth', ai: true, datasets: ['kralveth_ai_1km'], apiId: 'blend', reachHours: 240,
-  },
-  {
-    id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', resolution: '9 km, South India and its seas', gridKm: 9, groundKm: 9, baseUrl: `${PAGES}/ecmwf_ifs`,
-    centre: 'ECMWF', ai: false, datasets: ['ecmwf_ifs', 'ecmwf_ifs025'], apiId: 'ecmwf_ifs', reachHours: 120,
-  },
-  {
-    id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', resolution: '25 km, South India and its seas', gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/aifs`,
-    centre: 'ECMWF', ai: true, datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 360,
+    centre: 'Kralveth', ai: true, datasets: ['kralveth_ai_1km'], apiId: 'blend', reachHours: 120,
   },
 ];
 
@@ -67,6 +59,8 @@ export interface PointModelDef {
 
 /** Models compared in the meteogram alongside the map models, with Open-Meteo's API names. */
 export const POINT_ONLY_MODELS: readonly (PointModelDef & { apiId: string })[] = [
+  { id: 'ecmwf_ifs', label: 'ECMWF IFS', short: 'ECMWF', ai: false, apiId: 'ecmwf_ifs' },
+  { id: 'aifs', label: 'ECMWF AIFS', short: 'AIFS', ai: true, apiId: 'ecmwf_aifs025_single' },
   { id: 'gfs', label: 'NOAA GFS', short: 'GFS', ai: false, apiId: 'gfs_global' },
   { id: 'icon', label: 'DWD ICON', short: 'ICON', ai: false, apiId: 'icon_global' },
   { id: 'ukmo', label: 'UK Met Office', short: 'UKMO', ai: false, apiId: 'ukmo_global_deterministic_10km' },

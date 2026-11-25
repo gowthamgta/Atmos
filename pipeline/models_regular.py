@@ -65,8 +65,8 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
 MAP_REACH_H = 240
-# ECMWF AIFS publishes up to +360 h (15 days) every 6 hours; fetch all available forecast steps
-AIFS_FULL_REACH_H = 360
+# ECMWF AIFS publishes up to +360 h, but the 5-day blend only consumes 0-120 h
+AIFS_FULL_REACH_H = 120
 AIFS_STEPS = list(range(0, AIFS_FULL_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
