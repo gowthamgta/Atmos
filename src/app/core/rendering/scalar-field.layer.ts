@@ -14,6 +14,7 @@ import {
   VAPOUR_SCALE_HEIGHT_M,
   WIND_FACTOR_MAX,
   WIND_FACTOR_MIN,
+  solarDeclination,
 } from '../forecast/terrain-correction';
 import type { TerrainData } from '../forecast/terrain.service';
 import { sameLattice } from '../forecast/terrain-ground';
@@ -90,6 +91,8 @@ uniform float u_relief;    // 0..1 strength of the relief shading
 uniform float u_levelHeight; // pressure-level layers: height of the level (m); 0 at the ground
 uniform int u_lite;        // 1: phone mode, the relief slope from screen differences (about 20 texture reads per pixel fewer)
 uniform int u_cubic;       // 1: zoomed in far enough that a grid cell spans several screen pixels: the field is read with a smooth curve
+uniform vec3 u_sunParams;  // (declination, eqTimeMin, utcMin) for day/night microclimate
+uniform int u_hasTime;     // 1 when u_sunParams is valid
 in vec2 v_merc;
 out vec4 outColor;
 
@@ -229,9 +232,20 @@ void main() {
     if (m == 1) {
       // Temperature: lapse rate (-6.5°C/km) + physical land-cover microclimate (UHI, canopy cooling, crops, inland water)
       v -= ${f(LAPSE_RATE_C_PER_M)} * dz;
-      // Microclimate temperature anomaly scaled by land fraction fineGround.y:
-      // urban (+1.5°C), forest canopy (-1.8°C), crops (-0.8°C), inland water (-1.0°C)
-      float microT = (1.5 * fineMicro.x - 1.8 * fineMicro.y - 0.8 * fineMicro.z - 1.0 * fineMicro.w) * fineGround.y;
+      // Day vs night from solar elevation (mirrors sunVector(...)[2] > 0.05 in terrain-correction.ts)
+      float dayFactor = 1.0;
+      if (u_hasTime == 1) {
+        float rad = 0.017453292519943295;
+        float hourAngle = ((u_sunParams.z + u_sunParams.y + 4.0 * lon) / 4.0 - 180.0) * rad;
+        float latR = lat * rad;
+        float sunUpVal = sin(latR) * sin(u_sunParams.x) + cos(latR) * cos(u_sunParams.x) * cos(hourAngle);
+        dayFactor = sunUpVal > 0.05 ? 1.0 : 0.0;
+      }
+      // Urban (+1.2 day / +2.5 night), Forest (-1.8 day / +0.5 night), Crops (-0.8 day / 0.0 night), Inland water (-1.0 day / +1.0 night)
+      float microT = (mix(2.5, 1.2, dayFactor) * fineMicro.x
+                    + mix(0.5, -1.8, dayFactor) * fineMicro.y
+                    + mix(0.0, -0.8, dayFactor) * fineMicro.z
+                    + mix(1.0, -1.0, dayFactor) * fineMicro.w) * fineGround.y;
       v += microT;
     } else if (m == 2) {
       // Relative humidity: elevation saturation + physical land transpiration boost
@@ -247,9 +261,9 @@ void main() {
       float tpi = (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y;
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fineGround.y);
-      // Aerodynamic surface roughness drag applies to land relative to regional background:
-      // Urban drag (-30%), forest canopy drag (-35%), farmlands (+15%), inland water (+25%)
-      float landRough = 1.0 - 0.30 * fineMicro.x - 0.35 * fineMicro.y + 0.15 * fineMicro.z + 0.25 * fineMicro.w;
+      // Aerodynamic surface roughness drag matching roughnessWindFactor() in terrain-correction.ts:
+      // Urban (-45%), forest canopy (-45%), farmlands (+15%), inland water (+35%)
+      float landRough = 1.0 - 0.45 * fineMicro.x - 0.45 * fineMicro.y + 0.15 * fineMicro.z + 0.35 * fineMicro.w;
       float rough = mix(1.0, landRough, fineGround.y);
       v *= clamp(exposure * coast * rough, 0.45, 1.75);
     }
@@ -309,7 +323,7 @@ const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_clearFade', 'u_grid', 'u_size',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
-  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic',
+  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_sunParams', 'u_hasTime',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 
@@ -339,6 +353,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private frameA2: FieldFrame | null = null;
   private frameB2: FieldFrame | null = null;
   private mix = 0;
+  private sunParams: [number, number, number] = [0, 0, 0];
+  private hasTime = false;
   private lutFor: ForecastLayerDef | null = null;
   private terrain: TerrainData | null = null;
   private modelBitmap: ImageBitmap | null = null;
@@ -378,12 +394,21 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   }
 
   /** Two time steps of the variable, plus the same two steps of a second component for vector layers. */
-  setFrames(a: FieldFrame, b: FieldFrame, mix: number, a2: FieldFrame | null = null, b2: FieldFrame | null = null): void {
+  setFrames(a: FieldFrame, b: FieldFrame, mix: number, a2: FieldFrame | null = null, b2: FieldFrame | null = null, timeMs: number | null = null): void {
     this.frameA = a;
     this.frameB = b;
     this.frameA2 = a2;
     this.frameB2 = b2;
     this.mix = mix;
+    if (timeMs !== null && Number.isFinite(timeMs)) {
+      const { declination, eqTimeMin } = solarDeclination(timeMs);
+      const d = new Date(timeMs);
+      const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
+      this.sunParams = [declination, eqTimeMin, utcMin];
+      this.hasTime = true;
+    } else {
+      this.hasTime = false;
+    }
     this.map?.triggerRepaint();
   }
 
@@ -532,6 +557,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
     gl.uniform1i(u['u_cubic'], this.cubicAt(grid) ? 1 : 0);
+    gl.uniform3f(u['u_sunParams'], this.sunParams[0], this.sunParams[1], this.sunParams[2]);
+    gl.uniform1i(u['u_hasTime'], this.hasTime ? 1 : 0);
     this.tiles.setUniforms(gl, u, terrainOn);
     const meta = this.terrain?.meta;
     if (terrainOn && meta) {

@@ -259,7 +259,8 @@ export class ForecastMapController {
           frame(def.varId, hB, bitmaps[1]),
           mix,
           def.varId2 ? frame(def.varId2, hA, bitmaps[2]) : null,
-          def.varId2 ? frame(def.varId2, hB, bitmaps[3]) : null
+          def.varId2 ? frame(def.varId2, hB, bitmaps[3]) : null,
+          time
         );
         // the moment a picked layer's data is on the GPU (its picture is on the next frame): what the layer-switch benchmark times
         performance.mark('forecast-layer-shown', { detail: def.id });
