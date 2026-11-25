@@ -1,8 +1,8 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { isPhone } from '../ui/device-profile';
 
-const Z = 7;
-const N_TILES = 1 << Z; // 128 x 128 global tiles (~1.22 km eq, ~0.86 km mid-lat)
+const Z = 8;
+const N_TILES = 1 << Z; // 256 x 256 global tiles (~611 m eq, ~489 m mid-lat)
 const TILE_PX = 256;
 const TERRARIUM_URL = (tx: number, ty: number) => `https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${Z}/${tx}/${ty}.png`;
 const RETRY_MS = 30_000;
@@ -11,7 +11,7 @@ const MIN_ZOOM = 4.2;
 export const GLOBAL_TILE_ARRAY_UNIT = 13;
 export const GLOBAL_TILE_MAP_UNIT = 14;
 
-/** GLSL snippet for ~1 km global Terrarium z=7 terrain tiles outside South India. */
+/** GLSL snippet for ~500 m global Terrarium z=8 terrain tiles outside South India. */
 export const GLOBAL_TERRAIN_TILE_GLSL = `
 uniform sampler2DArray u_gTiles;
 uniform sampler2D u_gTileMap;
@@ -49,8 +49,8 @@ TerrainSample globalTileSample(vec2 vMerc, float lat) {
   float l11 = e11 > 0.5 ? 1.0 : 0.0;
   float land = mix(mix(l00, l10, f.x), mix(l01, l11, f.x), f.y);
 
-  // Pixel spacing in metres at z=7 (~1.22 km * cos(lat))
-  float mPerPx = max(120.0, 1223.0 * max(0.15, cos(radians(lat))));
+  // Pixel spacing in metres at z=8 (~611 m eq / ~489 m mid-lat * cos(lat))
+  float mPerPx = max(60.0, 611.5 * max(0.15, cos(radians(lat))));
   float gx = (e10 - eW) / (2.0 * mPerPx);
   float gy = (eN - e01) / (2.0 * mPerPx);
   return TerrainSample(vec2(elev, land), vec4(0.0), 0.0, vec2(gx, gy), 1.0);

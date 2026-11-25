@@ -57,11 +57,9 @@ export class SatelliteService {
   readonly active = signal(false);
   readonly source = signal<'rgb' | 'infrared'>(readMode());
   readonly custom = signal<readonly CustomChannel[]>(readCustom());
-  /** Optional high-res regional 3km India IR overlay stacked cleanly over global IR. */
+  /** Regional insets are disabled so the unified global mosaic renders cleanly worldwide with zero bounding box seams. */
   readonly regionalIr = signal<{ bounds: GeoBounds; minK: number; spanK: number; url: string } | null>(null);
-  /** High-res Meteosat-9 specialized RGB (processed via worker) stacked cleanly over India. */
   readonly regionalRgb = signal<{ bounds: GeoBounds; url: string; timeMs: number } | null>(null);
-  private readonly ownRgbCache = new Map<string, Promise<string | null>>();
   /** Global IR metadata kept for compatibility with global hover inspection. */
   readonly globalIr = signal<{ bounds: GeoBounds; minK: number; spanK: number; url: string } | null>(null);
   /** Always null in GeoColor global RGB mode (24/7 day+night). */
@@ -195,29 +193,6 @@ export class SatelliteService {
     });
   }
 
-  private processSpecializedRgb(url: string): Promise<string | null> {
-    if (typeof Worker === 'undefined') return Promise.resolve(null);
-    let p = this.ownRgbCache.get(url);
-    if (!p) {
-      if (this.workers.length === 0) this.workers = [this.createWorker()];
-      const worker = this.workers[this.turn++ % this.workers.length];
-      p = fetch(url)
-        .then(r => (r.ok ? r.blob() : null))
-        .then(blob => {
-          if (!blob) return null;
-          const id = this.nextRequest++;
-          return new Promise<string | null>(resolve => {
-            this.pending.set(id, res => resolve('png' in res ? URL.createObjectURL(res.png) : null));
-            worker.postMessage({ id, picture: blob } satisfies SatelliteWorkerRequest);
-          });
-        })
-        .catch(() => null);
-      p.then(res => { if (!res) this.ownRgbCache.delete(url); });
-      this.ownRgbCache.set(url, p);
-    }
-    return p;
-  }
-
   private createWorker(): Worker {
     const worker = new Worker(new URL('./satellite.worker', import.meta.url), { type: 'module' });
     worker.onmessage = (e: MessageEvent<SatelliteWorkerResponse>) => {
@@ -234,14 +209,12 @@ export class SatelliteService {
     if (this.frames().length === 0) this.loading.set(true);
     this.failed.set(false);
     this.ownEmpty.set(null);
-    if (mode !== 'rgb') this.regionalRgb.set(null);
 
     try {
       const cacheBust = `?t=${Date.now()}`;
-      const [btRes, rgbRes, msgRes] = await Promise.all([
+      const [btRes, rgbRes] = await Promise.all([
         fetch(`${SATELLITE_SITE}bt-global/index.json${cacheBust}`, { cache: 'no-cache' }),
         mode === 'rgb' ? fetch(`${SATELLITE_SITE}rgb-global/index.json${cacheBust}`, { cache: 'no-cache' }) : Promise.resolve(null),
-        fetch(`${SATELLITE_SITE}rgb-msg/index.json${cacheBust}`, { cache: 'no-cache' }).catch(() => null),
       ]);
       if (token !== this.loadToken || this.source() !== mode) return;
 
@@ -253,39 +226,6 @@ export class SatelliteService {
       const latestBt = btFrames[btFrames.length - 1];
       if (btIdx && latestBt?.file) {
         this.globalIr.set({ bounds: btIdx.bounds, minK: btMinK, spanK: btSpanK, url: btBase + latestBt.file });
-      }
-
-      if (msgRes?.ok) {
-        const msgIdx = (await msgRes.json()) as GlobalIndex;
-        const msgLast = msgIdx.frames?.[msgIdx.frames.length - 1];
-        const dataFile = msgLast?.files?.data;
-        if (dataFile && msgIdx.data) {
-          this.regionalIr.set({
-            bounds: msgIdx.bounds,
-            minK: msgIdx.data.minK,
-            spanK: msgIdx.data.spanK,
-            url: `${SATELLITE_SITE}rgb-msg/${dataFile}`,
-          });
-        }
-        if (mode === 'rgb' && msgIdx.frames?.length && msgLast) {
-          const msgBase = `${SATELLITE_SITE}rgb-msg/`;
-          const lastMs = Date.parse(msgLast.time);
-          const rgbFrame = [...msgIdx.frames].reverse().find(f => {
-            if (!f.files?.rgb && !f.files?.rgb_lo) return false;
-            const tMs = Date.parse(f.time);
-            return Number.isFinite(lastMs) && Number.isFinite(tMs) && Math.abs(lastMs - tMs) <= 45 * 60_000;
-          });
-          if (rgbFrame) {
-            const rawFile = (isPhone() ? rgbFrame.files?.rgb_lo ?? rgbFrame.files?.rgb : rgbFrame.files?.rgb ?? rgbFrame.files?.rgb_lo)!;
-            const timeMs = Date.parse(rgbFrame.time);
-            void this.processSpecializedRgb(msgBase + rawFile).then(objUrl => {
-              if (token !== this.loadToken || this.source() !== 'rgb' || !objUrl) return;
-              this.regionalRgb.set({ bounds: SATELLITE_BOUNDS, url: objUrl, timeMs });
-            });
-          } else {
-            this.regionalRgb.set(null);
-          }
-        }
       }
 
       const following = this.position() >= Math.max(this.frames().length - 1, 0);

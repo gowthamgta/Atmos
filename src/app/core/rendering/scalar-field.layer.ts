@@ -220,11 +220,12 @@ vec2 slopeAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
 
 void main() {
   float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * v_merc.y))));
-  float lon = fract(v_merc.x) * 360.0 - 180.0;
+  float mx = v_merc.x - floor(v_merc.x);
+  float lon = mx * 360.0 - 180.0;
   bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
   bool hasGlobalT = !onGround && u_hasGlobalTerrain == 1;
   bool isGlobalGrid = u_grid.z * float(u_size.x) >= 359.0;
-  vec2 g = vec2((lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
+  vec2 g = vec2(isGlobalGrid ? (mx * 360.0) / u_grid.z : (lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
   // Fade out over the last 12 cells (about 1.2 degrees) for regional grids; global grids wrap longitudinally.
   vec2 toFar = vec2(u_size) - 1.0 - g;
   float edge = isGlobalGrid ? min(g.y, toFar.y) : min(min(g.x, g.y), min(toFar.x, toFar.y));
@@ -659,7 +660,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       gl.uniform2i(u['u_globalModelSize'], 1, 1);
     }
 
-    gl.drawArrays(gl.TRIANGLES, 0, 18);
+    const isGlobal = !!(this.grid && this.grid.step * this.grid.nx >= 359);
+    gl.drawArrays(gl.TRIANGLES, 0, isGlobal ? 30 : 18);
 
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
@@ -675,9 +677,9 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     const x1 = isGlobal ? 1 : mercatorUnitX(grid.lonMax);
     const y0 = mercatorUnitY(grid.latMax);
     const y1 = mercatorUnitY(grid.latMin);
-    // Emit 3 world-wrapped quads (-1, 0, +1) so panning across the Pacific dateline never leaves one side blank
+    // Emit world-wrapped quads so panning across the Pacific dateline never leaves any side blank
     const verts: number[] = [];
-    for (const dx of [-1, 0, 1]) {
+    for (const dx of isGlobal ? [-2, -1, 0, 1, 2] : [-1, 0, 1]) {
       const a = x0 + dx;
       const b = x1 + dx;
       verts.push(a, y0, b, y0, a, y1, a, y1, b, y0, b, y1);

@@ -171,7 +171,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
       this.needsReset = false;
     }
     this.system.step(dt, this.wind, view);
-    const n = this.system.writeInstances(this.instances);
+    const n = this.system.writeInstances(this.instances, view);
     if (n === 0) {
       map.triggerRepaint();
       return;

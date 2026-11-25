@@ -836,18 +836,34 @@ export class ForecastMapController {
       };
     };
 
-    void Promise.all([loadRegional().catch(() => null), loadGlobal().catch(() => undefined)])
-      .then(([reg, glob]) => {
-        if (my !== this.windToken || !this.windLayer) return;
-        if (!reg && !glob) {
-          wind.setVisible(false);
-          wind.setWind(null);
-          return;
-        }
-        const frame = reg ? { ...reg, global: glob } : { ...glob!, global: glob };
-        wind.setWind(frame);
-        wind.setVisible(true);
-      });
+    let regData: any = null;
+    let globData: any = null;
+    const applyWind = () => {
+      if (my !== this.windToken || !this.windLayer) return;
+      if (!regData && !globData) {
+        wind.setVisible(false);
+        wind.setWind(null);
+        return;
+      }
+      const frame = regData ? { ...regData, global: globData } : { ...globData, global: globData };
+      wind.setWind(frame);
+      wind.setVisible(true);
+    };
+
+    void loadGlobal().catch(() => undefined).then(g => {
+      if (my !== this.windToken || !this.windLayer) return;
+      if (g) {
+        globData = g;
+        applyWind();
+      }
+    });
+    void loadRegional().catch(() => null).then(r => {
+      if (my !== this.windToken || !this.windLayer) return;
+      if (r) {
+        regData = r;
+        applyWind();
+      }
+    });
   }
 }
 

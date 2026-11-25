@@ -753,12 +753,14 @@ def _render_patch(
             ir_zeniths.append(z_e + 5.0)
 
     if want_ir:
-        for reg_dir, sub_lon in regional_dirs:
-            res = _read_regional_bt(reg_dir, lat, lon)
-            if res is not None:
-                arr_r, mask_r = res
-                ir_arrays.append(arr_r)
-                ir_zeniths.append(np.where(mask_r, sat_zenith(lat, lon, sub_lon), 999.0).astype(np.float32))
+        if not ir_arrays:
+            # Regional fallbacks only when no full-disk or EUMETView satellite observations were found
+            for reg_dir, sub_lon in regional_dirs:
+                res = _read_regional_bt(reg_dir, lat, lon)
+                if res is not None:
+                    arr_r, mask_r = res
+                    ir_arrays.append(arr_r)
+                    ir_zeniths.append(np.where(mask_r, sat_zenith(lat, lon, sub_lon), 999.0).astype(np.float32))
         if gmgsi is not None and np.isfinite(gmgsi).any():
             ir_arrays.append(gmgsi)
             ir_zeniths.append(np.where(np.isfinite(gmgsi), 78.0, 999.0).astype(np.float32))
@@ -901,14 +903,15 @@ def build_global_ir(out_dir: str, now_utc: datetime | None = None) -> str | None
     if gmgsi is not None and np.isfinite(gmgsi).any():
         arrays.append(gmgsi)
         zeniths.append(np.where(np.isfinite(gmgsi), 78.0, 999.0))
-    for sub, sub_lon in (("bt", 45.5), ("bt-h9", 140.7)):
-        p = os.path.join(out_dir, sub)
-        if os.path.exists(os.path.join(p, "index.json")):
-            res = _read_regional_bt(p, lat, lon)
-            if res is not None:
-                arr_r, mask_r = res
-                arrays.append(arr_r)
-                zeniths.append(np.where(mask_r, sat_zenith(lat, lon, sub_lon), 999.0))
+    if not arrays:
+        for sub, sub_lon in (("bt", 45.5), ("bt-h9", 140.7)):
+            p = os.path.join(out_dir, sub)
+            if os.path.exists(os.path.join(p, "index.json")):
+                res = _read_regional_bt(p, lat, lon)
+                if res is not None:
+                    arr_r, mask_r = res
+                    arrays.append(arr_r)
+                    zeniths.append(np.where(mask_r, sat_zenith(lat, lon, sub_lon), 999.0))
     if not arrays:
         return None
     global_k, valid = mosaic_best_view(arrays, zeniths)

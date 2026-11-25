@@ -227,16 +227,24 @@ export class ParticleSystem {
   }
 
   /** Fills `out` with INSTANCE_FLOATS per live particle and returns how many particles were written. */
-  writeInstances(out: Float32Array): number {
+  writeInstances(out: Float32Array, view?: ViewState): number {
     let n = 0;
     const tables = this.tables;
+    const vEast = view ? (view.east > view.west ? view.east : view.east + 360) : 0;
+    const centerLon = view ? view.west + (vEast - view.west) / 2 : 0;
     for (let i = 0; i < this.count; i++) {
       const speed = this.speed[i]; // m/s
       if (speed < 0.05) continue; // calm air: nothing to draw
       const fadeIn = Math.min(this.age[i] / FADE_IN_S, 1);
       const fadeOut = Math.min((this.life[i] - this.age[i]) / FADE_OUT_S, 1);
       const o = n * INSTANCE_FLOATS;
-      out[o] = mercatorUnitX(this.lon[i]);
+      let lon = this.lon[i];
+      if (view) {
+        let d = lon - centerLon;
+        d = ((((d + 180) % 360) + 360) % 360) - 180;
+        lon = centerLon + d;
+      }
+      out[o] = mercatorUnitX(lon);
       let y: number;
       if (tables) {
         const t = Math.min(Math.max((this.lat[i] - tables.lat0) / LUT_STEP_DEG, 0), tables.mercY.length - 1.000001);

@@ -116,7 +116,7 @@ float edgeMask(vec2 p, vec4 box, float feather) {
 }
 
 void main() {
-  float mx = (u_box.z - u_box.x > 0.99) ? fract(v_merc.x) : v_merc.x;
+  float mx = (u_box.z - u_box.x > 0.99) ? (v_merc.x - floor(v_merc.x)) : v_merc.x;
   vec2 uv = vec2((mx - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) discard;
   vec2 px = uv * vec2(u_size);
@@ -246,8 +246,9 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     const b = this.bounds;
     if (!gl || !this.vbo || !b) return;
     const x0 = mercatorUnitX(b.west), x1 = mercatorUnitX(b.east), y0 = mercatorUnitY(b.north), y1 = mercatorUnitY(b.south);
+    const isGlobal = b.east - b.west >= 359.5;
     const verts: number[] = [];
-    for (const dx of [-1, 0, 1]) {
+    for (const dx of isGlobal ? [-2, -1, 0, 1, 2] : [-1, 0, 1]) {
       const a = x0 + dx;
       const c = x1 + dx;
       verts.push(a, y0, c, y0, a, y1, a, y1, c, y0, c, y1);
@@ -375,7 +376,8 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.lutTexture(gl));
     gl.uniform1i(u['u_lut'], 2);
-    gl.drawArrays(gl.TRIANGLES, 0, 18);
+    const isGlobal = b.east - b.west >= 359.5;
+    gl.drawArrays(gl.TRIANGLES, 0, isGlobal ? 30 : 18);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
   }

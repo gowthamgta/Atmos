@@ -117,7 +117,7 @@ interface CpuTile {
   n: number;
 }
 
-const GLOBAL_DEM_Z = 7;
+const GLOBAL_DEM_Z = 8;
 const GLOBAL_DEM_N = 1 << GLOBAL_DEM_Z;
 const GLOBAL_DEM_PX = 256;
 
