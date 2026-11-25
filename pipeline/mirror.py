@@ -57,8 +57,6 @@ def _fetch(get: Callable, url: str, retries: int = 3) -> bytes:
 def mirror_status(site: str, base_url: str, model: str, get: Callable = session_get, workers: int = 16) -> str:
     """Download the live run of `model` into site/<model>. Returns "mirrored", "absent" (the model is not live yet: nothing to
     carry over) or "failed" (it is live but could not be copied completely; nothing is left behind)."""
-    if model == "blend":
-        return "mirrored"  # blend is built locally, never mirror from live site
     root = os.path.join(site, model)
     try:
         try:
@@ -112,8 +110,6 @@ def main() -> int:
     args = ap.parse_args()
     failed = []
     for model in args.models:
-        if model == "blend":
-            continue
         if os.path.exists(os.path.join(args.site, model, "latest.json")):
             continue  # built in this run
         if mirror_status(args.site, args.base_url.rstrip("/"), model) == "failed":

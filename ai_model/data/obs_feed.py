@@ -185,6 +185,27 @@ def load_pmfby_winds_observations(
     return [], 0
 
 
+def load_live_metar_observations(
+    ref_time: datetime | None = None,
+    max_age_hours: float = MAX_OBSERVATION_AGE_HOURS,
+) -> list[dict]:
+    """Fetches the latest fresh hourly METAR report for each Tamil Nadu airport."""
+    try:
+        from pipeline.obs_metar import fetch as fetch_metar, parse_all as parse_metar
+        records = fetch_metar(hours=3, timeout=15)
+        grouped = parse_metar(records)
+        fresh: list[dict] = []
+        for code, recs in grouped.items():
+            if not recs:
+                continue
+            latest = recs[-1]
+            if is_fresh_observation(latest.get("time"), ref_time=ref_time, max_age_hours=max_age_hours):
+                fresh.append(latest)
+        return fresh
+    except Exception:
+        return []
+
+
 def load_tn_gauge_positions() -> list[tuple[float, float]]:
     """Loads Tamil Nadu automated rain gauge lat/lon positions."""
     if os.path.exists(TN_GAUGES_FILE):
@@ -330,11 +351,13 @@ def assimilate_hourly_observations(
     if live_obs_data is not None:
         wu_stations = live_obs_data.get("weatherunion", [])
         winds_stations = live_obs_data.get("winds", [])
+        metar_stations = live_obs_data.get("metar", [])
         stale_wu = stale_winds = 0
     else:
         now_dt = ref_datetime or datetime.now(timezone.utc)
         wu_stations, stale_wu = load_weatherunion_observations(ref_time=now_dt, max_age_hours=max_age_hours)
         winds_stations, stale_winds = load_pmfby_winds_observations(ref_time=now_dt, max_age_hours=max_age_hours)
+        metar_stations = load_live_metar_observations(ref_time=now_dt, max_age_hours=max_age_hours)
 
     wu_temp_count = 0
     wu_rh_count = 0
@@ -395,7 +418,25 @@ def assimilate_hourly_observations(
                 u10_obs_points.append((lat, lon, -w_val * math.sin(rad)))
                 v10_obs_points.append((lat, lon, -w_val * math.cos(rad)))
 
-    # 3. Airport Weather Stations (METAR bias calibration)
+    # 3. Airport Weather Stations (Live METARs + Diurnal bias fallback)
+    live_metar_codes: set[str] = set()
+    for st in metar_stations:
+        code = st.get("station")
+        lat = st.get("lat")
+        lon = st.get("lon")
+        if lat is None or lon is None:
+            if code in AIRPORT_COORDS:
+                lat, lon = AIRPORT_COORDS[code]
+            else:
+                continue
+        lat, lon = float(lat), float(lon)
+        if st.get("temp_c") is not None:
+            temp_obs_points.append((lat, lon, float(st["temp_c"])))
+            if code:
+                live_metar_codes.add(code)
+        if st.get("rh_pct") is not None:
+            rh_obs_points.append((lat, lon, float(np.clip(st["rh_pct"], 5.0, 100.0))))
+
     corrections_doc = load_airport_diurnal_corrections()
     models_dict = corrections_doc.get("models", {})
     if "blend" in models_dict or "ecmwf_ifs" in models_dict:
@@ -405,6 +446,8 @@ def assimilate_hourly_observations(
 
         ny_grid, nx_grid = synoptic_fields["t2m"].shape
         for code, (lat, lon) in AIRPORT_COORDS.items():
+            if code in live_metar_codes:
+                continue  # Live METAR already assimilated for this airport
             if code in temp_biases and len(temp_biases[code]) == 24:
                 bias = temp_biases[code][hour_utc % 24]
                 r_idx = int(round((AIC.LAT_MAX - lat) / (AIC.LAT_MAX - AIC.LAT_MIN) * (ny_grid - 1)))

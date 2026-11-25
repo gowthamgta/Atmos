@@ -66,12 +66,14 @@ def test_meteorological_loss_computes_finite_gradient():
     assert pred.grad is not None and torch.isfinite(pred.grad).all()
 
 
-def test_airport_and_tn_station_assimilation():
+def test_airport_and_tn_station_assimilation(tmp_path, monkeypatch):
+    import ai_model.data.obs_feed as obs_feed
     from ai_model.data.obs_feed import (
         AIRPORT_COORDS,
         barnes_objective_analysis_2d,
         assimilate_hourly_observations,
     )
+    monkeypatch.setattr(obs_feed, "WU_CORRECTIONS_OUT", str(tmp_path / "weatherunion_corrections.json"))
 
     # 1. Airports coverage
     assert "VOMM" in AIRPORT_COORDS  # Chennai

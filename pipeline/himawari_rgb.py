@@ -127,7 +127,7 @@ def save_webp(path: str, rgb: np.ndarray, alpha: np.ndarray) -> None:
 
 def encode_data(k: np.ndarray) -> np.ndarray:
     v = np.round((np.asarray(k, float) - DATA_MIN_K) / DATA_SPAN_K * 255)
-    out = np.clip(v, 1, 255).astype(np.uint8)
+    out = np.nan_to_num(np.clip(v, 1, 255), nan=0.0).astype(np.uint8)
     out[~np.isfinite(k)] = 0
     return out
 

@@ -98,10 +98,13 @@ def box_mean(a: np.ndarray, r: int) -> np.ndarray:
 def bilinear(a: np.ndarray, r: np.ndarray, c: np.ndarray) -> np.ndarray:
     """`a` read at fractional (row, col), NaN outside it."""
     rows, cols = a.shape
-    r0 = np.floor(r).astype(int)
-    c0 = np.floor(c).astype(int)
-    fr, fc = r - r0, c - c0
-    inside = (r0 >= 0) & (r0 < rows - 1) & (c0 >= 0) & (c0 < cols - 1)
+    finite = np.isfinite(r) & np.isfinite(c)
+    r_safe = np.where(finite, r, -1.0)
+    c_safe = np.where(finite, c, -1.0)
+    r0 = np.floor(r_safe).astype(int)
+    c0 = np.floor(c_safe).astype(int)
+    fr, fc = r_safe - r0, c_safe - c0
+    inside = finite & (r0 >= 0) & (r0 < rows - 1) & (c0 >= 0) & (c0 < cols - 1)
     r0 = np.clip(r0, 0, rows - 2)
     c0 = np.clip(c0, 0, cols - 2)
     v = (a[r0, c0] * (1 - fr) * (1 - fc) + a[r0, c0 + 1] * (1 - fr) * fc + a[r0 + 1, c0] * fr * (1 - fc) + a[r0 + 1, c0 + 1] * fr * fc)
@@ -121,8 +124,8 @@ def parallax_correct(ir108: np.ndarray, others: list[np.ndarray], lat: np.ndarra
     rows, cols = ir108.shape
     zenith, bearing = view_geometry(lat, lon, sub_lon)
     if to_rc is None:
-        step_lat = lat[0, 0] - lat[1, 0]
-        step_lon = lon[0, 1] - lon[0, 0]
+        step_lat = float(lat[0, 0] - lat[1, 0]) or 1.0
+        step_lon = float(lon[0, 1] - lon[0, 0]) or 1.0
         to_rc = lambda la, lo: ((lat[0, 0] - la) / step_lat, (lo - lon[0, 0]) / step_lon)
     # the grid's cell size (km), for the smoothing in cells
     r_mid, c_mid = rows // 2, cols // 2

@@ -46,7 +46,7 @@ def grid_shape() -> tuple[int, int]:
 def encode_bt(kelvin: np.ndarray) -> np.ndarray:
     """Brightness temperatures (kelvin, NaN where there is none) as bytes: 0 no data, else 1..255."""
     v = np.round((np.asarray(kelvin, float) - OFFSET_K) / STEP_K)
-    out = np.clip(v, 1, 255).astype(np.uint8)
+    out = np.nan_to_num(np.clip(v, 1, 255), nan=0.0).astype(np.uint8)
     out[~np.isfinite(kelvin)] = 0
     return out
 

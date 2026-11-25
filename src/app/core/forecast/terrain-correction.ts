@@ -116,22 +116,26 @@ export function lulcTemperatureAnomaly(lulc: number, dayWeight: boolean | number
 }
 
 /** Relative humidity multiplier from land cover transpiration/evaporation vs urban runoff. */
-export function lulcHumidityFactor(lulc: number): number {
+export function lulcHumidityFactor(lulc: number, calmFactor = 1): number {
   if (!lulc) return 1.0;
+  let base = 1.0;
   switch (lulc) {
     case LULC_TREE:
     case LULC_MANGROVE:
-      return 1.08;
+      base = 1.08;
+      break;
     case LULC_CROPLAND:
     case LULC_WETLAND:
-      return 1.05;
+      base = 1.05;
+      break;
     case LULC_WATER:
-      return 1.06;
+      base = 1.06;
+      break;
     case LULC_BUILTUP:
-      return 0.92;
-    default:
-      return 1.0;
+      base = 0.92;
+      break;
   }
+  return 1.0 + (base - 1.0) * clamp(calmFactor, 0, 1);
 }
 
 export type TerrainMode = 'temperature' | 'humidity' | 'dewpoint' | 'wind' | 'rain' | 'lowcloud' | 'column' | 'solar';
@@ -143,8 +147,8 @@ export function terrainDelta(fineMeters: number, modelMeters: number): number {
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
 /** Temperature (or feels-like) at height dz above the model's own ground, plus land-cover microclimate. */
-export function adjustTemperature(tempC: number, dz: number, lulc = 0, dayWeight: boolean | number = 1): number {
-  return tempC - LAPSE_RATE_C_PER_M * dz + lulcTemperatureAnomaly(lulc, dayWeight);
+export function adjustTemperature(tempC: number, dz: number, lulc = 0, dayWeight: boolean | number = 1, calmFactor = 1): number {
+  return tempC - LAPSE_RATE_C_PER_M * dz + lulcTemperatureAnomaly(lulc, dayWeight) * clamp(calmFactor, 0, 1);
 }
 
 /** Dew point at height dz above the model's own ground. */
@@ -153,8 +157,8 @@ export function adjustDewpoint(dewC: number, dz: number): number {
 }
 
 /** Relative humidity (%) at height dz above the model's own ground, capped at saturation. */
-export function adjustHumidity(rhPercent: number, dz: number, lulc = 0): number {
-  return Math.min(100, rhPercent * Math.exp(RH_LOG_PER_M * dz) * lulcHumidityFactor(lulc));
+export function adjustHumidity(rhPercent: number, dz: number, lulc = 0, calmFactor = 1): number {
+  return Math.min(100, rhPercent * Math.exp(RH_LOG_PER_M * dz) * lulcHumidityFactor(lulc, calmFactor));
 }
 
 /** Total moisture column over ground dz higher than the model's (less air above, so less water). */
@@ -267,6 +271,8 @@ export interface TerrainContext {
   terrain: PointTerrain;
   /** Wind (u, v, m/s) that drives the orographic lift: 850 hPa when the model has it, else 10 m. */
   liftWind?: [number, number] | null;
+  /** 10 m wind speed (m/s) for turbulent mixing damping of land-cover microclimate. */
+  windMs?: number;
   timeMs?: number;
   lat?: number;
   lon?: number;
@@ -294,6 +300,8 @@ export function applyTerrain(mode: TerrainMode | null, value: number, ctx: Terra
   const dz = typeof ctx === 'number' ? ctx : ctx.terrain.dz;
   const landFine = typeof ctx === 'number' ? 1 : ctx.terrain.landFine ?? 1;
   const lulc = (typeof ctx === 'number' || landFine <= 0.001) ? 0 : ctx.terrain.lulc ?? 0;
+  const windMs = typeof ctx === 'number' ? undefined : ctx.windMs;
+  const calmFactor = windMs !== undefined && Number.isFinite(windMs) ? clamp(1 - (windMs - 2) / 8, 0.25, 1) : 1;
   switch (mode) {
     case 'temperature': {
       let dayWeight = 1;
@@ -302,10 +310,10 @@ export function applyTerrain(mode: TerrainMode | null, value: number, ctx: Terra
         const t = clamp((up + 0.05) / 0.40, 0, 1);
         dayWeight = t * t * (3 - 2 * t);
       }
-      return adjustTemperature(value, dz, lulc, dayWeight);
+      return adjustTemperature(value, dz, lulc, dayWeight, calmFactor);
     }
     case 'humidity':
-      return adjustHumidity(value, dz, lulc);
+      return adjustHumidity(value, dz, lulc, calmFactor);
     case 'dewpoint':
       return adjustDewpoint(value, dz);
     case 'column':

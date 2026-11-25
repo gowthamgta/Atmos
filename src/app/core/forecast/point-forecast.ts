@@ -113,7 +113,8 @@ export function buildPointRows(
   units: Units = METRIC,
 ): PointRow[] {
   const v = (id: string): number => values[id] ?? NaN;
-  const ctx: TerrainContext | null = terrain ? { terrain, liftWind: liftWindAt(values), ...where } : null;
+  const windMs = Number.isNaN(v('u10')) || Number.isNaN(v('v10')) ? undefined : Math.hypot(v('u10'), v('v10'));
+  const ctx: TerrainContext | null = terrain ? { terrain, liftWind: liftWindAt(values), windMs, ...where } : null;
   const adjust = (mode: TerrainMode, x: number) => applyTerrain(mode, x, ctx);
   const adjusted = ctx !== null;
   const windFactor = Number.isNaN(v('u10')) ? 1 : adjust('wind', 1); // the same factor scales the 10 m wind and gusts
