@@ -71,10 +71,17 @@ def mirror_status(site: str, base_url: str, model: str, get: Callable = session_
         files = [f"{var}/{step['h']:03d}.png" for var in manifest["vars"] for step in manifest["steps"]]
 
         def pull(rel: str) -> None:
+            try:
+                data = _fetch(get, f"{base_url}/{model}/{run}/{rel}")
+            except NotLive:
+                if rel.startswith("tcwv/"):
+                    print(f"warning: {model}/{run}/{rel} not found (404), skipping")
+                    return
+                raise
             path = os.path.join(root, run, rel)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
-                f.write(_fetch(get, f"{base_url}/{model}/{run}/{rel}"))
+                f.write(data)
 
         with ThreadPoolExecutor(workers) as pool:
             list(pool.map(pull, files))

@@ -82,7 +82,7 @@ def process_step(fetcher, run, h, global_deltas=None):
             fields = correction.apply_rain(fields, grid.lats(), grid.lons(), RAIN_BIAS, LAND_MASK)
     if fetcher.MODEL_ID == "global" and global_deltas:
         import math
-        from derive import dew_point, feels_like
+        from derive import dew_point, apparent_temperature
         persistence = math.exp(-h / 24.0)
         if "t2m" in global_deltas and "t2m" in fields:
             fields["t2m"] = (fields["t2m"] + persistence * global_deltas["t2m"]).astype(np.float32)
@@ -91,7 +91,7 @@ def process_step(fetcher, run, h, global_deltas=None):
         if "t2m" in fields and "rh" in fields:
             fields["dew"] = dew_point(fields["t2m"], fields["rh"]).astype(np.float32)
             if "u10" in fields and "v10" in fields:
-                fields["feels"] = feels_like(fields["t2m"], fields["rh"], np.hypot(fields["u10"], fields["v10"])).astype(np.float32)
+                fields["feels"] = apparent_temperature(fields["t2m"], fields["rh"], np.hypot(fields["u10"], fields["v10"])).astype(np.float32)
     per_step = [v for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS]
     pngs = {
         v.id: encode_field(

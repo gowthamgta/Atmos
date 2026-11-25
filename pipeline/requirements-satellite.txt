@@ -11,3 +11,4 @@ opencv-python-headless>=4.8
 scikit-image>=0.22
 scipy>=1.13
 pyproj>=3.6
+netCDF4>=1.6
