@@ -157,16 +157,28 @@ class KralvethAIInferenceEngine:
         base_t0["wind"] = np.hypot(base_t0["u10"], base_t0["v10"]).astype(np.float32)
 
         # 3. Assimilate real-time fresh ground-truth observations (WeatherUnion + PMFBY WINDS + METARs)
+        # Evaluate the NWP background at the actual observation time (now_wall) so diurnal differences
+        # between ref_run (e.g. 00Z) and now_wall (e.g. 08Z) are not mistaken for model bias.
         obs_delta: dict[str, np.ndarray] = {}
         try:
             from ai_model.data.obs_feed import assimilate_hourly_observations
             now_wall = datetime.now(timezone.utc)
-            assimilated_t0 = assimilate_hourly_observations(base_t0, hour_utc=now_wall.hour, ref_datetime=now_wall, land_mask=self.mask_syn)
-            for v, arr in assimilated_t0.items():
-                if v in base_t0:
-                    obs_delta[v] = (arr - base_t0[v]).astype(np.float32)
+            h_now = max(0.0, (now_wall - ref_run).total_seconds() / 3600.0)
+            w_ifs_now = max(0.20, min(0.70, 0.70 - (h_now / 240.0) * 0.30))
+            model_now: dict[str, np.ndarray] = {}
+            for var in ["t2m", "precip", "u10", "v10", "msl", "rh", "cape"]:
+                f_ifs_n = legacy_blend.field_at_valid(ifs_comp, var, now_wall) if ifs_comp else None
+                f_aifs_n = legacy_blend.field_at_valid(aifs_comp, var, now_wall) if aifs_comp else None
+                blended_n = safe_blend_fields(f_ifs_n, f_aifs_n, w_ifs_now, default_val=defaults[var], is_precip=(var == "precip"))
+                model_now[var] = blended_n if blended_n is not None else base_t0[var]
+            model_now["wind"] = np.hypot(model_now["u10"], model_now["v10"]).astype(np.float32)
+
+            assimilated_now = assimilate_hourly_observations(model_now, hour_utc=now_wall.hour, ref_datetime=now_wall, land_mask=self.mask_syn)
+            for v, arr in assimilated_now.items():
+                if v in model_now:
+                    obs_delta[v] = (arr - model_now[v]).astype(np.float32)
             max_t_adj = np.abs(obs_delta.get("t2m", np.zeros(1))).max()
-            print(f"ai_model: real-time fresh station observations assimilated (max ground correction: {max_t_adj:.2f}°C).", flush=True)
+            print(f"ai_model: real-time fresh station observations assimilated at {now_wall.strftime('%H:%MZ')} (max ground correction: {max_t_adj:.2f}°C).", flush=True)
         except Exception as e:
             print(f"ai_model: observation assimilation notice ({e}); using foundational ECMWF base", flush=True)
 
