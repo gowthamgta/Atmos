@@ -357,9 +357,9 @@
    "lon": 77.706,
    "variables": {
     "temp_c": {
-     "n_test": 161,
-     "mae_before": 0.829,
-     "mae_after": 0.7,
+     "n_test": 162,
+     "mae_before": 0.828,
+     "mae_after": 0.697,
      "correction_by_hour_utc": {
       "0": -0.23,
       "1": 0.1,
