@@ -42,7 +42,7 @@ export function firstNumber(text: string | undefined): number | null {
       <div class="search" [class.open]="showResults()">
         <app-icon name="search" [size]="18" />
         <input
-          #box type="search" class="input" placeholder="Search a place in India" autocomplete="off" spellcheck="false"
+          #box type="search" class="input" placeholder="Search a place" autocomplete="off" spellcheck="false"
           aria-label="Search for a place" role="combobox" aria-autocomplete="list" [attr.aria-expanded]="showResults()" aria-controls="place-results"
           [value]="shownName()" (focus)="onFocus(box)" (input)="onInput($event)" (blur)="onBlur()" (keydown)="onKey($event)"
         />

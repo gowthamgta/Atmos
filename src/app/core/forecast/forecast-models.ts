@@ -45,9 +45,9 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;
 
-/** Worldwide 25 km (0.25 deg) surface forecast drawn outside the South India 1 km box. */
+/** Worldwide 25 km (0.25 deg) surface and upper-air forecast drawn outside the South India 1 km box. */
 export const GLOBAL_MODEL_DEF: ForecastModelDef = {
-  id: 'global', label: 'Global 25km', short: 'Global', resolution: '25 km worldwide surface forecast',
+  id: 'global', label: 'Global 25km', short: 'Global', resolution: '25 km worldwide surface and upper-air forecast',
   gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/global`, centre: 'ECMWF', ai: true,
   datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 120,
 };

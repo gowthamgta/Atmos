@@ -5,7 +5,7 @@ import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastManifest } from './forecast.model';
 
 /** The two levels a variable at 800 or 600 hPa is worked out from, and how far between them it lies (linear in ln p); null for any other variable. */
-function levelNeighbours(varId: string): { belowId: string; aboveId: string; mix: number } | null {
+export function levelNeighbours(varId: string): { belowId: string; aboveId: string; mix: number } | null {
   const m = /^([a-z]+)(800|600)$/.exec(varId);
   if (!m) return null;
   const is800 = m[2] === '800';

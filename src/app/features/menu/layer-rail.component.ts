@@ -25,12 +25,10 @@ const RAIL: readonly RailItem[] = [
   { id: 'satellite', label: 'Satellite', icon: 'satellite', observed: 'satellite' },
   { id: 'amv', label: 'Satellite winds (AMV)', icon: 'vortex', observed: 'amv' },
   { id: 'wind', label: 'Forecast wind', icon: 'wind', layerId: 'wind' },
-  { id: 'rain', label: 'Rain', icon: 'rain', layerId: 'rain' },
   { id: 'temp', label: 'Temperature', icon: 'thermometer', layerId: 'temp' },
   { id: 'humidity', label: 'Humidity', icon: 'humidity', layerId: 'humidity' },
   { id: 'raintot', label: 'Rain accumulation', icon: 'raintot', layerId: 'raintot' },
   { id: 'cape', label: 'Thunderstorms', icon: 'bolt', layerId: 'cape' },
-  { id: 'extreme', label: 'Rain probability', icon: 'alert', layerId: 'extreme' },
 ];
 
 /**

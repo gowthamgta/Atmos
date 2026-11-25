@@ -137,7 +137,7 @@ export class ForecastCatalogService implements OnDestroy {
  * Adds the 800 and 600 hPa levels a run does not publish, worked out in the browser from the levels either side (see FieldLoaderService),
  * to its manifest; returns their names.
  */
-function synthesizeLevels(manifest: ForecastManifest): string[] {
+export function synthesizeLevels(manifest: ForecastManifest): string[] {
   const out: string[] = [];
   const brackets: readonly { level: 800 | 600; below: number; above: number; t: [number, number]; gh: [number, number] }[] = [
     { level: 800, below: 850, above: 700, t: [0, 28], gh: [1600, 2400] },

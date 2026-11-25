@@ -57,13 +57,6 @@ export class PointSeriesService {
 
   private async run(lat: number, lon: number, key: string, force: boolean): Promise<void> {
     const inRegion = inForecastBox(lat, lon) || (lat >= 0.0 && lat <= 38.0 && lon >= 60.0 && lon <= 105.0);
-    if (!inRegion) {
-      ++this.token;
-      this.data.set(null);
-      this.status.set('error');
-      this.error.set('Outside the forecast area');
-      return;
-    }
     const hit = this.cache.get(key);
     if (hit && !force && Date.now() - hit.at < CACHE_MS) {
       ++this.token;
@@ -79,10 +72,12 @@ export class PointSeriesService {
     this.error.set('');
     this.failedFor.set('');
     try {
-      const corr = await Promise.race([
-        this.verification.loadCorrections(),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), CORRECTIONS_WAIT_MS)),
-      ]);
+      const corr = inRegion
+        ? await Promise.race([
+            this.verification.loadCorrections(),
+            new Promise<null>(resolve => setTimeout(() => resolve(null), CORRECTIONS_WAIT_MS)),
+          ])
+        : null;
       if (my !== this.token) return;
       const models: ApiModel[] = [...MODELS];
       let attempt = 0;
@@ -106,9 +101,11 @@ export class PointSeriesService {
         throw new Error(typeof reason === 'string' ? reason : 'The forecast for this place could not be read.');
       }
       if (my !== this.token) return; // a newer request replaced this one
-      series = withCorrections(series, corr);
-      const blended = blendSeries(series, corr ?? { airports: {}, models: {} });
-      if (blended) series = { ...series, models: { ...series.models, blend: blended.blend } };
+      if (inRegion) {
+        series = withCorrections(series, corr);
+        const blended = blendSeries(series, corr ?? { airports: {}, models: {} });
+        if (blended) series = { ...series, models: { ...series.models, blend: blended.blend } };
+      }
       this.cache.set(key, { at: Date.now(), series });
       while (this.cache.size > CACHE_SIZE) this.cache.delete(this.cache.keys().next().value as string);
       this.data.set(series);

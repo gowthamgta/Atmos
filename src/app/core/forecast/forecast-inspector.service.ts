@@ -229,16 +229,20 @@ export class ForecastInspectorService {
       const from = this.state.rangeStartMs();
       const to = this.state.rangeEndMs();
       const totalInfo = activeManifest.vars['raintot'];
-      if (useRegional && layerId === 'raintot' && totalInfo && from !== null && to !== null) {
-        const validTimes = this.catalog.validTimes();
+      if (layerId === 'raintot' && totalInfo && from !== null && to !== null) {
         const totalAt = async (t: number): Promise<number> => {
-          const s = bracketSteps(validTimes, t);
-          const [x, y] = await Promise.all([this.loader.get('raintot', activeManifest.steps[s.a].h), this.loader.get('raintot', activeManifest.steps[s.b].h)]);
-          return blendTime(sampleRg16Bitmap(x, g, lat, lon, totalInfo.min, totalInfo.max), sampleRg16Bitmap(y, g, lat, lon, totalInfo.min, totalInfo.max), s.mix);
+          const s = bracketSteps(times, t);
+          const h1 = activeManifest.steps[s.a].h;
+          const h2 = activeManifest.steps[s.b].h;
+          const [x, y] = useRegional
+            ? await Promise.all([this.loader.get('raintot', h1), this.loader.get('raintot', h2)])
+            : await Promise.all([this.globalForecast.getField('raintot', h1), this.globalForecast.getField('raintot', h2)]);
+          if (!x || !y) return NaN;
+          return blendTime(sampleRg16Bitmap(x, g, lat, sampleLon, totalInfo.min, totalInfo.max), sampleRg16Bitmap(y, g, lat, sampleLon, totalInfo.min, totalInfo.max), s.mix);
         };
         const [atEnd, atStart] = await Promise.all([totalAt(to), totalAt(from)]);
         const diff = atEnd - atStart;
-        values['rainrange'] = diff < 0.15 ? 0 : Math.max(0, diff);
+        if (Number.isFinite(diff)) values['rainrange'] = diff < 0.15 ? 0 : Math.max(0, diff);
       }
       if (useRegional && (layerId === 'extreme' || detailed) && !activeManifest.vars['extreme']) {
         const agreed = await this.consensus.compute(time);

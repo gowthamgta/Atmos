@@ -237,7 +237,7 @@ export class ForecastMapController {
       this.globalLayer.setTerrain(onTerrain ? terrainData : null, modelGround);
       this.globalLayer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
       this.globalLayer.setLite(isPhone());
-      void this.updateGlobalLayer(def, time, ++this.globalToken);
+      void this.updateGlobalLayer(def, time, rangeStart, rangeEnd, ++this.globalToken);
     }
 
     if (consensusLayer) {
@@ -287,13 +287,17 @@ export class ForecastMapController {
       .catch(err => console.warn('[forecast] field load failed', err));
   }
 
-  private async updateGlobalLayer(def: ForecastLayerDef, time: number, my: number): Promise<void> {
+  private async updateGlobalLayer(def: ForecastLayerDef, time: number, start: number | null, end: number | null, my: number): Promise<void> {
     const gLayer = this.globalLayer;
     if (!gLayer) return;
     const gMan = await this.globalForecast.ensureManifest();
     if (my !== this.globalToken || !this.globalLayer) return;
     if (!gMan) {
       gLayer.setLayer(null);
+      return;
+    }
+    if (def.id === 'raintot') {
+      await this.renderRainRange(gLayer, def, gMan, gMan.steps.map(s => Date.parse(s.valid)), h => this.globalForecast.getField('raintot', h), start, end, () => my === this.globalToken && !!this.globalLayer);
       return;
     }
     const info = gMan.vars[def.varId];
@@ -354,25 +358,42 @@ export class ForecastMapController {
   private prefetchedFor = '';
 
   /** The rain between the two chosen times: the running total at the end minus the one at the start, each blended between its two steps. */
-  private async updateRainRange(layer: ScalarFieldLayer, def: ForecastLayerDef, manifest: ForecastManifest, start: number | null, end: number | null, my: number): Promise<void> {
+  private updateRainRange(layer: ScalarFieldLayer, def: ForecastLayerDef, manifest: ForecastManifest, start: number | null, end: number | null, my: number): Promise<void> {
+    return this.renderRainRange(layer, def, manifest, this.catalog.validTimes(), h => this.loader.get('raintot', h), start, end, () => my === this.token && !!this.layer);
+  }
+
+  private async renderRainRange(
+    layer: ScalarFieldLayer,
+    def: ForecastLayerDef,
+    manifest: ForecastManifest,
+    validTimes: readonly number[],
+    loadStep: (h: number) => Promise<ImageBitmap | null>,
+    start: number | null,
+    end: number | null,
+    stillValid: () => boolean
+  ): Promise<void> {
     const info = manifest.vars['raintot'];
-    if (!info || start === null || end === null) {
+    if (!info || start === null || end === null || validTimes.length === 0) {
       layer.setLayer(null);
       return;
     }
-    const validTimes = this.catalog.validTimes();
     const minVal = info.min ?? (info as any)?.lo ?? 0;
     const maxVal = info.max ?? (info as any)?.hi ?? 100;
-    const totalAt = async (t: number): Promise<Float32Array> => {
+    const totalAt = async (t: number): Promise<Float32Array | null> => {
       const { a, b, mix } = bracketSteps(validTimes, t);
-      const [bmpA, bmpB] = await Promise.all([this.loader.get('raintot', manifest.steps[a].h), this.loader.get('raintot', manifest.steps[b].h)]);
+      const [bmpA, bmpB] = await Promise.all([loadStep(manifest.steps[a].h), loadStep(manifest.steps[b].h)]);
+      if (!bmpA || !bmpB) return null;
       return blendFields(decodeFieldBitmap(bmpA, minVal, maxVal), decodeFieldBitmap(bmpB, minVal, maxVal), mix);
     };
     try {
       const [atEnd, atStart] = await Promise.all([totalAt(end), totalAt(start)]);
-      if (my !== this.token || !this.layer) return;
+      if (!stillValid()) return;
+      if (!atEnd || !atStart) {
+        layer.setLayer(null);
+        return;
+      }
       const bitmap = await encodeFieldBitmap(differenceField(atEnd, atStart), manifest.grid, minVal, maxVal);
-      if (my !== this.token || !this.layer) return;
+      if (!stillValid()) return;
       const frame = { key: `${manifest.model}/${manifest.run}.${manifest.build ?? ''}/raintot-range/${start}-${end}`, bitmap };
       layer.setGrid(manifest.grid);
       layer.setLayer(def, [info.min, info.max]);
