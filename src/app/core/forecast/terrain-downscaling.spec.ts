@@ -11,7 +11,7 @@ describe('90 m downscaling registry', () => {
       temp: 'temperature', tmin24: 'temperature', tmax24: 'temperature', feels: 'temperature', dew: 'dewpoint', humidity: 'humidity', wind: 'wind', gust: 'wind',
       rain: 'rain', raintot: 'rain',
     });
-    expect(modes.tcwv).toBeNull();
+    expect(modes['tcwv']).toBeNull();
     for (const l of FORECAST_LAYERS) if (l.terrain) expect(TERRAIN_MODE_CODE[l.terrain]).toBeGreaterThan(0);
     expect(new Set(Object.values(TERRAIN_MODE_CODE)).size).toBe(Object.keys(TERRAIN_MODE_CODE).length);
   });

@@ -67,7 +67,19 @@ def test_sharpen_preserves_ensemble_bounds():
     assert np.isfinite(sharp).all()
 
 
-def test_blend_end_to_end_build(tmp_path):
+def test_blend_end_to_end_build(tmp_path, monkeypatch):
+    # Prevent unit test from hitting live WeatherUnion/WINDS/Satellite APIs or mutating tracked cache files
+    try:
+        import ai_model.data.obs_feed as obs_feed
+        monkeypatch.setattr(obs_feed, "assimilate_hourly_observations", lambda fields, *a, **kw: {k: v.copy() for k, v in fields.items()})
+    except ImportError:
+        pass
+    try:
+        import ai_model.data.satellite_feed as sat_feed
+        monkeypatch.setattr(sat_feed, "fetch_latest_satellite_state", lambda *a, **kw: None, raising=False)
+        monkeypatch.setattr(sat_feed, "load_satellite_observation", lambda *a, **kw: None, raising=False)
+    except ImportError:
+        pass
     site = str(tmp_path / "site")
     run_str = "20261105T12Z"
 

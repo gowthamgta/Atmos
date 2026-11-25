@@ -130,7 +130,7 @@ jobs:
           size=$(du -sb site | cut -f1)
           echo "site size: $size bytes"
           if [ "$size" -gt 1000000000 ]; then echo "::warning::the site is $size bytes, over GitHub Pages' 1 GB: the deploy may be refused"; fi
-          if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s data/terrain/index.json live-terrain-index.json; then
+          if ls site/*/latest.json >/dev/null 2>&1 || ! cmp -s site/terrain/index.json live-terrain-index.json; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
