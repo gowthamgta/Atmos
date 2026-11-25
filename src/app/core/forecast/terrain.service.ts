@@ -186,16 +186,18 @@ export class TerrainService {
       const cLat = Math.min(Math.max(lat, gMeta.fine.latMin), gMeta.fine.latMax);
       const fineG = sampleTerrain(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
       const modelG = sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
+      const fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
+      const modelSlope = slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
       return {
         fine: fineG.z,
         model: modelG.z,
         dz: terrainDelta(fineG.z, modelG.z),
-        tpi: 0,
+        tpi: (fineG.z - modelG.z) * fineG.land,
         landFine: fineG.land,
         landModel: modelG.land,
-        slope: [0, 0],
-        modelSlope: [0, 0],
-        fineSlope: [0, 0],
+        slope: fineSlope,
+        modelSlope,
+        fineSlope,
       };
     }
     const name = tileNameAt(lat, lon);

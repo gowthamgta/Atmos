@@ -6,10 +6,17 @@ import { GeoBounds, SATELLITE_BOUNDS, SATELLITE_HRV, SATELLITE_IR, SatelliteProd
 import { SatelliteHoverReading, classifyCloudTop, irTempToHeightKm } from './satellite-image';
 import type { FlowField } from './satellite-flow';
 
+export interface SatelliteHdTile {
+  id: string;
+  bounds: GeoBounds;
+  url: string;
+}
+
 export interface SatelliteFrame {
   timeMs: number;
   product: SatelliteProduct;
   url: string;
+  tiles?: readonly SatelliteHdTile[];
   own: { kind: OwnKind; satellite: OwnSatellite; bounds: GeoBounds; dataUrl: string; dataBounds?: GeoBounds; minK: number; spanK: number };
 }
 
@@ -18,7 +25,12 @@ interface GlobalIndex {
   offsetK?: number;
   stepK?: number;
   data?: { minK: number; spanK: number };
-  frames?: { time: string; file?: string; files?: { rgb?: string; rgb_lo?: string; nightmicro?: string; data?: string } }[];
+  frames?: {
+    time: string;
+    file?: string;
+    tiles?: { id: string; bounds: GeoBounds; file: string }[];
+    files?: { rgb?: string; rgb_lo?: string; nightmicro?: string; data?: string };
+  }[];
 }
 
 const SATELLITE_SITE = 'https://gowthamgta.github.io/atmos-satellite/';
@@ -292,6 +304,7 @@ export class SatelliteService {
             timeMs,
             product: SATELLITE_HRV,
             url: rgbBase + f.file,
+            tiles: f.tiles?.map(t => ({ id: t.id, bounds: t.bounds, url: rgbBase + t.file })),
             own: {
               kind: 'rgb',
               satellite: 'h9',
@@ -323,6 +336,7 @@ export class SatelliteService {
           timeMs,
           product: SATELLITE_IR,
           url: btBase + f.file,
+          tiles: f.tiles?.map(t => ({ id: t.id, bounds: t.bounds, url: btBase + t.file })),
           own: {
             kind: 'infrared',
             satellite: 'h9',

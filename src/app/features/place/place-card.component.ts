@@ -136,8 +136,8 @@ export function firstNumber(text: string | undefined): number | null {
 
             <button type="button" class="runline" (click)="panels.toggle('models')" [attr.aria-expanded]="panels.open() === 'models'" aria-haspopup="dialog" [title]="runTitle()">
               <span class="status-dot" [class.ok]="runTone() === 'ok'" [class.warn]="runTone() === 'warn'" [class.bad]="runTone() === 'bad'"></span>
-              <span class="run-text">{{ catalog.model().short }} {{ catalog.model().gridKm }} km · {{ runText() }}</span>
-              <span class="run-badge">{{ runBadge() }}</span>
+              <span class="run-text">{{ modelBadgeText() }} · {{ runText() }}</span>
+              <span class="run-badge">{{ inspector.point()?.modelId === 'global' ? 'ECMWF AIFS' : runBadge() }}</span>
             </button>
           } @else if (inspector.busy()) {
             <div class="note busy"><span class="spinner" aria-hidden="true"></span>Loading…</div>
@@ -278,11 +278,17 @@ export class PlaceCardComponent {
     const label = this.inspector.label();
     if (label) return label;
     if (!p) return this.inspector.selected() ? 'Selected point' : '';
-    return p.district ?? p.state ?? 'Open sea';
+    if (p.district) return p.district;
+    if (p.state) return p.state;
+    if (p.placeName) return p.placeName;
+    if (p.landFine !== undefined && p.landFine !== null && p.landFine >= 0.25) return 'Land';
+    return 'Open sea';
   });
   protected readonly subtitle = computed(() => {
     const p = this.inspector.point();
-    return p?.state && p.state !== this.title() ? p.state : '';
+    if (!p) return '';
+    if (p.placeRegion) return p.placeRegion;
+    return p.state && p.state !== this.title() ? p.state : '';
   });
 
   private readonly rowText = (id: string) => this.inspector.point()?.rows.find(r => r.id === id)?.text;
@@ -326,15 +332,30 @@ export class PlaceCardComponent {
 
   // ---- which run these numbers are from
   private readonly runInfo = computed(() => this.runs.active());
-  protected readonly runTone = computed(() => this.runInfo()?.tone ?? 'none');
+  protected readonly runTone = computed(() => (this.inspector.point()?.modelId === 'global' ? 'ok' : this.runInfo()?.tone ?? 'none'));
   protected readonly runBadge = computed(() => this.runInfo()?.badge ?? '');
+  protected readonly modelBadgeText = computed(() => {
+    const p = this.inspector.point();
+    if (p?.modelId === 'global') return 'ECMWF AIFS 25 km';
+    const m = this.catalog.model();
+    return `${m.short} ${m.gridKm} km`;
+  });
   protected readonly runText = computed(() => {
+    const p = this.inspector.point();
+    if (p?.modelId === 'global' && p.run) {
+      const r = p.run;
+      const initMs = Date.UTC(+r.slice(0, 4), +r.slice(4, 6) - 1, +r.slice(6, 8), +r.slice(9, 11));
+      const leadH = Number.isFinite(initMs) ? Math.round((p.timeMs - initMs) / 3_600_000) : null;
+      return `Run ${r.slice(9, 11)}Z${leadH !== null && leadH >= 0 ? ` · +${leadH} h` : ''}`;
+    }
     const info = this.runInfo();
     if (!info?.published) return 'run not known';
     const lines = runLines(info, this.state.timeMs(), this.runs.nowMs());
     return `${lines.run.split(' · ')[0]} · ${lines.hour}`;
   });
   protected readonly runTitle = computed(() => {
+    const p = this.inspector.point();
+    if (p?.modelId === 'global') return `ECMWF AIFS (0.25°) · Run ${p.run ?? ''} · Global 25 km forecast with terrain downscaling`;
     const info = this.runInfo();
     if (!info?.published) return 'Forecast model';
     const lines = runLines(info, this.state.timeMs(), this.runs.nowMs());

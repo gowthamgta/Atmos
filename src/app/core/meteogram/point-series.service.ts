@@ -79,7 +79,7 @@ export class PointSeriesService {
           ])
         : null;
       if (my !== this.token) return;
-      const models: ApiModel[] = [...MODELS];
+      const models: ApiModel[] = inRegion ? [...MODELS] : MODELS.filter(m => m.id === 'aifs');
       let attempt = 0;
       let series: PointSeries | null = null;
       for (;;) {

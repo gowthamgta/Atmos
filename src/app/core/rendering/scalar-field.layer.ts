@@ -305,6 +305,9 @@ void main() {
       float landRough = 1.0 - 0.45 * fineMicro.x - 0.45 * fineMicro.y + 0.15 * fineMicro.z + 0.35 * fineMicro.w;
       float rough = mix(1.0, landRough, fineGround.y);
       v *= clamp(exposure * coast * rough, 0.45, 1.75);
+    } else if (m == 5) {
+      // Rain: mild elevation orographic enhancement globally and locally
+      v *= clamp(1.0 + 0.00025 * dz, 0.75, 1.35);
     }
   }
 
@@ -329,7 +332,7 @@ void main() {
   if (onGround || hasGlobalT) {
     // 90 m / global relief: hills lit from the north-west, so mountains and valleys read through every layer
     if (u_relief > 0.0) {
-      float slopeBoost = onGround ? 3.0 : 8.5;
+      float slopeBoost = onGround ? 3.0 : 14.0;
       vec3 n = normalize(vec3(-fineSlope * slopeBoost, 1.0));
       vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
       float shade = dot(n, light) / light.z;

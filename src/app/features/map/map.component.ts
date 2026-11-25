@@ -22,9 +22,6 @@ import { isPhone, maxPixelRatio } from '../../core/ui/device-profile';
 import { RadarFieldLayer } from '../../core/rendering/radar-field.layer';
 import { SatelliteImageLayer } from '../../core/rendering/satellite-image.layer';
 import { SatelliteDataLayer } from '../../core/rendering/satellite-data.layer';
-import { syncAmvLayer, ensureAmvOnTop } from '../../core/rendering/amv-vectors.layer';
-import { WindParticlesLayer } from '../../core/rendering/wind-particles.layer';
-import { AmvService } from '../../core/satellite/amv.service';
 import { isShaderKind } from '../../core/satellite/own-products';
 import { MAP_MAX_ZOOM, SATELLITE_BOUNDS, SATELLITE_MAX_ZOOM } from '../../core/satellite/satellite.config';
 import { RadarCoverageService } from '../../core/services/radar-coverage.service';
@@ -49,7 +46,7 @@ const PLAIN_SEA = '#3d424d';
 const STORM_SOURCE_ID = 'storm-tracks';
 const STORM_FIRST_LAYER_ID = 'storm-cone-fill';
 const STORM_LAYER_IDS = [STORM_FIRST_LAYER_ID, 'storm-cone-line', 'storm-track-line', 'storm-ticks', 'storm-tick-labels', 'storm-cells', 'storm-cell-labels'];
-import { ForecastMapController, ensureCycloneLayersOnTop } from '../../core/forecast/forecast-map.controller';
+import { ForecastMapController } from '../../core/forecast/forecast-map.controller';
 import { ForecastStateService } from '../../core/forecast/forecast-state.service';
 import { MapHostService } from '../../core/ui/map-host.service';
 import { UrlStateService } from '../../core/ui/url-state.service';
@@ -95,7 +92,6 @@ export class MapComponent implements OnInit, OnDestroy {
   private coverage = inject(RadarCoverageService);
   private terrain = inject(TerrainService);
   private forecastState = inject(ForecastStateService);
-  private amvService = inject(AmvService);
 
   private map: MapLibreMap | null = null;
   readonly isMapLoaded = signal<boolean>(false);
@@ -170,59 +166,9 @@ export class MapComponent implements OnInit, OnDestroy {
     const regIr = this.satellite.regionalIr();
     const regRgb = this.satellite.regionalRgb();
     const shader = !!own && isShaderKind(own.kind);
-    const effOpacity = this.amvService.active() && this.amvService.dimSatellite()
-      ? Math.min(opacity, 0.40)
-      : opacity;
-    this.updateSatelliteOverlay(on && !shader, frames, position, effOpacity, regRgb);
-    this.updateSatelliteData(on && shader, frames, position, effOpacity, custom, regIr);
+    this.updateSatelliteOverlay(on && !shader, frames, position, opacity, regRgb);
+    this.updateSatelliteData(on && shader, frames, position, opacity, custom, regIr);
     this.map.setMaxZoom(on ? SATELLITE_MAX_ZOOM : MAP_MAX_ZOOM); // closer than this the picture is only blur
-    if (this.amvService.active()) {
-      ensureAmvOnTop(this.map);
-      ensureCycloneLayersOnTop(this.map);
-    }
-  });
-
-  private amvParticlesLayer: WindParticlesLayer | null = null;
-
-  // Reactive Effect: Dual-Satellite AMV Nowcast (Particles / Arrows / Barbs & Cyclone Tracking)
-  private amvEffect = effect(() => {
-    const active = this.amvService.active();
-    const geoJson = this.amvService.filteredGeoJson();
-    const style = this.amvService.style();
-    const windFrame = this.amvService.windFrame();
-    const cycloneData = this.amvService.cycloneData();
-    const timeMs = this.amvService.currentFrameTimeMs() ?? this.satellite.current()?.timeMs ?? Date.now();
-    if (!this.map || !this.isMapLoaded()) return;
-
-    if (!this.amvParticlesLayer) {
-      this.amvParticlesLayer = new WindParticlesLayer('amv-wind-particles', isPhone() ? 2600 : 12000);
-      try {
-        this.map.addLayer(this.amvParticlesLayer);
-      } catch (err) {
-        console.warn('[map] amvParticlesLayer add failed', err);
-      }
-    }
-
-    if (active && style === 'particles') {
-      this.amvParticlesLayer.setWind(windFrame);
-      this.amvParticlesLayer.setVisible(true);
-      syncAmvLayer(this.map, null, false, style, undefined, (props) => {
-        this.amvService.setHoveredVector(props);
-      });
-    } else if (active && style !== 'particles') {
-      this.amvParticlesLayer.setVisible(false);
-      syncAmvLayer(this.map, geoJson, true, style, undefined, (props) => {
-        this.amvService.setHoveredVector(props);
-      });
-    } else {
-      this.amvParticlesLayer.setVisible(false);
-      syncAmvLayer(this.map, null, false, style, undefined, (props) => {
-        this.amvService.setHoveredVector(props);
-      });
-    }
-
-    // Mark the realtime position, previous positions (where it moved from), and direction of motion
-    this.forecastMap.setSatelliteCycloneMode(active, timeMs);
   });
 
   // Reactive Effect: Basemap Switcher (Terrain vs Dark)
@@ -450,7 +396,7 @@ export class MapComponent implements OnInit, OnDestroy {
             type: 'line',
             source: 'base-vector',
             'source-layer': 'boundary',
-            filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]],
+            filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1], ['!=', ['get', 'disputed'], 1]],
             paint: { 'line-color': 'rgba(255, 255, 255, 0.28)', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.5, 8, 1.1] }
           }
         ]
@@ -466,10 +412,18 @@ export class MapComponent implements OnInit, OnDestroy {
     this.map = map;
     if (isDevMode()) (window as unknown as Record<string, unknown>)['__atmosMap'] = map; // debugging handle, dev builds only
 
-    // every move goes into the address, so a link opens at the same place
+    // every move goes into the address, so a link opens at the same place (and syncs HD satellite tiles if active)
     map.on('moveend', () => {
       const c = map.getCenter();
       this.urlState.setCamera({ lat: c.lat, lon: c.lng, zoom: map.getZoom() });
+      if (this.satelliteOn()) {
+        const frame = this.satellite.current();
+        const op = this.satellite.opacity();
+        const own = frame?.own;
+        const shader = !!own && isShaderKind(own.kind);
+        if (frame && !shader) this.syncHdRgbTiles(frame, op);
+        if (frame && shader) this.syncHdDataTiles(frame, op, this.satellite.custom());
+      }
     });
 
     map.on('load', () => {
@@ -577,9 +531,11 @@ export class MapComponent implements OnInit, OnDestroy {
 
   private satelliteLayer: SatelliteImageLayer | null = null;
   private regionalSatelliteLayer: SatelliteImageLayer | null = null;
+  private readonly hdSatelliteTiles = new Map<string, SatelliteImageLayer>();
   private satelliteKeys = '';
 
   private removeSatelliteLayers(): void {
+    this.clearHdDataTiles();
     if (this.map && this.globalSatelliteData && this.map.getLayer(this.globalSatelliteData.id)) this.map.removeLayer(this.globalSatelliteData.id);
     this.globalSatelliteData = null;
     if (this.map && this.satelliteData && this.map.getLayer(this.satelliteData.id)) this.map.removeLayer(this.satelliteData.id);
@@ -587,8 +543,36 @@ export class MapComponent implements OnInit, OnDestroy {
     this.removeFlatLayers();
   }
 
+  private clearHdRgbTiles(): void {
+    for (const [id, layer] of this.hdSatelliteTiles) {
+      layer.setWindow(null);
+      if (this.map && this.map.getLayer(id)) this.map.removeLayer(id);
+    }
+    this.hdSatelliteTiles.clear();
+  }
+
+  private clearHdDataTiles(): void {
+    for (const [id, layer] of this.hdSatelliteDataTiles) {
+      layer.setWindow(null);
+      if (this.map && this.map.getLayer(id)) this.map.removeLayer(id);
+    }
+    this.hdSatelliteDataTiles.clear();
+  }
+
+  private tileInView(b: { west: number; south: number; east: number; north: number }): boolean {
+    if (!this.map) return false;
+    const vb = this.map.getBounds();
+    const vs = vb.getSouth(), vn = vb.getNorth(), vw = vb.getWest(), ve = vb.getEast();
+    if (b.north < vs || b.south > vn) return false;
+    for (const dx of [-360, 0, 360]) {
+      if (b.east + dx >= vw && b.west + dx <= ve) return true;
+    }
+    return false;
+  }
+
   /** The flat picture (the browser-drawn products have their own layer). */
   private removeFlatLayers(): void {
+    this.clearHdRgbTiles();
     this.satelliteData?.setWindow(null);
     this.satelliteLayer?.setWindow(null);
     if (this.map && this.regionalSatelliteLayer && this.map.getLayer(this.regionalSatelliteLayer.id)) this.map.removeLayer(this.regionalSatelliteLayer.id);
@@ -596,6 +580,42 @@ export class MapComponent implements OnInit, OnDestroy {
     if (this.map && this.satelliteLayer && this.map.getLayer(this.satelliteLayer.id)) this.map.removeLayer(this.satelliteLayer.id);
     this.satelliteLayer = null;
     this.satelliteKeys = '';
+  }
+
+  /** Loads only the intersecting 3.9 km HD RGB sector tiles when zoomed in (zoom >= 3). */
+  private syncHdRgbTiles(frame: SatelliteFrame | undefined, opacity: number): void {
+    const map = this.map;
+    if (!map || !frame?.tiles?.length || map.getZoom() < 3.0) {
+      this.clearHdRgbTiles();
+      return;
+    }
+    const anchor = this.regionalSatelliteLayer && map.getLayer(this.regionalSatelliteLayer.id)
+      ? this.regionalSatelliteLayer.id
+      : this.observationAnchorId();
+    const wanted = new Set<string>();
+    for (const t of frame.tiles) {
+      if (!this.tileInView(t.bounds)) continue;
+      const id = `satellite-hd-rgb-${t.id}`;
+      wanted.add(id);
+      let layer = this.hdSatelliteTiles.get(id);
+      if (!layer) {
+        layer = new SatelliteImageLayer({ id });
+        this.hdSatelliteTiles.set(id, layer);
+        map.addLayer(layer, anchor);
+      }
+      layer.setBounds(t.bounds);
+      layer.setFrames([{ key: t.url, url: t.url }]);
+      layer.setSoften(false);
+      layer.setPosition(0, opacity);
+      layer.setWindow(this.regionalSatelliteLayer);
+    }
+    for (const [id, layer] of this.hdSatelliteTiles) {
+      if (!wanted.has(id)) {
+        layer.setWindow(null);
+        if (map.getLayer(id)) map.removeLayer(id);
+        this.hdSatelliteTiles.delete(id);
+      }
+    }
   }
 
   /**
@@ -644,12 +664,54 @@ export class MapComponent implements OnInit, OnDestroy {
       if (this.regionalSatelliteLayer && this.map.getLayer(this.regionalSatelliteLayer.id)) this.map.removeLayer(this.regionalSatelliteLayer.id);
       this.regionalSatelliteLayer = null;
     }
+    this.syncHdRgbTiles(frames[Math.round(position)] ?? frames[frames.length - 1], opacity);
   }
 
   // --- Our own products drawn in the browser from the data pack (satellite-data.layer.ts): IR enhanced, WV difference, custom RGB ---
 
   private satelliteData: SatelliteDataLayer | null = null;
   private globalSatelliteData: SatelliteDataLayer | null = null;
+  private readonly hdSatelliteDataTiles = new Map<string, SatelliteDataLayer>();
+
+  private syncHdDataTiles(
+    frame: SatelliteFrame | undefined,
+    opacity: number,
+    custom: SatelliteService['custom'] extends () => infer C ? C : never,
+    regIr: SatelliteService['regionalIr'] extends () => infer R ? R : null = this.satellite.regionalIr(),
+  ): void {
+    const map = this.map;
+    const own = frame?.own;
+    if (!map || !frame?.tiles?.length || !own || map.getZoom() < 3.0) {
+      this.clearHdDataTiles();
+      return;
+    }
+    const anchor = this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)
+      ? this.globalSatelliteData.id
+      : this.observationAnchorId();
+    const wanted = new Set<string>();
+    for (const t of frame.tiles) {
+      if (!this.tileInView(t.bounds)) continue;
+      const id = `satellite-hd-ir-${t.id}`;
+      wanted.add(id);
+      let layer = this.hdSatelliteDataTiles.get(id);
+      if (!layer) {
+        layer = new SatelliteDataLayer(id);
+        this.hdSatelliteDataTiles.set(id, layer);
+        map.addLayer(layer, anchor);
+      }
+      layer.setFrames([{ key: t.url, url: t.url }], t.bounds, own.minK, own.spanK);
+      layer.setStyle({ mode: own.kind === 'infrared' ? 0 : own.kind === 'wvdiff' ? 1 : 2, custom });
+      layer.setPosition(0, opacity);
+      layer.setWindow(own.kind === 'infrared' && regIr ? regIr.bounds : null, 0.05);
+    }
+    for (const [id, layer] of this.hdSatelliteDataTiles) {
+      if (!wanted.has(id)) {
+        layer.setWindow(null);
+        if (map.getLayer(id)) map.removeLayer(id);
+        this.hdSatelliteDataTiles.delete(id);
+      }
+    }
+  }
 
   private updateSatelliteData(
     on: boolean,
@@ -663,6 +725,7 @@ export class MapComponent implements OnInit, OnDestroy {
     if (!map) return;
     const own = frames[0]?.own;
     if (!on || !own) {
+      this.clearHdDataTiles();
       if (this.satelliteData && map.getLayer(this.satelliteData.id)) map.removeLayer(this.satelliteData.id);
       this.satelliteData = null;
       if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
@@ -692,6 +755,7 @@ export class MapComponent implements OnInit, OnDestroy {
       if (this.globalSatelliteData && map.getLayer(this.globalSatelliteData.id)) map.removeLayer(this.globalSatelliteData.id);
       this.globalSatelliteData = null;
     }
+    this.syncHdDataTiles(frames[Math.round(position)] ?? frames[frames.length - 1], opacity, custom, regIr);
   }
 
 
@@ -762,9 +826,7 @@ export class MapComponent implements OnInit, OnDestroy {
 
     const widths = (z5: number, z10: number): maplibregl.ExpressionSpecification =>
       ['interpolate', ['linear'], ['zoom'], 5, z5, 10, z10];
-    // the district lines are drawn for Tamil Nadu only; the other states show their outlines
     const isDistrict: maplibregl.ExpressionSpecification = ['all', ['==', ['get', 'kind'], 'district'], ['==', ['get', 'state'], 'Tamil Nadu']];
-    const isState: maplibregl.ExpressionSpecification = ['==', ['get', 'kind'], 'state'];
     const line = (
       id: string,
       filter: maplibregl.ExpressionSpecification,
@@ -779,11 +841,28 @@ export class MapComponent implements OnInit, OnDestroy {
       paint: { 'line-color': color, 'line-width': width }
     });
 
-    // A dark casing under a light core keeps every line readable on both the pale humidity palette
-    // and the dark teal / navy ends of the other palettes.
-    const isCountry: maplibregl.ExpressionSpecification = ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]];
+    // Global coastlines (land-sea boundary lines) and official Survey of India international border.
+    this.map.addSource('world-coastlines', { type: 'geojson', data: '/data/world-coastlines.geojson', tolerance: 0.4 });
+    this.map.addSource('india-boundary', { type: 'geojson', data: '/data/india-boundary.geojson', tolerance: 0.3 });
+
+    // A dark casing under a light core keeps every line readable on both pale and dark weather palettes.
+    const isCountry: maplibregl.ExpressionSpecification = ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1], ['!=', ['get', 'disputed'], 1]];
     line(BOUNDARY_FIRST_LAYER_ID, isDistrict, 'rgba(8, 12, 22, 0.5)', widths(1.8, 3.2));
     line('district-lines', isDistrict, 'rgba(255, 255, 255, 0.66)', widths(0.6, 1.2));
+    this.map.addLayer({
+      id: 'global-coastlines-casing',
+      type: 'line',
+      source: 'world-coastlines',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(8, 12, 22, 0.62)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 1.2, 6, 2.2, 10, 3.4] },
+    });
+    this.map.addLayer({
+      id: 'global-coastlines-line',
+      type: 'line',
+      source: 'world-coastlines',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(218, 232, 248, 0.78)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 0.55, 6, 1.05, 10, 1.7] },
+    });
     this.map.addLayer({
       id: 'global-country-casing',
       type: 'line',
@@ -802,10 +881,21 @@ export class MapComponent implements OnInit, OnDestroy {
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': 'rgba(255, 255, 255, 0.88)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 0.65, 6, 1.3, 10, 2.2] },
     });
-    line('state-casing', isState, 'rgba(8, 12, 22, 0.72)', widths(3.4, 6.0));
-    line('state-line', isState, 'rgba(255, 255, 255, 0.96)', widths(1.5, 2.6));
-    // A thin copy of the country and state outlines above the radar and satellite pictures, so the borders (Sri Lanka's
-    // included) stay visible whatever imagery is on. The imagery is inserted just below this layer.
+    this.map.addLayer({
+      id: 'india-boundary-casing',
+      type: 'line',
+      source: 'india-boundary',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(8, 12, 22, 0.78)', 'line-width': widths(2.4, 4.5) },
+    });
+    this.map.addLayer({
+      id: 'india-boundary-line',
+      type: 'line',
+      source: 'india-boundary',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.94)', 'line-width': widths(1.0, 2.0) },
+    });
+    // Thin copies above the radar and satellite pictures, so coastlines and borders stay visible over imagery.
     this.map.addLayer({
       id: BORDER_TOP_LAYER_ID,
       type: 'line',
@@ -815,8 +905,21 @@ export class MapComponent implements OnInit, OnDestroy {
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': 'rgba(255, 255, 255, 0.85)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 0.6, 6, 1.0, 10, 1.6] },
     });
-    line('state-border-top', isState, 'rgba(255, 255, 255, 0.85)', widths(0.9, 1.6));
-    this.setDistrictLinesVisible(this.forecastState.districtLines()); // the effect may have run before the layers existed
+    this.map.addLayer({
+      id: 'coastlines-top',
+      type: 'line',
+      source: 'world-coastlines',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(225, 236, 250, 0.65)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 0.5, 6, 0.85, 10, 1.3] },
+    });
+    this.map.addLayer({
+      id: 'india-boundary-top',
+      type: 'line',
+      source: 'india-boundary',
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.92)', 'line-width': widths(0.9, 1.6) },
+    });
+    this.setDistrictLinesVisible(this.forecastState.districtLines());
   }
 
 

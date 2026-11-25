@@ -17,6 +17,14 @@ import {
 } from './forecast-layers';
 
 /** Which forecast layer is shown, at what time, and playback state. */
+function initialRelief(): boolean {
+  try {
+    return typeof localStorage === 'undefined' || localStorage.getItem(RELIEF_CHOICE_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class ForecastStateService {
   /** Playback speeds: forecast hours advanced per real second. */
@@ -57,9 +65,8 @@ export class ForecastStateService {
   /** The weather station markers on the map (SYNOP stations, observed; click one for its readings). Off by default. */
   /** The thin district lines on the map (the state and country outlines always stay). Off by default. */
   readonly districtLines = signal(false);
-  /** 90 m hill shading of the colour layers and the basemap, on by default (the layer menu switches it off). */
-  /** The 90 m terrain relief shading: off unless switched on (the owner, 3 Nov 2026: "turn off the terrain relief default for max performance"). */
-  readonly relief = signal(false);
+  /** Terrain relief shading of the colour layers and the basemap, on by default (unless saved off in localStorage). */
+  readonly relief = signal(initialRelief());
   /** The timeline, legend and click inspector are active whenever any forecast overlay is on. */
   readonly forecastActive = computed(() => this.activeLayerId() !== null || this.windParticles() || this.isobars());
 

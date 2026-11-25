@@ -81,3 +81,25 @@ def test_build_global_rgb_writes_mercator_webp(tmp_path, monkeypatch):
     webp = Image.open(tmp_path / "rgb-global" / doc["frames"][0]["file"])
     assert webp.size == (global_sat.GRID_W, global_sat.GRID_H)
     assert webp.mode == "RGBA"
+
+
+def test_hrv_patch_day_and_night():
+    lat = np.array([[0.0], [0.0]])
+    lon = np.array([[60.0], [-120.0]])
+    sza = np.array([[20.0], [140.0]])  # day vs night
+    twi = np.array([[1.0], [0.0]])
+    vis = np.array([[0.6], [0.0]])
+    bt = np.array([[230.0], [215.0]])
+    rgb = global_sat._hrv_patch(vis, bt, sza, twi)
+    assert rgb[0, 0, 0] > 150 and rgb[0, 0, 0] == rgb[0, 0, 1]
+    assert rgb[1, 0, 0] == 0 and rgb[1, 0, 1] == 0 and rgb[1, 0, 2] > 200
+
+
+def test_tile_specs_cover_globe():
+    specs = global_sat._tile_specs(256)
+    assert len(specs) == 8
+    west = min(b["west"] for _, b, _, _ in specs)
+    east = max(b["east"] for _, b, _, _ in specs)
+    south = min(b["south"] for _, b, _, _ in specs)
+    north = max(b["north"] for _, b, _, _ in specs)
+    assert (west, east, south, north) == (-180.0, 180.0, -72.5, 72.5)

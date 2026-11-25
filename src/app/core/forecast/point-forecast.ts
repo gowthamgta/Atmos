@@ -65,6 +65,15 @@ export interface PointForecast {
   elevationM: number | null;
   /** Land cover category from 100 m ESA WorldCover (null when unclassified or unavailable). */
   surfaceType?: string | null;
+  /** Fraction of land (0..1) from the fine DEM at this coordinate. */
+  landFine?: number | null;
+  /** Model id, display label, and run id used for this point forecast. */
+  modelId?: string;
+  modelLabel?: string;
+  run?: string;
+  /** Reverse-geocoded place name/region when outside regional districts. */
+  placeName?: string | null;
+  placeRegion?: string | null;
   timeMs: number;
   rows: PointRow[];
   /** The blended raw values (°C, m/s, mm, %...) the rows were made from, for the weather picture and the big numbers of the place card. */

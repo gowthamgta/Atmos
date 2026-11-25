@@ -60,7 +60,43 @@ def sharpen(rgb: np.ndarray, hrv: np.ndarray, r: int = 2) -> np.ndarray:
     return np.clip(rgb * ratio[..., None], 0, 1)
 
 
-def make_scan(path: str, t, folder: str) -> dict:
+def _export_global_cache(scn, t, cache_path: str) -> None:
+    """Save full-disk Meteosat-9 VIS006 (%) and IR_108 (K) in north-up, west-east geostationary order for global_sat."""
+    area = scn["VIS006"].attrs["area"]
+    crs = area.crs.to_dict()
+    h_m = float(crs.get("h", 35785831.0))
+    sub_lon = float(crs.get("lon_0", SUB_LON))
+    r_eq = float(crs.get("a", 6378169.0))
+    r_pol = float(crs.get("b", 6356583.8))
+    x_m, y_m = area.get_proj_coords()
+    x_rad = np.asarray(x_m[0, :], dtype=np.float64) / h_m
+    y_rad = np.asarray(y_m[:, 0], dtype=np.float64) / h_m
+    vis = np.asarray(scn["VIS006"].values, dtype=np.float32)
+    ir = np.asarray(scn["IR_108"].values, dtype=np.float32)
+    if x_rad[0] > x_rad[-1]:
+        x_rad = x_rad[::-1]
+        vis = vis[:, ::-1]
+        ir = ir[:, ::-1]
+    if y_rad[0] < y_rad[-1]:
+        y_rad = y_rad[::-1]
+        vis = vis[::-1, :]
+        ir = ir[::-1, :]
+    os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
+    np.savez(
+        cache_path,
+        vis=vis.astype(np.float16),
+        ir=ir.astype(np.float16),
+        x_rad=x_rad,
+        y_rad=y_rad,
+        sub_lon=np.float64(sub_lon),
+        h_m=np.float64(h_m),
+        r_eq=np.float64(r_eq),
+        r_pol=np.float64(r_pol),
+        time=t.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+
+def make_scan(path: str, t, folder: str, global_cache: str | None = None) -> dict:
     """All products of one SEVIRI native file, written to `folder`; returns the frame's {product: file name}."""
     from satpy import Scene
     from PIL import Image
@@ -72,6 +108,8 @@ def make_scan(path: str, t, folder: str) -> dict:
     composites = ["night_microphysics_tropical"] + (["natural_color", "convection"] if day else [])
     scn = Scene(reader="seviri_l1b_native", filenames=[path])
     scn.load(composites + ["VIS006", "IR_108", "WV_062", "WV_073"], generate=False)
+    if global_cache:
+        _export_global_cache(scn, t, global_cache)
     local = scn.resample(G.area_def(g, "msg"), resampler="gradient_search")
     local.load(composites)
     local_data = scn.resample(G.area_def(gd, "msg_data"), resampler="gradient_search")

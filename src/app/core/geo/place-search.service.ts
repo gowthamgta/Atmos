@@ -57,6 +57,28 @@ export function rankPlaces(places: readonly Place[], query: string, from: { lat:
 @Injectable({ providedIn: 'root' })
 export class PlaceSearchService {
   private controller: AbortController | null = null;
+  private readonly reverseCache = new Map<string, Promise<{ name: string; region: string } | null>>();
+
+  async reverse(lat: number, lon: number): Promise<{ name: string; region: string } | null> {
+    const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+    let p = this.reverseCache.get(key);
+    if (!p) {
+      const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat.toFixed(4))}&longitude=${encodeURIComponent(lon.toFixed(4))}&localityLanguage=en`;
+      p = fetch(url, { signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(4000) : undefined })
+        .then(r => (r.ok ? (r.json() as Promise<{ city?: string; locality?: string; principalSubdivision?: string; countryName?: string }>) : null))
+        .then(j => {
+          if (!j) return null;
+          const name = (j.city || j.locality || j.principalSubdivision || j.countryName || '').trim();
+          if (!name) return null;
+          const region = [j.principalSubdivision, j.countryName].filter((x, i, a) => !!x && a.indexOf(x) === i && x !== name).join(', ');
+          return { name, region };
+        })
+        .catch(() => null);
+      this.reverseCache.set(key, p);
+      if (this.reverseCache.size > 64) this.reverseCache.delete(this.reverseCache.keys().next().value!);
+    }
+    return p;
+  }
 
   async search(query: string): Promise<Place[]> {
     const q = query.trim();

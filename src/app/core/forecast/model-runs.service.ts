@@ -144,8 +144,9 @@ export class ModelRunsService implements OnDestroy {
   }
 
   private async fetchUpstream(model: ForecastModelDef): Promise<Upstream | null> {
+    const datasets = model.datasets.map(d => (d === 'kralveth_ai_1km' ? 'ecmwf_ifs' : d));
     const parts = await Promise.all(
-      model.datasets.map(async dataset => {
+      datasets.map(async dataset => {
         try {
           return parseDatasetRun(await this.getJson<unknown>(STATUS_URL(dataset)));
         } catch {

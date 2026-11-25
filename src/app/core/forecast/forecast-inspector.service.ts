@@ -1,6 +1,7 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { inForecastBox } from './derived-fields';
 import { DistrictLookupService } from '../geo/district-lookup.service';
+import { PlaceSearchService } from '../geo/place-search.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastStateService } from './forecast-state.service';
@@ -31,6 +32,7 @@ export class ForecastInspectorService {
   private readonly state = inject(ForecastStateService);
   private readonly terrain = inject(TerrainService);
   private readonly districts = inject(DistrictLookupService);
+  private readonly placeSearch = inject(PlaceSearchService);
   private readonly consensus = inject(ConsensusService);
   private readonly unitsService = inject(UnitsService);
   private readonly globalForecast = inject(GlobalForecastService);
@@ -250,13 +252,22 @@ export class ForecastInspectorService {
       }
       if (my !== this.token) return; // a newer request replaced this one
       const ground = this.terrain.pointTerrain(lat, sampleLon, useRegional ? this.catalog.model().groundKm : 28, activeManifest.grid);
+      const isGlobalLand = !useRegional && !place.district && !place.state && (ground?.landFine ?? 0) >= 0.25 && !this.label();
+      const rev = isGlobalLand ? await this.placeSearch.reverse(lat, sampleLon).catch(() => null) : null;
+      if (my !== this.token) return;
       this.point.set({
         lat,
         lon,
         district: place.district,
         state: place.state,
+        placeName: rev?.name ?? null,
+        placeRegion: rev?.region ?? null,
         elevationM: ground?.fine ?? null,
         surfaceType: ground?.lulc ? lulcLabel(ground.lulc) : null,
+        landFine: ground?.landFine ?? null,
+        modelId: activeManifest.model,
+        modelLabel: useRegional ? this.catalog.model().label : 'ECMWF AIFS 25km',
+        run: activeManifest.run,
         timeMs: time,
         rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }, this.unitsService.units()),
         values: { ...values },

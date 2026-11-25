@@ -1,4 +1,5 @@
 import { Injectable, effect, inject, signal, untracked } from '@angular/core';
+import { inForecastBox } from './derived-fields';
 import { PointSeriesService } from '../meteogram/point-series.service';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { FieldLoaderService } from './field-loader.service';
@@ -60,7 +61,7 @@ export class OutlookService {
       const sel = this.inspector.selected();
       const data = this.series.data();
       const status = this.series.status();
-      const model = this.catalog.activeModelId();
+      const model = sel && !inForecastBox(sel.lat, sel.lon) ? 'aifs' : this.catalog.activeModelId();
       const manifest = this.catalog.manifest();
       if (!sel) return;
       const here = placeKey(sel.lat, sel.lon);

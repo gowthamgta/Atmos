@@ -153,7 +153,7 @@ def read_native(path: str) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(local["IR_108"].values, float), np.asarray(local["IR_039"].values, float)
 
 
-def fetch_new(folder: str, max_new: int, now: datetime, rgb_folder: str | None = None) -> tuple[list[tuple[datetime, str]], list[tuple[datetime, dict]]]:
+def fetch_new(folder: str, max_new: int, now: datetime, rgb_folder: str | None = None, global_cache: str | None = None) -> tuple[list[tuple[datetime, str]], list[tuple[datetime, dict]]]:
     """Download and grid the newest products not yet in the folder (at most max_new); with `rgb_folder`, the newest of them also makes our
     own pictures (meteosat_rgb.py) from the same file. Returns the new temperature frames and the new picture frames."""
     import eumdac
@@ -198,7 +198,7 @@ def fetch_new(folder: str, max_new: int, now: datetime, rgb_folder: str | None =
             if rgb_folder is not None and not rgb_new:
                 try:
                     import meteosat_rgb
-                    rgb_new.append((t, meteosat_rgb.make_scan(path, t, rgb_folder)))
+                    rgb_new.append((t, meteosat_rgb.make_scan(path, t, rgb_folder, global_cache=global_cache)))
                     print(f"{t:%Y-%m-%d %H:%M}Z: pictures {sorted(rgb_new[-1][1])}")
                 except Exception as e:      # the temperatures are still published
                     import traceback
@@ -214,6 +214,7 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="the published folder (the Pages site, restored by satellite_restore.py)")
     ap.add_argument("--max-new", type=int, default=2)
     ap.add_argument("--pictures", action="store_true", help="also make our own pictures (meteosat_rgb.py) into rgb-msg/")
+    ap.add_argument("--global-cache", default=None, help="optional path to export full-disk VIS006+IR_108 npz for global_sat")
     args = ap.parse_args()
     if not (os.environ.get("EUMETSAT_CONSUMER_KEY") and os.environ.get("EUMETSAT_CONSUMER_SECRET")):
         print("::notice::EUMETSAT_CONSUMER_KEY / EUMETSAT_CONSUMER_SECRET are not set: nothing to do")
@@ -227,7 +228,7 @@ def main() -> int:
         if rgb_folder is not None and os.path.isdir(rgb_folder):
             import meteosat_rgb
             start_again_if_box_changed(rgb_folder, meteosat_rgb.BOX)
-        new, rgb_new = fetch_new(folder, args.max_new, now, rgb_folder)
+        new, rgb_new = fetch_new(folder, args.max_new, now, rgb_folder, global_cache=args.global_cache)
     except SystemExit as e:
         print(f"::warning::Meteosat skipped: {e}")
         new, rgb_new = [], []
