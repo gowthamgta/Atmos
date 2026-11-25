@@ -106,7 +106,9 @@ export class WindParticlesLayer implements CustomLayerInterface {
 
   /** New wind data (or just a new time blend of the same data). */
   setWind(wind: WindFrame | null): void {
-    const gridChanged = !this.wind || !wind || this.wind.grid !== wind.grid;
+    const prevGrid = this.wind?.global?.grid ?? this.wind?.grid;
+    const nextGrid = wind?.global?.grid ?? wind?.grid;
+    const gridChanged = !this.wind || !wind || prevGrid !== nextGrid;
     this.wind = wind;
     if (gridChanged) this.needsReset = true;
     this.map?.triggerRepaint();
@@ -165,7 +167,7 @@ export class WindParticlesLayer implements CustomLayerInterface {
     const b = map.getBounds();
     const view: ViewState = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth(), zoom: map.getZoom() };
     if (this.needsReset) {
-      this.system.reset(view, this.wind.grid);
+      this.system.reset(view, this.wind.global?.grid ?? this.wind.grid);
       this.needsReset = false;
     }
     this.system.step(dt, this.wind, view);

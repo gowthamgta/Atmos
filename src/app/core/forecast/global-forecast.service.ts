@@ -40,6 +40,13 @@ export class GlobalForecastService {
       const man = (await manRes.json()) as ForecastManifest;
       this.synthesizedVars = new Set(synthesizeLevels(man));
       this.manifest = man;
+      // Warm initial global temperature & surface winds immediately in parallel with regional loads
+      const h0 = man.steps[0]?.h;
+      if (h0 !== undefined) {
+        void this.getField('t2m', h0);
+        void this.getField('u10', h0);
+        void this.getField('v10', h0);
+      }
       return man;
     } catch {
       return null;

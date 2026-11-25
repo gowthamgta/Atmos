@@ -103,6 +103,9 @@ export class ForecastMapController {
   attach(map: MapLibreMap, beforeId?: string): void {
     this.detach();
     this.map = map;
+    // Start loading global manifest immediately in parallel with regional manifest
+    void this.globalForecast.ensureManifest();
+    void this.terrain.ensureLoaded().catch(() => undefined);
     this.globalLayer = new ScalarFieldLayer('forecast-global-layer');
     map.addLayer(this.globalLayer, beforeId);
     this.layer = new ScalarFieldLayer();
@@ -212,15 +215,12 @@ export class ForecastMapController {
     const time = this.state.timeMs();
     const validTimes = this.catalog.validTimes();
     if (!layer) return;
-    if (!def || !manifest || time === null || validTimes.length === 0) {
+    if (!def) {
       layer.setLayer(null);
       this.globalLayer?.setLayer(null);
       return;
     }
-    // the terrain (loaded once): downscaling, relief shading, and the underground mask of pressure levels. It goes to every field whatever
-    // its grid (0.1 degrees, or 0.25 for GFS, AIGFS and AIFS): the shader reads the terrain by latitude and longitude, takes the ground
-    // the field stands on at the field's own nodes, and leaves the pixels outside the terrain's box alone
-    const consensusLayer = def.id === 'extreme' && !manifest.vars['extreme']; // multi-model consensus when the model lacks extreme
+    const consensusLayer = def.id === 'extreme' && manifest ? !manifest.vars['extreme'] : false; // multi-model consensus when the model lacks extreme
     const rangeLayer = def.id === 'raintot';               // the rain between two chosen times
     const rangeStart = this.state.rangeStartMs();          // read here so the layer redraws when the slider moves
     const rangeEnd = this.state.rangeEndMs();
@@ -237,7 +237,11 @@ export class ForecastMapController {
       this.globalLayer.setTerrain(onTerrain ? terrainData : null, modelGround);
       this.globalLayer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
       this.globalLayer.setLite(isPhone());
-      void this.updateGlobalLayer(def, time, rangeStart, rangeEnd, ++this.globalToken);
+      void this.updateGlobalLayer(def, time ?? Date.now(), rangeStart, rangeEnd, ++this.globalToken);
+    }
+    if (!manifest || time === null || validTimes.length === 0) {
+      layer.setLayer(null);
+      return;
     }
 
     if (consensusLayer) {
@@ -758,7 +762,7 @@ export class ForecastMapController {
     else this.isobarTimer = setTimeout(apply, wait);
   }
 
-  /** Feeds the particle layer the two wind steps around the selected time, at the active wind layer's level. */
+  /** Feeds the particle layer both regional 1km wind and 25km global wind steps around the selected time. */
   private updateWind(): void {
     const wind = this.windLayer;
     if (!wind) return;
@@ -766,42 +770,84 @@ export class ForecastMapController {
     const time = this.state.timeMs();
     const validTimes = this.catalog.validTimes();
     const on = this.state.windParticles();
-    // the animation follows the selected altitude: the 10 m wind at the ground, otherwise that pressure level
     const [uVar, vVar] = this.state.windVars();
-    if (!on || !manifest || time === null || validTimes.length === 0 || !manifest.vars[uVar] || !manifest.vars[vVar]) {
+    if (!on) {
       wind.setVisible(false);
       wind.setWind(null);
       return;
     }
 
     const my = ++this.windToken;
-    const { a, b, mix } = bracketSteps(validTimes, time);
-    const hA = manifest.steps[a].h;
-    const hB = manifest.steps[b].h;
-    const u = manifest.vars[uVar];
-    const v = manifest.vars[vVar];
-    const uMin = u.min ?? (u as any)?.lo ?? -30;
-    const uMax = u.max ?? (u as any)?.hi ?? 30;
-    const vMin = v.min ?? (v as any)?.lo ?? -30;
-    const vMax = v.max ?? (v as any)?.hi ?? 30;
+    const targetTime = time ?? Date.now();
+    const loadRegional = async () => {
+      if (!manifest || time === null || validTimes.length === 0 || !manifest.vars[uVar] || !manifest.vars[vVar]) return null;
+      const { a, b, mix } = bracketSteps(validTimes, time);
+      const hA = manifest.steps[a].h;
+      const hB = manifest.steps[b].h;
+      const u = manifest.vars[uVar];
+      const v = manifest.vars[vVar];
+      const uMin = u.min ?? (u as any)?.lo ?? -30;
+      const uMax = u.max ?? (u as any)?.hi ?? 30;
+      const vMin = v.min ?? (v as any)?.lo ?? -30;
+      const vMax = v.max ?? (v as any)?.hi ?? 30;
+      const [uA, uB, vA, vB] = await Promise.all([
+        this.loader.get(uVar, hA), this.loader.get(uVar, hB),
+        this.loader.get(vVar, hA), this.loader.get(vVar, hB),
+      ]);
+      const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
+      this.loader.prefetch(uVar, ahead);
+      this.loader.prefetch(vVar, ahead);
+      return {
+        grid: manifest.grid,
+        uA: decodeFieldBitmap(uA, uMin, uMax),
+        uB: decodeFieldBitmap(uB, uMin, uMax),
+        vA: decodeFieldBitmap(vA, vMin, vMax),
+        vB: decodeFieldBitmap(vB, vMin, vMax),
+        mix,
+      };
+    };
 
-    void Promise.all([this.loader.get(uVar, hA), this.loader.get(uVar, hB), this.loader.get(vVar, hA), this.loader.get(vVar, hB)])
-      .then(([uA, uB, vA, vB]) => {
+    const loadGlobal = async () => {
+      const gMan = await this.globalForecast.ensureManifest();
+      if (!gMan || !gMan.vars[uVar] || !gMan.vars[vVar]) return undefined;
+      const gTimes = gMan.steps.map(s => Date.parse(s.valid));
+      if (gTimes.length === 0) return undefined;
+      const { a, b, mix } = bracketSteps(gTimes, targetTime);
+      const hA = gMan.steps[a].h;
+      const hB = gMan.steps[b].h;
+      const u = gMan.vars[uVar];
+      const v = gMan.vars[vVar];
+      const uMin = u.min ?? (u as any)?.lo ?? -30;
+      const uMax = u.max ?? (u as any)?.hi ?? 30;
+      const vMin = v.min ?? (v as any)?.lo ?? -30;
+      const vMax = v.max ?? (v as any)?.hi ?? 30;
+      const [uA, uB, vA, vB] = await Promise.all([
+        this.globalForecast.getField(uVar, hA), this.globalForecast.getField(uVar, hB),
+        this.globalForecast.getField(vVar, hA), this.globalForecast.getField(vVar, hB),
+      ]);
+      if (!uA || !uB || !vA || !vB) return undefined;
+      return {
+        grid: gMan.grid,
+        uA: decodeFieldBitmap(uA, uMin, uMax),
+        uB: decodeFieldBitmap(uB, uMin, uMax),
+        vA: decodeFieldBitmap(vA, vMin, vMax),
+        vB: decodeFieldBitmap(vB, vMin, vMax),
+        mix,
+      };
+    };
+
+    void Promise.all([loadRegional().catch(() => null), loadGlobal().catch(() => undefined)])
+      .then(([reg, glob]) => {
         if (my !== this.windToken || !this.windLayer) return;
-        wind.setWind({
-          grid: manifest.grid,
-          uA: decodeFieldBitmap(uA, uMin, uMax),
-          uB: decodeFieldBitmap(uB, uMin, uMax),
-          vA: decodeFieldBitmap(vA, vMin, vMax),
-          vB: decodeFieldBitmap(vB, vMin, vMax),
-          mix,
-        });
+        if (!reg && !glob) {
+          wind.setVisible(false);
+          wind.setWind(null);
+          return;
+        }
+        const frame = reg ? { ...reg, global: glob } : { ...glob!, global: glob };
+        wind.setWind(frame);
         wind.setVisible(true);
-        const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
-        this.loader.prefetch(uVar, ahead);
-        this.loader.prefetch(vVar, ahead);
-      })
-      .catch(err => console.warn('[forecast] wind load failed', err));
+      });
   }
 }
 

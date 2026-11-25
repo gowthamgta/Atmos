@@ -154,20 +154,35 @@ vec2 blendTime(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
   return vec2((a.x * wa + b.x * wb) / (wa + wb), 1.0);
 }
 
-// Terrain: (metres, land fraction), smooth Hermite.
+// Terrain: (metres, land fraction), smooth Hermite (wraps horizontally when global).
 vec2 terrainAtEnc(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon, vec2 enc) {
-  vec2 g = clamp(vec2((lon - grid.x) / grid.z, (grid.y - lat) / grid.z), vec2(0.0), vec2(size) - 1.0001);
+  bool isG = grid.z * float(size.x) >= 359.0;
+  float gx = (lon - grid.x) / grid.z;
+  gx = isG ? mod(gx, float(size.x)) : clamp(gx, 0.0, float(size.x) - 1.0001);
+  float gy = clamp((grid.y - lat) / grid.z, 0.0, float(size.y) - 1.0001);
+  vec2 g = vec2(gx, gy);
   vec2 fr = fract(g);
   vec2 s = fr * fr * (3.0 - 2.0 * fr);
   ivec2 i0 = ivec2(floor(g));
   vec2 acc = vec2(0.0);
   for (int k = 0; k < 4; k++) {
     ivec2 o = ivec2(k & 1, k >> 1);
-    vec4 c = texelFetch(tex, clamp(i0 + o, ivec2(0), size - 1), 0);
+    ivec2 q = i0 + o;
+    int qx = isG ? ((q.x % size.x + size.x) % size.x) : clamp(q.x, 0, size.x - 1);
+    vec4 c = texelFetch(tex, ivec2(qx, clamp(q.y, 0, size.y - 1)), 0);
     float w = (o.x == 1 ? s.x : 1.0 - s.x) * (o.y == 1 ? s.y : 1.0 - s.y);
     acc += vec2(decode(c, enc), c.b) * w;
   }
   return acc;
+}
+
+vec2 slopeAtEnc(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon, vec2 enc) {
+  float s = grid.z;
+  float zE = terrainAtEnc(tex, grid, size, lat, lon + s, enc).x;
+  float zW = terrainAtEnc(tex, grid, size, lat, lon - s, enc).x;
+  float zN = terrainAtEnc(tex, grid, size, lat + s, lon, enc).x;
+  float zS = terrainAtEnc(tex, grid, size, lat - s, lon, enc).x;
+  return vec2((zE - zW) / (2.0 * s * M_PER_DEG * max(0.15, cos(radians(lat)))), (zN - zS) / (2.0 * s * M_PER_DEG));
 }
 
 vec2 terrainAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
@@ -203,7 +218,7 @@ vec2 slopeAt(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon) {
 
 void main() {
   float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * v_merc.y))));
-  float lon = v_merc.x * 360.0 - 180.0;
+  float lon = fract(v_merc.x) * 360.0 - 180.0;
   bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
   bool hasGlobalT = !onGround && u_hasGlobalTerrain == 1;
   bool isGlobalGrid = u_grid.z * float(u_size.x) >= 359.0;
@@ -212,7 +227,11 @@ void main() {
   vec2 toFar = vec2(u_size) - 1.0 - g;
   float edge = isGlobalGrid ? min(g.y, toFar.y) : min(min(g.x, g.y), min(toFar.x, toFar.y));
   float edgeFade = smoothstep(0.0, isGlobalGrid ? 4.0 : 12.0, edge);
-  g = clamp(g, vec2(0.0), vec2(u_size) - 1.0001);
+  if (isGlobalGrid) {
+    g.y = clamp(g.y, 0.0, float(u_size.y) - 1.0001);
+  } else {
+    g = clamp(g, vec2(0.0), vec2(u_size) - 1.0001);
+  }
 
   vec2 first = blendTime(u_a, u_b, g, u_enc);
   if (first.y < 0.5) discard;              // no data at either time
@@ -241,6 +260,9 @@ void main() {
   } else if (hasGlobalT) {
     model = terrainAtEnc(u_demGlobalModel, u_globalModelGrid, u_globalModelSize, lat, lon, u_globalDemEnc);
     fineGround = terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
+    if (u_relief > 0.0) {
+      fineSlope = slopeAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
+    }
   }
 
   if ((onGround || hasGlobalT) && u_terrainMode != 0) {
@@ -275,7 +297,7 @@ void main() {
       v *= exp(-dz / ${f(VAPOUR_SCALE_HEIGHT_M)});
     } else if (m == 4) {
       // Wind: topographic exposure + coastal transition + aerodynamic roughness length drag on land
-      float tpi = onGround ? (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y : 0.0;
+      float tpi = onGround ? (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y : (hasGlobalT ? (fineGround.x - model.x) * fineGround.y : 0.0);
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fineGround.y);
       // Aerodynamic surface roughness drag matching roughnessWindFactor() in terrain-correction.ts:
@@ -304,10 +326,11 @@ void main() {
   float alpha = u_opacity * edgeFade * lutColor.a;   // a palette can fade to transparent (the clouds layer)
   if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * u_clearFade, v);
 
-  if (onGround) {
-    // 90 m relief: hills lit from the north-west, so the Ghats, Nilgiris and valleys read through every layer
+  if (onGround || hasGlobalT) {
+    // 90 m / global relief: hills lit from the north-west, so mountains and valleys read through every layer
     if (u_relief > 0.0) {
-      vec3 n = normalize(vec3(-fineSlope * 3.0, 1.0));
+      float slopeBoost = onGround ? 3.0 : 8.5;
+      vec3 n = normalize(vec3(-fineSlope * slopeBoost, 1.0));
       vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
       float shade = dot(n, light) / light.z;
       float relStr = u_terrainMode == 5 ? u_relief * 0.25 : u_relief;
@@ -590,7 +613,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1i(u['u_terrainOn'], terrainOn ? 1 : 0);
     gl.uniform1i(u['u_groundOnNodes'], terrainOn && this.terrain && !sameLattice(grid, this.terrain.meta.grid) ? 1 : 0);
     gl.uniform1i(u['u_terrainMode'], terrainMode);
-    gl.uniform1f(u['u_relief'], terrainOn ? this.relief : 0);
+    gl.uniform1f(u['u_relief'], (terrainOn || hasGlobalT) ? this.relief : 0);
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
     gl.uniform1i(u['u_cubic'], this.cubicAt(grid) ? 1 : 0);
@@ -621,7 +644,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
       gl.uniform2i(u['u_globalModelSize'], 1, 1);
     }
 
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.drawArrays(gl.TRIANGLES, 0, 18);
 
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
@@ -637,9 +660,16 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     const x1 = isGlobal ? 1 : mercatorUnitX(grid.lonMax);
     const y0 = mercatorUnitY(grid.latMax);
     const y1 = mercatorUnitY(grid.latMin);
+    // Emit 3 world-wrapped quads (-1, 0, +1) so panning across the Pacific dateline never leaves one side blank
+    const verts: number[] = [];
+    for (const dx of [-1, 0, 1]) {
+      const a = x0 + dx;
+      const b = x1 + dx;
+      verts.push(a, y0, b, y0, a, y1, a, y1, b, y0, b, y1);
+    }
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
     const loc = 0; // a_pos, bound to 0 before the link (gl-program.ts)
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
@@ -652,7 +682,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildPaletteLut(def.stops));
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    const wrapS = this.grid && this.grid.step * this.grid.nx >= 359 ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.lutFor = def;
   }
@@ -681,7 +712,8 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texImage2D(gl.TEXTURE_2D, 0, this.floatLinear ? gl.RG32F : gl.RG16F, bitmap.width, bitmap.height, 0, gl.RG, gl.FLOAT, rg);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    const wrapS = this.grid && this.grid.step * this.grid.nx >= 359 ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return tex;
   }

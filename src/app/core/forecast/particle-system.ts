@@ -1,13 +1,17 @@
 import { ForecastGrid, mercatorUnitX, mercatorUnitY } from './forecast.model';
 
-/** Two time steps of the 10 m wind (m/s) on the forecast grid, blended by `mix`. */
-export interface WindFrame {
+export interface WindFieldData {
   grid: ForecastGrid;
   uA: Float32Array;
   vA: Float32Array;
   uB: Float32Array;
   vB: Float32Array;
   mix: number;
+}
+
+/** Two time steps of wind (m/s) on the forecast grid, plus optional 25 km global wind outside the regional box. */
+export interface WindFrame extends WindFieldData {
+  global?: WindFieldData;
 }
 
 /** The visible part of the map. */
@@ -79,6 +83,43 @@ function latTables(grid: ForecastGrid): LatTables {
   return { grid, lat0: latMin, mercY, cos };
 }
 
+function sampleFieldUV(f: WindFieldData, lat: number, normLon: number): [number, number] {
+  const g = f.grid;
+  const isGlobal = g.step * g.nx >= 359;
+  const gy = (g.latMax - lat) / g.step;
+  if (gy < 0 || gy > g.ny - 1) return [NaN, NaN];
+  let gx = (normLon - g.lonMin) / g.step;
+  if (isGlobal) {
+    gx = ((gx % g.nx) + g.nx) % g.nx;
+  } else if (gx < 0 || gx > g.nx - 1) {
+    return [NaN, NaN];
+  }
+  const y0 = Math.min(Math.max(Math.floor(gy), 0), g.ny - 2);
+  const fy = Math.min(Math.max(gy - y0, 0), 1);
+  const x0 = isGlobal ? Math.floor(gx) % g.nx : Math.min(Math.max(Math.floor(gx), 0), g.nx - 2);
+  const x1 = isGlobal ? (x0 + 1) % g.nx : x0 + 1;
+  const fx = isGlobal ? gx - Math.floor(gx) : Math.min(Math.max(gx - x0, 0), 1);
+  const r0 = y0 * g.nx;
+  const r1 = (y0 + 1) * g.nx;
+  const i00 = r0 + x0;
+  const i10 = r0 + x1;
+  const i01 = r1 + x0;
+  const i11 = r1 + x1;
+  const w00 = (1 - fx) * (1 - fy);
+  const w10 = fx * (1 - fy);
+  const w01 = (1 - fx) * fy;
+  const w11 = fx * fy;
+  const mixB = f.mix;
+  const mixA = 1 - mixB;
+  const u =
+    mixA * (f.uA[i00] * w00 + f.uA[i10] * w10 + f.uA[i01] * w01 + f.uA[i11] * w11) +
+    mixB * (f.uB[i00] * w00 + f.uB[i10] * w10 + f.uB[i01] * w01 + f.uB[i11] * w11);
+  const v =
+    mixA * (f.vA[i00] * w00 + f.vA[i10] * w10 + f.vA[i01] * w01 + f.vA[i11] * w11) +
+    mixB * (f.vB[i00] * w00 + f.vB[i10] * w10 + f.vB[i01] * w01 + f.vB[i11] * w11);
+  return [u, v];
+}
+
 /**
  * Wind particles advected in map space, so panning and zooming never invalidates them. Screen speed is kept
  * constant at every zoom level (a faster wind always looks faster, and zooming in does not slow the flow).
@@ -130,13 +171,10 @@ export class ParticleSystem {
   }
 
   step(dt: number, wind: WindFrame, view: ViewState): void {
-    const g = wind.grid;
-    const region = spawnRegion(view, g);
+    const activeGrid = wind.global?.grid ?? wind.grid;
+    const region = spawnRegion(view, activeGrid);
     const pxPerDegLon = (512 * 2 ** view.zoom) / 360; // MapLibre world is 512 px wide at zoom 0
-    const mixB = wind.mix;
-    const mixA = 1 - mixB;
-    const { uA, vA, uB, vB } = wind;
-    if (this.tables?.grid !== g) this.tables = latTables(g);
+    if (this.tables?.grid !== activeGrid) this.tables = latTables(activeGrid);
     const { lat0, cos } = this.tables;
     const invStep = 1 / LUT_STEP_DEG;
     const lastLut = cos.length - 1.000001; // the tables reach a degree past the grid; a particle beyond reads their end
@@ -155,22 +193,11 @@ export class ParticleSystem {
         lat = this.lat[i];
       }
 
-      // bilinear wind at the particle, both time steps with one set of weights
-      const gx = (lon - g.lonMin) / g.step;
-      const gy = (g.latMax - lat) / g.step;
-      const x0 = Math.min(Math.max(Math.floor(gx), 0), g.nx - 2);
-      const y0 = Math.min(Math.max(Math.floor(gy), 0), g.ny - 2);
-      const fx = Math.min(Math.max(gx - x0, 0), 1);
-      const fy = Math.min(Math.max(gy - y0, 0), 1);
-      const i00 = y0 * g.nx + x0;
-      const w00 = (1 - fx) * (1 - fy);
-      const w10 = fx * (1 - fy);
-      const w01 = (1 - fx) * fy;
-      const w11 = fx * fy;
-      const u = mixA * (uA[i00] * w00 + uA[i00 + 1] * w10 + uA[i00 + g.nx] * w01 + uA[i00 + g.nx + 1] * w11) +
-        mixB * (uB[i00] * w00 + uB[i00 + 1] * w10 + uB[i00 + g.nx] * w01 + uB[i00 + g.nx + 1] * w11);
-      const v = mixA * (vA[i00] * w00 + vA[i00 + 1] * w10 + vA[i00 + g.nx] * w01 + vA[i00 + g.nx + 1] * w11) +
-        mixB * (vB[i00] * w00 + vB[i00 + 1] * w10 + vB[i00 + g.nx] * w01 + vB[i00 + g.nx + 1] * w11);
+      const normLon = ((((lon + 180) % 360) + 360) % 360) - 180;
+      let [u, v] = sampleFieldUV(wind, lat, normLon);
+      if ((Number.isNaN(u) || Number.isNaN(v)) && wind.global) {
+        [u, v] = sampleFieldUV(wind.global, lat, normLon);
+      }
 
       if (Number.isNaN(u) || Number.isNaN(v)) {
         this.age[i] = this.life[i]; // no data here: respawn next step
@@ -244,16 +271,24 @@ interface SpawnRegion {
   north: number;
 }
 
-/** The visible map (with a margin) clipped to the forecast domain; the whole domain if they do not overlap. */
+/** The visible map (with a margin) clipped to the forecast domain (global grids keep unwrapped longitudes across dateline). */
 export function spawnRegion(view: ViewState, grid: ForecastGrid): SpawnRegion {
-  const lonMax = grid.lonMin + (grid.nx - 1) * grid.step;
+  const isGlobal = grid.step * grid.nx >= 359;
   const latMin = grid.latMax - (grid.ny - 1) * grid.step;
-  const padX = (view.east - view.west) * SPAWN_MARGIN;
+  const vEast = view.east > view.west ? view.east : view.east + 360;
+  const padX = (vEast - view.west) * SPAWN_MARGIN;
   const padY = (view.north - view.south) * SPAWN_MARGIN;
-  const west = Math.max(view.west - padX, grid.lonMin);
-  const east = Math.min(view.east + padX, lonMax);
   const south = Math.max(view.south - padY, latMin);
   const north = Math.min(view.north + padY, grid.latMax);
+  if (isGlobal) {
+    const west = view.west - padX;
+    const east = vEast + padX;
+    if (south >= north) return { west, east, south: latMin, north: grid.latMax };
+    return { west, east, south, north };
+  }
+  const lonMax = grid.lonMin + (grid.nx - 1) * grid.step;
+  const west = Math.max(view.west - padX, grid.lonMin);
+  const east = Math.min(vEast + padX, lonMax);
   if (west >= east || south >= north) return { west: grid.lonMin, east: lonMax, south: latMin, north: grid.latMax };
   return { west, east, south, north };
 }

@@ -751,13 +751,41 @@ export class MapComponent implements OnInit, OnDestroy {
 
     // A dark casing under a light core keeps every line readable on both the pale humidity palette
     // and the dark teal / navy ends of the other palettes.
+    const isCountry: maplibregl.ExpressionSpecification = ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1]];
     line(BOUNDARY_FIRST_LAYER_ID, isDistrict, 'rgba(8, 12, 22, 0.5)', widths(1.8, 3.2));
     line('district-lines', isDistrict, 'rgba(255, 255, 255, 0.66)', widths(0.6, 1.2));
+    this.map.addLayer({
+      id: 'global-country-casing',
+      type: 'line',
+      source: 'base-vector',
+      'source-layer': 'boundary',
+      filter: isCountry,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(8, 12, 22, 0.72)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 1.4, 6, 2.8, 10, 4.5] },
+    });
+    this.map.addLayer({
+      id: 'global-country-lines',
+      type: 'line',
+      source: 'base-vector',
+      'source-layer': 'boundary',
+      filter: isCountry,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.88)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 0.65, 6, 1.3, 10, 2.2] },
+    });
     line('state-casing', isState, 'rgba(8, 12, 22, 0.72)', widths(3.4, 6.0));
     line('state-line', isState, 'rgba(255, 255, 255, 0.96)', widths(1.5, 2.6));
     // A thin copy of the country and state outlines above the radar and satellite pictures, so the borders (Sri Lanka's
     // included) stay visible whatever imagery is on. The imagery is inserted just below this layer.
-    line(BORDER_TOP_LAYER_ID, isState, 'rgba(255, 255, 255, 0.85)', widths(0.9, 1.6));
+    this.map.addLayer({
+      id: BORDER_TOP_LAYER_ID,
+      type: 'line',
+      source: 'base-vector',
+      'source-layer': 'boundary',
+      filter: isCountry,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.85)', 'line-width': ['interpolate', ['linear'], ['zoom'], 1.5, 0.6, 6, 1.0, 10, 1.6] },
+    });
+    line('state-border-top', isState, 'rgba(255, 255, 255, 0.85)', widths(0.9, 1.6));
     this.setDistrictLinesVisible(this.forecastState.districtLines()); // the effect may have run before the layers existed
   }
 

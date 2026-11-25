@@ -108,9 +108,20 @@ def build_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def live_run(url: str, fmt: int | None = None, domain: str = C.DOMAIN) -> str | None:
+def _build_age_seconds(j: dict) -> float | None:
+    b = j.get("build")
+    if not isinstance(b, str):
+        return None
+    try:
+        dt = datetime.strptime(b, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds()
+    except ValueError:
+        return None
+
+
+def live_run(url: str, fmt: int | None = None, domain: str = C.DOMAIN, max_build_age_s: float | None = None) -> str | None:
     """Run id currently served at `url` (a latest.json), or None if unreachable, not there yet, published incomplete
-    (some data was missing, so it should be built again), or built the old way (`fmt` is the model's current LIVE_FORMAT)."""
+    (some data was missing, so it should be built again), stale beyond `max_build_age_s`, or built the old way."""
     try:
         r = requests.get(url, timeout=30)
         if not r.ok:
@@ -118,6 +129,10 @@ def live_run(url: str, fmt: int | None = None, domain: str = C.DOMAIN) -> str | 
         j = r.json()
         if j.get("complete") is False or (fmt is not None and j.get("format") != fmt) or j.get("domain") != domain:
             return None
+        if max_build_age_s is not None:
+            age = _build_age_seconds(j)
+            if age is None or age > max_build_age_s:
+                return None
         return j["run"]
     except (requests.RequestException, ValueError, KeyError):
         return None
@@ -157,7 +172,8 @@ def main() -> int:
         if run.hour not in fetcher.RUN_HOURS:
             print(f"{args.model}: latest run {run_id} is not one of {fetcher.RUN_HOURS}Z; nothing to do")
             return 0
-        if args.live_url and live_run(args.live_url, getattr(fetcher, "LIVE_FORMAT", None), grid_of(fetcher).domain) == run_id:
+        max_age = 2700.0 if fetcher.MODEL_ID == "global" else None
+        if args.live_url and live_run(args.live_url, getattr(fetcher, "LIVE_FORMAT", None), grid_of(fetcher).domain, max_build_age_s=max_age) == run_id:
             print(f"{args.model}: run {run_id} is already live; nothing to do")
             return 0
     all_steps = fetcher.steps_for(run) if hasattr(fetcher, "steps_for") else fetcher.STEP_HOURS  # shorter runs publish fewer steps

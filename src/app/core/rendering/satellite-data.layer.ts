@@ -106,7 +106,8 @@ vec4 shade(vec4 s) {
 }
 
 void main() {
-  vec2 uv = vec2((v_merc.x - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
+  float mx = (u_box.z - u_box.x > 0.99) ? fract(v_merc.x) : v_merc.x;
+  vec2 uv = vec2((mx - u_box.x) / (u_box.z - u_box.x), (v_merc.y - u_box.y) / (u_box.w - u_box.y));
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) discard;
   vec2 px = uv * vec2(u_size);
   vec4 c = shade(sampleK(u_a, px));
@@ -221,8 +222,15 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     const b = this.bounds;
     if (!gl || !this.vbo || !b) return;
     const x0 = mercatorUnitX(b.west), x1 = mercatorUnitX(b.east), y0 = mercatorUnitY(b.north), y1 = mercatorUnitY(b.south);
+    const isGlobal = b.east - b.west >= 359.5;
+    const verts: number[] = [];
+    for (const dx of isGlobal ? [-1, 0, 1] : [0]) {
+      const a = x0 + dx;
+      const c = x1 + dx;
+      verts.push(a, y0, c, y0, a, y1, a, y1, c, y0, c, y1);
+    }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([x0, y0, x1, y0, x0, y1, x1, y1]), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
   }
 
   onRemove(_map: MapLibreMap, gl: WebGL2RenderingContext): void {
@@ -333,7 +341,8 @@ export class SatelliteDataLayer implements CustomLayerInterface {
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.lutTexture(gl));
     gl.uniform1i(u['u_lut'], 2);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    const isGlobal = b.east - b.west >= 359.5;
+    gl.drawArrays(gl.TRIANGLES, 0, isGlobal ? 18 : 6);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE0);
   }
