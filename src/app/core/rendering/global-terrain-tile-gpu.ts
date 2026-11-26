@@ -8,8 +8,8 @@ const TERRARIUM_URL = (tx: number, ty: number) => `https://elevation-tiles-prod.
 const RETRY_MS = 30_000;
 const MIN_ZOOM = 4.2;
 
-export const GLOBAL_TILE_ARRAY_UNIT = 13;
-export const GLOBAL_TILE_MAP_UNIT = 14;
+export const GLOBAL_TILE_ARRAY_UNIT = 14;
+export const GLOBAL_TILE_MAP_UNIT = 15;
 
 /** GLSL snippet for ~500 m global Terrarium z=8 terrain tiles outside South India. */
 export const GLOBAL_TERRAIN_TILE_GLSL = `
