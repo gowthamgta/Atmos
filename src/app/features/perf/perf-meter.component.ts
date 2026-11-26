@@ -32,7 +32,7 @@ import { gradeOf, slowShare } from '../../core/ui/perf-stats';
   styles: [`
     :host { display: contents; }
     .meter {
-      position: fixed; left: var(--gutter); top: calc(env(safe-area-inset-top, 0px) + 68px); z-index: var(--z-ui); display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100vw - 2 * var(--gutter) - 70px);
+      position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + var(--gutter) + 4px); z-index: var(--z-ui); display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: calc(100vw - 2 * var(--gutter) - 100px);
       padding: 3px 10px; border-radius: 12px; background: var(--surface-1); box-shadow: var(--shadow-1); color: var(--text-secondary); font: var(--fw-medium) var(--fs-xs) var(--font-mono); pointer-events: none; white-space: nowrap;
     }
     .fps { font-size: var(--fs-m); }
