@@ -147,7 +147,7 @@ function sampleTerrariumTile(rgba: Uint8ClampedArray, fx: number, fy: number, la
   const a = at(i0, j0), b = at(i0 + 1, j0), c = at(i0, j0 + 1), d = at(i0 + 1, j0 + 1);
   const z = (a.z * (1 - rx) + b.z * rx) * (1 - ry) + (c.z * (1 - rx) + d.z * rx) * ry;
   const land = (a.l * (1 - rx) + b.l * rx) * (1 - ry) + (c.l * (1 - rx) + d.l * rx) * ry;
-  const mPerPx = Math.max(120, 1223 * Math.cos((lat * Math.PI) / 180));
+  const mPerPx = Math.max(60, 611.5 * Math.cos((lat * Math.PI) / 180));
   const gx = (at(i0 + 1, j0).z - at(i0 - 1, j0).z) / (2 * mPerPx);
   const gy = (at(i0, j0 - 1).z - at(i0, j0 + 1).z) / (2 * mPerPx);
   return { z, land, slope: [gx, gy] };
@@ -169,7 +169,7 @@ export class TerrainService {
   /** Tiles with a 90 m file (see TerrainMeta.tilesL0). */
   private presentL0: ReadonlySet<string> = new Set();
 
-  /** Fetches and decodes one ~1 km Terrarium z=7 tile globally for the click card outside South India. */
+  /** Fetches and decodes one ~500 m Terrarium z=8 tile globally for the click card outside South India. */
   prepareGlobalAt(lat: number, lon: number): Promise<void> {
     const { tx, ty } = globalTileCoords(lat, lon);
     const key = `${tx}_${ty}`;
