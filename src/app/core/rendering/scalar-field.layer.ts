@@ -223,7 +223,7 @@ void main() {
   float mx = v_merc.x - floor(v_merc.x);
   float lon = mx * 360.0 - 180.0;
   bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
-  bool hasGlobalT = !onGround && u_hasGlobalTerrain == 1;
+  bool hasGlobalT = u_hasGlobalTerrain == 1;
   bool isGlobalGrid = u_grid.z * float(u_size.x) >= 359.0;
   vec2 g = vec2(isGlobalGrid ? (mx * 360.0) / u_grid.z : (lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
   // Fade out over the last 12 cells (about 1.2 degrees) for regional grids; global grids wrap longitudinally.
@@ -245,33 +245,44 @@ void main() {
     v = length(vec2(first.x, second.x));
   }
 
-  // the ground under the pixel: its 90 m tile where that is on the GPU, else the model's own ground (nothing corrected there)
+  // The ground under the pixel: zoom-adaptive Terrarium tiles (500m to 38m) everywhere, or regional 90m tiles
   vec2 model = vec2(0.0, 1.0);
   vec2 fineGround = vec2(0.0, 1.0);
   vec4 fineMicro = vec4(0.0);
   float fineLulc = 0.0;
   vec2 fineSlope = vec2(0.0);
   bool usedGlobalTile = false;
-  if (onGround) {
-    model = modelGroundAt(g, lat, lon);
-    TerrainSample ts = tileSample(lat, lon);
-    fineGround = ts.valid > 0.5 ? ts.ground : model;
-    fineMicro = ts.valid > 0.5 ? ts.micro : vec4(0.0);
-    fineLulc = ts.valid > 0.5 ? ts.lulc : 0.0;
-    if (u_relief > 0.0) {
-      fineSlope = ts.valid > 0.5 ? ts.slope : vec2(0.0);
-    }
-  } else if (hasGlobalT) {
+
+  if (hasGlobalT) {
     model = terrainAtEnc(u_demGlobalModel, u_globalModelGrid, u_globalModelSize, lat, lon, u_globalDemEnc);
     TerrainSample gts = globalTileSample(v_merc, lat);
-    usedGlobalTile = gts.valid > 0.5;
-    fineGround = usedGlobalTile ? gts.ground : terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
-    if (u_relief > 0.0) {
-      fineSlope = usedGlobalTile ? gts.slope : slopeAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
+    if (gts.valid > 0.5) {
+      usedGlobalTile = true;
+      fineGround = gts.ground;
+      if (u_relief > 0.0) fineSlope = gts.slope;
+    } else {
+      fineGround = terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
+      if (u_relief > 0.0) fineSlope = slopeAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc);
     }
   }
 
-  if ((onGround || hasGlobalT) && u_terrainMode != 0) {
+  if (onGround) {
+    vec2 regModel = modelGroundAt(g, lat, lon);
+    TerrainSample ts = tileSample(lat, lon);
+    if (ts.valid > 0.5) {
+      fineGround = ts.ground;
+      fineMicro = ts.micro;
+      fineLulc = ts.lulc;
+      if (u_relief > 0.0) fineSlope = ts.slope;
+      model = regModel;
+    } else if (!hasGlobalT) {
+      model = regModel;
+      fineGround = model;
+    }
+  }
+
+  bool hasAnyTerrain = (hasGlobalT || onGround) && (fineGround.y > 0.001 || fineGround.x > 0.0);
+  if (hasAnyTerrain && u_terrainMode != 0) {
     float dz = clamp(fineGround.x - model.x, -${f(MAX_TERRAIN_DELTA_M)}, ${f(MAX_TERRAIN_DELTA_M)});
     int m = u_terrainMode;
     if (m == 1) {
@@ -303,11 +314,9 @@ void main() {
       v *= exp(-dz / ${f(VAPOUR_SCALE_HEIGHT_M)});
     } else if (m == 4) {
       // Wind: topographic exposure + coastal transition + aerodynamic roughness length drag on land
-      float tpi = onGround ? (fineGround.x - terrainAt(u_demSmooth, u_smoothGrid, u_smoothSize, lat, lon).x) * fineGround.y : (hasGlobalT ? (fineGround.x - model.x) * fineGround.y : 0.0);
+      float tpi = (fineGround.x - model.x) * fineGround.y;
       float exposure = clamp(1.0 + tpi * ${f(EXPOSURE_PER_M)}, ${f(EXPOSURE_MIN)}, ${f(EXPOSURE_MAX)});
       float coast = 1.0 + ${f(SEA_WIND_GAIN)} * (model.y - fineGround.y);
-      // Aerodynamic surface roughness drag matching roughnessWindFactor() in terrain-correction.ts:
-      // Urban (-45%), forest canopy (-45%), farmlands (+15%), inland water (+35%)
       float landRough = 1.0 - 0.45 * fineMicro.x - 0.45 * fineMicro.y + 0.15 * fineMicro.z + 0.35 * fineMicro.w;
       float rough = mix(1.0, landRough, fineGround.y);
       v *= clamp(exposure * coast * rough, 0.45, 1.75);
@@ -335,10 +344,10 @@ void main() {
   float alpha = u_opacity * edgeFade * lutColor.a;   // a palette can fade to transparent (the clouds layer)
   if (u_clear > 0.0) alpha *= smoothstep(u_clear, u_clear * u_clearFade, v);
 
-  if (onGround || hasGlobalT) {
+  if (hasAnyTerrain) {
     // 90 m / global relief: hills lit from the north-west, so mountains and valleys read through every layer
     if (u_relief > 0.0) {
-      float slopeBoost = onGround ? 3.0 : (usedGlobalTile ? 4.5 : 14.0);
+      float slopeBoost = usedGlobalTile ? 4.2 : (onGround ? 3.5 : 12.0);
       vec3 n = normalize(vec3(-fineSlope * slopeBoost, 1.0));
       vec3 light = normalize(vec3(-0.55, 0.55, 0.63));
       float shade = dot(n, light) / light.z;

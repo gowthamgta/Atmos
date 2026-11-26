@@ -176,7 +176,14 @@ export class TerrainService {
     if (this.cpuGlobalTiles.has(key)) return Promise.resolve();
     const running = this.cpuGlobalLoading.get(key);
     if (running) return running;
-    const load = fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`)
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 6000) : null;
+    const load = fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`, {
+      signal: controller?.signal,
+    })
+      .finally(() => {
+        if (timer) clearTimeout(timer);
+      })
       .then(res => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
       .then(bitmap => {
@@ -245,73 +252,94 @@ export class TerrainService {
     const t = this.data();
     if (!t) return null;
     const { domain, min, max, smooth: smoothGrid, grid } = t.meta;
-    if (lat > domain.latMax || lat < domain.latMin || lon < domain.lonMin || lon > domain.lonMax) {
-      const gMeta = t.meta.global;
-      if (!gMeta || !t.globalFine || !t.globalModel) return null;
-      const wLon = ((((lon + 180) % 360) + 360) % 360) - 180;
-      const cLat = Math.min(Math.max(lat, gMeta.fine.latMin), gMeta.fine.latMax);
-      const fineG = sampleTerrain(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
-      const modelG = sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
-      let fineZ = fineG.z;
-      let fineLand = fineG.land;
-      let fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
-      const z = 8;
-      const { tx, ty, fx, fy } = globalTileCoords(cLat, wLon, z);
-      const gTile = this.cpuGlobalTiles.get(`${z}_${tx}_${ty}`);
-      if (gTile) {
-        const res = sampleTerrariumTile(gTile, fx, fy, cLat, z);
-        fineZ = res.z;
-        fineLand = res.land;
-        fineSlope = res.slope;
-      } else {
-        void this.prepareGlobalAt(cLat, wLon, z);
+    const gMeta = t.meta.global;
+    const isInsideRegional = lat <= domain.latMax && lat >= domain.latMin && lon >= domain.lonMin && lon <= domain.lonMax;
+
+    // Inside regional domain: check if 90m tile is already decoded in memory
+    if (isInsideRegional) {
+      const name = tileNameAt(lat, lon);
+      const cpu = this.cpuTiles.get(name);
+      if (cpu) {
+        const model = this.modelGround(t, groundKm).bitmap;
+        const dLat = Math.floor(lat) + 1 - lat;
+        const dLon = lon - Math.floor(lon);
+        const fine = sampleTile(cpu.rgba, cpu.n, dLat, dLon, max);
+        const groundAt = (la: number, lo: number) => sampleTerrain(model, grid, la, lo, min, max);
+        const m = field && !sameLattice(field, grid) ? groundAtFieldNodes(groundAt, field, lat, lon) : groundAt(lat, lon);
+        const sm = sampleTerrain(t.smooth, smoothGrid, lat, lon, min, max);
+        const step = 2 / cpu.n;
+        const zE = sampleTile(cpu.rgba, cpu.n, dLat, dLon + step, max).z;
+        const zW = sampleTile(cpu.rgba, cpu.n, dLat, dLon - step, max).z;
+        const zN = sampleTile(cpu.rgba, cpu.n, dLat - step, dLon, max).z;
+        const zS = sampleTile(cpu.rgba, cpu.n, dLat + step, dLon, max).z;
+        const dx = 2 * step * M_PER_DEG * Math.cos((lat * Math.PI) / 180);
+        const dy = 2 * step * M_PER_DEG;
+        return {
+          fine: fine.z,
+          model: m.z,
+          dz: terrainDelta(fine.z, m.z),
+          tpi: fine.z - sm.z,
+          landFine: fine.land,
+          landModel: m.land,
+          slope: slopeOf(t.smooth, smoothGrid, lat, lon, min, max),
+          modelSlope: slopeOf(model, grid, lat, lon, min, max),
+          fineSlope: [(zE - zW) / dx, (zN - zS) / dy],
+          lulc: fine.lulc,
+        };
       }
-      const modelSlope = slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
-      return {
-        fine: fineZ,
-        model: modelG.z,
-        dz: terrainDelta(fineZ, modelG.z),
-        tpi: (fineZ - modelG.z) * fineLand,
-        landFine: fineLand,
-        landModel: modelG.land,
-        slope: fineSlope,
-        modelSlope,
-        fineSlope,
-      };
-    }
-    const name = tileNameAt(lat, lon);
-    const cpu = this.cpuTiles.get(name);
-    if (!cpu) {
       void this.prepareAt(lat, lon);
+    }
+
+    // Worldwide Terrarium & global DEM calculation
+    if (!gMeta || !t.globalFine || !t.globalModel) {
+      if (isInsideRegional) {
+        const model = this.modelGround(t, groundKm).bitmap;
+        const m = sampleTerrain(model, grid, lat, lon, min, max);
+        const sm = sampleTerrain(t.smooth, smoothGrid, lat, lon, min, max);
+        return {
+          fine: sm.z,
+          model: m.z,
+          dz: terrainDelta(sm.z, m.z),
+          tpi: sm.z - m.z,
+          landFine: sm.land,
+          landModel: m.land,
+          slope: slopeOf(t.smooth, smoothGrid, lat, lon, min, max),
+          modelSlope: slopeOf(model, grid, lat, lon, min, max),
+          fineSlope: slopeOf(t.smooth, smoothGrid, lat, lon, min, max),
+        };
+      }
       return null;
     }
-    const model = this.modelGround(t, groundKm).bitmap;
-    // position inside the tile: distances from its north and west edges, in degrees
-    const dLat = Math.floor(lat) + 1 - lat;
-    const dLon = lon - Math.floor(lon);
-    const fine = sampleTile(cpu.rgba, cpu.n, dLat, dLon, max);
-    const groundAt = (la: number, lo: number) => sampleTerrain(model, grid, la, lo, min, max);
-    const m = field && !sameLattice(field, grid) ? groundAtFieldNodes(groundAt, field, lat, lon) : groundAt(lat, lon);
-    const sm = sampleTerrain(t.smooth, smoothGrid, lat, lon, min, max);
-    // slope of the 90 m ground over two cells either side (a neighbour outside the tile is clamped to its edge)
-    const step = 2 / cpu.n;
-    const zE = sampleTile(cpu.rgba, cpu.n, dLat, dLon + step, max).z;
-    const zW = sampleTile(cpu.rgba, cpu.n, dLat, dLon - step, max).z;
-    const zN = sampleTile(cpu.rgba, cpu.n, dLat - step, dLon, max).z;
-    const zS = sampleTile(cpu.rgba, cpu.n, dLat + step, dLon, max).z;
-    const dx = 2 * step * M_PER_DEG * Math.cos((lat * Math.PI) / 180);
-    const dy = 2 * step * M_PER_DEG;
+
+    const wLon = ((((lon + 180) % 360) + 360) % 360) - 180;
+    const cLat = Math.min(Math.max(lat, gMeta.fine.latMin), gMeta.fine.latMax);
+    const fineG = sampleTerrain(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
+    const modelG = sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
+    let fineZ = fineG.z;
+    let fineLand = fineG.land;
+    let fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
+    const z = 8;
+    const { tx, ty, fx, fy } = globalTileCoords(cLat, wLon, z);
+    const gTile = this.cpuGlobalTiles.get(`${z}_${tx}_${ty}`);
+    if (gTile) {
+      const res = sampleTerrariumTile(gTile, fx, fy, cLat, z);
+      fineZ = res.z;
+      fineLand = res.land;
+      fineSlope = res.slope;
+    } else {
+      void this.prepareGlobalAt(cLat, wLon, z);
+    }
+    const modelSlope = slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
     return {
-      fine: fine.z,
-      model: m.z,
-      dz: terrainDelta(fine.z, m.z),
-      tpi: fine.z - sm.z,
-      landFine: fine.land,
-      landModel: m.land,
-      slope: slopeOf(t.smooth, smoothGrid, lat, lon, min, max),
-      modelSlope: slopeOf(model, grid, lat, lon, min, max),
-      fineSlope: [(zE - zW) / dx, (zN - zS) / dy],
-      lulc: fine.lulc,
+      fine: fineZ,
+      model: modelG.z,
+      dz: terrainDelta(fineZ, modelG.z),
+      tpi: (fineZ - modelG.z) * fineLand,
+      landFine: fineLand,
+      landModel: modelG.land,
+      slope: fineSlope,
+      modelSlope,
+      fineSlope,
     };
   }
 

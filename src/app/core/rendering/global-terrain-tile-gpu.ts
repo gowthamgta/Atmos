@@ -100,6 +100,8 @@ export class GlobalTerrainTileGpu {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([255]));
 
     this.tileTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
@@ -113,8 +115,8 @@ export class GlobalTerrainTileGpu {
   }
 
   detach(gl: WebGL2RenderingContext): void {
-    for (const tex of [this.tileMapTex, this.tileTex, this.blankTiles]) if (tex) gl.deleteTexture(tex);
-    this.tileMapTex = this.tileTex = this.blankTiles = null;
+    for (const tex of [this.tileMapTex, this.tileTex, this.blankTiles, this.blankMapTex]) if (tex) gl.deleteTexture(tex);
+    this.tileMapTex = this.tileTex = this.blankTiles = this.blankMapTex = null;
     this.keyToSlot.clear();
     this.slotUsedAt.clear();
     this.pending.clear();
@@ -214,16 +216,14 @@ export class GlobalTerrainTileGpu {
   bind(gl: WebGL2RenderingContext, on: boolean): void {
     gl.activeTexture(gl.TEXTURE0 + GLOBAL_TILE_ARRAY_UNIT);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, on && this.tileTex ? this.tileTex : this.blankArray(gl));
-    if (on && this.tileMapTex) {
-      gl.activeTexture(gl.TEXTURE0 + GLOBAL_TILE_MAP_UNIT);
-      gl.bindTexture(gl.TEXTURE_2D, this.tileMapTex);
-    }
+    gl.activeTexture(gl.TEXTURE0 + GLOBAL_TILE_MAP_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, on && this.tileMapTex ? this.tileMapTex : this.blankMap(gl));
   }
 
   setUniforms(gl: WebGL2RenderingContext, u: Record<string, WebGLUniformLocation | null>, on: boolean): void {
     const nTiles = 1 << this.currentZ;
     gl.uniform1i(u['u_gTiles'], GLOBAL_TILE_ARRAY_UNIT);
-    gl.uniform1i(u['u_gTileMap'], on ? GLOBAL_TILE_MAP_UNIT : 0);
+    gl.uniform1i(u['u_gTileMap'], GLOBAL_TILE_MAP_UNIT);
     gl.uniform1i(u['u_hasGlobalTiles'], on && this.activeZoom && this.keyToSlot.size > 0 ? 1 : 0);
     gl.uniform1f(u['u_gTileCountGlobal'], nTiles);
     gl.uniform2f(u['u_gTileOrigin'], this.lastOriginX, this.lastOriginY);
@@ -266,7 +266,14 @@ export class GlobalTerrainTileGpu {
 
   private fetchTile(gl: WebGL2RenderingContext, z: number, tx: number, ty: number, key: string, visible: Set<string>): void {
     this.pending.add(key);
-    fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`)
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 6000) : null;
+    fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`, {
+      signal: controller?.signal,
+    })
+      .finally(() => {
+        if (timer) clearTimeout(timer);
+      })
       .then(r => {
         if (!r.ok) throw new Error(String(r.status));
         return r.blob();
@@ -283,10 +290,13 @@ export class GlobalTerrainTileGpu {
           bitmap.close();
           return;
         }
+        const prevActive = gl.getParameter(gl.ACTIVE_TEXTURE);
+        gl.activeTexture(gl.TEXTURE0 + GLOBAL_TILE_ARRAY_UNIT);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.tileTex);
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
         gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
         gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, slot, TILE_PX, TILE_PX, 1, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+        gl.activeTexture(prevActive);
         bitmap.close();
         this.mapDirty = true;
         this.map?.triggerRepaint();
@@ -299,10 +309,29 @@ export class GlobalTerrainTileGpu {
 
   private blankArray(gl: WebGL2RenderingContext): WebGLTexture {
     if (!this.blankTiles) {
-      this.blankTiles = gl.createTexture();
+      this.blankTiles = gl.createTexture()!;
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blankTiles);
-      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.RGBA8, 1, 1, 1);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     }
     return this.blankTiles;
+  }
+
+  private blankMapTex: WebGLTexture | null = null;
+  private blankMap(gl: WebGL2RenderingContext): WebGLTexture {
+    if (!this.blankMapTex) {
+      this.blankMapTex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, this.blankMapTex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([255]));
+    }
+    return this.blankMapTex;
   }
 }
