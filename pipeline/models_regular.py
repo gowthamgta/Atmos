@@ -65,12 +65,12 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
 MAP_REACH_H = 240
-# ECMWF AIFS: runs for 4 days with a 6-hour step interval (16 steps / +96 h)
-AIFS_FULL_REACH_H = 96
+# ECMWF AIFS: runs for 5 days (Day 1 + 4 days) with a 6-hour step interval (21 steps / +120 h)
+AIFS_FULL_REACH_H = 120
 AIFS_STEPS = list(range(0, AIFS_FULL_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
-# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +96 h (4 days).
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +120 h (5 days).
 AIFS = RegularModel(
     model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
@@ -80,9 +80,9 @@ AIFS = RegularModel(
     )],
 )
 
-# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km Day 1 + AIFS 25km Days 2-4 worldwide surface forecast)
+# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km Day 1 + AIFS 25km Days 2-5 worldwide surface forecast)
 GLOBAL_GRID = Grid(-85.0, 85.0, -180.0, 179.75, 0.25, "global-0.25")
-GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 97, 6))
+GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 121, 6))
 GLOBAL = RegularModel(
     model_id="global", label="ECMWF Global", run_hours=(0, 6, 12, 18), step_hours=GLOBAL_STEPS, grid=GLOBAL_GRID,
     sources=[Source(

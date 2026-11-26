@@ -45,11 +45,11 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;
 
-/** Worldwide forecast drawn outside the South India 1 km box (ECMWF 9km Day 1 + ECMWF AIFS 25km Days 2–4). */
+/** Worldwide forecast drawn outside the South India 1 km box (ECMWF 9km Day 1 + ECMWF AIFS 25km Days 2–5). */
 export const GLOBAL_MODEL_DEF: ForecastModelDef = {
-  id: 'global', label: 'ECMWF 9km / AIFS 25km', short: 'ECMWF', resolution: 'ECMWF 9 km Day 1 + AIFS 25 km Days 2–4 worldwide surface forecast',
+  id: 'global', label: 'ECMWF 9km / AIFS 25km', short: 'ECMWF', resolution: 'ECMWF 9 km Day 1 + AIFS 25 km Days 2–5 worldwide surface forecast',
   gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/global`, centre: 'ECMWF', ai: true,
-  datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 96,
+  datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 120,
 };
 
 export function forecastModelById(id: string): ForecastModelDef {

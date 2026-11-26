@@ -122,10 +122,10 @@ jobs:
           python blend.py --site site $force || echo "::warning::blend failed; live copy stays in place"
           # Only publish blend (not raw ecmwf_ifs / aifs) to keep GitHub Pages compact
           rm -rf site/ecmwf_ifs site/aifs
-          # Terrain data for model downscaling (excluding heavy 90m L0 tiles to optimize deploy size)
+          # Terrain data for model downscaling (excluding heavy static tiles to optimize deploy size; client streams Terrarium tiles directly)
           cp -r data/terrain site/terrain
-          rm -rf site/terrain/L0
-          python -c "import json, os; p='site/terrain/index.json'; (lambda d: (d.update({'tilesL0': []}), json.dump(d, open(p, 'w'))))(json.load(open(p))) if os.path.exists(p) else None"
+          rm -rf site/terrain/L0 site/terrain/L1 site/terrain/L2
+          python -c "import json, os; p='site/terrain/index.json'; (lambda d: (d.update({'tiles': [], 'tilesL0': []}), json.dump(d, open(p, 'w'))))(json.load(open(p))) if os.path.exists(p) else None"
           # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
           # GitHub Pages takes a site of at most 1 GB: say so plainly when it is over (the deploy may then be refused)

@@ -425,10 +425,10 @@ def blend_step(components: list[Component], variables: list[str], valid: datetim
 
 
 def blend_axis(components: list[Component], step_hours: int = STEP_HOURS) -> tuple[datetime, list[datetime]]:
-    """Reference time (the newest model run) and forecast valid times to publish: 3-hourly to +72 h (3 days)."""
+    """Reference time (the newest model run) and forecast valid times to publish: 3-hourly to +120 h (5 days)."""
     ref = max(c.run for c in components)
     last = max(max(c.steps) for c in components)
-    max_h = min(72, int((last - ref).total_seconds() // 3600))
+    max_h = min(120, int((last - ref).total_seconds() // 3600))
     hours = [h for h in range(0, max_h + 1, step_hours)]
 
 
