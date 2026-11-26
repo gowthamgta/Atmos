@@ -12,9 +12,9 @@ describe('forecast model registry', () => {
     }
   });
 
-  it('lists the pipeline models by their folder id, with Kralveth Blend as the default', () => {
-    expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('blend');
-    expect(FORECAST_MODELS.map(m => m.id)).toEqual(['blend']);
+  it('lists the pipeline models by their folder id, with global as the default', () => {
+    expect(forecastModelById(DEFAULT_MODEL_ID).id).toBe('global');
+    expect(FORECAST_MODELS.map(m => m.id)).toEqual(['global', 'blend']);
   });
 
   it('falls back to the default model for an unknown id', () => {

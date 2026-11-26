@@ -68,7 +68,8 @@ def mirror_status(site: str, base_url: str, model: str, get: Callable = session_
         manifest_raw = _fetch(get, f"{base_url}/{model}/{run}/manifest.json")
         manifest = json.loads(manifest_raw)
 
-        files = [f"{var}/{step['h']:03d}.png" for var in manifest["vars"] for step in manifest["steps"]]
+        path_tpl = manifest.get("path", "{var}/{h:03d}.png")
+        files = [path_tpl.replace("{var}", var).replace("{h:03d}", f"{step['h']:03d}") for var in manifest["vars"] for step in manifest["steps"]]
 
         def pull(rel: str) -> None:
             try:

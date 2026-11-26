@@ -86,7 +86,9 @@ export class ForecastCatalogService implements OnDestroy {
 
   /** Address of one picture. The build (when the manifest has one) is part of it, so a run built again is fetched afresh. */
   fieldUrl(varId: string, stepHour: number, run = this.manifest()?.run, build = this.manifest()?.build): string {
-    return `${this.model().baseUrl}/${run}/${varId}/${String(stepHour).padStart(3, '0')}.png${build ? `?b=${encodeURIComponent(build)}` : ''}`;
+    const tpl = this.manifest()?.path ?? '{var}/{h:03d}.png';
+    const rel = tpl.replace('{var}', varId).replace('{h:03d}', String(stepHour).padStart(3, '0'));
+    return `${this.model().baseUrl}/${run}/${rel}${build ? `?b=${encodeURIComponent(build)}` : ''}`;
   }
 
   /** Variables synthesized in the browser by log-pressure interpolation when the published run only has 850, 700 and 500 hPa. */

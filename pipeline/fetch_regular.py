@@ -208,14 +208,17 @@ class RegularModel:
     """A model made of one or more regular-grid datasets; offers the same interface as the fetch_*.py modules."""
 
     def __init__(self, *, model_id: str, label: str, sources: list[Source], run_hours: tuple[int, ...],
-                 step_hours: list[int], grid: Grid = INDIA, day1_sources: list[Source] | None = None) -> None:
+                 step_hours: list[int], grid: Grid = INDIA, day1_sources: list[Source] | None = None,
+                 day1_grid: Grid | None = None, day1_reader=None) -> None:
         self.MODEL_ID = model_id
         self.GRID = grid
+        self.day1_grid = day1_grid
+        self.day1_reader = day1_reader
         self.LABEL = label
         self.sources = sources
         self.day1_sources = day1_sources
         self.RUN_HOURS = run_hours
-        self.LIVE_FORMAT = 3           # v1 = the IMD rain category layer (extreme); v2 = every published step (up to +384 h); v3 = the first 10 days; an older run is built again
+        self.LIVE_FORMAT = 4           # v4 = 0.1 deg O1280 Day 1 + 10-day AIFS WebP
         self.STEP_HOURS = step_hours
         all_sources = list(sources) + (list(day1_sources) if day1_sources else [])
         provided = {k for s in all_sources for k in s.vars} | {k for s in all_sources for w in s.winds for k in w[:2]}
@@ -223,6 +226,9 @@ class RegularModel:
         self.UNAVAILABLE_VARS = unavailable_for(provided)  # published variables this model cannot supply
         self.PRECIP_NOTE = "mm/h: mean rate over the output interval before the valid time (the model's own accumulation window)"
         self._info: dict[str, DatasetInfo] = {}
+
+    def step_grid(self, step_h: int) -> Grid:
+        return self.day1_grid if (self.day1_grid and step_h <= 24) else self.GRID
 
     # -- run selection -------------------------------------------------------------------------------------------
     def latest_run(self) -> datetime:
@@ -250,6 +256,8 @@ class RegularModel:
         return valid_steps
 
     def precip_window_hours(self, step_h: int) -> int:
+        if self.day1_reader and step_h <= 24:
+            return 3 if step_h > 90 else 1
         src = self.day1_sources[0] if (self.day1_sources and step_h <= 24) else self.sources[0]
         return accumulation_window(self._offsets(src.dataset, datetime.now(timezone.utc)), step_h)
 
@@ -261,6 +269,12 @@ class RegularModel:
 
     def read_step(self, run: datetime, step_h: int, workdir: str | None = None) -> dict[str, np.ndarray]:
         """Download one forecast hour of every dataset and return the raw fields on the pipeline grid."""
+        target_grid = self.step_grid(step_h)
+        if self.day1_reader and step_h <= 24:
+            out = self.day1_reader(run, step_h, target_grid, workdir)
+            for key in REQUIRED_KEYS:
+                out.setdefault(key, np.full((target_grid.ny, target_grid.nx), np.nan, np.float32))
+            return out
         active_sources = self.day1_sources if (self.day1_sources and step_h <= 24) else self.sources
         with tempfile.TemporaryDirectory(dir=workdir) as tmp:
             paths = {s.dataset: os.path.join(tmp, f"{i}.om") for i, s in enumerate(active_sources)}
@@ -271,11 +285,11 @@ class RegularModel:
                 info = self._info[s.dataset]
                 wind_vars = [v for w in s.winds for v in w[2:]]
                 names = list(dict.fromkeys(list(s.vars.values()) + wind_vars))
-                data = read_dataset_vars(paths[s.dataset], names, info.bbox, self.GRID)
+                data = read_dataset_vars(paths[s.dataset], names, info.bbox, target_grid)
                 for key, name in s.vars.items():
                     out[key] = data[name]
                 for u_key, v_key, speed_name, dir_name in s.winds:
                     out[u_key], out[v_key] = speed_dir_to_uv(data[speed_name], data[dir_name])
         for key in REQUIRED_KEYS:
-            out.setdefault(key, np.full((self.GRID.ny, self.GRID.nx), np.nan, np.float32))
+            out.setdefault(key, np.full((target_grid.ny, target_grid.nx), np.nan, np.float32))
         return out

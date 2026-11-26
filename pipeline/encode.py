@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 
-def encode_field(values: np.ndarray, lo: float, hi: float, bits: int = 16) -> bytes:
+def encode_field(values: np.ndarray, lo: float, hi: float, bits: int = 16, fmt: str = "PNG") -> bytes:
     nan = ~np.isfinite(values)
     q = np.clip(np.round((np.nan_to_num(values, nan=lo) - lo) / (hi - lo) * 65535), 0, 65535)
     if bits < 16:  # round to the nearest multiple of the coarser step
@@ -23,7 +23,11 @@ def encode_field(values: np.ndarray, lo: float, hi: float, bits: int = 16) -> by
     rgb[..., 1] = q & 255
     rgb[..., 2] = np.where(nan, 255, 0)
     buf = io.BytesIO()
-    Image.fromarray(rgb, "RGB").save(buf, "PNG", optimize=True, compress_level=9)
+    img = Image.fromarray(rgb, "RGB")
+    if fmt.upper() == "WEBP":
+        img.save(buf, "WEBP", lossless=True, method=4)
+    else:
+        img.save(buf, "PNG", optimize=True, compress_level=9)
     return buf.getvalue()
 
 

@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { blendFields, encodeFieldBitmap } from './derived-fields';
 import { decodeFieldBitmap, isEmptyField } from './field-decode';
 import { ForecastCatalogService } from './forecast-catalog.service';
-import { ForecastManifest } from './forecast.model';
+import { ForecastManifest, stepGrid } from './forecast.model';
 
 /** The two levels a variable at 800 or 600 hPa is worked out from, and how far between them it lies (linear in ln p); null for any other variable. */
 export function levelNeighbours(varId: string): { belowId: string; aboveId: string; mix: number } | null {
@@ -24,6 +24,7 @@ const RETRY_PAUSE_MS = 400;
 @Injectable({ providedIn: 'root' })
 export class FieldLoaderService {
   private static readonly MAX_CACHED = 96; // ~390 KB each once decoded (296 x 326 cells x 4 bytes), so about 37 MB at most
+  private static readonly MAX_BYTES = 260 * 1024 * 1024; // ~260 MB GPU VRAM budget (bounds large 0.1° global bitmaps on mobile)
 
   private readonly catalog = inject(ForecastCatalogService);
   private readonly cache = new Map<string, ImageBitmap>();
@@ -111,7 +112,7 @@ export class FieldLoaderService {
     const fieldBelow = decodeFieldBitmap(bmpBelow, belowInfo.min, belowInfo.max);
     const fieldAbove = decodeFieldBitmap(bmpAbove, aboveInfo.min, aboveInfo.max);
     const blended = blendFields(fieldBelow, fieldAbove, mix);
-    return encodeFieldBitmap(blended, manifest.grid, targetInfo.min, targetInfo.max);
+    return encodeFieldBitmap(blended, stepGrid(manifest, stepHour), targetInfo.min, targetInfo.max);
   }
 
   /**
@@ -146,8 +147,14 @@ export class FieldLoaderService {
     return createImageBitmap(await res.blob(), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
   }
 
+  private cachedBytes(): number {
+    let total = 0;
+    for (const bmp of this.cache.values()) total += bmp.width * bmp.height * 4;
+    return total;
+  }
+
   private evict(): void {
-    while (this.cache.size > FieldLoaderService.MAX_CACHED) {
+    while (this.cache.size > FieldLoaderService.MAX_CACHED || (this.cache.size > 4 && this.cachedBytes() > FieldLoaderService.MAX_BYTES)) {
       const oldest = this.cache.keys().next().value as string;
       this.cache.get(oldest)?.close();
       this.cache.delete(oldest);

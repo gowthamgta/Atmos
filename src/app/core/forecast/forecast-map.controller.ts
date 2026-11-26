@@ -18,7 +18,7 @@ import { ForecastInspectorService } from './forecast-inspector.service';
 import { ForecastStateService } from './forecast-state.service';
 import { GlobalForecastService } from './global-forecast.service';
 import { TerrainService } from './terrain.service';
-import { ForecastManifest, bracketSteps } from './forecast.model';
+import { ForecastManifest, bracketSteps, stepGrid } from './forecast.model';
 import { FORECAST_LAYERS, type ForecastLayerDef } from './forecast-layers';
 import { isPhone } from '../ui/device-profile';
 import { MeteogramService } from '../meteogram/meteogram.service';
@@ -275,7 +275,7 @@ export class ForecastMapController {
     void Promise.all(varIds.flatMap(v => [this.loader.get(v, hA), this.loader.get(v, hB)]))
       .then(bitmaps => {
         if (my !== this.token || !this.layer) return; // a newer selection replaced this one
-        const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap });
+        const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap, grid: stepGrid(manifest, h) });
         layer.setGrid(manifest.grid);
         layer.setLayer(def, [info.min, info.max], info2 ? [info2.min, info2.max] : undefined);
         layer.setFrames(
@@ -326,7 +326,7 @@ export class ForecastMapController {
       return;
     }
     const prefix = `${gMan.model}/${gMan.run}`;
-    const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap });
+    const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap, grid: stepGrid(gMan, h) });
     gLayer.setGrid(gMan.grid);
     gLayer.setLayer(def, [info.min, info.max], info2 ? [info2.min, info2.max] : undefined);
     gLayer.setFrames(

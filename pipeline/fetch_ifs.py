@@ -91,20 +91,20 @@ def file_url(run: datetime, step_h: int) -> str:
     return f"{BUCKET_URL}/data_spatial/ecmwf_ifs/{run:%Y/%m/%d/%H}00Z/{valid:%Y-%m-%dT%H}00.om"
 
 
-def _levels_aloft(run: datetime, step_h: int, tmp: str) -> dict[str, np.ndarray]:
+def _levels_aloft(run: datetime, step_h: int, tmp: str, target_grid: fetch_regular.Grid = GRID) -> dict[str, np.ndarray]:
     """Pressure-level fields from the 0.25 degree IFS dataset (the 9 km one has surface fields only).
 
     Best effort: if a step cannot be read the fields are empty (no data), which the app shows as such, rather than failing
     the whole run; the step is noted in `_level_gaps` and the run is then published as incomplete and built again later.
     """
     global _ifs025_bbox
-    empty = {name: np.full((NY, NX), np.nan, np.float32) for name in LEVEL_RAW_KEYS}
+    empty = {name: np.full((target_grid.ny, target_grid.nx), np.nan, np.float32) for name in LEVEL_RAW_KEYS}
     try:
         if _ifs025_bbox is None:
             _ifs025_bbox = fetch_regular.dataset_info("ecmwf_ifs025").bbox
         path = os.path.join(tmp, "aloft.om")
         download(fetch_regular.RegularModel.file_url("ecmwf_ifs025", run, step_h), path)
-        return fetch_regular.read_dataset_vars(path, list(LEVEL_RAW_KEYS), _ifs025_bbox, GRID)
+        return fetch_regular.read_dataset_vars(path, list(LEVEL_RAW_KEYS), _ifs025_bbox, target_grid)
     except Exception as e:  # noqa: BLE001 - a missing optional dataset must not stop the run
         print(f"  pressure levels unavailable for +{step_h} h: {e}")
         global _level_error
@@ -113,8 +113,12 @@ def _levels_aloft(run: datetime, step_h: int, tmp: str) -> dict[str, np.ndarray]
         return empty
 
 
-def read_step(run: datetime, step_h: int, workdir: str | None = None) -> dict[str, np.ndarray]:
-    """Download one forecast hour, return {source_var: float32 [NY, NX]} on the 0.1-degree grid."""
+def read_step_grid(run: datetime, step_h: int, target_grid: fetch_regular.Grid, workdir: str | None = None) -> dict[str, np.ndarray]:
+    """Download one forecast hour of 9 km O1280 IFS + 0.25 deg levels and return {source_var: float32 [ny, nx]} on `target_grid`."""
+    lats = target_grid.lats()
+    lons = target_grid.lons()
+    r0, r1 = band_rows(target_grid.lat_min, target_grid.lat_max)
+    a, b = int(OFFSETS[r0]), int(OFFSETS[r1])
     with tempfile.TemporaryDirectory(dir=workdir) as tmp:
         path = os.path.join(tmp, "step.om")
         download(file_url(run, step_h), path)
@@ -122,11 +126,16 @@ def read_step(run: datetime, step_h: int, workdir: str | None = None) -> dict[st
         out = {}
         for name in SOURCE_VARS:
             try:
-                flat = reader.get_child_by_name(name)[0, A:B]
+                flat = reader.get_child_by_name(name)[0, a:b]
             except ValueError:  # e.g. gusts, precipitation and CAPE are absent at the analysis hour
-                out[name] = np.full((NY, NX), np.nan, np.float32)
+                out[name] = np.full((target_grid.ny, target_grid.nx), np.nan, np.float32)
                 continue
-            out[name] = regrid_band(np.asarray(flat, np.float32), R0, R1, LATS, LONS)
+            out[name] = regrid_band(np.asarray(flat, np.float32), r0, r1, lats, lons)
         del reader
-        out.update(_levels_aloft(run, step_h, tmp))
+        out.update(_levels_aloft(run, step_h, tmp, target_grid))
         return out
+
+
+def read_step(run: datetime, step_h: int, workdir: str | None = None) -> dict[str, np.ndarray]:
+    """Download one forecast hour, return {source_var: float32 [NY, NX]} on the 0.1-degree grid."""
+    return read_step_grid(run, step_h, GRID, workdir=workdir)

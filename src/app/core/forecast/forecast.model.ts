@@ -25,6 +25,8 @@ export interface ForecastStep {
   h: number;
   /** ISO-8601 valid time (UTC). */
   valid: string;
+  /** Optional per-step grid override (e.g. 0.1 deg Day 1 inside a 0.25 deg model). */
+  grid?: ForecastGrid;
 }
 
 export interface ForecastManifest {
@@ -36,6 +38,13 @@ export interface ForecastManifest {
   grid: ForecastGrid;
   steps: ForecastStep[];
   vars: Record<string, ForecastVarInfo>;
+  /** Relative path template, e.g. "{var}/{h:03d}.webp" or "{var}/{h:03d}.png". */
+  path?: string;
+}
+
+/** Returns the grid for a specific forecast step (or the manifest's default grid). */
+export function stepGrid(manifest: ForecastManifest, stepHour: number): ForecastGrid {
+  return manifest.steps.find(s => s.h === stepHour)?.grid ?? manifest.grid;
 }
 
 /** Two neighbouring steps and the blend weight between them (0 = all A, 1 = all B). */

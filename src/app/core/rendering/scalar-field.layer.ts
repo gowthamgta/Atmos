@@ -87,6 +87,8 @@ uniform float u_clear;
 uniform float u_clearFade; // the colour fades in from u_clear to u_clear times this
 uniform vec4 u_grid;     // lonMin, latMax, step, unused
 uniform ivec2 u_size;
+uniform vec4 u_gridB;    // lonMin, latMax, step, unused for frame B
+uniform ivec2 u_sizeB;
 uniform vec4 u_smoothGrid; // smoothed terrain
 uniform ivec2 u_smoothSize;
 uniform vec4 u_modelGrid;  // model ground
@@ -147,9 +149,9 @@ vec2 sampleSmooth(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
 }
 
 // Blends two time steps of one variable; where one step has no data the other is used. Returns (value, valid).
-vec2 blendTime(sampler2D ta, sampler2D tb, vec2 g, vec2 enc) {
-  vec2 a = sampleSmooth(ta, g, u_size, enc);
-  vec2 b = sampleSmooth(tb, g, u_size, enc);
+vec2 blendTime(sampler2D ta, sampler2D tb, vec2 gA, vec2 gB, vec2 enc) {
+  vec2 a = sampleSmooth(ta, gA, u_size, enc);
+  vec2 b = sampleSmooth(tb, gB, u_sizeB, enc);
   float wa = (1.0 - u_mix) * (a.y > 0.5 ? 1.0 : 0.0);
   float wb = u_mix * (b.y > 0.5 ? 1.0 : 0.0);
   if (wa + wb < 0.0001) return vec2(0.0, 0.0);
@@ -226,21 +228,24 @@ void main() {
   bool onGround = !isGlobalGrid && u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
   bool hasGlobalT = u_hasGlobalTerrain == 1;
   vec2 g = vec2(isGlobalGrid ? (mx * 360.0) / u_grid.z : (lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
+  vec2 gB = vec2(isGlobalGrid ? (mx * 360.0) / u_gridB.z : (lon - u_gridB.x) / u_gridB.z, (u_gridB.y - lat) / u_gridB.z);
   // Fade out over the last 12 cells (about 1.2 degrees) for regional grids; global grids wrap longitudinally.
   vec2 toFar = vec2(u_size) - 1.0 - g;
   float edge = isGlobalGrid ? min(g.y, toFar.y) : min(min(g.x, g.y), min(toFar.x, toFar.y));
   float edgeFade = smoothstep(0.0, isGlobalGrid ? 4.0 : 12.0, edge);
   if (isGlobalGrid) {
     g.y = clamp(g.y, 0.0, float(u_size.y) - 1.0001);
+    gB.y = clamp(gB.y, 0.0, float(u_sizeB.y) - 1.0001);
   } else {
     g = clamp(g, vec2(0.0), vec2(u_size) - 1.0001);
+    gB = clamp(gB, vec2(0.0), vec2(u_sizeB) - 1.0001);
   }
 
-  vec2 first = blendTime(u_a, u_b, g, u_enc);
+  vec2 first = blendTime(u_a, u_b, g, gB, u_enc);
   if (first.y < 0.5) discard;              // no data at either time
   float v = first.x;
   if (u_magnitude == 1) {
-    vec2 second = blendTime(u_a2, u_b2, g, u_enc2);
+    vec2 second = blendTime(u_a2, u_b2, g, gB, u_enc2);
     if (second.y < 0.5) discard;
     v = length(vec2(first.x, second.x));
   }
@@ -371,6 +376,7 @@ export interface FieldFrame {
   /** Unique key of the image (run/var/step) so textures can be reused. */
   key: string;
   bitmap: ImageBitmap;
+  grid?: ForecastGrid;
 }
 
 interface Uniforms {
@@ -379,7 +385,7 @@ interface Uniforms {
 
 const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
-  'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_clearFade', 'u_grid', 'u_size',
+  'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_clearFade', 'u_grid', 'u_size', 'u_gridB', 'u_sizeB',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_sunParams', 'u_hasTime',
   'u_demGlobal', 'u_demGlobalModel', 'u_globalFineGrid', 'u_globalFineSize', 'u_globalModelGrid', 'u_globalModelSize', 'u_globalDemEnc', 'u_hasGlobalTerrain',
@@ -632,8 +638,12 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_gamma'], def.gamma);
     gl.uniform1f(u['u_clear'], def.clearBelow);
     gl.uniform1f(u['u_clearFade'], def.clearFade ?? 1.5);
-    gl.uniform4f(u['u_grid'], grid.lonMin, grid.latMax, grid.step, 0);
-    gl.uniform2i(u['u_size'], grid.nx, grid.ny);
+    const gA = this.frameA?.grid ?? grid;
+    const gB = this.frameB?.grid ?? grid;
+    gl.uniform4f(u['u_grid'], gA.lonMin, gA.latMax, gA.step, 0);
+    gl.uniform2i(u['u_size'], gA.nx, gA.ny);
+    gl.uniform4f(u['u_gridB'], gB.lonMin, gB.latMax, gB.step, 0);
+    gl.uniform2i(u['u_sizeB'], gB.nx, gB.ny);
     gl.uniform1i(u['u_terrainOn'], terrainOn ? 1 : 0);
     gl.uniform1i(u['u_groundOnNodes'], terrainOn && this.terrain && !sameLattice(grid, this.terrain.meta.grid) ? 1 : 0);
     gl.uniform1i(u['u_terrainMode'], terrainMode);

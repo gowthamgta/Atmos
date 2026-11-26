@@ -65,12 +65,12 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
 MAP_REACH_H = 240
-# ECMWF AIFS: runs for 5 days (Day 1 + 4 days) with a 6-hour step interval (21 steps / +120 h)
-AIFS_FULL_REACH_H = 120
+# ECMWF AIFS: runs for 10 days (240 h) with a 6-hour step interval (41 steps / +240 h)
+AIFS_FULL_REACH_H = 240
 AIFS_STEPS = list(range(0, AIFS_FULL_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
-# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +120 h (5 days).
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +240 h (10 days).
 AIFS = RegularModel(
     model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
@@ -80,9 +80,14 @@ AIFS = RegularModel(
     )],
 )
 
-# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km/IFS Day 1 + AIFS 25km Days 2-5 worldwide surface forecast)
+def _read_global_day1_ifs(run, step_h: int, target_grid: Grid, workdir: str | None = None):
+    import fetch_ifs
+    return fetch_ifs.read_step_grid(run, step_h, target_grid, workdir=workdir)
+
+# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km/0.1deg Day 1 + AIFS 25km Days 2-10 worldwide full bundle)
 GLOBAL_GRID = Grid(-85.0, 85.0, -180.0, 179.75, 0.25, "global-0.25")
-GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 121, 6))
+GLOBAL_DAY1_GRID = Grid(-85.0, 85.0, -180.0, 179.9, 0.1, "global-0.1-day1")
+GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 241, 6))
 GLOBAL_VARS = (
     ["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
     + CLOUD_LAYERS + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()
@@ -91,6 +96,8 @@ GLOBAL = RegularModel(
     model_id="global", label="ECMWF Global", run_hours=(0, 6, 12, 18), step_hours=GLOBAL_STEPS, grid=GLOBAL_GRID,
     sources=[Source("ecmwf_aifs025_single", _SAME(GLOBAL_VARS))],
     day1_sources=[Source("ecmwf_ifs025", _SAME(GLOBAL_VARS))],
+    day1_grid=GLOBAL_DAY1_GRID,
+    day1_reader=_read_global_day1_ifs,
 )
 
 ALL: tuple[RegularModel, ...] = (AIFS, GLOBAL)

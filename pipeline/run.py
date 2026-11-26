@@ -46,17 +46,56 @@ def grid_of(fetcher):
     return getattr(fetcher, "GRID", None) or INDIA
 
 
+def step_grid(fetcher, step_h: int):
+    """The output grid for a specific step hour (supports higher-resolution Day 1 grids)."""
+    if hasattr(fetcher, "step_grid"):
+        return fetcher.step_grid(step_h)
+    return grid_of(fetcher)
+
+
+def _ext_for(fetcher) -> str:
+    return "webp" if fetcher.MODEL_ID == "global" else "png"
+
+
+def _encode_for(fetcher, vid: str, values: np.ndarray) -> bytes:
+    v = C.VARS[vid]
+    if fetcher.MODEL_ID == "global":
+        if vid in ("precip", "rain24", "raintot", "extreme"):
+            bits = v.bits
+        elif vid in ("t2m", "rh", "feels", "dew", "u10", "v10", "msl"):
+            bits = min(v.bits, 10)
+        else:
+            bits = min(v.bits, 9)
+        return encode_field(values, v.lo, v.hi, bits, fmt="WEBP")
+    return encode_field(values, v.lo, v.hi, v.bits, fmt="PNG")
+
+
+def _align_shape(arr: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+    if arr.shape == target_shape:
+        return arr
+    from scipy.ndimage import zoom
+    return zoom(np.nan_to_num(arr, nan=0.0), (target_shape[0] / arr.shape[0], target_shape[1] / arr.shape[1]), order=1).astype(np.float32)
+
+
 def build_manifest(fetcher, run, steps, build=None, omit=frozenset()):
     """The manifest of a run. `omit`: variables the source had no data for at any step, which are not published (see main)."""
     grid = grid_of(fetcher)
+    ext = _ext_for(fetcher)
+    step_list = []
+    for h in steps:
+        entry = {"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"}
+        sg = step_grid(fetcher, h)
+        if sg != grid:
+            entry["grid"] = sg.manifest()
+        step_list.append(entry)
     return {
         "model": fetcher.MODEL_ID,
         "run": f"{run:%Y%m%dT%H}Z",
         "grid": grid.manifest(),
-        "steps": [{"h": h, "valid": f"{run + timedelta(hours=h):%Y-%m-%dT%H:%M:%SZ}"} for h in steps],
+        "steps": step_list,
         "vars": {v.id: {"unit": v.unit, "min": v.lo, "max": v.hi, "encoding": "rg16"} for v in published_vars(fetcher) if v.id not in omit},
         "levels": list(C.LEVELS),
-        "path": "{var}/{h:03d}.png",
+        "path": f"{{var}}/{{h:03d}}.{ext}",
         "notes": {"precip": fetcher.PRECIP_NOTE},
         # which build of the run this is: a run built again under the same id (levels that were missing, a changed method) gets a
         # new one, and the app puts it on every picture's address so no browser keeps the old pictures
@@ -71,7 +110,7 @@ DERIVED_ACROSS_STEPS = {"rain24", "raintot", "extreme", "tmin24", "tmax24"}   # 
 def process_step(fetcher, run, h, global_deltas=None):
     """Encode one forecast step. Also returns the step's rain rate (mm/h), which the 24 h accumulation is built from, its air
     temperature, and the variables that have data at this step (the rest are all "no data": see main)."""
-    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), grid_of(fetcher).lat_max)
+    fields = derive(fetcher.read_step(run, h), fetcher.precip_window_hours(h), step_grid(fetcher, h).lat_max)
     if fetcher.MODEL_ID == "ecmwf_ifs" and LAND_MASK is not None:
         grid = grid_of(fetcher)
         if BIAS_TABLE:
@@ -85,19 +124,18 @@ def process_step(fetcher, run, h, global_deltas=None):
         from derive import dew_point, apparent_temperature
         persistence = math.exp(-h / 24.0)
         if "t2m" in global_deltas and "t2m" in fields:
-            fields["t2m"] = (fields["t2m"] + persistence * global_deltas["t2m"]).astype(np.float32)
+            dt = _align_shape(global_deltas["t2m"], fields["t2m"].shape)
+            fields["t2m"] = (fields["t2m"] + persistence * dt).astype(np.float32)
         if "rh" in global_deltas and "rh" in fields:
-            fields["rh"] = np.clip(fields["rh"] + persistence * global_deltas["rh"], 5.0, 100.0).astype(np.float32)
+            dr = _align_shape(global_deltas["rh"], fields["rh"].shape)
+            fields["rh"] = np.clip(fields["rh"] + persistence * dr, 5.0, 100.0).astype(np.float32)
         if "t2m" in fields and "rh" in fields:
             fields["dew"] = dew_point(fields["t2m"], fields["rh"]).astype(np.float32)
             if "u10" in fields and "v10" in fields:
                 fields["feels"] = apparent_temperature(fields["t2m"], fields["rh"], np.hypot(fields["u10"], fields["v10"])).astype(np.float32)
     per_step = [v for v in published_vars(fetcher) if v.id not in DERIVED_ACROSS_STEPS]
     pngs = {
-        v.id: encode_field(
-            fields[v.id], v.lo, v.hi,
-            min(v.bits, 12) if fetcher.MODEL_ID == "global" and v.id not in ("precip", "rain24", "raintot", "extreme") else v.bits,
-        )
+        v.id: _encode_for(fetcher, v.id, fields[v.id])
         for v in per_step
     }
     with_data = {v.id for v in per_step if np.isfinite(fields[v.id]).any()}
@@ -191,18 +229,19 @@ def main() -> int:
             import obs_global_metar
             now_wall = datetime.now(timezone.utc)
             h_now = min(steps, key=lambda s: abs((run + timedelta(hours=s) - now_wall).total_seconds()))
-            now_fields = derive(fetcher.read_step(run, h_now), fetcher.precip_window_hours(h_now), grid_of(fetcher).lat_max)
-            g = grid_of(fetcher)
+            g = step_grid(fetcher, h_now)
+            now_fields = derive(fetcher.read_step(run, h_now), fetcher.precip_window_hours(h_now), g.lat_max)
             global_deltas = obs_global_metar.assimilate_global_metars(now_fields, g.lat_max, g.lat_min, g.lon_min, g.step)
         except Exception as e:
             print(f"global: worldwide METAR assimilation skipped ({e})", flush=True)
 
     run_dir = os.path.join(args.out, fetcher.MODEL_ID, run_id)
+    ext = _ext_for(fetcher)
     try:
         with ThreadPoolExecutor(args.workers) as pool:
             for h, pngs, rate, temp, seen in pool.map(lambda h: process_step(fetcher, run, h, global_deltas), steps):
                 for vid, png in pngs.items():
-                    write(os.path.join(run_dir, vid, f"{h:03d}.png"), png)
+                    write(os.path.join(run_dir, vid, f"{h:03d}.{ext}"), png)
                 rates[h] = rate
                 temps[h] = temp
                 with_data |= seen
@@ -216,26 +255,30 @@ def main() -> int:
             shutil.rmtree(os.path.join(run_dir, vid), ignore_errors=True)
         if empty:
             print(f"{args.model}: no data at any step for {', '.join(sorted(empty))}; not published", flush=True)
+        base_g = grid_of(fetcher)
+        base_shape = (base_g.ny, base_g.nx)
+        rates_base = {h: _align_shape(arr, base_shape) for h, arr in rates.items()}
+        temps_base = {h: _align_shape(arr, base_shape) for h, arr in temps.items()}
         # rain over the next 24 h from each step (no data where the run ends before that)
-        rain24 = C.VARS["rain24"]
-        accumulated = forward_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates})
+        accumulated = forward_accumulation(rates_base, {h: fetcher.precip_window_hours(h) for h in rates_base})
         for h, field in accumulated.items():
-            write(os.path.join(run_dir, "rain24", f"{h:03d}.png"), encode_field(field, rain24.lo, rain24.hi, rain24.bits))
+            sg = step_grid(fetcher, h)
+            write(os.path.join(run_dir, "rain24", f"{h:03d}.{ext}"), _encode_for(fetcher, "rain24", _align_shape(field, (sg.ny, sg.nx))))
         # Calibrated probability of precipitation of the next 24 h (0 to 100 %)
-        extreme = C.VARS["extreme"]
         for h, field in accumulated.items():
-            prob = rain_mm_to_probability(field)
-            write(os.path.join(run_dir, "extreme", f"{h:03d}.png"), encode_field(prob, extreme.lo, extreme.hi, extreme.bits))
+            sg = step_grid(fetcher, h)
+            prob = rain_mm_to_probability(_align_shape(field, (sg.ny, sg.nx)))
+            write(os.path.join(run_dir, "extreme", f"{h:03d}.{ext}"), _encode_for(fetcher, "extreme", prob))
         # total rain from the start of the run to each step
-        raintot = C.VARS["raintot"]
-        for h, field in cumulative_accumulation(rates, {h: fetcher.precip_window_hours(h) for h in rates}).items():
-            write(os.path.join(run_dir, "raintot", f"{h:03d}.png"), encode_field(field, raintot.lo, raintot.hi, raintot.bits))
+        for h, field in cumulative_accumulation(rates_base, {h: fetcher.precip_window_hours(h) for h in rates_base}).items():
+            sg = step_grid(fetcher, h)
+            write(os.path.join(run_dir, "raintot", f"{h:03d}.{ext}"), _encode_for(fetcher, "raintot", _align_shape(field, (sg.ny, sg.nx))))
         # lowest and highest temperature over the next 24 h from each step, for the models that publish them
         for vid, reduce in (("tmin24", np.fmin), ("tmax24", np.fmax)):
             if vid in {v.id for v in published_vars(fetcher)}:
-                var = C.VARS[vid]
-                for h, field in forward_extreme(temps, reduce).items():
-                    write(os.path.join(run_dir, vid, f"{h:03d}.png"), encode_field(field, var.lo, var.hi, var.bits))
+                for h, field in forward_extreme(temps_base, reduce).items():
+                    sg = step_grid(fetcher, h)
+                    write(os.path.join(run_dir, vid, f"{h:03d}.{ext}"), _encode_for(fetcher, vid, _align_shape(field, (sg.ny, sg.nx))))
     except BaseException:
         shutil.rmtree(run_dir, ignore_errors=True)  # never deploy a half-written run
         raise

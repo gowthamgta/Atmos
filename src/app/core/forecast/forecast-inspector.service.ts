@@ -6,7 +6,7 @@ import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastStateService } from './forecast-state.service';
 import { GlobalForecastService } from './global-forecast.service';
-import { bracketSteps, sampleGrid } from './forecast.model';
+import { bracketSteps, sampleGrid, stepGrid } from './forecast.model';
 import { sampleRg16Bitmap } from './bitmap-sampler';
 import { PointForecast, blendTime, buildPointRows, inspectVars, summaryVars } from './point-forecast';
 import { lulcLabel } from './terrain-correction';
@@ -216,9 +216,11 @@ export class ForecastInspectorService {
             if (!bmpA || !bmpB) {
               values[id] = NaN;
             } else {
+              const gA = stepGrid(activeManifest, hA);
+              const gB = stepGrid(activeManifest, hB);
               values[id] = blendTime(
-                sampleRg16Bitmap(bmpA, g, lat, sampleLon, info.min, info.max),
-                sampleRg16Bitmap(bmpB, g, lat, sampleLon, info.min, info.max),
+                sampleRg16Bitmap(bmpA, gA, lat, sampleLon, info.min, info.max),
+                sampleRg16Bitmap(bmpB, gB, lat, sampleLon, info.min, info.max),
                 mix
               );
             }
@@ -241,7 +243,11 @@ export class ForecastInspectorService {
             ? await Promise.all([this.loader.get('raintot', h1), this.loader.get('raintot', h2)])
             : await Promise.all([this.globalForecast.getField('raintot', h1), this.globalForecast.getField('raintot', h2)]);
           if (!x || !y) return NaN;
-          return blendTime(sampleRg16Bitmap(x, g, lat, sampleLon, totalInfo.min, totalInfo.max), sampleRg16Bitmap(y, g, lat, sampleLon, totalInfo.min, totalInfo.max), s.mix);
+          return blendTime(
+            sampleRg16Bitmap(x, stepGrid(activeManifest, h1), lat, sampleLon, totalInfo.min, totalInfo.max),
+            sampleRg16Bitmap(y, stepGrid(activeManifest, h2), lat, sampleLon, totalInfo.min, totalInfo.max),
+            s.mix
+          );
         };
         const [atEnd, atStart] = await Promise.all([totalAt(to), totalAt(from)]);
         const diff = atEnd - atStart;

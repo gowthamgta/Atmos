@@ -3,7 +3,7 @@ import { blendFields, encodeFieldBitmap } from './derived-fields';
 import { decodeFieldBitmap } from './field-decode';
 import { levelNeighbours } from './field-loader.service';
 import { synthesizeLevels } from './forecast-catalog.service';
-import { ForecastManifest } from './forecast.model';
+import { ForecastManifest, stepGrid } from './forecast.model';
 import { GLOBAL_MODEL_DEF } from './forecast-models';
 
 /**
@@ -73,7 +73,9 @@ export class GlobalForecastService {
 
   private fetchRawField(man: ForecastManifest, varId: string, hour: number): Promise<ImageBitmap | null> {
     const hStr = String(hour).padStart(3, '0');
-    const url = `${GLOBAL_MODEL_DEF.baseUrl}/${man.run}/${varId}/${hStr}.png?v=${encodeURIComponent(man.build ?? '')}`;
+    const tpl = man.path ?? '{var}/{h:03d}.png';
+    const rel = tpl.replace('{var}', varId).replace('{h:03d}', hStr);
+    const url = `${GLOBAL_MODEL_DEF.baseUrl}/${man.run}/${rel}?v=${encodeURIComponent(man.build ?? '')}`;
     return fetch(url)
       .then(async res => {
         if (!res.ok) return null;
@@ -92,6 +94,6 @@ export class GlobalForecastService {
     const [bmpBelow, bmpAbove] = await Promise.all([this.getField(near.belowId, hour), this.getField(near.aboveId, hour)]);
     if (!bmpBelow || !bmpAbove) return null;
     const blended = blendFields(decodeFieldBitmap(bmpBelow, belowInfo.min, belowInfo.max), decodeFieldBitmap(bmpAbove, aboveInfo.min, aboveInfo.max), near.mix);
-    return encodeFieldBitmap(blended, man.grid, targetInfo.min, targetInfo.max);
+    return encodeFieldBitmap(blended, stepGrid(man, hour), targetInfo.min, targetInfo.max);
   }
 }
