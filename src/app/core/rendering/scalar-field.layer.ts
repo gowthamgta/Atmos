@@ -374,7 +374,7 @@ const UNIFORMS = [
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
   'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_sunParams', 'u_hasTime',
   'u_demGlobal', 'u_demGlobalModel', 'u_globalFineGrid', 'u_globalFineSize', 'u_globalModelGrid', 'u_globalModelSize', 'u_globalDemEnc', 'u_hasGlobalTerrain',
-  'u_gTiles', 'u_gTileMap', 'u_hasGlobalTiles',
+  'u_gTiles', 'u_gTileMap', 'u_hasGlobalTiles', 'u_gTileCountGlobal', 'u_gTileOrigin', 'u_gTileGrid', 'u_gMPerPx',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
 ];
 

@@ -4,6 +4,7 @@ import { PointTerrain, terrainDelta } from './terrain-correction';
 import { TerrainLevel, sampleTile, tileNameAt } from './terrain-tiles';
 import { PAGES } from './forecast-models';
 import { groundAtFieldNodes, sameLattice } from './terrain-ground';
+import { getAdaptiveGlobalZ } from '../rendering/global-terrain-tile-gpu';
 
 /** The terrain files: local /terrain proxy in dev/preview, published on GitHub Pages in production. */
 export const TERRAIN_BASE = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
@@ -117,21 +118,20 @@ interface CpuTile {
   n: number;
 }
 
-const GLOBAL_DEM_Z = 8;
-const GLOBAL_DEM_N = 1 << GLOBAL_DEM_Z;
 const GLOBAL_DEM_PX = 256;
 
-function globalTileCoords(lat: number, lon: number): { tx: number; ty: number; fx: number; fy: number } {
+function globalTileCoords(lat: number, lon: number, z = 8): { tx: number; ty: number; fx: number; fy: number } {
+  const n = 1 << z;
   const cLat = Math.min(Math.max(lat, -85), 85);
-  const ux = ((lon + 180) / 360) * GLOBAL_DEM_N;
+  const ux = ((lon + 180) / 360) * n;
   const latR = (cLat * Math.PI) / 180;
-  const uy = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * GLOBAL_DEM_N;
-  const tx = ((Math.floor(ux) % GLOBAL_DEM_N) + GLOBAL_DEM_N) % GLOBAL_DEM_N;
-  const ty = Math.min(Math.max(Math.floor(uy), 0), GLOBAL_DEM_N - 1);
+  const uy = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * n;
+  const tx = ((Math.floor(ux) % n) + n) % n;
+  const ty = Math.min(Math.max(Math.floor(uy), 0), n - 1);
   return { tx, ty, fx: ux - Math.floor(ux), fy: Math.min(Math.max(uy - Math.floor(uy), 0), 1) };
 }
 
-function sampleTerrariumTile(rgba: Uint8ClampedArray, fx: number, fy: number, lat: number): { z: number; land: number; slope: [number, number] } {
+function sampleTerrariumTile(rgba: Uint8ClampedArray, fx: number, fy: number, lat: number, z = 8): { z: number; land: number; slope: [number, number] } {
   const px = fx * (GLOBAL_DEM_PX - 1);
   const py = fy * (GLOBAL_DEM_PX - 1);
   const at = (ix: number, iy: number): { z: number; l: number } => {
@@ -145,12 +145,12 @@ function sampleTerrariumTile(rgba: Uint8ClampedArray, fx: number, fy: number, la
   const i0 = Math.floor(px), j0 = Math.floor(py);
   const rx = px - i0, ry = py - j0;
   const a = at(i0, j0), b = at(i0 + 1, j0), c = at(i0, j0 + 1), d = at(i0 + 1, j0 + 1);
-  const z = (a.z * (1 - rx) + b.z * rx) * (1 - ry) + (c.z * (1 - rx) + d.z * rx) * ry;
+  const zVal = (a.z * (1 - rx) + b.z * rx) * (1 - ry) + (c.z * (1 - rx) + d.z * rx) * ry;
   const land = (a.l * (1 - rx) + b.l * rx) * (1 - ry) + (c.l * (1 - rx) + d.l * rx) * ry;
-  const mPerPx = Math.max(60, 611.5 * Math.cos((lat * Math.PI) / 180));
+  const mPerPx = Math.max(15, (156543.03 / (1 << z)) * Math.cos((lat * Math.PI) / 180));
   const gx = (at(i0 + 1, j0).z - at(i0 - 1, j0).z) / (2 * mPerPx);
   const gy = (at(i0, j0 - 1).z - at(i0, j0 + 1).z) / (2 * mPerPx);
-  return { z, land, slope: [gx, gy] };
+  return { z: zVal, land, slope: [gx, gy] };
 }
 
 /**
@@ -169,14 +169,14 @@ export class TerrainService {
   /** Tiles with a 90 m file (see TerrainMeta.tilesL0). */
   private presentL0: ReadonlySet<string> = new Set();
 
-  /** Fetches and decodes one ~500 m Terrarium z=8 tile globally for the click card outside South India. */
-  prepareGlobalAt(lat: number, lon: number): Promise<void> {
-    const { tx, ty } = globalTileCoords(lat, lon);
-    const key = `${tx}_${ty}`;
+  /** Fetches and decodes one zoom-adaptive Terrarium elevation tile globally for the click card outside South India. */
+  prepareGlobalAt(lat: number, lon: number, z = 8): Promise<void> {
+    const { tx, ty } = globalTileCoords(lat, lon, z);
+    const key = `${z}_${tx}_${ty}`;
     if (this.cpuGlobalTiles.has(key)) return Promise.resolve();
     const running = this.cpuGlobalLoading.get(key);
     if (running) return running;
-    const load = fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${GLOBAL_DEM_Z}/${tx}/${ty}.png`)
+    const load = fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`)
       .then(res => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then(blob => createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }))
       .then(bitmap => {
@@ -188,7 +188,7 @@ export class TerrainService {
         c.drawImage(bitmap, 0, 0);
         const rgba = c.getImageData(0, 0, GLOBAL_DEM_PX, GLOBAL_DEM_PX).data;
         bitmap.close();
-        if (this.cpuGlobalTiles.size >= 8) this.cpuGlobalTiles.delete(this.cpuGlobalTiles.keys().next().value!);
+        if (this.cpuGlobalTiles.size >= 16) this.cpuGlobalTiles.delete(this.cpuGlobalTiles.keys().next().value!);
         this.cpuGlobalTiles.set(key, rgba);
       })
       .catch(() => undefined)
@@ -255,15 +255,16 @@ export class TerrainService {
       let fineZ = fineG.z;
       let fineLand = fineG.land;
       let fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
-      const { tx, ty, fx, fy } = globalTileCoords(cLat, wLon);
-      const gTile = this.cpuGlobalTiles.get(`${tx}_${ty}`);
+      const z = 8;
+      const { tx, ty, fx, fy } = globalTileCoords(cLat, wLon, z);
+      const gTile = this.cpuGlobalTiles.get(`${z}_${tx}_${ty}`);
       if (gTile) {
-        const res = sampleTerrariumTile(gTile, fx, fy, cLat);
+        const res = sampleTerrariumTile(gTile, fx, fy, cLat, z);
         fineZ = res.z;
         fineLand = res.land;
         fineSlope = res.slope;
       } else {
-        void this.prepareGlobalAt(cLat, wLon);
+        void this.prepareGlobalAt(cLat, wLon, z);
       }
       const modelSlope = slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
       return {
