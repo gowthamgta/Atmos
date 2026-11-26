@@ -137,7 +137,7 @@ export function firstNumber(text: string | undefined): number | null {
             <button type="button" class="runline" (click)="panels.toggle('models')" [attr.aria-expanded]="panels.open() === 'models'" aria-haspopup="dialog" [title]="runTitle()">
               <span class="status-dot" [class.ok]="runTone() === 'ok'" [class.warn]="runTone() === 'warn'" [class.bad]="runTone() === 'bad'"></span>
               <span class="run-text">{{ modelBadgeText() }} · {{ runText() }}</span>
-              <span class="run-badge">{{ inspector.point()?.modelId === 'global' ? 'ECMWF AIFS' : runBadge() }}</span>
+              <span class="run-badge">{{ inspector.point()?.modelId === 'global' ? (globalIsDay1() ? 'ECMWF 9km' : 'ECMWF AIFS') : runBadge() }}</span>
             </button>
           } @else if (inspector.busy()) {
             <div class="note busy"><span class="spinner" aria-hidden="true"></span>Loading…</div>
@@ -334,19 +334,28 @@ export class PlaceCardComponent {
   private readonly runInfo = computed(() => this.runs.active());
   protected readonly runTone = computed(() => (this.inspector.point()?.modelId === 'global' ? 'ok' : this.runInfo()?.tone ?? 'none'));
   protected readonly runBadge = computed(() => this.runInfo()?.badge ?? '');
+  private readonly globalLeadHours = computed(() => {
+    const p = this.inspector.point();
+    if (p?.modelId !== 'global' || !p.run) return null;
+    const r = p.run;
+    const initMs = Date.UTC(+r.slice(0, 4), +r.slice(4, 6) - 1, +r.slice(6, 8), +r.slice(9, 11));
+    return Number.isFinite(initMs) ? Math.round((p.timeMs - initMs) / 3_600_000) : null;
+  });
+  protected readonly globalIsDay1 = computed(() => {
+    const h = this.globalLeadHours();
+    return h !== null && h >= 0 && h <= 24;
+  });
   protected readonly modelBadgeText = computed(() => {
     const p = this.inspector.point();
-    if (p?.modelId === 'global') return 'ECMWF AIFS 25 km';
+    if (p?.modelId === 'global') return this.globalIsDay1() ? 'ECMWF 9 km' : 'ECMWF AIFS 25 km';
     const m = this.catalog.model();
     return `${m.short} ${m.gridKm} km`;
   });
   protected readonly runText = computed(() => {
     const p = this.inspector.point();
     if (p?.modelId === 'global' && p.run) {
-      const r = p.run;
-      const initMs = Date.UTC(+r.slice(0, 4), +r.slice(4, 6) - 1, +r.slice(6, 8), +r.slice(9, 11));
-      const leadH = Number.isFinite(initMs) ? Math.round((p.timeMs - initMs) / 3_600_000) : null;
-      return `Run ${r.slice(9, 11)}Z${leadH !== null && leadH >= 0 ? ` · +${leadH} h` : ''}`;
+      const leadH = this.globalLeadHours();
+      return `Run ${p.run.slice(9, 11)}Z${leadH !== null && leadH >= 0 ? ` · +${leadH} h` : ''}`;
     }
     const info = this.runInfo();
     if (!info?.published) return 'run not known';
@@ -355,7 +364,11 @@ export class PlaceCardComponent {
   });
   protected readonly runTitle = computed(() => {
     const p = this.inspector.point();
-    if (p?.modelId === 'global') return `ECMWF AIFS (0.25°) · Run ${p.run ?? ''} · Global 25 km forecast with terrain downscaling`;
+    if (p?.modelId === 'global') {
+      return this.globalIsDay1()
+        ? `ECMWF IFS (0.1°) · Run ${p.run ?? ''} · Global 9 km Day 1 forecast with terrain downscaling`
+        : `ECMWF AIFS (0.25°) · Run ${p.run ?? ''} · Global 25 km forecast with terrain downscaling`;
+    }
     const info = this.runInfo();
     if (!info?.published) return 'Forecast model';
     const lines = runLines(info, this.state.timeMs(), this.runs.nowMs());
