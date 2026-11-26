@@ -38,6 +38,11 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
+    id: 'global', label: 'ECMWF 9km / AIFS 25km', short: 'ECMWF', resolution: 'ECMWF 9 km Day 1 + AIFS 25 km Days 2–5 worldwide surface forecast',
+    gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/global`, centre: 'ECMWF', ai: true,
+    datasets: ['ecmwf_ifs025', 'ecmwf_aifs025_single'], apiId: 'ecmwf_ifs025', reachHours: 120,
+  },
+  {
     id: 'blend', label: 'Kralveth AI 1km', short: 'AI 1km', resolution: '1 km high definition neural model, South India and its seas', gridKm: 1, groundKm: 1, baseUrl: `${PAGES}/blend`,
     centre: 'Kralveth', ai: true, datasets: ['kralveth_ai_1km'], apiId: 'blend', reachHours: 120,
   },
@@ -45,12 +50,8 @@ export const FORECAST_MODELS: readonly ForecastModelDef[] = [
 
 export const DEFAULT_MODEL_ID = FORECAST_MODELS[0].id;
 
-/** Worldwide forecast drawn outside the South India 1 km box (ECMWF 9km Day 1 + ECMWF AIFS 25km Days 2–5). */
-export const GLOBAL_MODEL_DEF: ForecastModelDef = {
-  id: 'global', label: 'ECMWF 9km / AIFS 25km', short: 'ECMWF', resolution: 'ECMWF 9 km Day 1 + AIFS 25 km Days 2–5 worldwide surface forecast',
-  gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/global`, centre: 'ECMWF', ai: true,
-  datasets: ['ecmwf_aifs025_single'], apiId: 'ecmwf_aifs025_single', reachHours: 120,
-};
+/** Worldwide forecast definition (ECMWF 9km Day 1 + ECMWF AIFS 25km Days 2–5). */
+export const GLOBAL_MODEL_DEF: ForecastModelDef = FORECAST_MODELS[0];
 
 export function forecastModelById(id: string): ForecastModelDef {
   return FORECAST_MODELS.find(m => m.id === id) ?? FORECAST_MODELS[0];

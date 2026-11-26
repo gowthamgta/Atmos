@@ -80,16 +80,17 @@ AIFS = RegularModel(
     )],
 )
 
-# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km Day 1 + AIFS 25km Days 2-5 worldwide surface forecast)
+# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km/IFS Day 1 + AIFS 25km Days 2-5 worldwide surface forecast)
 GLOBAL_GRID = Grid(-85.0, 85.0, -180.0, 179.75, 0.25, "global-0.25")
 GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 121, 6))
+GLOBAL_VARS = (
+    ["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
+    + CLOUD_LAYERS + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()
+)
 GLOBAL = RegularModel(
     model_id="global", label="ECMWF Global", run_hours=(0, 6, 12, 18), step_hours=GLOBAL_STEPS, grid=GLOBAL_GRID,
-    sources=[Source(
-        "ecmwf_aifs025_single",
-        _SAME(["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
-              + CLOUD_LAYERS + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()),
-    )],
+    sources=[Source("ecmwf_aifs025_single", _SAME(GLOBAL_VARS))],
+    day1_sources=[Source("ecmwf_ifs025", _SAME(GLOBAL_VARS))],
 )
 
 ALL: tuple[RegularModel, ...] = (AIFS, GLOBAL)

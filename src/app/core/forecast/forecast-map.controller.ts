@@ -233,11 +233,16 @@ export class ForecastMapController {
     if (!terrainData) {
       this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));
     }
+    const isGlobal = !manifest || manifest.model === 'global' || manifest.grid.step * manifest.grid.nx >= 359;
     if (this.globalLayer) {
-      this.globalLayer.setTerrain(onTerrain ? terrainData : null, modelGround);
-      this.globalLayer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
-      this.globalLayer.setLite(isPhone());
-      void this.updateGlobalLayer(def, time ?? Date.now(), rangeStart, rangeEnd, ++this.globalToken);
+      if (isGlobal) {
+        this.globalLayer.setLayer(null);
+      } else {
+        this.globalLayer.setTerrain(onTerrain ? terrainData : null, modelGround);
+        this.globalLayer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
+        this.globalLayer.setLite(isPhone());
+        void this.updateGlobalLayer(def, time ?? Date.now(), rangeStart, rangeEnd, ++this.globalToken);
+      }
     }
     if (!manifest || time === null || validTimes.length === 0) {
       layer.setLayer(null);

@@ -170,8 +170,9 @@ export class ForecastInspectorService {
     const time = this.state.timeMs();
     if (!manifest || time === null) return;
     const regGrid = manifest.grid;
-    const useRegional = lat <= regGrid.latMax && lat >= regGrid.latMin && lon >= regGrid.lonMin && lon <= regGrid.lonMax && inForecastBox(lat, lon);
-    const activeManifest = useRegional ? manifest : await this.globalForecast.ensureManifest();
+    const isGlobal = manifest.model === 'global' || regGrid.step * regGrid.nx >= 359;
+    const useRegional = !isGlobal && lat <= regGrid.latMax && lat >= regGrid.latMin && lon >= regGrid.lonMin && lon <= regGrid.lonMax && inForecastBox(lat, lon);
+    const activeManifest = isGlobal ? manifest : (useRegional ? manifest : await this.globalForecast.ensureManifest());
     if (!activeManifest) {
       this.point.set(null); // outside the forecast domain and no global run live yet
       this.settle(false);
@@ -266,7 +267,7 @@ export class ForecastInspectorService {
         surfaceType: ground?.lulc ? lulcLabel(ground.lulc) : null,
         landFine: ground?.landFine ?? null,
         modelId: activeManifest.model,
-        modelLabel: useRegional ? this.catalog.model().label : 'ECMWF AIFS 25km',
+        modelLabel: isGlobal ? this.catalog.model().label : (useRegional ? this.catalog.model().label : 'ECMWF 9km / AIFS 25km'),
         run: activeManifest.run,
         timeMs: time,
         rows: buildPointRows(values, ground, level, { timeMs: time, lat, lon }, this.unitsService.units()),

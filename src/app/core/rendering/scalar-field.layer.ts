@@ -222,9 +222,9 @@ void main() {
   float lat = degrees(atan(sinh(PI * (1.0 - 2.0 * v_merc.y))));
   float mx = v_merc.x - floor(v_merc.x);
   float lon = mx * 360.0 - 180.0;
-  bool onGround = u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
-  bool hasGlobalT = u_hasGlobalTerrain == 1;
   bool isGlobalGrid = u_grid.z * float(u_size.x) >= 359.0;
+  bool onGround = !isGlobalGrid && u_terrainOn == 1 && lon >= u_terrainBox.x && lon <= u_terrainBox.z && lat >= u_terrainBox.y && lat <= u_terrainBox.w;
+  bool hasGlobalT = u_hasGlobalTerrain == 1;
   vec2 g = vec2(isGlobalGrid ? (mx * 360.0) / u_grid.z : (lon - u_grid.x) / u_grid.z, (u_grid.y - lat) / u_grid.z);
   // Fade out over the last 12 cells (about 1.2 degrees) for regional grids; global grids wrap longitudinally.
   vec2 toFar = vec2(u_size) - 1.0 - g;

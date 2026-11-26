@@ -208,15 +208,17 @@ class RegularModel:
     """A model made of one or more regular-grid datasets; offers the same interface as the fetch_*.py modules."""
 
     def __init__(self, *, model_id: str, label: str, sources: list[Source], run_hours: tuple[int, ...],
-                 step_hours: list[int], grid: Grid = INDIA) -> None:
+                 step_hours: list[int], grid: Grid = INDIA, day1_sources: list[Source] | None = None) -> None:
         self.MODEL_ID = model_id
         self.GRID = grid
         self.LABEL = label
         self.sources = sources
+        self.day1_sources = day1_sources
         self.RUN_HOURS = run_hours
         self.LIVE_FORMAT = 3           # v1 = the IMD rain category layer (extreme); v2 = every published step (up to +384 h); v3 = the first 10 days; an older run is built again
         self.STEP_HOURS = step_hours
-        provided = {k for s in sources for k in s.vars} | {k for s in sources for w in s.winds for k in w[:2]}
+        all_sources = list(sources) + (list(day1_sources) if day1_sources else [])
+        provided = {k for s in all_sources for k in s.vars} | {k for s in all_sources for w in s.winds for k in w[:2]}
         self.PROVIDES = frozenset(provided)
         self.UNAVAILABLE_VARS = unavailable_for(provided)  # published variables this model cannot supply
         self.PRECIP_NOTE = "mm/h: mean rate over the output interval before the valid time (the model's own accumulation window)"
@@ -225,7 +227,8 @@ class RegularModel:
     # -- run selection -------------------------------------------------------------------------------------------
     def latest_run(self) -> datetime:
         """Newest run that every dataset of the model has finished (the oldest of their latest runs)."""
-        self._info = {s.dataset: dataset_info(s.dataset) for s in self.sources}
+        all_sources = list(self.sources) + (list(self.day1_sources) if self.day1_sources else [])
+        self._info = {s.dataset: dataset_info(s.dataset) for s in all_sources}
         run = min(i.reference for i in self._info.values())
         # the newest run is often one this model does not use (an 18Z or 06Z run): then the run before it (00Z or 12Z) is the one to build
         while run.hour not in self.RUN_HOURS:
@@ -238,11 +241,17 @@ class RegularModel:
 
     def steps_for(self, run: datetime) -> list[int]:
         """The wanted steps that exist in every dataset (shorter runs publish fewer steps)."""
-        have = [set(self._offsets(s.dataset, run)) for s in self.sources]
-        return [h for h in self.STEP_HOURS if all(h in o for o in have)]
+        valid_steps: list[int] = []
+        for h in self.STEP_HOURS:
+            srcs = self.day1_sources if (self.day1_sources and h <= 24) else self.sources
+            have = [set(self._offsets(s.dataset, run)) for s in srcs]
+            if all(h in o for o in have):
+                valid_steps.append(h)
+        return valid_steps
 
     def precip_window_hours(self, step_h: int) -> int:
-        return accumulation_window(self._offsets(self.sources[0].dataset, datetime.now(timezone.utc)), step_h)
+        src = self.day1_sources[0] if (self.day1_sources and step_h <= 24) else self.sources[0]
+        return accumulation_window(self._offsets(src.dataset, datetime.now(timezone.utc)), step_h)
 
     # -- data ----------------------------------------------------------------------------------------------------
     @staticmethod
@@ -252,12 +261,13 @@ class RegularModel:
 
     def read_step(self, run: datetime, step_h: int, workdir: str | None = None) -> dict[str, np.ndarray]:
         """Download one forecast hour of every dataset and return the raw fields on the pipeline grid."""
+        active_sources = self.day1_sources if (self.day1_sources and step_h <= 24) else self.sources
         with tempfile.TemporaryDirectory(dir=workdir) as tmp:
-            paths = {s.dataset: os.path.join(tmp, f"{i}.om") for i, s in enumerate(self.sources)}
+            paths = {s.dataset: os.path.join(tmp, f"{i}.om") for i, s in enumerate(active_sources)}
             with ThreadPoolExecutor(len(paths)) as pool:
-                list(pool.map(lambda s: download(self.file_url(s.dataset, run, step_h), paths[s.dataset]), self.sources))
+                list(pool.map(lambda s: download(self.file_url(s.dataset, run, step_h), paths[s.dataset]), active_sources))
             out: dict[str, np.ndarray] = {}
-            for s in self.sources:
+            for s in active_sources:
                 info = self._info[s.dataset]
                 wind_vars = [v for w in s.winds for v in w[2:]]
                 names = list(dict.fromkeys(list(s.vars.values()) + wind_vars))
