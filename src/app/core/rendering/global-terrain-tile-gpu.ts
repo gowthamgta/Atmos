@@ -1,5 +1,6 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { isPhone } from '../ui/device-profile';
+import { GlobalTerrainMeta, TERRAIN_BASE, bitmaskHasTile, decodeTileBitmask } from '../forecast/terrain.service';
 
 const TILE_PX = 256;
 const RETRY_MS = 30_000;
@@ -15,7 +16,7 @@ export function getAdaptiveGlobalZ(mapZoom: number): number {
   return 5;                       // ~4 km (instant low-res overview)
 }
 
-/** GLSL snippet for zoom-adaptive global Terrarium elevation tiles (500m -> 150m -> 75m -> 38m). */
+/** GLSL snippet for zoom-adaptive self-hosted Copernicus 500 m WebP tiles (R,G = elevation over u_globalDemEnc, B = land fraction). */
 export const GLOBAL_TERRAIN_TILE_GLSL = `
 uniform sampler2DArray u_gTiles;
 uniform sampler2D u_gTileMap;
@@ -25,8 +26,9 @@ uniform vec2 u_gTileOrigin;
 uniform ivec2 u_gTileGrid;
 uniform float u_gMPerPx;
 
-float decodeTerrarium(vec4 c) {
-  return max(0.0, (c.r * 65280.0 + c.g * 255.0 + c.b * 0.99609375) - 32768.0);
+float decodeGlobalTileElev(vec4 c) {
+  float q = floor(c.r * 255.0 + 0.5) * 256.0 + floor(c.g * 255.0 + 0.5);
+  return u_globalDemEnc.x + q / 65535.0 * (u_globalDemEnc.y - u_globalDemEnc.x);
 }
 
 TerrainSample globalTileSample(vec2 vMerc, float lat) {
@@ -49,20 +51,21 @@ TerrainSample globalTileSample(vec2 vMerc, float lat) {
   vec2 f = px - vec2(i0);
   ivec2 hi = ivec2(255);
 
-  float e00 = decodeTerrarium(texelFetch(u_gTiles, ivec3(clamp(i0, ivec2(0), hi), slot), 0));
-  float e10 = decodeTerrarium(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(1, 0), ivec2(0), hi), slot), 0));
-  float e01 = decodeTerrarium(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(0, 1), ivec2(0), hi), slot), 0));
-  float e11 = decodeTerrarium(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(1, 1), ivec2(0), hi), slot), 0));
+  vec4 c00 = texelFetch(u_gTiles, ivec3(clamp(i0, ivec2(0), hi), slot), 0);
+  vec4 c10 = texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(1, 0), ivec2(0), hi), slot), 0);
+  vec4 c01 = texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(0, 1), ivec2(0), hi), slot), 0);
+  vec4 c11 = texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(1, 1), ivec2(0), hi), slot), 0);
 
-  float eN = decodeTerrarium(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(0, -1), ivec2(0), hi), slot), 0));
-  float eW = decodeTerrarium(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(-1, 0), ivec2(0), hi), slot), 0));
+  float e00 = decodeGlobalTileElev(c00);
+  float e10 = decodeGlobalTileElev(c10);
+  float e01 = decodeGlobalTileElev(c01);
+  float e11 = decodeGlobalTileElev(c11);
+
+  float eN = decodeGlobalTileElev(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(0, -1), ivec2(0), hi), slot), 0));
+  float eW = decodeGlobalTileElev(texelFetch(u_gTiles, ivec3(clamp(i0 + ivec2(-1, 0), ivec2(0), hi), slot), 0));
 
   float elev = mix(mix(e00, e10, f.x), mix(e01, e11, f.x), f.y);
-  float l00 = e00 > 0.5 ? 1.0 : 0.0;
-  float l10 = e10 > 0.5 ? 1.0 : 0.0;
-  float l01 = e01 > 0.5 ? 1.0 : 0.0;
-  float l11 = e11 > 0.5 ? 1.0 : 0.0;
-  float land = mix(mix(l00, l10, f.x), mix(l01, l11, f.x), f.y);
+  float land = mix(mix(c00.b, c10.b, f.x), mix(c01.b, c11.b, f.x), f.y);
 
   // Pixel spacing in metres at active zoom level
   float mPerPx = max(15.0, u_gMPerPx * max(0.15, cos(radians(lat))));
@@ -72,7 +75,7 @@ TerrainSample globalTileSample(vec2 vMerc, float lat) {
 }
 `;
 
-/** Streams zoom-adaptive AWS Open Data Terrarium elevation tiles into a WebGL2 texture array on demand. */
+/** Streams zoom-adaptive self-hosted Copernicus 500 m WebP elevation tiles into a WebGL2 texture array on demand. */
 export class GlobalTerrainTileGpu {
   private map: MapLibreMap | null = null;
   private tileTex: WebGLTexture | null = null;
@@ -83,7 +86,9 @@ export class GlobalTerrainTileGpu {
   private readonly slotUsedAt = new Map<number, number>();
   private readonly pending = new Set<string>();
   private readonly failedAt = new Map<string, number>();
-  private currentZ = 8;
+  private readonly bitmasks = new Map<number, Uint8Array>();
+  private meta: GlobalTerrainMeta | undefined;
+  private currentZ = 5;
   private lastOriginX = -1;
   private lastOriginY = -1;
   private lastCols = 0;
@@ -263,11 +268,29 @@ export class GlobalTerrainTileGpu {
     return victimSlot;
   }
 
+  setMeta(meta?: GlobalTerrainMeta): void {
+    if (this.meta === meta) return;
+    this.meta = meta;
+    this.bitmasks.clear();
+    if (meta?.tileBits) {
+      for (const [zStr, b64] of Object.entries(meta.tileBits)) {
+        this.bitmasks.set(Number(zStr), decodeTileBitmask(b64));
+      }
+    }
+  }
+
+  private hasTile(z: number, tx: number, ty: number): boolean {
+    if (!this.meta?.selfHosted) return false;
+    const bm = this.bitmasks.get(z);
+    return bm ? bitmaskHasTile(bm, z, tx, ty) : false;
+  }
+
   private fetchTile(gl: WebGL2RenderingContext, z: number, tx: number, ty: number, key: string, visible: Set<string>): void {
+    if (!this.hasTile(z, tx, ty)) return;
     this.pending.add(key);
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 6000) : null;
-    fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`, {
+    fetch(`${TERRAIN_BASE}/tiles/${z}/${tx}/${ty}.webp`, {
       signal: controller?.signal,
     })
       .finally(() => {

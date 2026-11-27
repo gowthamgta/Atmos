@@ -120,10 +120,16 @@ jobs:
           fi
           # Only publish the unified Kralveth AI global model (keep GitHub Pages compact under 800 MB)
           rm -rf site/ecmwf_ifs site/aifs site/blend
-          # Terrain data for model downscaling (excluding heavy static tiles to optimize deploy size; client streams Terrarium tiles directly)
-          cp -r data/terrain site/terrain
-          rm -rf site/terrain/L0 site/terrain/L1 site/terrain/L2
-          python -c "import json, os; p='site/terrain/index.json'; (lambda d: (d.update({'tiles': [], 'tilesL0': []}), json.dump(d, open(p, 'w'))))(json.load(open(p))) if os.path.exists(p) else None"
+          # Self-hosted Copernicus global 500 m WebP terrain (downloaded from our terrain release if built, else repo fallback)
+          mkdir -p site/terrain
+          if curl -sfL -o terrain.tar.gz "https://github.com/${GITHUB_REPOSITORY}/releases/download/terrain/global-terrain-500m.tar.gz"; then
+            tar -xzf terrain.tar.gz -C site/terrain
+            rm -f terrain.tar.gz
+          else
+            cp -r data/terrain/* site/terrain/
+            rm -rf site/terrain/L0 site/terrain/L1 site/terrain/L2
+            python -c "import json, os; p='site/terrain/index.json'; (lambda d: (d.update({'tiles': [], 'tilesL0': []}), json.dump(d, open(p, 'w'))))(json.load(open(p))) if os.path.exists(p) else None"
+          fi
           # deploy when a model was built, or when the terrain on the site differs from the repository's copy
           curl -sf -o live-terrain-index.json "$base/terrain/index.json" || true
           # GitHub Pages takes a site of at most 1 GB: say so plainly when it is over (the deploy may then be refused)

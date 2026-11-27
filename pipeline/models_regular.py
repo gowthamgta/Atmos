@@ -64,13 +64,13 @@ COARSE_GRID = Grid(C.IFS_LAT_MIN, C.IFS_LAT_MAX, C.IFS_LON_MIN, C.IFS_LON_MAX, 0
 # every step each forecast publishes (Open-Meteo): GFS hourly to +120 h then 3-hourly to +384 h, of which every 3 h to +120 h and every
 # 6 h after; AIGFS every 6 h to +384 h; AIFS every 6 h to +360 h. The map takes the first 10 days of each (the owner, 4 Nov 2026: the
 # forecast site was 838 MB of GitHub Pages' 1 GB; days 11 to 16 were about 95 MB). A run built shorter just publishes the steps it has.
-MAP_REACH_H = 240
-# ECMWF AIFS: runs for 10 days (240 h) with a 6-hour step interval (41 steps / +240 h)
-AIFS_FULL_REACH_H = 240
+MAP_REACH_H = 192
+# ECMWF AIFS: runs for 8 days (192 h) with a 6-hour step interval (33 steps / +192 h)
+AIFS_FULL_REACH_H = 192
 AIFS_STEPS = list(range(0, AIFS_FULL_REACH_H + 1, 6))
 LEVEL_SCALARS = level_scalars()                  # temperature, humidity and height at every pressure level
 
-# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +240 h (10 days).
+# ECMWF AIFS (single level, the open AI model): 25 km, every 6 hours to +192 h (8 days).
 AIFS = RegularModel(
     model_id="aifs", label="ECMWF AIFS", run_hours=(0, 6, 12, 18), step_hours=AIFS_STEPS, grid=COARSE_GRID,
     sources=[Source(
@@ -84,10 +84,10 @@ def _read_global_day1_ifs(run, step_h: int, target_grid: Grid, workdir: str | No
     import fetch_ifs
     return fetch_ifs.read_step_grid(run, step_h, target_grid, workdir=workdir)
 
-# Active regular models: AIFS (for blend input) and GLOBAL (ECMWF 9km/0.1deg Day 1 + AIFS 25km Days 2-10 worldwide full bundle)
+# Active regular models: AIFS (for blend input) and GLOBAL (Kralveth AI: 0.1deg Day 1 + 0.25deg Days 2-8 worldwide full bundle)
 GLOBAL_GRID = Grid(-85.0, 85.0, -180.0, 179.75, 0.25, "global-0.25")
 GLOBAL_DAY1_GRID = Grid(-85.0, 85.0, -180.0, 179.9, 0.1, "global-0.1-day1")
-GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 241, 6))
+GLOBAL_STEPS = list(range(0, 25, 3)) + list(range(30, 193, 6))
 GLOBAL_VARS = (
     ["temperature_2m", "relative_humidity_2m", "pressure_msl", "precipitation", "cloud_cover", "shortwave_radiation"]
     + CLOUD_LAYERS + SURFACE_UV + LEVEL_SCALARS + level_w() + level_uv()

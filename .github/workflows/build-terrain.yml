@@ -1,0 +1,52 @@
+name: build-terrain
+
+# One-time / on-demand builder for self-hosted global 500 m WebP terrain (z=5, 6, 8 + global grids)
+# derived directly from Copernicus GLO-30 COG Page 3 (~240 m) via HTTP Range requests.
+# Publishes `global-terrain-500m.tar.gz` to the `terrain` release so nwp.yml unpacks it in seconds.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/build_global_30m_terrain.py"
+      - ".github/workflows/build-terrain.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: build-terrain
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  terrain:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r requirements.txt tifffile imagecodecs scipy
+      - name: Build Copernicus 500 m self-hosted global terrain WebPs
+        run: |
+          mkdir -p terrain_pkg
+          cp -r data/terrain/* terrain_pkg/ || true
+          rm -rf terrain_pkg/L0 terrain_pkg/L1 terrain_pkg/L2
+          python build_global_30m_terrain.py --out terrain_pkg --workers 32
+          du -sh terrain_pkg
+          tar -czf "$RUNNER_TEMP/global-terrain-500m.tar.gz" -C terrain_pkg .
+          ls -lh "$RUNNER_TEMP/global-terrain-500m.tar.gz"
+      - name: Publish terrain release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Self-hosted Copernicus GLO-30 derived global 500 m WebP terrain (z=5, 6, 8 + global grids)."
+          gh release view terrain >/dev/null 2>&1 || gh release create terrain --title "Global Self-Hosted Terrain (500 m)" --notes "$notes" --latest=false
+          gh release edit terrain --notes "$notes"
+          gh release upload terrain "$RUNNER_TEMP/global-terrain-500m.tar.gz" --clobber

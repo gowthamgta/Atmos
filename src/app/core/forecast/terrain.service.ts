@@ -11,12 +11,34 @@ export const TERRAIN_BASE = typeof window !== 'undefined' && (window.location.ho
   ? '/terrain'
   : `${PAGES}/terrain`;
 
-/** Global 0.1° / 0.25° terrain metadata for rest-of-world downscaling. */
+/** Global 0.1° / 0.25° terrain metadata + self-hosted Copernicus 500 m tile bitmasks. */
 export interface GlobalTerrainMeta {
   min: number;
   max: number;
   fine: ForecastGrid & { file: string };
   model: ForecastGrid & { file: string };
+  selfHosted?: boolean;
+  maxZ?: number;
+  tileLevels?: number[];
+  tileBits?: Record<string, string>;
+}
+
+/** Decodes a compact base64 row-major bitmask for `(1 << z) x (1 << z)` tiles. */
+export function decodeTileBitmask(b64: string): Uint8Array {
+  if (typeof atob !== 'function') return new Uint8Array(0);
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export function bitmaskHasTile(bytes: Uint8Array, z: number, tx: number, ty: number): boolean {
+  const n = 1 << z;
+  if (tx < 0 || ty < 0 || tx >= n || ty >= n) return false;
+  const idx = ty * n + tx;
+  const byteIdx = idx >> 3;
+  if (byteIdx >= bytes.length) return false;
+  return (bytes[byteIdx] & (1 << (7 - (idx & 7)))) !== 0;
 }
 
 /** Contents of terrain/index.json, written by pipeline/build_terrain.py. */
@@ -131,16 +153,14 @@ function globalTileCoords(lat: number, lon: number, z = 8): { tx: number; ty: nu
   return { tx, ty, fx: ux - Math.floor(ux), fy: Math.min(Math.max(uy - Math.floor(uy), 0), 1) };
 }
 
-function sampleTerrariumTile(rgba: Uint8ClampedArray, fx: number, fy: number, lat: number, z = 8): { z: number; land: number; slope: [number, number] } {
+function sampleGlobalTile(rgba: Uint8ClampedArray, fx: number, fy: number, lat: number, z = 8, min = 0, max = 9000): { z: number; land: number; slope: [number, number] } {
   const px = fx * (GLOBAL_DEM_PX - 1);
   const py = fy * (GLOBAL_DEM_PX - 1);
   const at = (ix: number, iy: number): { z: number; l: number } => {
     const cx = Math.min(Math.max(ix, 0), GLOBAL_DEM_PX - 1);
     const cy = Math.min(Math.max(iy, 0), GLOBAL_DEM_PX - 1);
     const o = (cy * GLOBAL_DEM_PX + cx) * 4;
-    const raw = rgba[o] * 256 + rgba[o + 1] + rgba[o + 2] / 256 - 32768;
-    const z = Math.max(0, raw);
-    return { z, l: raw > 0.5 ? 1 : 0 };
+    return { z: decodeTerrainPixel(rgba[o], rgba[o + 1], rgba[o + 2], min, max).z, l: rgba[o + 2] / 255 };
   };
   const i0 = Math.floor(px), j0 = Math.floor(py);
   const rx = px - i0, ry = py - j0;
@@ -169,16 +189,20 @@ export class TerrainService {
   /** Tiles with a 90 m file (see TerrainMeta.tilesL0). */
   private presentL0: ReadonlySet<string> = new Set();
 
-  /** Fetches and decodes one zoom-adaptive Terrarium elevation tile globally for the click card outside South India. */
+  /** Fetches and decodes one self-hosted global 500 m WebP elevation tile for the click card. */
   prepareGlobalAt(lat: number, lon: number, z = 8): Promise<void> {
+    const gMeta = this.data()?.meta.global;
+    if (!gMeta?.selfHosted) return Promise.resolve();
+    const bitsRaw = gMeta.tileBits?.[String(z)];
     const { tx, ty } = globalTileCoords(lat, lon, z);
+    if (bitsRaw && !bitmaskHasTile(decodeTileBitmask(bitsRaw), z, tx, ty)) return Promise.resolve();
     const key = `${z}_${tx}_${ty}`;
     if (this.cpuGlobalTiles.has(key)) return Promise.resolve();
     const running = this.cpuGlobalLoading.get(key);
     if (running) return running;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 6000) : null;
-    const load = fetch(`https://elevation-tiles-prod.s3.amazonaws.com/terrarium/${z}/${tx}/${ty}.png`, {
+    const load = fetch(`${TERRAIN_BASE}/tiles/${z}/${tx}/${ty}.webp`, {
       signal: controller?.signal,
     })
       .finally(() => {
@@ -315,22 +339,25 @@ export class TerrainService {
     const wLon = ((((lon + 180) % 360) + 360) % 360) - 180;
     const cLat = Math.min(Math.max(lat, gMeta.fine.latMin), gMeta.fine.latMax);
     const fineG = sampleTerrain(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
-    const modelG = sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
+    const use01Model = !!(field && field.step < 0.15);
+    const modelG = use01Model ? fineG : sampleTerrain(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
     let fineZ = fineG.z;
     let fineLand = fineG.land;
     let fineSlope = slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max);
-    const z = 8;
+    const z = gMeta.maxZ ?? 8;
     const { tx, ty, fx, fy } = globalTileCoords(cLat, wLon, z);
     const gTile = this.cpuGlobalTiles.get(`${z}_${tx}_${ty}`);
     if (gTile) {
-      const res = sampleTerrariumTile(gTile, fx, fy, cLat, z);
+      const res = sampleGlobalTile(gTile, fx, fy, cLat, z, gMeta.min, gMeta.max);
       fineZ = res.z;
       fineLand = res.land;
       fineSlope = res.slope;
-    } else {
+    } else if (gMeta.selfHosted) {
       void this.prepareGlobalAt(cLat, wLon, z);
     }
-    const modelSlope = slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
+    const modelSlope = use01Model
+      ? slopeOf(t.globalFine, gMeta.fine, cLat, wLon, gMeta.min, gMeta.max)
+      : slopeOf(t.globalModel, gMeta.model, cLat, wLon, gMeta.min, gMeta.max);
     return {
       fine: fineZ,
       model: modelG.z,

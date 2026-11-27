@@ -259,7 +259,9 @@ void main() {
   bool usedGlobalTile = false;
 
   if (hasGlobalT) {
-    model = terrainAtEnc(u_demGlobalModel, u_globalModelGrid, u_globalModelSize, lat, lon, u_globalDemEnc);
+    model = u_grid.z < 0.15
+      ? terrainAtEnc(u_demGlobal, u_globalFineGrid, u_globalFineSize, lat, lon, u_globalDemEnc)
+      : terrainAtEnc(u_demGlobalModel, u_globalModelGrid, u_globalModelSize, lat, lon, u_globalDemEnc);
     TerrainSample gts = globalTileSample(v_merc, lat);
     if (gts.valid > 0.5) {
       usedGlobalTile = true;
@@ -458,7 +460,10 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   /** Provide (or clear) the terrain, and the model ground matching the shown model's resolution. */
   setTerrain(data: TerrainData | null, modelBitmap: ImageBitmap | null): void {
     if (this.terrain === data && this.modelBitmap === modelBitmap) return;
-    if (this.terrain !== data) this.tiles.setTerrain(data, this.gl);   // new terrain: the tiles held are dropped
+    if (this.terrain !== data) {
+      this.tiles.setTerrain(data, this.gl);   // new terrain: the tiles held are dropped
+      this.globalTiles.setMeta(data?.meta?.global);
+    }
     this.terrain = data;
     this.modelBitmap = modelBitmap;
     this.map?.triggerRepaint();
