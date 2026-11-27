@@ -253,7 +253,8 @@ export class TerrainService {
     if (!t) return null;
     const { domain, min, max, smooth: smoothGrid, grid } = t.meta;
     const gMeta = t.meta.global;
-    const isInsideRegional = lat <= domain.latMax && lat >= domain.latMin && lon >= domain.lonMin && lon <= domain.lonMax;
+    const isGlobalField = !!(field && field.step * field.nx >= 359);
+    const isInsideRegional = !isGlobalField && lat <= domain.latMax && lat >= domain.latMin && lon >= domain.lonMin && lon <= domain.lonMax;
 
     // Inside regional domain: check if 90m tile is already decoded in memory
     if (isInsideRegional) {

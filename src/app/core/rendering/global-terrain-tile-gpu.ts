@@ -3,17 +3,16 @@ import { isPhone } from '../ui/device-profile';
 
 const TILE_PX = 256;
 const RETRY_MS = 30_000;
-const MIN_ZOOM = 4.2;
+const MIN_ZOOM = 2.5;
 
 export const GLOBAL_TILE_ARRAY_UNIT = 14;
 export const GLOBAL_TILE_MAP_UNIT = 15;
 
-/** Selects the optimal elevation zoom level based on user map zoom. */
+/** Selects the optimal elevation zoom level based on user map zoom (progressive up to 500 m max). */
 export function getAdaptiveGlobalZ(mapZoom: number): number {
-  if (mapZoom >= 11.5) return 12; // ~38 m (Copernicus 30m)
-  if (mapZoom >= 9.0) return 11;  // ~75 m (Copernicus 90m equivalent)
-  if (mapZoom >= 6.5) return 10;  // ~150 m
-  return 8;                       // ~500 m
+  if (mapZoom >= 6.5) return 8;   // ~500 m (highest resolution)
+  if (mapZoom >= 4.5) return 6;   // ~2 km (fast medium-res)
+  return 5;                       // ~4 km (instant low-res overview)
 }
 
 /** GLSL snippet for zoom-adaptive global Terrarium elevation tiles (500m -> 150m -> 75m -> 38m). */

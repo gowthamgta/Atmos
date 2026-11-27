@@ -97,7 +97,7 @@ def test_hrv_patch_day_and_night():
 
 def test_tile_specs_cover_globe():
     specs = global_sat._tile_specs(256)
-    assert len(specs) == 8
+    assert len(specs) == 72
     west = min(b["west"] for _, b, _, _ in specs)
     east = max(b["east"] for _, b, _, _ in specs)
     south = min(b["south"] for _, b, _, _ in specs)

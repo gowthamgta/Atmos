@@ -38,10 +38,10 @@ EARTH_R_KM = 6378.137
 GEO_R_KM = 42164.0
 
 GRID_W = 2400
-TILE_COLS = 4
-TILE_ROWS = 2
+TILE_COLS = 12
+TILE_ROWS = 6
 RGB_TILE_W = 2560
-IR_TILE_W = 1280
+IR_TILE_W = 1920
 
 
 def _merc_y(lat: np.ndarray | float) -> np.ndarray | float:
@@ -78,6 +78,8 @@ class SatDisk:
     h_m: float
     r_eq: float
     r_pol: float
+    vis_x_rad: np.ndarray | None = None
+    vis_y_rad: np.ndarray | None = None
 
 
 def mercator_lat_lon_box(west: float, south: float, east: float, north: float, w: int, h: int) -> tuple[np.ndarray, np.ndarray]:
@@ -97,12 +99,12 @@ def mercator_lat_lon(w: int = GRID_W, h: int = GRID_H) -> tuple[np.ndarray, np.n
 
 
 def _tile_specs(tile_w: int) -> list[tuple[str, dict[str, float], int, int]]:
-    """Return [(id, bounds_dict, w, h), ...] for the 4x2 global Web Mercator HD tiles."""
+    """Return [(id, bounds_dict, w, h), ...] for the 12x6 global Web Mercator HD tiles."""
     specs = []
     lon_step = (EAST - WEST) / TILE_COLS
-    lat_splits = (NORTH, 0.0, SOUTH)
+    lat_splits = np.linspace(NORTH, SOUTH, TILE_ROWS + 1)
     for row in range(TILE_ROWS):
-        n_lat, s_lat = lat_splits[row], lat_splits[row + 1]
+        n_lat, s_lat = float(lat_splits[row]), float(lat_splits[row + 1])
         dy = float(_merc_y(n_lat)) - float(_merc_y(s_lat))
         dx = math.radians(lon_step)
         th = round(tile_w * dy / dx)
@@ -352,16 +354,18 @@ def _load_goes_disk(name: str, sub_lon: float, buckets: tuple[str, ...], now_utc
         k01 = _latest_goes_key(bucket, now_utc, "C01")
         with concurrent.futures.ThreadPoolExecutor(2) as ex:
             f_ir = ex.submit(_download_goes_nc, bucket, k13, 1)
-            f_vis = ex.submit(_download_goes_nc, bucket, k01, 2) if k01 else None
+            f_vis = ex.submit(_download_goes_nc, bucket, k01, 1) if k01 else None
             ir_res = f_ir.result()
             vis_res = f_vis.result() if f_vis else None
         if ir_res is None:
             continue
         bt, x_rad, y_rad, lon_0, h_m, r_eq, r_pol = ir_res
         vis = None
-        if vis_res is not None and vis_res[0].shape == bt.shape:
+        vx, vy = None, None
+        if vis_res is not None:
             vis = np.clip(vis_res[0], 0.0, 1.5).astype(np.float16)
-        return SatDisk(name, lon_0, vis, bt.astype(np.float16), x_rad, y_rad, h_m, r_eq, r_pol)
+            vx, vy = vis_res[1], vis_res[2]
+        return SatDisk(name, lon_0, vis, bt.astype(np.float16), x_rad, y_rad, h_m, r_eq, r_pol, vx, vy)
     return None
 
 
@@ -428,30 +432,36 @@ def _load_himawari_disk(now_utc: datetime) -> SatDisk | None:
                 del scn13
 
                 vis = None
+                vx, vy = None, None
                 if len(k03) == 10:
                     p03 = [os.path.join(tmp, os.path.basename(k)) for k in k03]
                     scn03 = Scene(reader="ahi_hsd", filenames=p03)
                     scn03.load(["B03"])
                     b3 = np.asarray(scn03["B03"].values, dtype=np.float32)
+                    area03 = scn03["B03"].attrs["area"]
+                    xm3, ym3 = area03.get_proj_coords()
                     del scn03
-                    # Downsample 0.5 km B03 to match 2 km B13 (5500x5500)
-                    stride = max(1, b3.shape[0] // bt.shape[0])
-                    b3_2k = b3[stride // 2::stride, stride // 2::stride]
-                    if b3_2k.shape == bt.shape:
-                        vis = np.clip(b3_2k / 100.0, 0.0, 1.5).astype(np.float16)
+                    # Stride 0.5 km B03 by 2x -> 1 km native visible (~11000x11000)
+                    stride = max(1, b3.shape[0] // (bt.shape[0] * 2))
+                    b3_1k = b3[stride // 2::stride, stride // 2::stride]
+                    vx = np.asarray(xm3[0, stride // 2::stride], dtype=np.float64) / h_m
+                    vy = np.asarray(ym3[stride // 2::stride, 0], dtype=np.float64) / h_m
+                    if vx[0] > vx[-1]:
+                        vx = vx[::-1]
+                        b3_1k = b3_1k[:, ::-1]
+                    if vy[0] < vy[-1]:
+                        vy = vy[::-1]
+                        b3_1k = b3_1k[::-1, :]
+                    vis = np.clip(b3_1k / 100.0, 0.0, 1.5).astype(np.float16)
 
                 if x_rad[0] > x_rad[-1]:
                     x_rad = x_rad[::-1]
                     bt = bt[:, ::-1]
-                    if vis is not None:
-                        vis = vis[:, ::-1]
                 if y_rad[0] < y_rad[-1]:
                     y_rad = y_rad[::-1]
                     bt = bt[::-1, :]
-                    if vis is not None:
-                        vis = vis[::-1, :]
                 print(f"global_sat: loaded Himawari-9 full disk {slot:%H:%MZ} (vis={'yes' if vis is not None else 'no'})", flush=True)
-                return SatDisk("himawari-9", sub_lon, vis, bt.astype(np.float16), x_rad, y_rad, h_m, r_eq, r_pol)
+                return SatDisk("himawari-9", sub_lon, vis, bt.astype(np.float16), x_rad, y_rad, h_m, r_eq, r_pol, vx, vy)
         except Exception as e:
             print(f"global_sat: Himawari-9 full-disk {slot:%H:%MZ} failed ({type(e).__name__}: {e})", flush=True)
     return None
@@ -735,8 +745,10 @@ def _render_patch(
             ir_arrays.append(bt)
             ir_zeniths.append(z_bt)
         if want_rgb:
+            vx = d.vis_x_rad if d.vis_x_rad is not None else d.x_rad
+            vy = d.vis_y_rad if d.vis_y_rad is not None else d.y_rad
             vis = (
-                reproject_goes_to_global(d.vis.astype(np.float32), d.x_rad, d.y_rad, d.sub_lon, d.h_m, d.r_eq, d.r_pol, lat=lat, lon=lon)
+                reproject_goes_to_global(d.vis.astype(np.float32), vx, vy, d.sub_lon, d.h_m, d.r_eq, d.r_pol, lat=lat, lon=lon)
                 if d.vis is not None else None
             )
             rgb = _hrv_patch(vis, bt, sza, twilight)
