@@ -14,6 +14,7 @@ test.describe('forecast & meteogram', () => {
     await page.getByRole('button', { name: /Menu/ }).click();
     await expect(page.locator('app-menu-panel')).toBeVisible();
     await expect(page.locator('app-menu-panel')).toContainText('Rain accumulation');
+    await page.getByRole('tab', { name: 'Models' }).click();
     await expect(page.locator('app-menu-panel')).toContainText('Kralveth AI');
     expect(errors).toEqual([]);
   });

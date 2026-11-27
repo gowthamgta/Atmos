@@ -30,6 +30,13 @@ export class UrlStateService {
     // a link wins; with none, the view of the last visit (windy.com opens where it was left)
     const fromLink = parseViewState(typeof location === 'undefined' ? '' : location.hash);
     this.restore(Object.keys(fromLink).length ? fromLink : this.saved());
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('hashchange', () => {
+        const h = parseViewState(location.hash);
+        if (Object.keys(h).length) this.restore(h);
+      });
+    }
     effect(() => {
       // everything that goes into the address is read here, so a change to any of them writes it again
       const view: ViewState = {
@@ -93,6 +100,10 @@ export class UrlStateService {
 
   /** Applies a view read from the address. Anything the app does not know is left out; the rest of the app starts as usual. */
   private restore(view: ViewState): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
     if (view.camera) this.camera.set(view.camera);
     if (view.model && FORECAST_MODELS.some(m => m.id === view.model) && view.model !== this.catalog.activeModelId()) this.state.selectModel(view.model);
     if (view.layer) {
