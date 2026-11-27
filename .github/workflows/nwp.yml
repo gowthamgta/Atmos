@@ -65,7 +65,7 @@ jobs:
           repo="${GITHUB_REPOSITORY#*/}"
           base="https://${owner}.github.io/${repo}"
           force="${{ inputs.force && '--force' || '' }}"
-          models=$(python run.py --list-models)
+          models="global"
           # a run started on time (by cron-job.org, or by hand) builds the newest cycle (00Z, 06Z, 12Z or 18Z) that began at least 7
           # hours ago, so it is published by now (4 hours made nearly every run wait, up to 2.5 hours). It is worked out from the
           # clock, so a late start still asks for a cycle that is out. A forced run, or one started by a push, takes whatever is newest.
@@ -112,16 +112,14 @@ jobs:
           # tropical-cyclone tracks near India (a small JSON file; the live one is kept when there is nothing new)
           python cyclones.py --out site --live-url "$base/cyclones/tracks.json" $force \
             || echo "::warning::cyclones failed; the live file stays in place"
-          # Kralveth Blend: 1 km high-accuracy multi-model blend synthesized from active ECMWF models
-          python blend.py --site site $force || echo "::warning::blend failed; live copy stays in place"
-          # mirror live blend and global as fallbacks only if their build failed
-          if ! python mirror.py --site site --base-url "$base" --models blend global; then
+          # mirror live global as fallback only if its build failed
+          if ! python mirror.py --site site --base-url "$base" --models global; then
             echo "::warning::live model could not be copied; not deploying, so that it is not dropped from the site"
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Only publish blend (not raw ecmwf_ifs / aifs) to keep GitHub Pages compact
-          rm -rf site/ecmwf_ifs site/aifs
+          # Only publish the unified Kralveth AI global model (keep GitHub Pages compact under 800 MB)
+          rm -rf site/ecmwf_ifs site/aifs site/blend
           # Terrain data for model downscaling (excluding heavy static tiles to optimize deploy size; client streams Terrarium tiles directly)
           cp -r data/terrain site/terrain
           rm -rf site/terrain/L0 site/terrain/L1 site/terrain/L2

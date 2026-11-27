@@ -218,7 +218,7 @@ class RegularModel:
         self.sources = sources
         self.day1_sources = day1_sources
         self.RUN_HOURS = run_hours
-        self.LIVE_FORMAT = 4           # v4 = 0.1 deg O1280 Day 1 + 10-day AIFS WebP
+        self.LIVE_FORMAT = 5           # v5 = 0.1 deg O1280 Day 1 + 10-day AIFS WebP (8-bit upper air, <800MB)
         self.STEP_HOURS = step_hours
         all_sources = list(sources) + (list(day1_sources) if day1_sources else [])
         provided = {k for s in all_sources for k in s.vars} | {k for s in all_sources for w in s.winds for k in w[:2]}

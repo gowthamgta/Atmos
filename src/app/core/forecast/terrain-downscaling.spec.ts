@@ -35,7 +35,7 @@ describe('90 m downscaling registry', () => {
     // pipeline/build_terrain.py writes these (MODEL_KMS); the published terrain/index.json lists the same four
     const published = [9, 10, 13, 28];
     const ground = Object.fromEntries(FORECAST_MODELS.map(m => [m.id, nearestModelKm(published, m.groundKm)]));
-    expect(ground).toEqual({ global: 28, blend: 9 });
+    expect(ground).toEqual({ global: 28 });
     for (const m of FORECAST_MODELS) expect(m.groundKm).toBeGreaterThanOrEqual(m.gridKm);  // a picture is never finer than its model
   });
 });

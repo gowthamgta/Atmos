@@ -169,8 +169,8 @@ describe('the model list', () => {
       expect(m.apiId).toBeTruthy();
       expect(m.reachHours).toBeGreaterThan(0);
     }
-    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id)).toEqual(['global', 'blend']);
-    expect(forecastModelById('blend').centre).toBe('Kralveth');
+    expect(FORECAST_MODELS.filter(m => m.ai).map(m => m.id)).toEqual(['global']);
+    expect(forecastModelById('global').centre).toBe('Kralveth');
   });
 });
 

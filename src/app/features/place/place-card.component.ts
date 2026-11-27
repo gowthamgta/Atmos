@@ -137,7 +137,7 @@ export function firstNumber(text: string | undefined): number | null {
             <button type="button" class="runline" (click)="panels.toggle('models')" [attr.aria-expanded]="panels.open() === 'models'" aria-haspopup="dialog" [title]="runTitle()">
               <span class="status-dot" [class.ok]="runTone() === 'ok'" [class.warn]="runTone() === 'warn'" [class.bad]="runTone() === 'bad'"></span>
               <span class="run-text">{{ modelBadgeText() }} · {{ runText() }}</span>
-              <span class="run-badge">{{ inspector.point()?.modelId === 'global' ? (globalIsDay1() ? 'ECMWF 9km' : 'ECMWF AIFS') : runBadge() }}</span>
+              <span class="run-badge">{{ inspector.point()?.modelId === 'global' ? (globalIsDay1() ? 'Kralveth 9km' : 'Kralveth AI') : runBadge() }}</span>
             </button>
           } @else if (inspector.busy()) {
             <div class="note busy"><span class="spinner" aria-hidden="true"></span>Loading…</div>
@@ -347,7 +347,7 @@ export class PlaceCardComponent {
   });
   protected readonly modelBadgeText = computed(() => {
     const p = this.inspector.point();
-    if (p?.modelId === 'global') return this.globalIsDay1() ? 'ECMWF 9 km' : 'ECMWF AIFS 25 km';
+    if (p?.modelId === 'global') return this.globalIsDay1() ? 'Kralveth AI 9 km' : 'Kralveth AI 25 km';
     const m = this.catalog.model();
     return `${m.short} ${m.gridKm} km`;
   });
