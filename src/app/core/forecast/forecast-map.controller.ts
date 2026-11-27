@@ -802,17 +802,28 @@ export class ForecastMapController {
       const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
       this.loader.prefetch(uVar, ahead);
       this.loader.prefetch(vVar, ahead);
+      const gA = stepGrid(manifest, hA);
+      const gB = stepGrid(manifest, hB);
+      let dUA = decodeFieldBitmap(uA, uMin, uMax);
+      let dUB = decodeFieldBitmap(uB, uMin, uMax);
+      let dVA = decodeFieldBitmap(vA, vMin, vMax);
+      let dVB = decodeFieldBitmap(vB, vMin, vMax);
+      if (gA.nx !== gB.nx || gA.ny !== gB.ny) {
+        dUB = dUA;
+        dVB = dVA;
+      }
       return {
-        grid: manifest.grid,
-        uA: decodeFieldBitmap(uA, uMin, uMax),
-        uB: decodeFieldBitmap(uB, uMin, uMax),
-        vA: decodeFieldBitmap(vA, vMin, vMax),
-        vB: decodeFieldBitmap(vB, vMin, vMax),
+        grid: gA,
+        uA: dUA,
+        uB: dUB,
+        vA: dVA,
+        vB: dVB,
         mix,
       };
     };
 
     const loadGlobal = async () => {
+      if (manifest && (manifest.model === 'global' || manifest.grid.step * manifest.grid.nx >= 359)) return undefined;
       const gMan = await this.globalForecast.ensureManifest();
       if (!gMan || !gMan.vars[uVar] || !gMan.vars[vVar]) return undefined;
       const gTimes = gMan.steps.map(s => Date.parse(s.valid));
@@ -831,12 +842,22 @@ export class ForecastMapController {
         this.globalForecast.getField(vVar, hA), this.globalForecast.getField(vVar, hB),
       ]);
       if (!uA || !uB || !vA || !vB) return undefined;
+      const gA = stepGrid(gMan, hA);
+      const gB = stepGrid(gMan, hB);
+      let dUA = decodeFieldBitmap(uA, uMin, uMax);
+      let dUB = decodeFieldBitmap(uB, uMin, uMax);
+      let dVA = decodeFieldBitmap(vA, vMin, vMax);
+      let dVB = decodeFieldBitmap(vB, vMin, vMax);
+      if (gA.nx !== gB.nx || gA.ny !== gB.ny) {
+        dUB = dUA;
+        dVB = dVA;
+      }
       return {
-        grid: gMan.grid,
-        uA: decodeFieldBitmap(uA, uMin, uMax),
-        uB: decodeFieldBitmap(uB, uMin, uMax),
-        vA: decodeFieldBitmap(vA, vMin, vMax),
-        vB: decodeFieldBitmap(vB, vMin, vMax),
+        grid: gA,
+        uA: dUA,
+        uB: dUB,
+        vA: dVA,
+        vB: dVB,
         mix,
       };
     };
