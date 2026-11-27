@@ -308,9 +308,9 @@ export function spawnRegion(view: ViewState, grid: ForecastGrid): SpawnRegion {
  * does not leave the animation thin for the rest of the visit, and a device that can only just keep up does not swing between two counts.
  */
 export class AdaptiveCount {
-  static readonly SLOW_MS = 28;
-  static readonly FAST_MS = 18.5;
-  static readonly SLOW_FOR_MS = 1000;
+  static readonly SLOW_MS = 19.2;
+  static readonly FAST_MS = 17.2;
+  static readonly SLOW_FOR_MS = 800;
   static readonly FAST_FOR_MS = 6000;
 
   private ema = 16.7;

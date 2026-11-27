@@ -111,7 +111,7 @@ export class ForecastMapController {
     this.layer = new ScalarFieldLayer();
     map.addLayer(this.layer, beforeId);
     // the particle step needs no log, tan or cos per particle (see particle-system.ts), so these counts cost less than 1800 and 11000 did
-    this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 2600 : 16000);
+    this.windLayer = new WindParticlesLayer(window.innerWidth < 700 ? 2200 : 8000);
     map.addLayer(this.windLayer, beforeId); // added second, so the streaks draw over the colour field
     this.perf.probe('streaks', () => String(this.windLayer?.particleCount ?? 0));
     this.addIsobarLayers(map, beforeId);

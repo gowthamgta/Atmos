@@ -50,6 +50,6 @@ export function gpuRenderer(): string {
 export const RELIEF_CHOICE_KEY = 'atmosiq.relief.choice';
 
 /** Below this many frames a second (median, the map drawing) the device counts as weak. */
-export const WEAK_FPS = 36;
+export const WEAK_FPS = 50;
 /** The pixel ratio a weak device draws the map at (at most): a third fewer pixels to colour on a 2x screen, still sharp. */
 export const WEAK_PIXEL_RATIO = 1.5;

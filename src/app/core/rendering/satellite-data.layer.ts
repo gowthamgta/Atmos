@@ -65,8 +65,9 @@ vec4 sampleK(sampler2D t, vec2 px) {
   vec2 p = px - 0.5;
   ivec2 i = ivec2(floor(p));
   vec2 f = p - vec2(i);
+  vec2 s = f * f * (3.0 - 2.0 * f);
   vec4 a = texK(t, i), b = texK(t, i + ivec2(1, 0)), c = texK(t, i + ivec2(0, 1)), d = texK(t, i + ivec2(1, 1));
-  float wa = (1.0 - f.x) * (1.0 - f.y) * a.w, wb = f.x * (1.0 - f.y) * b.w, wc = (1.0 - f.x) * f.y * c.w, wd = f.x * f.y * d.w;
+  float wa = (1.0 - s.x) * (1.0 - s.y) * a.w, wb = s.x * (1.0 - s.y) * b.w, wc = (1.0 - s.x) * s.y * c.w, wd = s.x * s.y * d.w;
   float w = wa + wb + wc + wd;
   if (w < 1e-4) return vec4(0.0);
   return vec4((a.rgb * wa + b.rgb * wb + c.rgb * wc + d.rgb * wd) / w, min(1.0, w * 1.5));

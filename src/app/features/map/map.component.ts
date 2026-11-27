@@ -592,7 +592,7 @@ export class MapComponent implements OnInit, OnDestroy {
       }
       layer.setBounds(t.bounds);
       layer.setFrames([{ key: t.url, url: t.url }]);
-      layer.setSoften(false);
+      layer.setSoften(true);
       layer.setPosition(0, opacity);
     }
     for (const [id, layer] of this.hdSatelliteTiles) {

@@ -53,32 +53,25 @@ uniform vec2 u_flowCount;   // nodes across and down
 in vec2 v_merc;
 out vec4 outColor;
 
-vec4 weights(float t) {
-  float t2 = t * t;
-  float t3 = t2 * t;
-  return vec4(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
-}
-
 // The pictures are stored with straight (not premultiplied) colour, so that faint cloud keeps its exact colour; every filter below
 // works on premultiplied values.
 vec4 premultiplied(vec4 c) {
   return vec4(c.rgb * c.a, c.a);
 }
 
-vec4 bicubic(sampler2D tex, vec2 px) {
+// Smooth C1 Hermite filter over the 4 surrounding texels (4x fewer texture reads than 16-tap bicubic, with zero ringing).
+vec4 smoothSample(sampler2D tex, vec2 px) {
   vec2 p = px - 0.5;
-  ivec2 i1 = ivec2(floor(p));
-  vec2 f = p - vec2(i1);
-  vec4 wx = weights(f.x);
-  vec4 wy = weights(f.y);
-  vec4 sum = vec4(0.0);
-  for (int j = 0; j < 4; j++) {
-    for (int i = 0; i < 4; i++) {
-      ivec2 q = clamp(i1 + ivec2(i - 1, j - 1), ivec2(0), u_size - 1);
-      sum += premultiplied(texelFetch(tex, q, 0)) * (wx[i] * wy[j]);
-    }
-  }
-  return clamp(sum, 0.0, 1.0);
+  ivec2 i0 = ivec2(floor(p));
+  vec2 f = p - vec2(i0);
+  vec2 s = f * f * (3.0 - 2.0 * f);
+  ivec2 q00 = clamp(i0, ivec2(0), u_size - 1);
+  ivec2 q10 = clamp(i0 + ivec2(1, 0), ivec2(0), u_size - 1);
+  ivec2 q01 = clamp(i0 + ivec2(0, 1), ivec2(0), u_size - 1);
+  ivec2 q11 = clamp(i0 + ivec2(1, 1), ivec2(0), u_size - 1);
+  vec4 top = mix(premultiplied(texelFetch(tex, q00, 0)), premultiplied(texelFetch(tex, q10, 0)), s.x);
+  vec4 bot = mix(premultiplied(texelFetch(tex, q01, 0)), premultiplied(texelFetch(tex, q11, 0)), s.x);
+  return clamp(mix(top, bot, s.y), 0.0, 1.0);
 }
 
 // The mean of the picture (bilinear) at four diagonal points r picture pixels from px: a small, even blur.
@@ -88,15 +81,16 @@ vec4 around(sampler2D tex, vec2 px, float r) {
                + premultiplied(textureLod(tex, (px + vec2(r, -r)) * inv, 0.0)) + premultiplied(textureLod(tex, (px + vec2(-r, -r)) * inv, 0.0)));
 }
 
-// Magnified: the colour is softened a little (so the picture's pixels do not show as blocks), and then the
-// cloud's edge (its opacity) is softened, so the boundary of a cloud is a smooth curve, not a staircase. Colour stays premultiplied
-// and never exceeds the opacity.
+// Magnified: C1 Hermite curve across 4 surrounding texels, then an optional soften pass so compressed pixels and cloud edges stay smooth.
+// Colour stays premultiplied and never exceeds opacity.
 vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnifying) {
   if (!magnifying) return premultiplied(textureGrad(tex, uv, gx, gy)); // explicit gradients: safe inside a per-pixel branch
-  vec4 c = bicubic(tex, px);
-  if (c.a <= 0.001 && around(tex, px, 1.0).a <= 0.001) return c; // clear ground, well away from any cloud
-  c.rgb = mix(c.rgb, around(tex, px, 0.4).rgb, 0.5 * u_soften);
-  c.a = clamp(mix(c.a, around(tex, px, 0.5).a, 0.6 * u_soften), 0.0, 1.0);
+  vec4 c = smoothSample(tex, px);
+  if (u_soften <= 0.001) return c;
+  vec4 halo = around(tex, px, 0.55);
+  if (c.a <= 0.001 && halo.a <= 0.001) return c; // clear ground, well away from any cloud
+  c.rgb = mix(c.rgb, halo.rgb, 0.55 * u_soften);
+  c.a = clamp(mix(c.a, halo.a, 0.65 * u_soften), 0.0, 1.0);
   c.rgb = min(c.rgb, vec3(c.a));
   return c;
 }

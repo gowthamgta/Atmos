@@ -53,7 +53,7 @@ const RIBBON = new Float32Array(Array.from({ length: TAIL_SEGMENTS + 1 }, (_, k)
 
 const TAIL_SECONDS = 0.32; // the streak's length in seconds of travel (about 2.2 px per m/s of wind on screen)
 const LINE_WIDTH_CSS_PX = 1.4;
-const MIN_COUNT = 2500;
+const MIN_COUNT = 2000;
 
 /** MapLibre custom layer animating wind as particle streaks over the map. */
 export class WindParticlesLayer implements CustomLayerInterface {

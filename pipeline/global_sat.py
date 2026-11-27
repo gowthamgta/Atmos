@@ -220,12 +220,36 @@ def reproject_goes_to_global(
     zen = sat_zenith(lat, lon, lon_0_deg)
     dx = float(x_rad[1] - x_rad[0])
     dy = float(y_rad[1] - y_rad[0])
-    ix = np.round((x_out - float(x_rad[0])) / dx).astype(int)
-    iy = np.round((y_out - float(y_rad[0])) / dy).astype(int)
-    in_bounds = visible & (zen <= max_view) & (ix >= 0) & (ix < len(x_rad)) & (iy >= 0) & (iy < len(y_rad))
-    ix_c = np.clip(ix, 0, len(x_rad) - 1)
-    iy_c = np.clip(iy, 0, len(y_rad) - 1)
-    sampled = np.where(in_bounds, cmi_k[iy_c, ix_c], np.nan)
+    nx = len(x_rad)
+    ny = len(y_rad)
+    fx = (x_out - float(x_rad[0])) / dx
+    fy = (y_out - float(y_rad[0])) / dy
+    in_bounds = visible & (zen <= max_view) & (fx >= 0.0) & (fx <= nx - 1.0) & (fy >= 0.0) & (fy <= ny - 1.0)
+    x0 = np.clip(np.floor(fx).astype(int), 0, nx - 1)
+    y0 = np.clip(np.floor(fy).astype(int), 0, ny - 1)
+    x1 = np.clip(x0 + 1, 0, nx - 1)
+    y1 = np.clip(y0 + 1, 0, ny - 1)
+    wx = np.clip(fx - x0, 0.0, 1.0)
+    wy = np.clip(fy - y0, 0.0, 1.0)
+
+    v00 = cmi_k[y0, x0]
+    v10 = cmi_k[y0, x1]
+    v01 = cmi_k[y1, x0]
+    v11 = cmi_k[y1, x1]
+
+    w00 = (1.0 - wx) * (1.0 - wy) * np.isfinite(v00)
+    w10 = wx * (1.0 - wy) * np.isfinite(v10)
+    w01 = (1.0 - wx) * wy * np.isfinite(v01)
+    w11 = wx * wy * np.isfinite(v11)
+    wsum = w00 + w10 + w01 + w11
+    val = (
+        np.where(np.isfinite(v00), v00, 0.0) * w00
+        + np.where(np.isfinite(v10), v10, 0.0) * w10
+        + np.where(np.isfinite(v01), v01, 0.0) * w01
+        + np.where(np.isfinite(v11), v11, 0.0) * w11
+    )
+    valid = in_bounds & (wsum > 1e-6)
+    sampled = np.where(valid, val / np.maximum(wsum, 1e-6), np.nan)
     return sampled.astype(np.float32)
 
 
@@ -250,10 +274,25 @@ def reproject_disk_rgb(
     fx = cx + (x_out / x_span) * radius_px
     fy = cy - (y_out / x_span) * radius_px
     ok = visible & (zen <= max_view) & (fx >= 0) & (fx < nx - 1) & (fy >= 0) & (fy < ny - 1)
-    ix = np.clip(np.round(fx).astype(int), 0, nx - 1)
-    iy = np.clip(np.round(fy).astype(int), 0, ny - 1)
-    sampled = img_rgb[iy, ix]
-    ok = ok & (sampled.sum(axis=-1) > 8.0)
+    x0 = np.clip(np.floor(fx).astype(int), 0, nx - 1)
+    y0 = np.clip(np.floor(fy).astype(int), 0, ny - 1)
+    x1 = np.clip(x0 + 1, 0, nx - 1)
+    y1 = np.clip(y0 + 1, 0, ny - 1)
+    wx = np.clip(fx - x0, 0.0, 1.0)[..., None]
+    wy = np.clip(fy - y0, 0.0, 1.0)[..., None]
+
+    v00 = img_rgb[y0, x0].astype(np.float32)
+    v10 = img_rgb[y0, x1].astype(np.float32)
+    v01 = img_rgb[y1, x0].astype(np.float32)
+    v11 = img_rgb[y1, x1].astype(np.float32)
+
+    w00 = (1.0 - wx) * (1.0 - wy) * (v00.sum(axis=-1, keepdims=True) > 8.0)
+    w10 = wx * (1.0 - wy) * (v10.sum(axis=-1, keepdims=True) > 8.0)
+    w01 = (1.0 - wx) * wy * (v01.sum(axis=-1, keepdims=True) > 8.0)
+    w11 = wx * wy * (v11.sum(axis=-1, keepdims=True) > 8.0)
+    wsum = w00 + w10 + w01 + w11
+    ok = ok & (wsum[..., 0] > 1e-6)
+    sampled = (v00 * w00 + v10 * w10 + v01 * w01 + v11 * w11) / np.maximum(wsum, 1e-6)
     out = np.zeros((lat.shape[0], lon.shape[1], 3), dtype=np.float32)
     out[ok] = sampled[ok]
     return out, np.where(ok, zen, 999.0).astype(np.float32)
