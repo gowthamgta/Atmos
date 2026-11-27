@@ -38,10 +38,10 @@ EARTH_R_KM = 6378.137
 GEO_R_KM = 42164.0
 
 GRID_W = 2400
-TILE_COLS = 12
-TILE_ROWS = 6
-RGB_TILE_W = 2560
-IR_TILE_W = 1920
+TILE_COLS = 8
+TILE_ROWS = 4
+RGB_TILE_W = 2048
+IR_TILE_W = 1536
 
 
 def _merc_y(lat: np.ndarray | float) -> np.ndarray | float:
@@ -225,12 +225,14 @@ def reproject_goes_to_global(
     fx = (x_out - float(x_rad[0])) / dx
     fy = (y_out - float(y_rad[0])) / dy
     in_bounds = visible & (zen <= max_view) & (fx >= 0.0) & (fx <= nx - 1.0) & (fy >= 0.0) & (fy <= ny - 1.0)
-    x0 = np.clip(np.floor(fx).astype(int), 0, nx - 1)
-    y0 = np.clip(np.floor(fy).astype(int), 0, ny - 1)
+    fx_s = np.where(in_bounds, fx, 0.0)
+    fy_s = np.where(in_bounds, fy, 0.0)
+    x0 = np.clip(np.floor(fx_s).astype(int), 0, nx - 1)
+    y0 = np.clip(np.floor(fy_s).astype(int), 0, ny - 1)
     x1 = np.clip(x0 + 1, 0, nx - 1)
     y1 = np.clip(y0 + 1, 0, ny - 1)
-    wx = np.clip(fx - x0, 0.0, 1.0)
-    wy = np.clip(fy - y0, 0.0, 1.0)
+    wx = np.clip(fx_s - x0, 0.0, 1.0)
+    wy = np.clip(fy_s - y0, 0.0, 1.0)
 
     v00 = cmi_k[y0, x0]
     v10 = cmi_k[y0, x1]
@@ -274,12 +276,14 @@ def reproject_disk_rgb(
     fx = cx + (x_out / x_span) * radius_px
     fy = cy - (y_out / x_span) * radius_px
     ok = visible & (zen <= max_view) & (fx >= 0) & (fx < nx - 1) & (fy >= 0) & (fy < ny - 1)
-    x0 = np.clip(np.floor(fx).astype(int), 0, nx - 1)
-    y0 = np.clip(np.floor(fy).astype(int), 0, ny - 1)
+    fx_s = np.where(ok, fx, 0.0)
+    fy_s = np.where(ok, fy, 0.0)
+    x0 = np.clip(np.floor(fx_s).astype(int), 0, nx - 1)
+    y0 = np.clip(np.floor(fy_s).astype(int), 0, ny - 1)
     x1 = np.clip(x0 + 1, 0, nx - 1)
     y1 = np.clip(y0 + 1, 0, ny - 1)
-    wx = np.clip(fx - x0, 0.0, 1.0)[..., None]
-    wy = np.clip(fy - y0, 0.0, 1.0)[..., None]
+    wx = np.clip(fx_s - x0, 0.0, 1.0)[..., None]
+    wy = np.clip(fy_s - y0, 0.0, 1.0)[..., None]
 
     v00 = img_rgb[y0, x0].astype(np.float32)
     v10 = img_rgb[y0, x1].astype(np.float32)
@@ -661,12 +665,22 @@ def _sample_wms_onto_grid(wms: tuple[np.ndarray, float, float] | None, lat: np.n
         return None
     u_x = (lons[in_lon] - w_lon) / (e_lon - w_lon)
     y_norm = (_Y_NORTH - _merc_y(lats)) / (_Y_NORTH - _Y_SOUTH)
-    ix = np.clip(np.round(u_x * (ww - 1)).astype(int), 0, ww - 1)[None, :]
-    iy = np.clip(np.round(y_norm * (wh - 1)).astype(int), 0, wh - 1)[:, None]
+    fx = (u_x * (ww - 1))[None, :]
+    fy = (y_norm * (wh - 1))[:, None]
+    x0 = np.clip(np.floor(fx).astype(int), 0, ww - 1)
+    y0 = np.clip(np.floor(fy).astype(int), 0, wh - 1)
+    x1 = np.clip(x0 + 1, 0, ww - 1)
+    y1 = np.clip(y0 + 1, 0, wh - 1)
+    wx = (fx - x0)[..., None]
+    wy = (fy - y0)[..., None]
+    p00 = rgba[y0, x0] * (1.0 - wx) * (1.0 - wy)
+    p10 = rgba[y0, x1] * wx * (1.0 - wy)
+    p01 = rgba[y1, x0] * (1.0 - wx) * wy
+    p11 = rgba[y1, x1] * wx * wy
     out = np.zeros((lat.shape[0], lon.shape[1], 4), dtype=np.float32)
     cols = np.where(in_lon)[0][None, :]
     rows = np.arange(lat.shape[0])[:, None]
-    out[rows, cols] = rgba[iy, ix]
+    out[rows, cols] = p00 + p10 + p01 + p11
     return out
 
 
@@ -890,20 +904,32 @@ def build_global_mosaics(
         bt_dir = os.path.join(out_dir, "bt-global")
         os.makedirs(rgb_dir, exist_ok=True)
         os.makedirs(bt_dir, exist_ok=True)
-        for tid, tb, tw, th in _tile_specs(RGB_TILE_W):
+
+        def render_rgb_tile(spec):
+            tid, tb, tw, th = spec
             t_lat, t_lon = mercator_lat_lon_box(tb["west"], tb["south"], tb["east"], tb["north"], tw, th)
             t_rgb, t_rgb_ok, _, _ = _render_patch(t_lat, t_lon, now_utc, disks, eumet_layers, regional_dirs, slider_fallbacks, want_rgb=True, want_ir=False)
             if t_rgb is not None and t_rgb_ok.any():
                 fn = f"{stamp}_{tid}.webp"
                 _save_rgb_webp(os.path.join(rgb_dir, fn), t_rgb, t_rgb_ok)
-                rgb_tiles_meta.append({"id": tid, "bounds": tb, "file": fn})
-        for tid, tb, tw, th in _tile_specs(IR_TILE_W):
+                return {"id": tid, "bounds": tb, "file": fn}
+            return None
+
+        def render_ir_tile(spec):
+            tid, tb, tw, th = spec
             t_lat, t_lon = mercator_lat_lon_box(tb["west"], tb["south"], tb["east"], tb["north"], tw, th)
             _, _, t_ir, t_ir_ok = _render_patch(t_lat, t_lon, now_utc, disks, eumet_layers, regional_dirs, slider_fallbacks, want_rgb=False, want_ir=True)
             if t_ir is not None and t_ir_ok.any():
                 fn = f"{stamp}_{tid}.png"
                 Image.fromarray(S.encode_bt(t_ir), "L").save(os.path.join(bt_dir, fn), "PNG", optimize=True)
-                ir_tiles_meta.append({"id": tid, "bounds": tb, "file": fn})
+                return {"id": tid, "bounds": tb, "file": fn}
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor(4) as pool:
+            if rgb_ok.any():
+                rgb_tiles_meta = [m for m in pool.map(render_rgb_tile, _tile_specs(RGB_TILE_W)) if m is not None]
+            if ir_ok.any():
+                ir_tiles_meta = [m for m in pool.map(render_ir_tile, _tile_specs(IR_TILE_W)) if m is not None]
 
     if rgb_ov is not None and rgb_ok.any():
         rgb_dir = os.path.join(out_dir, "rgb-global")

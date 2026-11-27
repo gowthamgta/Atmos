@@ -419,7 +419,10 @@ export class MapComponent implements OnInit, OnDestroy {
         const op = this.satellite.opacity();
         const own = frame?.own;
         const shader = !!own && isShaderKind(own.kind);
-        if (frame && !shader) this.syncHdRgbTiles(frame, op);
+        if (frame && !shader) {
+          this.syncHdRgbTiles(frame, op);
+          this.syncRegionalRgb(frame, op);
+        }
         if (frame && shader) this.syncHdDataTiles(frame, op, this.satellite.custom());
       }
     });
@@ -528,6 +531,7 @@ export class MapComponent implements OnInit, OnDestroy {
   // --- Meteosat satellite pictures: one GPU layer with smooth (bicubic) magnification and a cross-fade between pictures ---
 
   private satelliteLayer: SatelliteImageLayer | null = null;
+  private regionalSatelliteLayer: SatelliteImageLayer | null = null;
   private readonly hdSatelliteTiles = new Map<string, SatelliteImageLayer>();
   private satelliteKeys = '';
 
@@ -563,15 +567,23 @@ export class MapComponent implements OnInit, OnDestroy {
     return false;
   }
 
+  private clearRegionalRgb(): void {
+    if (this.map && this.regionalSatelliteLayer && this.map.getLayer(this.regionalSatelliteLayer.id)) {
+      this.map.removeLayer(this.regionalSatelliteLayer.id);
+    }
+    this.regionalSatelliteLayer = null;
+  }
+
   /** The flat picture (the browser-drawn products have their own layer). */
   private removeFlatLayers(): void {
     this.clearHdRgbTiles();
+    this.clearRegionalRgb();
     if (this.map && this.satelliteLayer && this.map.getLayer(this.satelliteLayer.id)) this.map.removeLayer(this.satelliteLayer.id);
     this.satelliteLayer = null;
     this.satelliteKeys = '';
   }
 
-  /** Loads only the intersecting 3.9 km HD RGB sector tiles when zoomed in (zoom >= 3). */
+  /** Loads only the intersecting high-res global sector tiles when zoomed in (zoom >= 3). */
   private syncHdRgbTiles(frame: SatelliteFrame | undefined, opacity: number): void {
     const map = this.map;
     if (!map || !frame?.tiles?.length || map.getZoom() < 3.0) {
@@ -592,7 +604,7 @@ export class MapComponent implements OnInit, OnDestroy {
       }
       layer.setBounds(t.bounds);
       layer.setFrames([{ key: t.url, url: t.url }]);
-      layer.setSoften(true);
+      layer.setSoften(false);
       layer.setPosition(0, opacity);
     }
     for (const [id, layer] of this.hdSatelliteTiles) {
@@ -601,6 +613,23 @@ export class MapComponent implements OnInit, OnDestroy {
         this.hdSatelliteTiles.delete(id);
       }
     }
+  }
+
+  /** High-resolution 1.25 km Meteosat-9 India inset feathered seamlessly over the global mosaic when in view. */
+  private syncRegionalRgb(frame: SatelliteFrame | undefined, opacity: number): void {
+    const reg = frame?.regional;
+    if (!this.map || !reg || !this.tileInView(reg.bounds) || this.map.getZoom() < 3.0) {
+      this.clearRegionalRgb();
+      return;
+    }
+    if (!this.regionalSatelliteLayer) {
+      this.regionalSatelliteLayer = new SatelliteImageLayer({ id: 'satellite-india-rgb', featherFraction: 0.06 });
+      this.map.addLayer(this.regionalSatelliteLayer, this.observationAnchorId());
+    }
+    this.regionalSatelliteLayer.setBounds(reg.bounds);
+    this.regionalSatelliteLayer.setFrames([{ key: reg.url, url: reg.url }]);
+    this.regionalSatelliteLayer.setSoften(false);
+    this.regionalSatelliteLayer.setPosition(0, opacity);
   }
 
   /**
@@ -630,9 +659,11 @@ export class MapComponent implements OnInit, OnDestroy {
       this.satelliteLayer.setFrames(frames.map(f => ({ key: f.url, url: f.url })));
     }
     this.satelliteLayer.setFlows(this.satellite.flows());
-    this.satelliteLayer.setSoften(!frames[0]?.own);
+    this.satelliteLayer.setSoften(true);
     this.satelliteLayer.setPosition(position, opacity);
-    this.syncHdRgbTiles(frames[Math.round(position)] ?? frames[frames.length - 1], opacity);
+    const currentFrame = frames[Math.round(position)] ?? frames[frames.length - 1];
+    this.syncHdRgbTiles(currentFrame, opacity);
+    this.syncRegionalRgb(currentFrame, opacity);
   }
 
   // --- Our own products drawn in the browser from the data pack (satellite-data.layer.ts): IR enhanced, WV difference, custom RGB ---

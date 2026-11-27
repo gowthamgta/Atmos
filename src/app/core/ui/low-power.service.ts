@@ -24,10 +24,10 @@ export class LowPowerService {
       this.apply(map);
       return;
     }
-    // the frame rate over a few seconds once the first pictures are in (the first frames, building the map, are left out)
+    // the frame rate over a couple of seconds once the first pictures are in
     setTimeout(() => this.measureFps(fps => {
       if (fps < WEAK_FPS) this.apply(map);
-    }), 3000);
+    }, 2000), 1500);
   }
 
   private measureFps(done: (fps: number) => void, forMs = 4000): void {

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { maxPixelRatio, radarMosaicMaxPx, weakHardware } from './device-profile';
 
 describe('device profile', () => {
-  it('draws a phone screen at up to twice the pixels, a desktop at its native ratio', () => {
-    expect(maxPixelRatio(true, 3)).toBe(2);
-    expect(maxPixelRatio(true, 1.5)).toBe(1.5);
-    expect(maxPixelRatio(false, 3)).toBe(3);
+  it('caps high-DPI phone and desktop screens at 1.5x for smooth 60 FPS shading', () => {
+    expect(maxPixelRatio(true, 3)).toBe(1.5);
+    expect(maxPixelRatio(true, 1.25)).toBe(1.25);
+    expect(maxPixelRatio(false, 3)).toBe(1.5);
   });
 
   it('keeps the radar mosaic smaller on a phone, but never below the stations\' own 0.5 km grid in range', () => {

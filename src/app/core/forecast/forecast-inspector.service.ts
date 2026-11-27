@@ -66,6 +66,7 @@ export class ForecastInspectorService {
   private lastRunAt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private staleTimer: ReturnType<typeof setTimeout> | null = null;
+  private pointValuesCache: { key: string; values: Record<string, number>; place?: { district: string | null; state: string | null }; ground?: ReturnType<TerrainService['pointTerrain']>; rev?: { name: string; region: string } | null } | null = null;
 
   constructor() {
     // Recompute whenever the point, the time or the model run changes (e.g. while scrubbing).
@@ -194,18 +195,23 @@ export class ForecastInspectorService {
       const { a, b, mix } = bracketSteps(times, time);
       const hA = activeManifest.steps[a].h;
       const hB = activeManifest.steps[b].h;
-      const [place] = await Promise.all([
-        this.districts.lookup(lat, lon),
-        this.terrain.ensureLoaded().then(() => useRegional ? this.terrain.prepareAt(lat, lon) : this.terrain.prepareGlobalAt(lat, sampleLon)).catch(() => null),
-      ]);
       const level = this.state.level();
       const detailed = this.detail();
       const wanted = detailed ? inspectVars(level) : summaryVars(this.state.activeLayer());
-      const values: Record<string, number> = {};
-      let done = 0;
-      if (detailed) this.progress.set({ done: 0, total: wanted.length });
+      const pointCacheKey = `${lat}|${sampleLon}|${time}|${level}|${activeManifest.model}|${activeManifest.run}|${activeManifest.build ?? ''}`;
+      const hit = this.pointValuesCache?.key === pointCacheKey ? this.pointValuesCache : null;
+      const [place] = hit?.place
+        ? [hit.place]
+        : await Promise.all([
+            this.districts.lookup(lat, lon),
+            this.terrain.ensureLoaded().then(() => useRegional ? this.terrain.prepareAt(lat, lon) : this.terrain.prepareGlobalAt(lat, sampleLon)).catch(() => null),
+          ]);
+      const values: Record<string, number> = hit ? { ...hit.values } : {};
+      const missing = wanted.filter(id => !(id in values));
+      let done = wanted.length - missing.length;
+      if (detailed) this.progress.set({ done, total: wanted.length });
       await Promise.all(
-        wanted.map(async id => {
+        missing.map(async id => {
           const info = activeManifest.vars[id];
           if (!info) {
             values[id] = NaN;
@@ -229,6 +235,12 @@ export class ForecastInspectorService {
           if (detailed && my === this.token) this.progress.set({ done, total: wanted.length });
         })
       );
+      if (my !== this.token) return;
+      const ground = hit?.ground ?? this.terrain.pointTerrain(lat, sampleLon, useRegional ? this.catalog.model().groundKm : 28, activeManifest.grid);
+      const isGlobalLand = !useRegional && !place.district && !place.state && (ground?.landFine ?? 0) >= 0.25 && !this.label();
+      const rev = hit ? hit.rev : (isGlobalLand ? await this.placeSearch.reverse(lat, sampleLon).catch(() => null) : null);
+      if (my !== this.token) return;
+      this.pointValuesCache = { key: pointCacheKey, values: { ...values }, place, ground, rev };
       // the two layers worked out in the browser: the rain in the chosen period, and the category every model agrees on
       const layerId = this.state.activeLayerId();
       const from = this.state.rangeStartMs();
@@ -258,10 +270,6 @@ export class ForecastInspectorService {
         if (agreed) values['extreme'] = sampleGrid(agreed.values, INDIA_GRID, lat, lon);
       }
       if (my !== this.token) return; // a newer request replaced this one
-      const ground = this.terrain.pointTerrain(lat, sampleLon, useRegional ? this.catalog.model().groundKm : 28, activeManifest.grid);
-      const isGlobalLand = !useRegional && !place.district && !place.state && (ground?.landFine ?? 0) >= 0.25 && !this.label();
-      const rev = isGlobalLand ? await this.placeSearch.reverse(lat, sampleLon).catch(() => null) : null;
-      if (my !== this.token) return;
       this.point.set({
         lat,
         lon,

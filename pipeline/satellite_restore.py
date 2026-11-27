@@ -14,12 +14,38 @@ import requests
 FOLDERS = ("bt", "bt-h9", "bt-global", "rgb-global", "rgb-h9", "rgb-msg", "amv")
 
 
+def _fetch_all(urls: list[str], get) -> dict[str, bytes]:
+    if get is requests.get and len(urls) > 2:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def fetch_one(u: str) -> tuple[str, bytes | None]:
+            try:
+                r = get(u, timeout=60)
+                return (u, r.content if r.status_code == 200 else None)
+            except requests.RequestException:
+                return (u, None)
+
+        with ThreadPoolExecutor(12) as pool:
+            return {u: body for u, body in pool.map(fetch_one, urls) if body is not None}
+
+    got: dict[str, bytes] = {}
+    for u in urls:
+        try:
+            r = get(u, timeout=60)
+            if r.status_code == 200:
+                got[u] = r.content
+        except requests.RequestException:
+            pass
+    return got
+
+
 def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:
-    """Download each folder's index.json and its frames into `out`; returns how many frames were restored."""
+    """Download each folder's index.json and its frames (plus HD tiles) into `out`; returns how many frames were restored."""
     count = 0
+    root = base.rstrip("/")
     for folder in folders:
         try:
-            res = get(f"{base.rstrip('/')}/{folder}/index.json", timeout=30)
+            res = get(f"{root}/{folder}/index.json", timeout=30)
             if res.status_code != 200:
                 continue
             index = res.json()
@@ -32,20 +58,26 @@ def restore(base: str, out: str, folders=FOLDERS, get=requests.get) -> int:
             names = [os.path.basename(n) for n in ([frame["file"]] if "file" in frame else list(frame.get("files", {}).values()))]
             if not names or not all(n.endswith((".png", ".webp", ".json")) for n in names):
                 continue
-            got = {}
-            for name in names:
-                try:
-                    r = get(f"{base.rstrip('/')}/{folder}/{name}", timeout=60)
-                except requests.RequestException:
-                    break
-                if r.status_code != 200:
-                    break
-                got[name] = r.content
-            if len(got) != len(names):
+            tile_entries = [t for t in frame.get("tiles", []) if isinstance(t, dict) and str(t.get("file", "")).endswith((".png", ".webp"))]
+            tile_names = [os.path.basename(t["file"]) for t in tile_entries]
+            urls = [f"{root}/{folder}/{n}" for n in names + tile_names]
+            got = _fetch_all(urls, get)
+            if not all(f"{root}/{folder}/{n}" in got for n in names):
                 continue
-            for name, body in got.items():
-                with open(os.path.join(out, folder, name), "wb") as f:
-                    f.write(body)
+            for n in names:
+                with open(os.path.join(out, folder, n), "wb") as f:
+                    f.write(got[f"{root}/{folder}/{n}"])
+            if tile_entries:
+                kept_tiles = []
+                for t in tile_entries:
+                    tn = os.path.basename(t["file"])
+                    body = got.get(f"{root}/{folder}/{tn}")
+                    if body is None:
+                        continue
+                    with open(os.path.join(out, folder, tn), "wb") as f:
+                        f.write(body)
+                    kept_tiles.append(t)
+                frame = {**frame, "tiles": kept_tiles}
             kept.append(frame)
             count += 1
         index["frames"] = kept

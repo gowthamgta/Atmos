@@ -40,3 +40,20 @@ def test_restores_frames_of_several_files_only_whole(tmp_path):
     index = json.load(open(tmp_path / "rgb-h9" / "index.json"))
     assert [f["time"] for f in index["frames"]] == ["t1"]
     assert not os.path.exists(tmp_path / "rgb-h9" / "tc2.webp")
+
+
+def test_restores_frame_tiles_and_prunes_missing(tmp_path):
+    site = {
+        "https://x/rgb-global/index.json": Res(200, js={"frames": [{
+            "time": "t1", "file": "f1.webp",
+            "tiles": [{"id": "0_0", "file": "f1_0_0.webp"}, {"id": "0_1", "file": "f1_0_1.webp"}],
+        }]}),
+        "https://x/rgb-global/f1.webp": Res(200, b"OV"),
+        "https://x/rgb-global/f1_0_0.webp": Res(200, b"T0"),
+        "https://x/rgb-global/f1_0_1.webp": Res(404),
+    }
+    get = lambda url, timeout: site.get(url, Res(404))
+    assert R.restore("https://x/", str(tmp_path), folders=("rgb-global",), get=get) == 1
+    assert open(tmp_path / "rgb-global" / "f1_0_0.webp", "rb").read() == b"T0"
+    index = json.load(open(tmp_path / "rgb-global" / "index.json"))
+    assert [t["id"] for t in index["frames"][0]["tiles"]] == ["0_0"]

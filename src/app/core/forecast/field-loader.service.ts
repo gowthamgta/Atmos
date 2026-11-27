@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { blendFields, encodeFieldBitmap } from './derived-fields';
-import { decodeFieldBitmap, isEmptyField } from './field-decode';
+import { decodeFieldBitmap, isEmptyFieldBitmap } from './field-decode';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastManifest, stepGrid } from './forecast.model';
 
@@ -40,6 +40,19 @@ export class FieldLoaderService {
   /** Cache key; includes model, run and build so a new run, a rebuilt run or another model never reuses old pixels. */
   static key(model: string, run: string, varId: string, stepHour: number, build = ''): string {
     return `${model}/${run}${build ? `.${build}` : ''}/${varId}/${stepHour}`;
+  }
+
+  /** Synchronous cache hit lookup (null if not yet downloaded): lets layer switches and playback paint on the exact current frame. */
+  peek(varId: string, stepHour: number): ImageBitmap | null {
+    const manifest = this.catalog.manifest();
+    if (!manifest) return null;
+    const key = FieldLoaderService.key(manifest.model, manifest.run, varId, stepHour, manifest.build);
+    const hit = this.cache.get(key) ?? null;
+    if (hit) {
+      this.cache.delete(key);
+      this.cache.set(key, hit);
+    }
+    return hit;
   }
 
   /**
@@ -94,7 +107,7 @@ export class FieldLoaderService {
     const near = levelNeighbours(varId);
     const info = manifest.vars[varId];
     if (!near || !info || !manifest.vars[near.belowId] || !manifest.vars[near.aboveId]) return bitmap;
-    if (!isEmptyField(decodeFieldBitmap(bitmap, info.min, info.max))) return bitmap;
+    if (!isEmptyFieldBitmap(bitmap)) return bitmap;
     this.emptyLevels.add(this.emptyKey(manifest, varId));
     bitmap.close();
     return this.interpolateLevelBitmap(manifest, varId, stepHour, priority);

@@ -17,9 +17,9 @@ export function radarMosaicMaxPx(phone: boolean): number {
   return phone ? 2300 : 4096;
 }
 
-/** Screen pixel ratio cap: phones draw at up to 2x (the forecast shading is light enough there), desktops at native. */
-export function maxPixelRatio(phone: boolean, deviceRatio: number): number {
-  return phone ? Math.min(deviceRatio, 2) : deviceRatio;
+/** Screen pixel ratio cap: capped at 1.5x on phones and high-DPI desktops so fullscreen GPU weather shaders stay locked at 60 FPS. */
+export function maxPixelRatio(_phone: boolean, deviceRatio: number): number {
+  return Math.min(deviceRatio, 1.5);
 }
 
 /**
@@ -50,6 +50,6 @@ export function gpuRenderer(): string {
 export const RELIEF_CHOICE_KEY = 'atmosiq.relief.choice';
 
 /** Below this many frames a second (median, the map drawing) the device counts as weak. */
-export const WEAK_FPS = 50;
-/** The pixel ratio a weak device draws the map at (at most): a third fewer pixels to colour on a 2x screen, still sharp. */
-export const WEAK_PIXEL_RATIO = 1.5;
+export const WEAK_FPS = 52;
+/** The pixel ratio a weak device draws the map at (at most): drops GPU fill load so slower GPUs stay smooth. */
+export const WEAK_PIXEL_RATIO = 1.25;

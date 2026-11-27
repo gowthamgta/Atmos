@@ -17,6 +17,7 @@ export interface SatelliteFrame {
   product: SatelliteProduct;
   url: string;
   tiles?: readonly SatelliteHdTile[];
+  regional?: { bounds: GeoBounds; url: string };
   own: { kind: OwnKind; satellite: OwnSatellite; bounds: GeoBounds; dataUrl: string; dataBounds?: GeoBounds; minK: number; spanK: number };
 }
 
@@ -211,15 +212,18 @@ export class SatelliteService {
     this.ownEmpty.set(null);
 
     try {
-      const cacheBust = `?t=${Date.now()}`;
-      const [btRes, rgbRes] = await Promise.all([
-        fetch(`${SATELLITE_SITE}bt-global/index.json${cacheBust}`, { cache: 'no-cache' }),
-        mode === 'rgb' ? fetch(`${SATELLITE_SITE}rgb-global/index.json${cacheBust}`, { cache: 'no-cache' }) : Promise.resolve(null),
+      const cacheBust = `?t=${Math.floor(Date.now() / 30_000)}`;
+      const [btRes, rgbRes, msgRes] = await Promise.all([
+        fetch(`${SATELLITE_SITE}bt-global/index.json${cacheBust}`),
+        mode === 'rgb' ? fetch(`${SATELLITE_SITE}rgb-global/index.json${cacheBust}`) : Promise.resolve(null),
+        mode === 'rgb' ? fetch(`${SATELLITE_SITE}rgb-msg/index.json${cacheBust}`).catch(() => null) : Promise.resolve(null),
       ]);
       if (token !== this.loadToken || this.source() !== mode) return;
 
       const btIdx = btRes.ok ? ((await btRes.json()) as GlobalIndex) : null;
+      const msgIdx = msgRes?.ok ? ((await msgRes.json()) as GlobalIndex) : null;
       const btBase = `${SATELLITE_SITE}bt-global/`;
+      const msgBase = `${SATELLITE_SITE}rgb-msg/`;
       const btFrames = btIdx?.frames ?? [];
       const btMinK = btIdx?.offsetK ?? 180;
       const btSpanK = (btIdx?.stepK ?? 0.5) * 255;
@@ -235,16 +239,30 @@ export class SatelliteService {
         const published = Date.parse(rgbRes.headers.get('last-modified') ?? '');
         if (Number.isFinite(published)) this.updatedAtMs.set(published);
         const rgbBase = `${SATELLITE_SITE}rgb-global/`;
+        const msgRgbFrames = (msgIdx?.frames ?? [])
+          .map(m => ({ t: Date.parse(m.time), file: m.files?.rgb }))
+          .filter((m): m is { t: number; file: string } => Number.isFinite(m.t) && !!m.file);
+        const latestMsgRgb = msgRgbFrames[msgRgbFrames.length - 1];
+        if (latestMsgRgb && msgIdx?.bounds) {
+          this.regionalRgb.set({ bounds: msgIdx.bounds, url: msgBase + latestMsgRgb.file, timeMs: latestMsgRgb.t });
+        } else {
+          this.regionalRgb.set(null);
+        }
         const list: SatelliteFrame[] = [];
         for (const f of rgbIdx.frames ?? []) {
           const timeMs = Date.parse(f.time);
           if (!f.file || !Number.isFinite(timeMs)) continue;
           const matchingBt = btFrames.find(b => b.time === f.time)?.file ?? latestBt?.file ?? '';
+          const bestMsg = msgRgbFrames.reduce<{ t: number; file: string } | null>(
+            (best, m) => (Math.abs(m.t - timeMs) <= 45 * 60_000 && (!best || Math.abs(m.t - timeMs) < Math.abs(best.t - timeMs)) ? m : best),
+            null
+          );
           list.push({
             timeMs,
             product: SATELLITE_HRV,
             url: rgbBase + f.file,
             tiles: f.tiles?.map(t => ({ id: t.id, bounds: t.bounds, url: rgbBase + t.file })),
+            regional: bestMsg && msgIdx?.bounds ? { bounds: msgIdx.bounds, url: msgBase + bestMsg.file } : undefined,
             own: {
               kind: 'rgb',
               satellite: 'h9',

@@ -11,7 +11,8 @@ import { CycloneData, cycloneGeoJson, loadCyclones } from './cyclone-tracks';
 import { LIGHTNING_AGE_COLOURS, LIGHTNING_WINDOW_S, ImdLightning, ageStrokes, imdStrokes, lightningGeoJson, lightningShown, loadImdLightning, loadLightning, markArrivals } from './lightning';
 import { MapLayerService } from '../services/map-layer.service';
 import type { Stroke } from './lightning';
-import { decodeFieldBitmap } from './field-decode';
+import { decodeFieldBitmap, decodeStridedFieldBitmap } from './field-decode';
+import { LowPowerService } from '../ui/low-power.service';
 import { FieldLoaderService } from './field-loader.service';
 import { ForecastCatalogService } from './forecast-catalog.service';
 import { ForecastInspectorService } from './forecast-inspector.service';
@@ -45,6 +46,7 @@ export class ForecastMapController {
   private readonly meteogram = inject(MeteogramService);
   private readonly perf = inject(PerfMeterService);
   private readonly globalForecast = inject(GlobalForecastService);
+  private readonly lowPower = inject(LowPowerService);
 
   private map: MapLibreMap | null = null;
   private globalLayer: ScalarFieldLayer | null = null;
@@ -103,8 +105,8 @@ export class ForecastMapController {
   attach(map: MapLibreMap, beforeId?: string): void {
     this.detach();
     this.map = map;
-    // Start loading global manifest immediately in parallel with regional manifest
-    void this.globalForecast.ensureManifest();
+    // Start loading global manifest only when a regional model is active (global model already loads via FieldLoaderService).
+    if (this.catalog.model().id !== 'global') void this.globalForecast.ensureManifest();
     void this.terrain.ensureLoaded().catch(() => undefined);
     this.globalLayer = new ScalarFieldLayer('forecast-global-layer');
     map.addLayer(this.globalLayer, beforeId);
@@ -154,6 +156,8 @@ export class ForecastMapController {
     this.globalLayer = null;
     this.layer = null;
     this.windLayer = null;
+    this.windCacheKey = '';
+    this.windCacheFrame = null;
     this.map = null;
   }
 
@@ -229,7 +233,7 @@ export class ForecastMapController {
     const modelGround = onTerrain ? this.terrain.modelGround(terrainData!, consensusLayer ? 9 : this.catalog.model().groundKm).bitmap : null;
     layer.setTerrain(onTerrain ? terrainData : null, modelGround);
     layer.setRelief(this.state.relief() ? RELIEF_STRENGTH : 0);
-    layer.setLite(isPhone()); // phones take the cheaper relief slope; larger screens take the full one
+    layer.setLite(isPhone() || this.lowPower.lowPower()); // lighter relief slope on phones and slower GPUs
     if (!terrainData) {
       this.terrain.ensureLoaded().catch(err => console.warn('[forecast] terrain unavailable; showing model resolution', err));
     }
@@ -272,26 +276,34 @@ export class ForecastMapController {
     const hB = manifest.steps[b].h;
     const prefix = `${manifest.model}/${manifest.run}`;
     const varIds = def.varId2 ? [def.varId, def.varId2] : [def.varId];
+    const applyBitmaps = (bitmaps: ImageBitmap[]) => {
+      const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap, grid: stepGrid(manifest, h) });
+      layer.setGrid(manifest.grid);
+      layer.setLayer(def, [info.min, info.max], info2 ? [info2.min, info2.max] : undefined);
+      layer.setFrames(
+        frame(def.varId, hA, bitmaps[0]),
+        frame(def.varId, hB, bitmaps[1]),
+        mix,
+        def.varId2 ? frame(def.varId2, hA, bitmaps[2]) : null,
+        def.varId2 ? frame(def.varId2, hB, bitmaps[3]) : null,
+        time
+      );
+      // the moment a picked layer's data is on the GPU (its picture is on the next frame): what the layer-switch benchmark times
+      performance.mark('forecast-layer-shown', { detail: def.id });
+      // Warm only the immediate next step so switching layers never competes with large 0.1° prefetch bursts.
+      const nextH = manifest.steps[b + 1]?.h;
+      if (nextH !== undefined) for (const v of varIds) this.loader.prefetch(v, [nextH]);
+      this.prefetchOtherLayers(manifest, [hA, hB]);
+    };
+    const cached = varIds.flatMap(v => [this.loader.peek(v, hA), this.loader.peek(v, hB)]);
+    if (cached.every((bmp): bmp is ImageBitmap => bmp !== null)) {
+      applyBitmaps(cached);
+      return;
+    }
     void Promise.all(varIds.flatMap(v => [this.loader.get(v, hA), this.loader.get(v, hB)]))
       .then(bitmaps => {
         if (my !== this.token || !this.layer) return; // a newer selection replaced this one
-        const frame = (v: string, h: number, bitmap: ImageBitmap) => ({ key: `${prefix}/${v}/${h}`, bitmap, grid: stepGrid(manifest, h) });
-        layer.setGrid(manifest.grid);
-        layer.setLayer(def, [info.min, info.max], info2 ? [info2.min, info2.max] : undefined);
-        layer.setFrames(
-          frame(def.varId, hA, bitmaps[0]),
-          frame(def.varId, hB, bitmaps[1]),
-          mix,
-          def.varId2 ? frame(def.varId2, hA, bitmaps[2]) : null,
-          def.varId2 ? frame(def.varId2, hB, bitmaps[3]) : null,
-          time
-        );
-        // the moment a picked layer's data is on the GPU (its picture is on the next frame): what the layer-switch benchmark times
-        performance.mark('forecast-layer-shown', { detail: def.id });
-        // Warm the neighbours so scrubbing and playback stay smooth.
-        const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
-        for (const v of varIds) this.loader.prefetch(v, ahead);
-        this.prefetchOtherLayers(manifest, [hA, hB]);
+        applyBitmaps(bitmaps);
       })
       .catch(err => console.warn('[forecast] field load failed', err));
   }
@@ -741,14 +753,19 @@ export class ForecastMapController {
     const { a, b, mix } = bracketSteps(validTimes, time);
     const minVal = info.min ?? (info as any)?.lo ?? 0;
     const maxVal = info.max ?? (info as any)?.hi ?? 100;
-    void Promise.all([this.loader.get(spec.varId, manifest.steps[a].h), this.loader.get(spec.varId, manifest.steps[b].h)])
+    const hA = manifest.steps[a].h;
+    const hB = manifest.steps[b].h;
+    void Promise.all([this.loader.get(spec.varId, hA), this.loader.get(spec.varId, hB)])
       .then(([bmpA, bmpB]) => {
         if (my !== this.isobarToken || !this.map) return;
-        const fa = decodeFieldBitmap(bmpA, minVal, maxVal);
-        const fb = decodeFieldBitmap(bmpB, minVal, maxVal);
-        const blended = new Float32Array(fa.length);
-        for (let i = 0; i < fa.length; i++) blended[i] = fa[i] * (1 - mix) + fb[i] * mix;
-        const geojson = isobarGeoJson(blended, manifest.grid, spec.step);
+        const fa = decodeStridedFieldBitmap(bmpA, stepGrid(manifest, hA), minVal, maxVal, 720);
+        const fb = decodeStridedFieldBitmap(bmpB, stepGrid(manifest, hB), minVal, maxVal, 720);
+        const blended = new Float32Array(fa.values.length);
+        for (let i = 0; i < blended.length; i++) {
+          const vb = i < fb.values.length ? fb.values[i] : fa.values[i];
+          blended[i] = fa.values[i] * (1 - mix) + vb * mix;
+        }
+        const geojson = isobarGeoJson(blended, fa.grid, spec.step);
         this.pushIsobars(geojson);
       })
       .catch(err => console.warn('[forecast] isobars failed', err));
@@ -767,6 +784,9 @@ export class ForecastMapController {
     else this.isobarTimer = setTimeout(apply, wait);
   }
 
+  private windCacheKey = '';
+  private windCacheFrame: { regData: any; globData: any } | null = null;
+
   /** Feeds the particle layer both regional 1km wind and 25km global wind steps around the selected time. */
   private updateWind(): void {
     const wind = this.windLayer;
@@ -784,6 +804,21 @@ export class ForecastMapController {
 
     const my = ++this.windToken;
     const targetTime = time ?? Date.now();
+    if (manifest && time !== null && validTimes.length > 0 && manifest.vars[uVar] && manifest.vars[vVar]) {
+      const { a, b, mix } = bracketSteps(validTimes, time);
+      const hA = manifest.steps[a].h;
+      const hB = manifest.steps[b].h;
+      const key = `${manifest.model}/${manifest.run}.${manifest.build ?? ''}|${uVar}|${vVar}|${hA}|${hB}`;
+      if (key === this.windCacheKey && this.windCacheFrame) {
+        const { regData, globData } = this.windCacheFrame;
+        const nextReg = regData ? { ...regData, mix } : null;
+        const nextGlob = globData ? { ...globData, mix } : undefined;
+        wind.setWind(nextReg ? { ...nextReg, global: nextGlob } : { ...nextGlob, global: nextGlob });
+        wind.setVisible(true);
+        return;
+      }
+    }
+
     const loadRegional = async () => {
       if (!manifest || time === null || validTimes.length === 0 || !manifest.vars[uVar] || !manifest.vars[vVar]) return null;
       const { a, b, mix } = bracketSteps(validTimes, time);
@@ -799,21 +834,26 @@ export class ForecastMapController {
         this.loader.get(uVar, hA), this.loader.get(uVar, hB),
         this.loader.get(vVar, hA), this.loader.get(vVar, hB),
       ]);
-      const ahead = manifest.steps.slice(Math.max(a - 1, 0), b + 3).map(s => s.h);
-      this.loader.prefetch(uVar, ahead);
-      this.loader.prefetch(vVar, ahead);
+      const nextH = manifest.steps[b + 1]?.h;
+      if (nextH !== undefined) {
+        this.loader.prefetch(uVar, [nextH]);
+        this.loader.prefetch(vVar, [nextH]);
+      }
       const gA = stepGrid(manifest, hA);
       const gB = stepGrid(manifest, hB);
-      let dUA = decodeFieldBitmap(uA, uMin, uMax);
-      let dUB = decodeFieldBitmap(uB, uMin, uMax);
-      let dVA = decodeFieldBitmap(vA, vMin, vMax);
-      let dVB = decodeFieldBitmap(vB, vMin, vMax);
-      if (gA.nx !== gB.nx || gA.ny !== gB.ny) {
+      const sUA = decodeStridedFieldBitmap(uA, gA, uMin, uMax, 720);
+      let dUB = decodeStridedFieldBitmap(uB, gB, uMin, uMax, 720).values;
+      const sVA = decodeStridedFieldBitmap(vA, gA, vMin, vMax, 720);
+      let dVB = decodeStridedFieldBitmap(vB, gB, vMin, vMax, 720).values;
+      let dUA = sUA.values;
+      let dVA = sVA.values;
+      if (sUA.grid.nx !== gB.nx && dUB.length !== dUA.length) {
         dUB = dUA;
         dVB = dVA;
       }
       return {
-        grid: gA,
+        key: `${manifest.model}/${manifest.run}.${manifest.build ?? ''}|${uVar}|${vVar}|${hA}|${hB}`,
+        grid: sUA.grid,
         uA: dUA,
         uB: dUB,
         vA: dVA,
@@ -844,16 +884,18 @@ export class ForecastMapController {
       if (!uA || !uB || !vA || !vB) return undefined;
       const gA = stepGrid(gMan, hA);
       const gB = stepGrid(gMan, hB);
-      let dUA = decodeFieldBitmap(uA, uMin, uMax);
-      let dUB = decodeFieldBitmap(uB, uMin, uMax);
-      let dVA = decodeFieldBitmap(vA, vMin, vMax);
-      let dVB = decodeFieldBitmap(vB, vMin, vMax);
-      if (gA.nx !== gB.nx || gA.ny !== gB.ny) {
+      const sUA = decodeStridedFieldBitmap(uA, gA, uMin, uMax, 720);
+      let dUB = decodeStridedFieldBitmap(uB, gB, uMin, uMax, 720).values;
+      const sVA = decodeStridedFieldBitmap(vA, gA, vMin, vMax, 720);
+      let dVB = decodeStridedFieldBitmap(vB, gB, vMin, vMax, 720).values;
+      let dUA = sUA.values;
+      let dVA = sVA.values;
+      if (dUB.length !== dUA.length) {
         dUB = dUA;
         dVB = dVA;
       }
       return {
-        grid: gA,
+        grid: sUA.grid,
         uA: dUA,
         uB: dUB,
         vA: dVA,
@@ -870,6 +912,10 @@ export class ForecastMapController {
         wind.setVisible(false);
         wind.setWind(null);
         return;
+      }
+      if (regData?.key) {
+        this.windCacheKey = regData.key;
+        this.windCacheFrame = { regData, globData };
       }
       const frame = regData ? { ...regData, global: globData } : { ...globData, global: globData };
       wind.setWind(frame);

@@ -87,10 +87,10 @@ vec4 sampleFrame(sampler2D tex, vec2 uv, vec2 px, vec2 gx, vec2 gy, bool magnify
   if (!magnifying) return premultiplied(textureGrad(tex, uv, gx, gy)); // explicit gradients: safe inside a per-pixel branch
   vec4 c = smoothSample(tex, px);
   if (u_soften <= 0.001) return c;
-  vec4 halo = around(tex, px, 0.55);
+  vec4 halo = around(tex, px, 0.45);
   if (c.a <= 0.001 && halo.a <= 0.001) return c; // clear ground, well away from any cloud
-  c.rgb = mix(c.rgb, halo.rgb, 0.55 * u_soften);
-  c.a = clamp(mix(c.a, halo.a, 0.65 * u_soften), 0.0, 1.0);
+  c.rgb = mix(c.rgb, halo.rgb, 0.22 * u_soften);
+  c.a = clamp(mix(c.a, halo.a, 0.40 * u_soften), 0.0, 1.0);
   c.rgb = min(c.rgb, vec3(c.a));
   return c;
 }
@@ -195,8 +195,20 @@ export class SatelliteImageLayer implements CustomLayerInterface {
       if (slot.texture && this.gl) this.gl.deleteTexture(slot.texture);
       this.slots.delete(key);
     }
-    for (const f of frames) if (f && !this.slots.has(f.key)) void this.load(f);
+    this.loadNearby();
     this.map?.triggerRepaint();
+  }
+
+  /** Priority-loads the active frame and immediate neighbour first so opening satellite paints immediately without queuing every frame. */
+  private loadNearby(): void {
+    const n = this.frames.length;
+    if (n === 0) return;
+    const center = Math.min(Math.max(Math.round(this.position), 0), n - 1);
+    const idxs = new Set([center, Math.max(0, center - 1), Math.min(n - 1, center + 1)]);
+    for (const i of idxs) {
+      const f = this.frames[i];
+      if (f && !this.slots.has(f.key)) void this.load(f);
+    }
   }
 
   /** The ground the pictures cover (the forecast box unless this is a closer window). */
@@ -258,6 +270,7 @@ export class SatelliteImageLayer implements CustomLayerInterface {
   setPosition(position: number, opacity: number): void {
     this.position = position;
     this.opacity = opacity;
+    this.loadNearby();
     this.map?.triggerRepaint();
   }
 

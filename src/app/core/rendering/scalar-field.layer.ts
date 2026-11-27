@@ -101,6 +101,7 @@ uniform float u_relief;    // 0..1 strength of the relief shading
 uniform float u_levelHeight; // pressure-level layers: height of the level (m); 0 at the ground
 uniform int u_lite;        // 1: phone mode, the relief slope from screen differences (about 20 texture reads per pixel fewer)
 uniform int u_cubic;       // 1: zoomed in far enough that a grid cell spans several screen pixels: the field is read with a smooth curve
+uniform int u_hwLinear;    // 1 when field textures are pre-decoded into hardware-filtered RG16F on GPU
 uniform vec3 u_sunParams;  // (declination, eqTimeMin, utcMin) for day/night microclimate
 uniform int u_hasTime;     // 1 when u_sunParams is valid
 in vec2 v_merc;
@@ -109,9 +110,19 @@ out vec4 outColor;
 const float PI = 3.14159265358979;
 ${TERRAIN_TILE_GLSL}
 ${GLOBAL_TERRAIN_TILE_GLSL}
-// The fields are packed rg16 RGBA8 bitmaps (R = high byte, G = low byte, B >= 128 for "no data"), uploaded directly as RGBA8 and
-// decoded in GLSL so 0.1° global grids switch steps without main-thread stalls or float textures. Returns (value, weight of valid neighbours).
+// Samples either GPU pre-decoded RG16F texture (1 single hardware linear lookup, with C1 Hermite remap when u_cubic != 0) or
+// direct RGBA8 packed fallback (4 texelFetch reads). Returns (value, weight of valid neighbours).
 vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
+  if (u_hwLinear == 1) {
+    vec2 coord = g;
+    if (u_cubic != 0) {
+      vec2 i0 = floor(g);
+      vec2 fr = g - i0;
+      coord = i0 + fr * fr * (3.0 - 2.0 * fr);
+    }
+    vec2 c = texture(tex, (coord + 0.5) / vec2(size)).rg;
+    return vec2(c.g > 0.001 ? enc.x + (c.r / c.g) * (enc.y - enc.x) : 0.0, c.g);
+  }
   bool isG = (size.x == u_size.x ? u_grid.z : u_gridB.z) * float(size.x) >= 359.0;
   vec2 fr = fract(g);
   vec2 s = u_cubic != 0 ? fr * fr * (3.0 - 2.0 * fr) : fr;
@@ -134,7 +145,7 @@ vec2 sampleField(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
   return vec2(wSum > 0.001 ? vSum / wSum : 0.0, wSum);
 }
 
-// Smooth C1 Hermite curve across valid surrounding nodes (done in 4 texel reads inside sampleField when u_cubic != 0).
+// Smooth C1 Hermite curve across valid surrounding nodes (done in 1 hardware read or 4 fallback reads inside sampleField).
 vec2 sampleSmooth(sampler2D tex, vec2 g, ivec2 size, vec2 enc) {
   return sampleField(tex, g, size, enc);
 }
@@ -172,11 +183,20 @@ vec2 terrainAtEnc(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon, ve
 }
 
 vec2 slopeAtEnc(sampler2D tex, vec4 grid, ivec2 size, float lat, float lon, vec2 enc) {
+  bool isG = grid.z * float(size.x) >= 359.0;
+  float gx = (lon - grid.x) / grid.z;
+  gx = isG ? mod(gx, float(size.x)) : clamp(gx, 0.0, float(size.x) - 1.0);
+  float gy = clamp((grid.y - lat) / grid.z, 0.0, float(size.y) - 1.0);
+  ivec2 c = ivec2(floor(gx + 0.5), floor(gy + 0.5));
+  int xE = isG ? ((c.x + 1) % size.x) : min(c.x + 1, size.x - 1);
+  int xW = isG ? ((c.x - 1 + size.x) % size.x) : max(c.x - 1, 0);
+  int yN = max(c.y - 1, 0);
+  int yS = min(c.y + 1, size.y - 1);
+  float zE = decode(texelFetch(tex, ivec2(xE, clamp(c.y, 0, size.y - 1)), 0), enc);
+  float zW = decode(texelFetch(tex, ivec2(xW, clamp(c.y, 0, size.y - 1)), 0), enc);
+  float zN = decode(texelFetch(tex, ivec2(clamp(c.x, 0, size.x - 1), yN), 0), enc);
+  float zS = decode(texelFetch(tex, ivec2(clamp(c.x, 0, size.x - 1), yS), 0), enc);
   float s = grid.z;
-  float zE = terrainAtEnc(tex, grid, size, lat, lon + s, enc).x;
-  float zW = terrainAtEnc(tex, grid, size, lat, lon - s, enc).x;
-  float zN = terrainAtEnc(tex, grid, size, lat + s, lon, enc).x;
-  float zS = terrainAtEnc(tex, grid, size, lat - s, lon, enc).x;
   return vec2((zE - zW) / (2.0 * s * M_PER_DEG * max(0.15, cos(radians(lat)))), (zN - zS) / (2.0 * s * M_PER_DEG));
 }
 
@@ -365,6 +385,26 @@ void main() {
   outColor = vec4(rgb * alpha, alpha);   // premultiplied for MapLibre's blend function
 }`;
 
+const DECODE_VERTEX = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+  v_uv = a_pos * 0.5 + 0.5;
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+const DECODE_FRAGMENT = `#version 300 es
+precision highp float;
+uniform sampler2D u_raw;
+in vec2 v_uv;
+out vec2 outRG;
+void main() {
+  vec4 c = texture(u_raw, v_uv);
+  if (c.b > 0.5) { outRG = vec2(0.0, 0.0); return; }
+  float raw = c.r * (255.0 * 256.0) + c.g * 255.0;
+  outRG = vec2(raw / 65535.0, 1.0);
+}`;
+
 export interface FieldFrame {
   /** Unique key of the image (run/var/step) so textures can be reused. */
   key: string;
@@ -380,7 +420,7 @@ const UNIFORMS = [
   'u_matrix', 'u_a', 'u_b', 'u_a2', 'u_b2', 'u_lut', 'u_demModel', 'u_demSmooth',
   'u_mix', 'u_opacity', 'u_enc', 'u_enc2', 'u_disp', 'u_gamma', 'u_clear', 'u_clearFade', 'u_grid', 'u_size', 'u_gridB', 'u_sizeB',
   'u_smoothGrid', 'u_smoothSize', 'u_modelGrid', 'u_modelSize', 'u_demEnc', 'u_terrainOn', 'u_groundOnNodes', 'u_terrainBox',
-  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_sunParams', 'u_hasTime',
+  'u_magnitude', 'u_terrainMode', 'u_relief', 'u_levelHeight', 'u_lite', 'u_cubic', 'u_hwLinear', 'u_sunParams', 'u_hasTime',
   'u_demGlobal', 'u_demGlobalModel', 'u_globalFineGrid', 'u_globalFineSize', 'u_globalModelGrid', 'u_globalModelSize', 'u_globalDemEnc', 'u_hasGlobalTerrain',
   'u_gTiles', 'u_gTileMap', 'u_hasGlobalTiles', 'u_gTileCountGlobal', 'u_gTileOrigin', 'u_gTileGrid', 'u_gMPerPx',
   'u_tiles', 'u_tileMap', 'u_tileCount', 'u_tileOrigin', 'u_tilePx',
@@ -402,7 +442,15 @@ export class ScalarFieldLayer implements CustomLayerInterface {
   private lutTex: WebGLTexture | null = null;
   private uniforms: Uniforms = {};
   private readonly textures = new Map<string, WebGLTexture>(); // insertion order = LRU order
-  private static readonly MAX_TEXTURES = 16;
+  private static readonly MAX_TEXTURES = 28;
+  private decodeInitDone = false;
+  private hwLinear = false;
+  private decodeProg: WebGLProgram | null = null;
+  private decodeVao: WebGLVertexArrayObject | null = null;
+  private decodeVbo: WebGLBuffer | null = null;
+  private decodeFbo: WebGLFramebuffer | null = null;
+  private rawScratchTex: WebGLTexture | null = null;
+  private decodeRawLoc: WebGLUniformLocation | null = null;
 
   private grid: ForecastGrid | null = null;
   private def: ForecastLayerDef | null = null;
@@ -535,6 +583,14 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     for (const tex of [this.lutTex, this.demModelTex, this.demSmoothTex, this.demGlobalTex, this.demGlobalModelTex]) if (tex) gl.deleteTexture(tex);
     this.tiles.detach(gl);
     this.globalTiles.detach(gl);
+    if (this.rawScratchTex) gl.deleteTexture(this.rawScratchTex);
+    if (this.decodeFbo) gl.deleteFramebuffer(this.decodeFbo);
+    if (this.decodeVbo) gl.deleteBuffer(this.decodeVbo);
+    if (this.decodeVao) gl.deleteVertexArray(this.decodeVao);
+    if (this.decodeProg) gl.deleteProgram(this.decodeProg);
+    this.rawScratchTex = this.decodeFbo = this.decodeVbo = this.decodeVao = this.decodeProg = null;
+    this.decodeInitDone = false;
+    this.hwLinear = false;
     if (this.vbo) gl.deleteBuffer(this.vbo);
     if (this.vao) gl.deleteVertexArray(this.vao);
     const handle = this.program ?? this.pending?.handle;
@@ -647,6 +703,7 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.uniform1f(u['u_levelHeight'], def.levelHeightM ?? 0);
     gl.uniform1i(u['u_lite'], this.lite ? 1 : 0);
     gl.uniform1i(u['u_cubic'], this.cubicAt(grid) ? 1 : 0);
+    gl.uniform1i(u['u_hwLinear'], this.hwLinear ? 1 : 0);
     gl.uniform3f(u['u_sunParams'], this.sunParams[0], this.sunParams[1], this.sunParams[2]);
     gl.uniform1i(u['u_hasTime'], this.hasTime ? 1 : 0);
     this.tiles.setUniforms(gl, u, terrainOn);
@@ -720,11 +777,119 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     this.lutFor = def;
   }
 
+  /** Initializes one-time GPU RG16F offscreen decoder so field textures use hardware linear filtering with zero CPU readback. */
+  private ensureDecoder(gl: WebGL2RenderingContext): void {
+    if (this.decodeInitDone) return;
+    this.decodeInitDone = true;
+    const extHalf = gl.getExtension('EXT_color_buffer_half_float');
+    const extFloat = gl.getExtension('EXT_color_buffer_float');
+    if (!extHalf && !extFloat) return;
+
+    const compile = (type: number, src: string): WebGLShader => {
+      const sh = gl.createShader(type)!;
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      return sh;
+    };
+    const vs = compile(gl.VERTEX_SHADER, DECODE_VERTEX);
+    const fs = compile(gl.FRAGMENT_SHADER, DECODE_FRAGMENT);
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.bindAttribLocation(prog, 0, 'a_pos');
+    gl.linkProgram(prog);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      gl.deleteProgram(prog);
+      return;
+    }
+
+    const fbo = gl.createFramebuffer()!;
+    const testTex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, testTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, 2, 2, 0, gl.RG, gl.HALF_FLOAT, null);
+    const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, testTex, 0);
+    const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+    gl.deleteTexture(testTex);
+
+    if (!complete) {
+      gl.deleteFramebuffer(fbo);
+      gl.deleteProgram(prog);
+      return;
+    }
+
+    const vao = gl.createVertexArray()!;
+    const vbo = gl.createBuffer()!;
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+
+    this.decodeProg = prog;
+    this.decodeRawLoc = gl.getUniformLocation(prog, 'u_raw');
+    this.decodeFbo = fbo;
+    this.decodeVao = vao;
+    this.decodeVbo = vbo;
+    this.rawScratchTex = gl.createTexture()!;
+    this.hwLinear = true;
+  }
+
   /**
-   * Uploads an rg16 forecast ImageBitmap directly as RGBA8 (gl.NEAREST) so the GPU decodes the packed bytes without a CPU canvas readback or
-   * Float32Array allocation (~350 ms stall eliminated on 0.1° global grids).
+   * Uploads an rg16 forecast ImageBitmap on GPU: into a hardware-filtered RG16F texture (1 texture lookup per frame, zero CPU stall)
+   * when supported by WebGL2 FBO attachments, else directly as RGBA8 with 4-tap shader decoding.
    */
   private fieldTexture(gl: WebGL2RenderingContext, bitmap: ImageBitmap): WebGLTexture {
+    this.ensureDecoder(gl);
+    const wrapS = this.grid && this.grid.step * this.grid.nx >= 359 ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+    if (this.hwLinear && this.decodeProg && this.decodeFbo && this.decodeVao && this.rawScratchTex) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.rawScratchTex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG16F, bitmap.width, bitmap.height, 0, gl.RG, gl.HALF_FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+      const prevFbo = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
+      const vp = gl.getParameter(gl.VIEWPORT) as Int32Array;
+      const wasBlend = gl.isEnabled(gl.BLEND);
+      if (wasBlend) gl.disable(gl.BLEND);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.decodeFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      gl.viewport(0, 0, bitmap.width, bitmap.height);
+      gl.useProgram(this.decodeProg);
+      gl.bindVertexArray(this.decodeVao);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.rawScratchTex);
+      gl.uniform1i(this.decodeRawLoc, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, null, 0);
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, prevFbo);
+      gl.viewport(vp[0], vp[1], vp[2], vp[3]);
+      if (wasBlend) gl.enable(gl.BLEND);
+      return tex;
+    }
+
     const tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -733,7 +898,6 @@ export class ScalarFieldLayer implements CustomLayerInterface {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    const wrapS = this.grid && this.grid.step * this.grid.nx >= 359 ? gl.REPEAT : gl.CLAMP_TO_EDGE;
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapS);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return tex;

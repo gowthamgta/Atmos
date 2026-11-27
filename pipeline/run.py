@@ -67,7 +67,7 @@ def _encode_for(fetcher, vid: str, values: np.ndarray) -> bytes:
         if vid in ("precip", "rain24", "raintot", "extreme"):
             bits = v.bits
         elif vid in ("t2m", "rh", "feels", "dew", "u10", "v10", "msl"):
-            bits = min(v.bits, 10)
+            bits = min(v.bits, 9)
         else:
             bits = min(v.bits, 8)
         return encode_field(values, v.lo, v.hi, bits, fmt="WEBP")
