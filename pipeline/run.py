@@ -38,7 +38,10 @@ NOT_PUBLISHED_YET = 3     # exit code: the run the caller expects is not publish
 
 def published_vars(fetcher):
     """Variables this model actually provides (the app greys out layers for the others)."""
-    skip = {f"{kind}{lvl}" for lvl in C.LEVELS for kind in ("vo", "dv")} if fetcher.MODEL_ID == "global" else set()
+    skip = (
+        {f"{kind}{lvl}" for lvl in C.LEVELS for kind in ("vo", "dv")}
+        | {"solar", "cloud_low", "cloud_mid", "cloud_high"}
+    ) if fetcher.MODEL_ID == "global" else set()
     return [v for v in C.VARS.values() if v.id not in fetcher.UNAVAILABLE_VARS and v.id not in skip]
 
 

@@ -12,10 +12,10 @@ def test_encode_decode_webp_roundtrip(tmp_path):
     elev = np.array([[0.0, 1234.0], [4567.0, 8848.0]], dtype=np.float32)
     land = np.array([[0.0, 0.5], [1.0, 1.0]], dtype=np.float32)
     out = tmp_path / "t.webp"
-    B.encode_webp(elev, land, str(out), quant_bits=12)
+    B.encode_webp(elev, land, str(out), quant_bits=11)
     e2, l2 = B.decode_webp(str(out))
-    assert np.allclose(e2, elev, atol=3.0)
-    assert np.allclose(l2, land, atol=0.01)
+    assert np.allclose(e2, elev, atol=5.0)
+    assert np.allclose(l2, land, atol=0.05)
 
 
 def test_pack_bitmask():

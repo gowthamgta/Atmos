@@ -34,8 +34,8 @@ TILE_LIST_URL = f"{COP_BUCKET}/tileList.txt"
 
 MAX_M = 9000.0
 TILE_PX = 256
-MIN_TILE_LAT = -60.0
-MAX_TILE_LAT = 75.0
+MIN_TILE_LAT = -56.0
+MAX_TILE_LAT = 68.0
 _NAME_RE = re.compile(r"Copernicus_DSM_COG_10_([NS])(\d{2})_00_([EW])(\d{3})_00_DEM")
 
 _SESSION: requests.Session | None = None
@@ -97,7 +97,7 @@ def fetch_cop_page3(name: str) -> np.ndarray | None:
     return None
 
 
-def encode_webp(elev: np.ndarray, land: np.ndarray, path: str, quant_bits: int = 12) -> None:
+def encode_webp(elev: np.ndarray, land: np.ndarray, path: str, quant_bits: int = 11) -> None:
     q = np.clip(np.round(np.clip(elev, 0.0, MAX_M) / MAX_M * 65535.0), 0, 65535).astype(np.uint32)
     if quant_bits < 16:
         shift = 16 - quant_bits
@@ -105,7 +105,8 @@ def encode_webp(elev: np.ndarray, land: np.ndarray, path: str, quant_bits: int =
     rgba = np.zeros(elev.shape + (4,), dtype=np.uint8)
     rgba[..., 0] = (q >> 8).astype(np.uint8)
     rgba[..., 1] = (q & 0xFF).astype(np.uint8)
-    rgba[..., 2] = np.clip(np.round(np.clip(land, 0.0, 1.0) * 255.0), 0, 255).astype(np.uint8)
+    # Quantize land fraction to 16 levels (4-bit * 17) so WebP compresses coastlines tightly while staying smooth
+    rgba[..., 2] = (np.clip(np.round(np.clip(land, 0.0, 1.0) * 15.0), 0, 15) * 17).astype(np.uint8)
     rgba[..., 3] = 255
     os.makedirs(os.path.dirname(path), exist_ok=True)
     Image.fromarray(rgba, "RGBA").save(path, "WEBP", lossless=True, method=2)
@@ -278,7 +279,7 @@ def build(out_dir: str, workers: int = 24) -> None:
                     te, tl = sample_cop_tiles(t_lat, t_lon, cop_cache)
                     if not np.any(tl > 0.01):
                         continue
-                    encode_webp(te, tl, os.path.join(out_dir, "tiles", "8", str(tx), f"{ty}.webp"), quant_bits=12)
+                    encode_webp(te, tl, os.path.join(out_dir, "tiles", "8", str(tx), f"{ty}.webp"), quant_bits=11)
                     z8_coords.add((tx, ty))
         if lat_sw % 10 == 0:
             print(f"  lat={lat_sw:+d} deg processed | z8 land tiles={len(z8_coords)}", flush=True)
@@ -305,7 +306,7 @@ def build(out_dir: str, workers: int = 24) -> None:
         e6 = block_e.reshape(256, 4, 256, 4).mean(axis=(1, 3))
         l6 = block_l.reshape(256, 4, 256, 4).mean(axis=(1, 3))
         if np.any(l6 > 0.005):
-            encode_webp(e6, l6, os.path.join(out_dir, "tiles", "6", str(tx6), f"{ty6}.webp"), quant_bits=12)
+            encode_webp(e6, l6, os.path.join(out_dir, "tiles", "6", str(tx6), f"{ty6}.webp"), quant_bits=11)
             z6_coords.add((tx6, ty6))
 
     z5_candidates = {(tx // 2, ty // 2) for tx, ty in z6_coords}
@@ -323,7 +324,7 @@ def build(out_dir: str, workers: int = 24) -> None:
         e5 = block_e.reshape(256, 2, 256, 2).mean(axis=(1, 3))
         l5 = block_l.reshape(256, 2, 256, 2).mean(axis=(1, 3))
         if np.any(l5 > 0.005):
-            encode_webp(e5, l5, os.path.join(out_dir, "tiles", "5", str(tx5), f"{ty5}.webp"), quant_bits=12)
+            encode_webp(e5, l5, os.path.join(out_dir, "tiles", "5", str(tx5), f"{ty5}.webp"), quant_bits=11)
             z5_coords.add((tx5, ty5))
 
     print(f"Built self-hosted terrain tiles: z5={len(z5_coords)}, z6={len(z6_coords)}, z8={len(z8_coords)}", flush=True)

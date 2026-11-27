@@ -399,11 +399,7 @@ export class TerrainService {
   }
 
   private async load(): Promise<TerrainData> {
-    let base = `${PAGES}/terrain`;
-    try {
-      const local = await fetch('/terrain/index.json');
-      if (local.ok) base = '/terrain';
-    } catch {}
+    const base = TERRAIN_BASE;
     const meta = (await (await this.ok(fetch(`${base}/index.json`))).json()) as TerrainMeta;
     const image = async (name: string) =>
       createImageBitmap(await (await this.ok(fetch(`${base}/${name}`))).blob(), {

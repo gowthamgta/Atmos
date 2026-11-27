@@ -38,9 +38,9 @@ export const PAGES = 'https://gowthamgta.github.io/Atmos';
 
 export const FORECAST_MODELS: readonly ForecastModelDef[] = [
   {
-    id: 'global', label: 'Kralveth AI', short: 'Kralveth AI', resolution: 'Kralveth AI: 9 km (0.1°) Day 1 + 25 km Days 2–8 worldwide full-bundle forecast',
+    id: 'global', label: 'Kralveth AI', short: 'Kralveth AI', resolution: 'Kralveth AI: 9 km (0.1°) Day 1 + 25 km Days 2–6 worldwide full-bundle forecast',
     gridKm: 25, groundKm: 28, baseUrl: `${PAGES}/global`, centre: 'Kralveth', ai: true,
-    datasets: ['ecmwf_ifs025', 'ecmwf_aifs025_single'], apiId: 'ecmwf_ifs025', reachHours: 192,
+    datasets: ['ecmwf_ifs025', 'ecmwf_aifs025_single'], apiId: 'ecmwf_ifs025', reachHours: 144,
   },
 ];
 

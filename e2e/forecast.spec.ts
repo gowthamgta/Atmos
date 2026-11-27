@@ -1,8 +1,8 @@
 import { expect, test } from './fixtures';
 
 test.describe('forecast & meteogram', () => {
-  test('renders Total Precipitable Water (tcwv) layer in mm with no errors', async ({ page, errors }) => {
-    await page.goto('/#l=tcwv');
+  test('renders Rain accumulation (raintot) layer in mm with no errors', async ({ page, errors }) => {
+    await page.goto('/#l=raintot');
     await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
     await page.waitForTimeout(2000);
     await expect(page.locator('body')).toContainText('mm');
@@ -13,8 +13,8 @@ test.describe('forecast & meteogram', () => {
     await page.goto('/');
     await page.getByRole('button', { name: /Menu/ }).click();
     await expect(page.locator('app-menu-panel')).toBeVisible();
-    await expect(page.locator('app-menu-panel')).toContainText('Total precipitable water');
-    await expect(page.locator('app-menu-panel')).toContainText('AI 1km');
+    await expect(page.locator('app-menu-panel')).toContainText('Rain accumulation');
+    await expect(page.locator('app-menu-panel')).toContainText('Kralveth AI');
     expect(errors).toEqual([]);
   });
 });
