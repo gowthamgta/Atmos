@@ -24,7 +24,7 @@ const RETRY_PAUSE_MS = 400;
 @Injectable({ providedIn: 'root' })
 export class FieldLoaderService {
   private static readonly MAX_CACHED = 96; // ~390 KB each once decoded (296 x 326 cells x 4 bytes), so about 37 MB at most
-  private static readonly MAX_BYTES = 260 * 1024 * 1024; // ~260 MB GPU VRAM budget (bounds large 0.1° global bitmaps on mobile)
+  private static readonly MAX_BYTES = 360 * 1024 * 1024; // ~360 MB GPU VRAM budget (bounds large 0.1° global bitmaps on mobile)
 
   private readonly catalog = inject(ForecastCatalogService);
   private readonly cache = new Map<string, ImageBitmap>();
@@ -154,9 +154,9 @@ export class FieldLoaderService {
   }
 
   private evict(): void {
-    while (this.cache.size > FieldLoaderService.MAX_CACHED || (this.cache.size > 4 && this.cachedBytes() > FieldLoaderService.MAX_BYTES)) {
+    while (this.cache.size > FieldLoaderService.MAX_CACHED || (this.cache.size > 6 && this.cachedBytes() > FieldLoaderService.MAX_BYTES)) {
       const oldest = this.cache.keys().next().value as string;
-      this.cache.get(oldest)?.close();
+      // Do not call .close() here: an active render frame or decoder may still hold this ImageBitmap reference; let GC reclaim it safely.
       this.cache.delete(oldest);
     }
   }

@@ -22,7 +22,7 @@ import { ModelListComponent } from './model-list.component';
         [style.--model-color]="color()" [attr.aria-label]="label()" [title]="title()" data-model-toggle>
         <span class="model-dot" [class.ai]="catalog.model().ai"></span>
         <span class="text">
-          <span class="l1"><strong>{{ catalog.model().short }}</strong><span class="grid">{{ catalog.model().gridKm }} km</span></span>
+          <span class="l1"><strong>{{ catalog.model().short }}</strong><span class="grid">{{ gridKmText() }}</span></span>
           <span class="l2"><span class="status-dot" [class.ok]="tone() === 'ok'" [class.warn]="tone() === 'warn'" [class.bad]="tone() === 'bad'"></span>{{ line() }}</span>
         </span>
         <app-icon class="chev" name="chevron" [size]="14" />
@@ -76,6 +76,18 @@ export class ModelPillComponent {
   private readonly info = computed(() => this.runs.active());
 
   protected readonly tone = computed(() => this.info()?.tone ?? 'none');
+  protected readonly gridKmText = computed(() => {
+    const m = this.catalog.model();
+    if (m.id === 'global') {
+      const info = this.info();
+      const t = this.state.timeMs();
+      if (info?.published && t !== null) {
+        const leadH = (t - info.published.initMs) / 3_600_000;
+        if (leadH >= 0 && leadH <= 24.5) return '9 km';
+      }
+    }
+    return `${m.gridKm} km`;
+  });
   /** "Run 18Z · +15 h": the run the model is on, and the forecast hour of the time on the bar. */
   protected readonly line = computed(() => {
     const info = this.info();
